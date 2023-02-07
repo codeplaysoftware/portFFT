@@ -17,6 +17,10 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
+
+#ifndef SYCL_FFT_COMMON_WORKITEM_HPP
+#define SYCL_FFT_COMMON_WORKITEM_HPP
+
 #include <sycl/sycl.hpp>
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
@@ -126,3 +130,5 @@ inline __attribute__((always_inline)) void wi_dft(T_ptr in, T_ptr out){
 }
 
 }; //namespace sycl_fft
+
+#endif

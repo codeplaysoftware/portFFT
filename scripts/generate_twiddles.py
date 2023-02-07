@@ -28,6 +28,9 @@ template = """
  *
  **************************************************************************/
 
+#ifndef SYCL_FFT_COMMON_TWIDDLE_HPP
+#define SYCL_FFT_COMMON_TWIDDLE_HPP
+
 namespace sycl_fft::detail{{
 
 
@@ -39,6 +42,8 @@ double twiddle_re[{size}][{size}] = {{ {real} }};
 double twiddle_im[{size}][{size}] = {{ {imag} }};
 
 }}
+
+#endif
 """
 
 def generate(max_size):

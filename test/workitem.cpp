@@ -17,22 +17,25 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
-#include <gtest/gtest.h>
 #include <common/workitem.hpp>
+#include <descriptor.hpp>
+
+#include <gtest/gtest.h>
+#include <sycl/sycl.hpp>
+
 #include <complex>
 
 constexpr int N = 32;
-constexpr int M = 1;
 
 using ftype = float;
 using complex_type = std::complex<ftype>;
 
 void init(complex_type* a, complex_type* b, complex_type* c){
-    for(int i=0;i<N*M;i++){
+    for(int i=0;i<N;i++){
         c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((N-i)%11)};
     }
     std::cout << "init " << std::endl;
-    for(int i=0;i<N*M;i++){
+    for(int i=0;i<N;i++){
         std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
     }
     std::cout << std::endl;
@@ -49,7 +52,7 @@ bool eq(complex_type a, complex_type b){
 bool check(complex_type* a, complex_type* b){
     bool err = false;
     ftype max_err = 0;
-    for(int i=0;i<N*M;i++){
+    for(int i=0;i<N;i++){
         max_err = std::max(max_err, error(a[i], b[i]));
         if(!eq(a[i], b[i])){
             err = true;
@@ -57,12 +60,12 @@ bool check(complex_type* a, complex_type* b){
     }
     std::cout << "max error: " << max_err << std::endl;
     if(err){
-        for(int i=0;i<N*M;i++){
+        for(int i=0;i<N;i++){
             std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
         }
         std::cout << std::endl;
         std::cout << std::endl;
-        for(int i=0;i<N*M;i++){
+        for(int i=0;i<N;i++){
             std::cout << "(" <<b[i].real()<<","<<b[i].imag()<<"), ";
         }
         std::cout << std::endl;
@@ -88,25 +91,25 @@ void reference_forward_dft(std::vector<TypeIn> &in, std::vector<TypeOut> &out) {
     }
 }
 
-TEST(workitem, all){
-    complex_type a[N*M];
-    complex_type b[N*M];
-    complex_type c[N*M];
+TEST(wi_dft, all){
+    complex_type a[N];
+    complex_type b[N];
+    complex_type c[N];
 
     init(a,b,c);
-    std::vector<std::complex<long double>> a_v(N*M);
-    std::vector<std::complex<long double>> out_v(N*M);
-    for(int i=0;i<N*M;i++){
+    std::vector<std::complex<long double>> a_v(N);
+    std::vector<std::complex<long double>> out_v(N);
+    for(int i=0;i<N;i++){
         a_v[i] = {a[i].real(), a[i].imag()};
     }
     reference_forward_dft(a_v, out_v);
     std::cout << "ref " << std::endl;
-    for(int i=0;i<N*M;i++){
+    for(int i=0;i<N;i++){
         std::cout << out_v[i];
     }
     std::cout << std::endl;
-    /*sycl::double2 a2[N*M];
-    sycl::double2 b2[N*M];
+    /*sycl::double2 a2[N];
+    sycl::double2 b2[N];
     for(int i=0;i<4;i++){
         a2[i] = a[2*i];
         b2[i] = b[2*i];
@@ -115,16 +118,16 @@ TEST(workitem, all){
     cooley_tukey_dft<2,2,2,2>(a,b);
     naive_dft<4,2,2>(a,c);*/
 
-    sycl_fft::wi_dft<N*M,1,1>(reinterpret_cast<ftype*>(b),reinterpret_cast<ftype*>(b));
+    sycl_fft::wi_dft<N,1,1>(reinterpret_cast<ftype*>(b),reinterpret_cast<ftype*>(b));
 
-    sycl_fft::detail::naive_dft<N*M,1,1>(reinterpret_cast<ftype*>(a),reinterpret_cast<ftype*>(c));
+    sycl_fft::detail::naive_dft<N,1,1>(reinterpret_cast<ftype*>(a),reinterpret_cast<ftype*>(c));
 
     std::cout << std::endl;
     std::cout << "comparison with naive" << std::endl;
     check(b,c);
     std::cout << "comparison with reference" << std::endl;
-    std::vector<complex_type> out_ref(N*M);
-    for(int i=0;i<N*M;i++){
+    std::vector<complex_type> out_ref(N);
+    for(int i=0;i<N;i++){
         out_ref[i] = {static_cast<ftype>(out_v[i].real()), static_cast<ftype>(out_v[i].imag())};
     }
     bool res  = check(b,out_ref.data());
@@ -139,4 +142,43 @@ TEST(workitem, all){
     cooley_tukey_dft<3,17,1>(a);
     naive_dft<51,1>(b);
     std::cout << check(a,b);*/
+}
+
+TEST(workitem_impl, descriptor){
+    constexpr int N_transforms = 133;
+    complex_type a[N*N_transforms];
+    complex_type b[N*N_transforms];
+    complex_type c[N*N_transforms];
+    init(a,b,c);
+
+    sycl::queue q;
+    complex_type* a_dev = sycl::malloc_device<complex_type>(N*N_transforms,q);
+    complex_type* b_dev = sycl::malloc_device<complex_type>(N*N_transforms,q);
+    q.copy(a, a_dev, N*N_transforms);
+    q.copy(b, b_dev, N*N_transforms);
+    q.wait();
+
+    sycl_fft::descriptor<ftype, sycl_fft::domain::COMPLEX> desc{{N}};
+    auto committed = desc.commit(q);
+    committed.compute_forward(b_dev);
+
+    q.wait();
+    q.copy(b_dev, b, N*N_transforms);
+    q.wait();
+    
+    std::cout << "comparison with reference" << std::endl;
+    for(int j=0;j<N_transforms;j++){
+        std::vector<std::complex<long double>> a_v(N);
+        std::vector<std::complex<long double>> out_v(N);
+        for(int i=0;i<N;i++){
+            a_v[i] = {a[i + j*N].real(), a[i + j*N].imag()};
+        }
+        reference_forward_dft(a_v, out_v);
+        std::vector<complex_type> out_ref(N);
+        for(int i=0;i<N;i++){
+            out_ref[i] = {static_cast<ftype>(out_v[i].real()), static_cast<ftype>(out_v[i].imag())};
+        }
+        EXPECT_TRUE(check(b + j*N,out_ref.data())) << "transform " << j;
+    }
+
 }

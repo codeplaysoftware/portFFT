@@ -17,6 +17,10 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
+
+#ifndef SYCL_FFT_COMMON_HELPERS_HPP
+#define SYCL_FFT_COMMON_HELPERS_HPP
+
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -73,4 +77,30 @@ void __attribute__((always_inline)) unrolled_loop(Functor&& funct){
     }
 }
 
+/**
+ * Divides the value and rounds the result up.
+ * @tparam T type of the inputs and the result
+ * @param dividend divident
+ * @param divisor divisor
+ * @return rounded-up quotient
+*/
+template<typename T>
+inline T divideCeil(T dividend, T divisor){
+    return (dividend + divisor - 1) / divisor;
+}
+
+/**
+ * Rounds the value up, so it is divisible by factor.
+ * @tparam T type of the inputs and the result
+ * @param value value to round up
+ * @param factor factor that divides the result
+ * @return rounded-up value
+*/
+template<typename T>
+inline T roundUpToMultiple(T value, T factor){
+    return divideCeil(value, factor) * factor;
+}
+
 };
+
+#endif
