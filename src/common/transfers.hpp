@@ -17,7 +17,11 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
-#include<sycl/sycl.hpp>
+
+#ifndef SYCL_FFT_COMMON_TRANSFERS_HPP
+#define SYCL_FFT_COMMON_TRANSFERS_HPP
+
+#include <sycl/sycl.hpp>
 
 namespace sycl_fft{
 
@@ -93,3 +97,5 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id
 }
 
 };
+
+#endif

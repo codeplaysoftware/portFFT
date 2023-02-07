@@ -21,8 +21,8 @@
 #include <common/transfers.hpp>
 #include <complex>
 
-constexpr int N = 256;
-constexpr int sg_size = 16;
+constexpr int N = 8;
+constexpr int sg_size = 32;
 using ftype = double;
 
 using complex_type = std::complex<ftype>;
@@ -63,8 +63,8 @@ TEST(transfers, all){
 
             sycl_fft::global2local(a_dev, loc1, N*sg_size, sg_size, local_id);
             it.barrier();
-            sycl_fft::local2private<N>(loc1, priv, local_id, sg_size);
-            sycl_fft::private2local<N>(priv, loc2, local_id, sg_size);
+            sycl_fft::local2private<N>(loc1, priv, local_id, N);
+            sycl_fft::private2local<N>(priv, loc2, local_id, N);
             it.barrier();
             sycl_fft::local2global(loc2, b_dev, N*sg_size, sg_size, local_id);
         });
