@@ -168,6 +168,12 @@ public:
     }
 };
 
+/**
+ * A descriptor containing FFT problem parameters.
+ * 
+ * @tparam Scalar type of the scalar used for computations
+ * @tparam Domain domain of the FFT
+ */
 template<typename Scalar, domain Domain>
 struct descriptor{
     std::vector<std::size_t> lengths;
