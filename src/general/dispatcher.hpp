@@ -91,9 +91,6 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
 template<typename T_in, typename T_out, typename T>
 void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t fft_size,
                    std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it){
-    // TODO curretnly this does not work on intel GPU it was tested on.
-    // The whole kernel might be too big. Commenting out implementations for sizes above 11 worked as a workaround.
-    // Any tests must also be adjusted so that they do not test such sizes.
     switch(fft_size){
         #define SYCL_FFT_WI_DISPATCHER_IMPL(N) case N: workitem_impl<N>(input, output, loc, n_transforms, input_distance, output_distance, it); break;
         SYCL_FFT_WI_DISPATCHER_IMPL(1)
