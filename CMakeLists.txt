@@ -40,7 +40,8 @@ option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
 
 add_library(sycl-fft INTERFACE)
 target_include_directories(sycl-fft 
-    INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src
+              ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()

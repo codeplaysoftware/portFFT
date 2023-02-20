@@ -18,28 +18,11 @@
  *
  **************************************************************************/
 
-#include "common/factorize.hpp"
-#include <gtest/gtest.h>
+#include "workitem_test_utils.hpp"
 
-
-int factorize(int N){
-    int res = 1;
-    for(int i=2;i*i<=N;i++){
-        if(N%i==0){
-            res=i;
-        }
-    }
-    return res;
+TEST_P(WorkItemTest, USM_C2C_Fwd_Float) {
+  int32_t length = GetParam();
+  ASSERT_TRUE(length > 0);
+  sycl::queue queue;
+  check_fft<float>(length, queue);
 }
-
-template <int N>
-void test() {
-  int factor = sycl_fft::detail::factorize<N>::factor;
-  int correct = factorize(N);
-  EXPECT_EQ(factor, correct) << "error N: " << N << std::endl;
-  if constexpr (N - 1 > 0) {
-    test<N - 1>();
-  }
-}
-
-TEST(factorize, all) { test<64>(); }
