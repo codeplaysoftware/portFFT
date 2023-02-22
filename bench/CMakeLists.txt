@@ -49,7 +49,7 @@ foreach(BENCHMARK_FILE ${BENCHMARKS})
     target_link_libraries(
         ${BENCHMARK_TARGET}
         PRIVATE
-        sycl-fft
+        sycl_fft
         benchmark::benchmark
     )
 endforeach()
