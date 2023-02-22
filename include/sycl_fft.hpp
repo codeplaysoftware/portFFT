@@ -18,28 +18,12 @@
  *
  **************************************************************************/
 
+#ifndef SYCL_FFT_HPP
+#define SYCL_FFT_HPP
+
 #include "common/factorize.hpp"
-#include <gtest/gtest.h>
+#include "common/transfers.hpp"
+#include "descriptor.hpp"
+#include "enums.hpp"
 
-
-int factorize(int N){
-    int res = 1;
-    for(int i=2;i*i<=N;i++){
-        if(N%i==0){
-            res=i;
-        }
-    }
-    return res;
-}
-
-template <int N>
-void test() {
-  int factor = sycl_fft::detail::factorize<N>::factor;
-  int correct = factorize(N);
-  EXPECT_EQ(factor, correct) << "error N: " << N << std::endl;
-  if constexpr (N - 1 > 0) {
-    test<N - 1>();
-  }
-}
-
-TEST(factorize, all) { test<64>(); }
+#endif

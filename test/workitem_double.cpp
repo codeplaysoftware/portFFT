@@ -18,28 +18,16 @@
  *
  **************************************************************************/
 
-#include "common/factorize.hpp"
-#include <gtest/gtest.h>
+#include "workitem_test_utils.hpp"
 
+TEST_P(WorkItemTest, USM_C2C_Fwd_Double) {
+  int32_t length = GetParam();
+  auto queue = get_queue(fp64_selector);
+  if (!queue)
+    GTEST_SKIP() << "Skipping Test with input type as double. No compatible "
+                    "device found\n";
 
-int factorize(int N){
-    int res = 1;
-    for(int i=2;i*i<=N;i++){
-        if(N%i==0){
-            res=i;
-        }
-    }
-    return res;
+  check_fft<double>(length, queue.value());
 }
 
-template <int N>
-void test() {
-  int factor = sycl_fft::detail::factorize<N>::factor;
-  int correct = factorize(N);
-  EXPECT_EQ(factor, correct) << "error N: " << N << std::endl;
-  if constexpr (N - 1 > 0) {
-    test<N - 1>();
-  }
-}
 
-TEST(factorize, all) { test<64>(); }

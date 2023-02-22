@@ -17,9 +17,11 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
-#include <gtest/gtest.h>
-#include <common/transfers.hpp>
+
+#include "utils.hpp"
+#include "common/transfers.hpp"
 #include <complex>
+#include <gtest/gtest.h>
 
 constexpr int N = 8;
 constexpr int sg_size = 32;
@@ -29,56 +31,50 @@ using complex_type = std::complex<ftype>;
 
 class test_transfers_kernel;
 
-void init(int size, complex_type* a){
-    for(int i=0;i<size;i++){
-        a[i] = {static_cast<ftype>(i), static_cast<ftype>(0/*(N-i)%11*/)};
-    }
-}
+TEST(transfers, all) {
+  std::vector<complex_type> a, b;
+  a.resize(N * sg_size);
+  b.resize(N * sg_size);
 
-TEST(transfers, all){
-    complex_type a[N*sg_size];
-    complex_type b[N*sg_size];
-    init(N*sg_size,a);
+  populate_with_random(a, -1, 1);
 
-    sycl::queue q;
-    complex_type* a_dev = sycl::malloc_device<complex_type>(N*sg_size,q);
-    complex_type* b_dev = sycl::malloc_device<complex_type>(N*sg_size,q);
-    complex_type* c_dev = sycl::malloc_device<complex_type>(N*sg_size,q);
-    q.copy(a, a_dev, N*sg_size);
-    q.copy(b, b_dev, N*sg_size);
-    q.wait();
+  sycl::queue q;
+  complex_type* a_dev = sycl::malloc_device<complex_type>(N * sg_size, q);
+  complex_type* b_dev = sycl::malloc_device<complex_type>(N * sg_size, q);
+  q.copy(a.data(), a_dev, N * sg_size);
+  q.copy(b.data(), b_dev, N * sg_size);
+  q.wait();
 
-    q.submit([&](sycl::handler& h){
-        sycl::local_accessor<complex_type,1> loc1(N*sg_size, h);
-        sycl::local_accessor<complex_type,1> loc2(N*sg_size, h);
+  q.submit([&](sycl::handler& h) {
+    sycl::local_accessor<complex_type, 1> loc1(N * sg_size, h);
+    sycl::local_accessor<complex_type, 1> loc2(N * sg_size, h);
 #ifdef SYCL_IMPLEMENTATION_ONEAPI
 #define SUBGROUP_SIZE_ATTRIBUTE [[intel::reqd_sub_group_size(sg_size)]]
 #else
 #define SUBGROUP_SIZE_ATTRIBUTE
 #endif
-        h.parallel_for<test_transfers_kernel>(sycl::nd_range<1>({sg_size}, {sg_size}),[=](sycl::nd_item<1> it) SUBGROUP_SIZE_ATTRIBUTE {
-            size_t local_id = it.get_sub_group().get_local_linear_id();
+    h.parallel_for<test_transfers_kernel>(
+        sycl::nd_range<1>({sg_size}, {sg_size}),
+        [=](sycl::nd_item<1> it) SUBGROUP_SIZE_ATTRIBUTE {
+          size_t local_id = it.get_sub_group().get_local_linear_id();
 
-            complex_type priv[N];
+          complex_type priv[N];
 
-            sycl_fft::global2local(a_dev, loc1, N*sg_size, sg_size, local_id);
-            it.barrier();
-            sycl_fft::local2private<N>(loc1, priv, local_id, N);
-            sycl_fft::private2local<N>(priv, loc2, local_id, N);
-            it.barrier();
-            sycl_fft::local2global(loc2, b_dev, N*sg_size, sg_size, local_id);
+          sycl_fft::global2local(a_dev, loc1, N * sg_size, sg_size, local_id);
+          group_barrier(it.get_group());
+          sycl_fft::local2private<N>(loc1, priv, local_id, N);
+          sycl_fft::private2local<N>(priv, loc2, local_id, N);
+          group_barrier(it.get_group());
+          sycl_fft::local2global(loc2, b_dev, N * sg_size, sg_size, local_id);
         });
-    });
+  });
 
-    q.wait();
+  q.wait();
 
-    q.copy(b_dev, b, N*sg_size);
-    q.wait();
+  q.copy(b_dev, b.data(), N * sg_size);
+  q.wait();
 
-    for(int i=0;i<N*sg_size;i++){
-        EXPECT_EQ(a[i].real(), b[i].real()) << "difference at index " << i;
-        EXPECT_EQ(a[i].imag(), b[i].imag()) << "difference at index " << i;
-
-    }
-    std::cout << "done" <<std::endl;
+  compare_arrays(a, b, 0.0);
+  sycl::free(a_dev, q);
+  sycl::free(b_dev, q);
 }

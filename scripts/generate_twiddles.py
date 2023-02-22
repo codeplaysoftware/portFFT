@@ -37,9 +37,9 @@ namespace sycl_fft::detail{{
 // twiddle_re[N][K] and twiddle_im[N][K] contain real and imaginary components of a twiddle factor K out of N.
 
 // We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one workitem on current GPUs
-double twiddle_re[{size}][{size}] = {{ {real} }};
+const float twiddle_re[{size}][{size}] = {{ {real} }};
 
-double twiddle_im[{size}][{size}] = {{ {imag} }};
+const float twiddle_im[{size}][{size}] = {{ {imag} }};
 
 }}
 
