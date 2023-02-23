@@ -37,11 +37,57 @@ list(APPEND CMAKE_MODULE_PATH
 
 option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
+set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 
-add_library(sycl-fft INTERFACE)
-target_include_directories(sycl-fft 
-    INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src
-              ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(SYCLFFT_INCLUDE_DIR
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+set(SYCLFFT_SRC_DIR
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<INSTALL_INTERFACE:src>)
+
+add_library(sycl_fft INTERFACE)
+target_include_directories(sycl_fft INTERFACE
+    ${SYCLFFT_INCLUDE_DIR}
+    ${SYCLFFT_SRC_DIR}
+)
+target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
+
+include(CMakePackageConfigHelpers)
+set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
+write_basic_package_version_file(${version_file}
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
+
+include(GNUInstallDirs)
+install(TARGETS sycl_fft
+  EXPORT sycl_fft
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(
+  DIRECTORY
+    ${SYCLFFT_INCLUDE_DIR}
+    ${SYCLFFT_SRC_DIR}
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  COMPONENT sycl_fft
+  FILES_MATCHING PATTERN "*.hpp"
+)
+
+install(FILES ${version_file} DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(EXPORT sycl_fft
+  DESTINATION ${CMAKE_INSTALL_PREFIX}
+  NAMESPACE sycl_fft::
+  FILE sycl_fft-config.cmake
+)
+
+export(EXPORT sycl_fft
+  NAMESPACE sycl_fft::
+  FILE sycl_fft-config.cmake
+)
 
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()

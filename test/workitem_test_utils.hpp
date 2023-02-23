@@ -64,5 +64,5 @@ void check_fft(int32_t length, sycl::queue& queue) {
 }
 
 INSTANTIATE_TEST_CASE_P(workItemTest, WorkItemTest,
-                        ::testing::Values(1, 8, 16, 19, 23, 33, 64));
+                        ::testing::Values(1, 2, 4, 6, 8, 9, 13));
 #endif

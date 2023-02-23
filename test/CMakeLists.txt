@@ -49,7 +49,7 @@ foreach(UNIT_TEST_FILE ${UNIT_TESTS})
     target_link_libraries(
         ${TEST_TARGET}
         PRIVATE
-        sycl-fft
+        sycl_fft
         GTest::gtest_main
     )
     gtest_discover_tests(${TEST_TARGET})

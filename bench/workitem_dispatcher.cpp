@@ -26,7 +26,7 @@
 #include <complex>
 #include <iostream>
 
-constexpr int N_transforms = 1024 * 64;
+constexpr int N_transforms = 1024 * 512;
 
 template <typename T_complex>
 void init(int size, T_complex* a) {
@@ -107,9 +107,26 @@ static void BM_dft_device_time(benchmark::State& state) {
   sycl::free(a_dev, q);
 }
 
-BENCHMARK(BM_dft_real_time<float>)->UseManualTime()->Arg(8)->Arg(17)->Arg(32);
-BENCHMARK(BM_dft_device_time<float>)->UseManualTime()->Arg(8)->Arg(17)->Arg(32);
-// BENCHMARK(BM_dft_real_time<double>)->UseManualTime()->Arg(8)->Arg(17)->Arg(32);
-// BENCHMARK(BM_dft_device_time<double>)->UseManualTime()->Arg(8)->Arg(17)->Arg(32);
+// 29 / 13 are max sizes that fit into integrated GPU (128 32b registers)
+BENCHMARK(BM_dft_real_time<float>)
+    ->UseManualTime()
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(17)
+    ->Arg(27)
+    ->Arg(29);
+BENCHMARK(BM_dft_device_time<float>)
+    ->UseManualTime()
+    ->Arg(8)
+    ->Arg(16)
+    ->Arg(17)
+    ->Arg(27)
+    ->Arg(29);
+BENCHMARK(BM_dft_real_time<double>)->UseManualTime()->Arg(8)->Arg(12)->Arg(13);
+BENCHMARK(BM_dft_device_time<double>)
+    ->UseManualTime()
+    ->Arg(8)
+    ->Arg(12)
+    ->Arg(13);
 
 BENCHMARK_MAIN();

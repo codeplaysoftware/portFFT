@@ -24,7 +24,6 @@
 #include <sycl/sycl.hpp>
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
-#include <common/factorize.hpp>
 
 namespace sycl_fft{
 
@@ -98,6 +97,53 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     });
 }
 
+/**
+ * Factorizes a number into two roughly equal factors.
+ * @param N the number to factorize
+ * @return the smaller of the factors
+ */
+constexpr int factorize(int N) {
+  int res = 1;
+  for (int i = 2; i * i <= N; i++) {
+    if (N % i == 0) {
+      res = i;
+    }
+  }
+  return res;
+}
+
+/**
+ * Calculates how many temporary complex values a workitem implementation needs
+ * for solving FFT.
+ * @param N size of the FFT problem
+ * @return Number of temporary complex values
+ */
+constexpr int wi_temps(int N) {
+  int F0 = factorize(N);
+  int F1 = N / F0;
+  if (F0 < 2 || F1 < 2) {
+    return N;
+  }
+  int a = wi_temps(F0);
+  int b = wi_temps(F1);
+  return (a > b ? a : b) + N;
+}
+
+/**
+ * Checks whether a problem can be solved with workitem implementation without
+ * registers spilling.
+ * @tparam Scalar type of the real scalar used for the computation
+ * @param N Size of the problem, in complex values
+ * @return true if the problem fits in the registers
+ */
+template <typename Scalar>
+constexpr bool fits_in_wi(int N) {
+  int N_complex = N + wi_temps(N);
+  int complex_size = 2 * sizeof(Scalar);
+  int register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
+  return N_complex * complex_size <= register_space;
+}
+
 }; //namespace detail
 
 /**
@@ -112,16 +158,16 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
 */
 template <int N, int stride_in, int stride_out, typename T_ptr>
 inline __attribute__((always_inline)) void wi_dft(T_ptr in, T_ptr out){
-    constexpr int F0 = detail::factorize<N>::factor;
-    if constexpr(N==2){
-        using T = detail::remove_ptr<T_ptr>;
-        T a = in[0*stride_in+0] + in[2*stride_in+0];
-        T b = in[0*stride_in+1] + in[2*stride_in+1];
-        T c = in[0*stride_in+0] - in[2*stride_in+0];
-        out[2*stride_out+1] = in[0*stride_in+1] - in[2*stride_in+1];
-        out[0*stride_out+0] = a;
-        out[0*stride_out+1] = b;
-        out[2*stride_out+0] = c;
+  constexpr int F0 = detail::factorize(N);
+  if constexpr (N == 2) {
+    using T = detail::remove_ptr<T_ptr>;
+    T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
+    T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
+    T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];
+    out[2 * stride_out + 1] = in[0 * stride_in + 1] - in[2 * stride_in + 1];
+    out[0 * stride_out + 0] = a;
+    out[0 * stride_out + 1] = b;
+    out[2 * stride_out + 0] = c;
     } else if constexpr(F0 >= 2 && N/F0 >= 2){
         detail::cooley_tukey_dft<N/F0, F0, stride_in, stride_out>(in, out);
     } else {
