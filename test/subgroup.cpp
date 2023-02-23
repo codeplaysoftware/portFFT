@@ -23,9 +23,9 @@
 #include <iostream>
 #include <complex>
 
-constexpr int N = 2;
+constexpr int N = 6;
 constexpr int sg_size = 16;
-constexpr int stride = sg_size / N;
+//constexpr int stride = sg_size / N;
 
 using ftype = float;
 using complex_type = std::complex<ftype>;
@@ -103,8 +103,9 @@ int main(){
 
                 sycl_fft::global2local(a_dev, loc, sg_size, sg_size, local_id);
                 it.barrier();
-                sycl_fft::detail::cross_sg_naive_dft<N,1>(reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[0],
-                                                          reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[1],sg);
+                sycl_fft::detail::cross_sg_dft<N,1>(reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[0],
+                                                    reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[1],
+                                                    sg);
                 //loc[0] = 0;
                 //loc[1] = 0;
                 it.barrier();
@@ -115,7 +116,8 @@ int main(){
     q.copy(b_dev, b, sg_size).wait_and_throw();
 
     for(int i=0;i<sg_size;i+=N){
-        sycl_fft::detail::naive_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
+        //sycl_fft::detail::naive_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
+        sycl_fft::wi_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
     }
 
     std::cout << std::endl;
