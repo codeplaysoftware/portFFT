@@ -7,7 +7,7 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ## Pre-requisites
 
-* A SYCL implementation such as [ComputeCpp] or [DPC++].
+* A SYCL implementation such as [DPC++].
 * CMake
 
 ## Getting Started
@@ -26,13 +26,6 @@ Build using DPC++ nightlies as (SPIR64 target only):
 
 ```shell
 cmake -Bbuild -DCMAKE_CXX_COMPILER=/path/to/dpcpp/bin/clang++ -DCMAKE_C_COMPILER=/path/to/dpcpp/bin/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
-cmake --build build
-```
-
-Build with ComputeCpp as (currently non-working due to illegal SPIR causing ICE):
-
-```shell
-cmake -Bbuild -DComputeCpp_DIR=/path/to/computecpp -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
@@ -65,7 +58,6 @@ This library is licensed under the Apache 2.0 license. Patches are very
 welcome! If you have an idea for a new feature or a fix, please get in
 contact.
 
-[ComputeCpp]: https://developer.codeplay.com/products/computecpp/ce/home/
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
 [ComputeCpp website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com

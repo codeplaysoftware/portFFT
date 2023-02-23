@@ -40,16 +40,8 @@ if(NOT IntelDPCPP_FOUND)
     find_package(DPCPP QUIET)
 endif()
 
-# If DPC++ hasn't already been set at the command line, try finding ComputeCpp:
 if(NOT IntelDPCPP_FOUND AND NOT DPCPP_FOUND)
-    set(SYCL_LANGUAGE_VERSION 2020)
-    set(COMPUTECPP_BITCODE spirv64)
-    find_package(ComputeCpp QUIET)
-endif()
-
-if(NOT ComputeCpp_FOUND AND NOT IntelDPCPP_FOUND AND NOT DPCPP_FOUND)
   # Display warnings
-  find_package(ComputeCpp)
   find_package(DPCPP)
   message(FATAL_ERROR "No SYCL implementation found")
 endif()
