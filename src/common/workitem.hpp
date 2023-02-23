@@ -53,8 +53,8 @@ inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
         tmp[2*k+1] = 0;
         unrolled_loop<0,N,1>([&](int n) __attribute__((always_inline)) {
             // this multiplier is not really a twiddle factor, but it is calculated the same way
-            const T multi_re = twiddle_re[N][n*k%N];
-            const T multi_im = twiddle_im[N][n*k%N];
+            const T multi_re = twiddle<T>::re[N][n*k%N];
+            const T multi_im = twiddle<T>::im[N][n*k%N];
 
             // multiply in and multi
             tmp[2*k+0] += in[2*n*stride_in] * multi_re - in[2*n*stride_in + 1] * multi_im;
@@ -87,8 +87,8 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     unrolled_loop<0,M,1>([&](int i) __attribute__((always_inline)) {
         wi_dft<N, M*stride_in, 1>(in + 2*i*stride_in, tmp_buffer + 2*i*N);
         unrolled_loop<0,N,1>([&](int j) __attribute__((always_inline)) {
-            T tmp_val = tmp_buffer[2*i*N + 2*j] * twiddle_re[N*M][i*j] - tmp_buffer[2*i*N + 2*j + 1] * twiddle_im[N*M][i*j];
-            tmp_buffer[2*i*N + 2*j + 1] = tmp_buffer[2*i*N + 2*j] * twiddle_im[N*M][i*j] + tmp_buffer[2*i*N + 2*j + 1] * twiddle_re[N*M][i*j];
+            T tmp_val = tmp_buffer[2*i*N + 2*j] * twiddle<T>::re[N*M][i*j] - tmp_buffer[2*i*N + 2*j + 1] * twiddle<T>::im[N*M][i*j];
+            tmp_buffer[2*i*N + 2*j + 1] = tmp_buffer[2*i*N + 2*j] * twiddle<T>::im[N*M][i*j] + tmp_buffer[2*i*N + 2*j + 1] * twiddle<T>::re[N*M][i*j];
             tmp_buffer[2*i*N + 2*j + 0] = tmp_val;
         });
     });
