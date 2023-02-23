@@ -23,7 +23,7 @@
 #include <iostream>
 #include <complex>
 
-constexpr int N = 6;
+constexpr int N = 16;
 constexpr int sg_size = 16;
 //constexpr int stride = sg_size / N;
 
@@ -52,7 +52,7 @@ bool eq(complex_type a, complex_type b){
 bool check(complex_type* a, complex_type* b){
     bool err = false;
     ftype max_err = 0;
-    for(int i=0;i<sg_size;i++){
+    for(int i=0;i<sg_size/N*N;i++){
         max_err = std::max(max_err, error(a[i], b[i]));
         if(!eq(a[i], b[i])){
             err = true;
@@ -60,12 +60,12 @@ bool check(complex_type* a, complex_type* b){
     }
     std::cout << "max error: " << max_err << std::endl;
     if(err){
-        for(int i=0;i<sg_size;i++){
+        for(int i=0;i<sg_size/N*N;i++){
             std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
         }
         std::cout << std::endl;
         std::cout << std::endl;
-        for(int i=0;i<sg_size;i++){
+        for(int i=0;i<sg_size/N*N;i++){
             std::cout << "(" <<b[i].real()<<","<<b[i].imag()<<"), ";
         }
         std::cout << std::endl;
@@ -78,7 +78,10 @@ int main(){
     complex_type b[sg_size];
     complex_type c[sg_size];
     init(a,b,c);
-    c[2]=-999;
+    for(int i=0;i<sg_size;i++){
+        b[i]=-999;
+        c[i]=-999;
+    }
 
     sycl::queue q;
     complex_type* a_dev = sycl::malloc_device<complex_type>(sg_size,q);
@@ -90,6 +93,10 @@ int main(){
     std::vector<std::complex<long double>> out_v(sg_size);
     for(int i=0;i<sg_size;i++){
         a_v[i] = {a[i].real(), a[i].imag()};
+    }
+    for(int i=0;i<sg_size;i++){
+        b[i]=-999;
+        c[i]=-998;
     }
 
     q.wait();
@@ -106,8 +113,7 @@ int main(){
                 sycl_fft::detail::cross_sg_dft<N,1>(reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[0],
                                                     reinterpret_cast<ftype*>(loc.get_pointer().get() + local_id)[1],
                                                     sg);
-                //loc[0] = 0;
-                //loc[1] = 0;
+                                                    
                 it.barrier();
                 sycl_fft::local2global(loc, b_dev, sg_size, sg_size, local_id);
             });
@@ -115,11 +121,10 @@ int main(){
     std::cout << "after kernel" << std::endl;
     q.copy(b_dev, b, sg_size).wait_and_throw();
 
-    for(int i=0;i<sg_size;i+=N){
-        //sycl_fft::detail::naive_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
-        sycl_fft::wi_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
+    for(int i=0;i+N-1<sg_size;i+=N){
+        sycl_fft::detail::naive_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
+        //sycl_fft::wi_dft<N,1,1>(reinterpret_cast<ftype*>(a + i),reinterpret_cast<ftype*>(c + i));
     }
-
     std::cout << std::endl;
     std::cout << "comparison with workitem" << std::endl;
     bool res  = check(b,c);

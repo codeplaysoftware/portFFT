@@ -24,7 +24,7 @@
 #include <sycl/sycl.hpp>
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
-#include <common/factorize.hpp>
+#include <common/workitem.hpp>
 
 namespace sycl_fft{
 namespace detail{
@@ -61,11 +61,11 @@ void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::s
 }
 
 template<int N, int M, int stride, typename T>
-void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg){
+void __attribute__((always_inline)) cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg){
     int local_id = sg.get_local_linear_id();
     int index_in_outer_dft = (local_id/stride) % (N * M);
-    int k = index_in_outer_dft % N; // in fft / 
-    int n = index_in_outer_dft / N; // fft number / 
+    int k = index_in_outer_dft % N; // in fft
+    int n = index_in_outer_dft / N; // fft number
     int fft_start = local_id - index_in_outer_dft * stride;
     int target_index = fft_start + stride * (k * M + n);
     real = sycl::select_from_group(sg, real, target_index);
@@ -74,12 +74,10 @@ void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg){
 
 template<int N, int M, int stride, typename T>
 void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg){
-    constexpr T TWOPI = 2.0 * M_PI;
-
     int local_id = sg.get_local_linear_id();
     int index_in_outer_dft = (local_id/stride) % (N * M);
-    int k = index_in_outer_dft % N; // in fft / 
-    int n = index_in_outer_dft / N; // fft number / 
+    int k = index_in_outer_dft % N; // in fft
+    int n = index_in_outer_dft / N; // fft number
 
     // factor N
     cross_sg_dft<N, M*stride>(real, imag, sg);
@@ -95,14 +93,13 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
 
 
 template <int N, int stride, typename T>
-inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg){
-    constexpr int F0 = detail::factorize<N>::factor;
+inline void __attribute__((always_inline)) cross_sg_dft(T& real, T& imag, sycl::sub_group& sg){
+    constexpr int F0 = detail::factorize(N);
     if constexpr(F0 >= 2 && N/F0 >= 2){
         cross_sg_cooley_tukey_dft<N/F0, F0, stride>(real, imag, sg);
     } else {
         cross_sg_naive_dft<N, stride>(real, imag, sg);
     }
-
 }
 
 void sg_dft(){
