@@ -33,14 +33,16 @@ template = """
 
 namespace sycl_fft::detail{{
 
-
+template<typename T>
+struct twiddle{{
 // twiddle_re[N][K] and twiddle_im[N][K] contain real and imaginary components of a twiddle factor K out of N.
 
 // We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one workitem on current GPUs
-const float twiddle_re[{size}][{size}] = {{ {real} }};
+static constexpr T re[{size}][{size}] = {{ {real} }};
 
-const float twiddle_im[{size}][{size}] = {{ {imag} }};
+static constexpr T im[{size}][{size}] = {{ {imag} }};
 
+}};
 }}
 
 #endif
@@ -54,13 +56,16 @@ def generate(max_size):
         tmp_imag = []
         for i in range(size):
             # make sure zeros are exact to let compiler do further optimizations
-            if 2*i == size:
+            if i==0:
+                tmp_real.append(1.0)
+                tmp_imag.append(0.0)
+            elif 2*i == size:
                 tmp_real.append(-1.0)
                 tmp_imag.append(0.0)
             elif 4*i == size:
                 tmp_real.append(0.0)
                 tmp_imag.append(-1.0)
-            elif 4*i/3 == size:
+            elif 4*i == size*3:
                 tmp_real.append(0.0)
                 tmp_imag.append(1.0)
             else:
@@ -69,8 +74,8 @@ def generate(max_size):
                 tmp_imag.append(math.sin(theta))
 
         # pad with zeros to max_size
-        tmp_real += [0] * (max_size - size)
-        tmp_imag += [0] * (max_size - size)
+        tmp_real += [0] * (max_size - size + 1)
+        tmp_imag += [0] * (max_size - size + 1)
         res_real.append(tmp_real)
         res_imag.append(tmp_imag)
 
