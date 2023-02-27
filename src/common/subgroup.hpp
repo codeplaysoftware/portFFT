@@ -48,8 +48,8 @@ void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::s
 
         int idx = fft_start + n * stride;
 
-        T cur_real = sycl::select_from_group(sg, real, idx);
-        T cur_imag = sycl::select_from_group(sg, imag, idx);
+        T cur_real = sycl::group_broadcast(sg, real, idx);
+        T cur_imag = sycl::group_broadcast(sg, imag, idx);
 
         //multiply cur and multi
         res_real += cur_real * multi_re - cur_imag * multi_im;
@@ -82,7 +82,7 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
     // factor N
     cross_sg_dft<N, M*stride>(real, imag, sg);
     // transpose
-    cross_sg_transpose<N,M, stride>(real, imag, sg);
+    cross_sg_transpose<N, M, stride>(real, imag, sg);
     // twiddle
     T tmp_real = real * twiddle_re[N*M][k*n] - imag * twiddle_im[N*M][k*n];
     imag = real * twiddle_im[N*M][k*n] + imag * twiddle_re[N*M][k*n];
@@ -102,11 +102,117 @@ inline void __attribute__((always_inline)) cross_sg_dft(T& real, T& imag, sycl::
     }
 }
 
-void sg_dft(){
+/**
+ * Factorizes a number into two factors, so that one of them will maximal below or equal to subgroup size.
+ * @param N the number to factorize
+ * @param sg_size subgroup size
+ * @return the factor below or equal to subgroup size
+ */
+int factorize_sg(int N, int sg_size) {
+  for (int i = sg_size; i > 1; i--) {
+    if (N % i == 0) {
+      return i;
+    }
+  }
+  return 1;
+}
 
+
+template<typename T_ptr>
+void subgroup_to_workitem_dispatcher(int fft_size, T_ptr in, T_ptr out){
+    using T = remove_ptr<T_ptr>;
+    switch(fft_size){
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                   \
+  case N:                                                                \
+    if constexpr (fits_in_wi<T>(N)) {                                    \
+      wi_dft<N,1,1>(in, out);                                          \
+    }                                                                    \
+    break;
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(3)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(5)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(6)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(7)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(8)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(9)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(10)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(11)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(12)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(13)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(14)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(15)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(18)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(19)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(20)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(21)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(22)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(23)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(24)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(25)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(26)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(27)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(28)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(29)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(30)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(31)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(32)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(33)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(34)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(35)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(36)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(37)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(38)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(39)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(40)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(41)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(42)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(43)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(44)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(45)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(46)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(47)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(48)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(49)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(50)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(51)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(52)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(53)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(54)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(55)
+      SYCL_FFT_SG_WI_DISPATCHER_IMPL(56)
+#undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
 }
 
 };
+
+};
+/**
+ * Load transposed!
+*/
+template<int N, int M, typename T_ptr>
+void sg_dft(T_ptr inout, sycl::sub_group& sg){
+    using T = detail::remove_ptr<T_ptr>;
+    int n = sg.get_local_linear_id();
+
+
+    detail::unrolled_loop<0,M,1>([&](int k) __attribute__((always_inline)) {
+        T& real = inout[2*k];
+        T& imag = inout[2*k+1];
+
+        detail::cross_sg_dft<N, 1>(real, imag, sg);
+
+        T tmp_real = real * detail::twiddle_re[N*M][k*n] - imag * detail::twiddle_im[N*M][k*n];
+        imag = real * detail::twiddle_im[N*M][k*n] + imag * detail::twiddle_re[N*M][k*n];
+        real = tmp_real;
+    });
+
+    wi_dft<M,1,1>(inout, inout);
+}
+
 };
 
 #endif

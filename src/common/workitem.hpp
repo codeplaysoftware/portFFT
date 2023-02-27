@@ -86,6 +86,7 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     T tmp_buffer[2*N*M];
     unrolled_loop<0,M,1>([&](int i) __attribute__((always_inline)) {
         wi_dft<N, M*stride_in, 1>(in + 2*i*stride_in, tmp_buffer + 2*i*N);
+        //wi_dft<N, M*stride_in, M*stride_out>(in + 2*i*stride_in, out + 2*i*stride_out);
         unrolled_loop<0,N,1>([&](int j) __attribute__((always_inline)) {
             T tmp_val = tmp_buffer[2*i*N + 2*j] * twiddle_re[N*M][i*j] - tmp_buffer[2*i*N + 2*j + 1] * twiddle_im[N*M][i*j];
             tmp_buffer[2*i*N + 2*j + 1] = tmp_buffer[2*i*N + 2*j] * twiddle_im[N*M][i*j] + tmp_buffer[2*i*N + 2*j + 1] * twiddle_re[N*M][i*j];
@@ -95,6 +96,10 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     unrolled_loop<0,N,1>([&](int i) __attribute__((always_inline)) {
         wi_dft<M, N, N*stride_out>(tmp_buffer + 2*i, out + 2*i*stride_out);
     });
+    /*unrolled_loop<0,N*M,1>([&](int i) __attribute__((always_inline)) {
+      out[2*i*stride_out] = tmp_buffer[2*i];
+      out[2*i*stride_out+1] = tmp_buffer[2*i+1];
+    });*/
 }
 
 /**

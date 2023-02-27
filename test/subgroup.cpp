@@ -23,8 +23,8 @@
 #include <iostream>
 #include <complex>
 
-constexpr int N = 16;
-constexpr int sg_size = 16;
+constexpr int N = 3;
+constexpr int sg_size = 2;
 //constexpr int stride = sg_size / N;
 
 using ftype = float;
@@ -36,6 +36,17 @@ void init(complex_type* a, complex_type* b, complex_type* c){
     }
     std::cout << "init " << std::endl;
     for(int i=0;i<sg_size;i++){
+        std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
+    }
+    std::cout << std::endl;
+}
+
+void init2(complex_type* a, complex_type* b, complex_type* c){
+    for(int i=0;i<sg_size*N;i++){
+        c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((N-i)%11)};
+    }
+    std::cout << "init " << std::endl;
+    for(int i=0;i<sg_size*N;i++){
         std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
     }
     std::cout << std::endl;
@@ -73,7 +84,31 @@ bool check(complex_type* a, complex_type* b){
     return !err;
 }
 
-int main(){
+bool check2(complex_type* a, complex_type* b){
+    bool err = false;
+    ftype max_err = 0;
+    for(int i=0;i<sg_size*N;i++){
+        max_err = std::max(max_err, error(a[i], b[i]));
+        if(!eq(a[i], b[i])){
+            err = true;
+        }
+    }
+    std::cout << "max error: " << max_err << std::endl;
+    if(err){
+        for(int i=0;i<sg_size*N;i++){
+            std::cout << "(" <<a[i].real()<<","<<a[i].imag()<<"), ";
+        }
+        std::cout << std::endl;
+        std::cout << std::endl;
+        for(int i=0;i<sg_size*N;i++){
+            std::cout << "(" <<b[i].real()<<","<<b[i].imag()<<"), ";
+        }
+        std::cout << std::endl;
+    }
+    return !err;
+}
+
+void cross_sg(){
     complex_type a[sg_size];
     complex_type b[sg_size];
     complex_type c[sg_size];
@@ -104,7 +139,7 @@ int main(){
     q.submit([&](sycl::handler& h){
             sycl::local_accessor<complex_type,1> loc(sg_size, h);
             h.parallel_for(sycl::nd_range<1>({sg_size}, {sg_size}),
-                    [=](sycl::nd_item<1> it) [[intel::reqd_sub_group_size(sg_size)]] {
+                    [=](sycl::nd_item<1> it) /*[[intel::reqd_sub_group_size(sg_size)]]*/ {
                 sycl::sub_group sg = it.get_sub_group();
                 size_t local_id = sg.get_local_linear_id();
 
@@ -129,4 +164,73 @@ int main(){
     std::cout << "comparison with workitem" << std::endl;
     bool res  = check(b,c);
     std::cout << "is correct: " << res << std::endl;
+}
+
+void sg(){
+    complex_type a[sg_size*N];
+    complex_type b[sg_size*N];
+    complex_type c[sg_size*N];
+    init2(a,b,c);
+    for(int i=0;i<sg_size*N;i++){
+        b[i]=-999;
+        c[i]=-999;
+    }
+
+    sycl::queue q;
+    complex_type* a_dev = sycl::malloc_device<complex_type>(sg_size*N,q);
+    complex_type* b_dev = sycl::malloc_device<complex_type>(sg_size*N,q);
+    q.copy(a, a_dev, sg_size*N);
+    //q.copy(c, c_dev, sg_size);
+
+    std::vector<std::complex<long double>> a_v(sg_size*N);
+    std::vector<std::complex<long double>> out_v(sg_size*N);
+    for(int i=0;i<sg_size*N;i++){
+        a_v[i] = {a[i].real(), a[i].imag()};
+    }
+    for(int i=0;i<sg_size*N;i++){
+        b[i]=-999;
+        c[i]=-998;
+    }
+
+    q.wait();
+    std::cout << "before kernel" << std::endl;
+    q.submit([&](sycl::handler& h){
+            sycl::local_accessor<complex_type,1> loc(sg_size * N, h);
+            h.parallel_for(sycl::nd_range<1>({sg_size}, {sg_size}),
+                    [=](sycl::nd_item<1> it) /*[[intel::reqd_sub_group_size(sg_size)]]*/ {
+                sycl::sub_group sg = it.get_sub_group();
+                size_t local_id = sg.get_local_linear_id();
+
+                sycl_fft::global2local(a_dev, loc, sg_size * N, sg_size, local_id);
+                it.barrier();
+
+                constexpr int N_reals = 2 * N;
+                ftype priv[N_reals];
+                //priv[0]=9999;
+                sycl_fft::local2private<N>(loc.get_pointer().get(), reinterpret_cast<std::complex<ftype>*>(priv), local_id, N);
+                //sycl_fft::local2private<N>(loc.get_pointer().get(), reinterpret_cast<std::complex<ftype>*>(priv), local_id, N_reals);
+                sycl_fft::sg_dft<sg_size, N>(priv, sg);
+                //priv[3]=-222;
+                sycl_fft::private2local_transposed<N>(reinterpret_cast<std::complex<ftype>*>(priv), loc.get_pointer().get(), local_id, sg_size);
+                //sycl_fft::private2local<N>(reinterpret_cast<std::complex<ftype>*>(priv), loc.get_pointer().get(), local_id, N);
+                
+                it.barrier();
+                sycl_fft::local2global(loc, b_dev, sg_size * N, sg_size, local_id);
+            });
+        }).wait_and_throw();
+    std::cout << "after kernel" << std::endl;
+    q.copy(b_dev, b, sg_size*N).wait_and_throw();
+
+    sycl_fft::detail::naive_dft<N*sg_size,1,1>(reinterpret_cast<ftype*>(a),reinterpret_cast<ftype*>(c));
+    //sycl_fft::detail::cooley_tukey_dft<sg_size,N,1,1>(reinterpret_cast<ftype*>(a),reinterpret_cast<ftype*>(c));
+
+    std::cout << std::endl;
+    std::cout << "comparison with workitem" << std::endl;
+    bool res  = check2(b,c);
+    std::cout << "is correct: " << res << std::endl;
+}
+
+int main(){
+    //cross_sg();
+    sg();
 }
