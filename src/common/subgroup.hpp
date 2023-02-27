@@ -22,6 +22,7 @@
 #define SYCL_FFT_COMMON_SOUBGROUP_HPP
 
 #include <sycl/sycl.hpp>
+#include <common/twiddle_calc.hpp>
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
 #include <common/workitem.hpp>
@@ -191,10 +192,16 @@ void subgroup_to_workitem_dispatcher(int fft_size, T_ptr in, T_ptr out){
 
 };
 /**
- * Load transposed!
+ * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The end result needs to be transposed when storing it to the local memory!
+ * @tparam N number of workitems in a subgroup that work on one FFT
+ * @tparam M number of elements per workitem
+ * @tparam T_prt type of the pointer to the data
+ * @param inout pointer to private memory where the input/output data is
+ * @param sg subgroup
+ * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in commit
 */
 template<int N, int M, typename T_ptr>
-void sg_dft(T_ptr inout, sycl::sub_group& sg){
+void sg_dft(T_ptr inout, sycl::sub_group& sg, const T_ptr sg_twiddles, sycl::stream s){
     using T = detail::remove_ptr<T_ptr>;
     int n = sg.get_local_linear_id();
 
@@ -205,12 +212,27 @@ void sg_dft(T_ptr inout, sycl::sub_group& sg){
 
         detail::cross_sg_dft<N, 1>(real, imag, sg);
 
-        T tmp_real = real * detail::twiddle<T>::re[N*M][k*n] - imag * detail::twiddle<T>::im[N*M][k*n];
-        imag = real * detail::twiddle<T>::im[N*M][k*n] + imag * detail::twiddle<T>::re[N*M][k*n];
+        //T tmp_real = real * detail::twiddle<T>::re[N*M][k*n] - imag * detail::twiddle<T>::im[N*M][k*n];
+        //imag = real * detail::twiddle<T>::im[N*M][k*n] + imag * detail::twiddle<T>::re[N*M][k*n];
+        T twiddle_real = sg_twiddles[k * N + n];
+        T twiddle_imag = sg_twiddles[(k + M) * N + n];
+        std::complex<T> twiddle = detail::calculate_twiddle<T>(n*k, N*M);
+        //s << "twiddle in" << real << " " << imag << " nl\n";
+        T tmp_real = real * twiddle_real - imag * twiddle_imag;
+        imag = real * twiddle_imag + imag * twiddle_real;
         real = tmp_real;
+        s << "twiddle res " << real << " " << imag << " nl\n";
     });
 
     wi_dft<M,1,1>(inout, inout);
+}
+
+template<typename T_ptr>
+void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles){
+  using T = detail::remove_ptr<T_ptr>;
+  std::complex<T> twiddle = detail::calculate_twiddle<T>(n*k, N*M);
+  sg_twiddles[k * N + n] = twiddle.real();
+  sg_twiddles[(k + M) * N + n] = twiddle.imag();
 }
 
 };
