@@ -79,6 +79,24 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id
 }
 
 /**
+ * Copies data from local memory to private memory. Consecutive workitems get consecutive elements.
+ * 
+ * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or sycl::multi_ptr.
+ * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or sycl::multi_ptr.
+ * @param local pointer to local memory
+ * @param priv pointer to private memory
+ * @param local_id local id of work item
+ * @param workers_in_sg how many workitems are working in each subgroup (can be less than subgroup size)
+*/
+template<std::size_t num_elems_per_wi, typename T_loc_ptr, typename T_priv_ptr>
+inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id, std::size_t workers_in_sg){
+    for(std::size_t i=0;i<num_elems_per_wi;i++){
+        priv[i] = local[local_id + i * workers_in_sg];
+    }
+}
+
+/**
  * Copies data from private memory to local memory. Each work item writes a chunk of consecutive values to local memory.
  * 
  * @tparam num_elems_per_wi Number of elements to copy by each work item
@@ -93,6 +111,24 @@ template<std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
 inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, std::size_t stride){
     for(std::size_t i=0;i<num_elems_per_wi;i++){
         local[local_id * stride + i] = priv[i];
+    }
+}
+
+/**
+ * Copies data from private memory to local memory. Each work item writes a chunk of consecutive values to local memory.
+ * 
+ * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or sycl::multi_ptr.
+ * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or sycl::multi_ptr.
+ * @param priv pointer to private memory
+ * @param local pointer to local memory
+ * @param local_id local id of work item
+ * @param workers_in_sg how many workitems are working in each subgroup (can be less than subgroup size)
+*/
+template<std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
+inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, std::size_t workers_in_sg){
+    for(std::size_t i=0;i<num_elems_per_wi;i++){
+        local[local_id + i * workers_in_sg] = priv[i];
     }
 }
 

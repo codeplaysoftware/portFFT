@@ -23,8 +23,8 @@
 #include <iostream>
 #include <complex>
 
-constexpr int N = 3;
-constexpr int sg_size = 2;
+constexpr int N = 9;
+constexpr int sg_size = 7;
 //constexpr int stride = sg_size / N;
 
 using ftype = float;

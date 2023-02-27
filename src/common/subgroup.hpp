@@ -43,8 +43,8 @@ void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::s
     T res_imag = 0;
     
     unrolled_loop<0,N,1>([&](int n) __attribute__((always_inline)) {
-        const T multi_re = twiddle_re[N][n*k%N];
-        const T multi_im = twiddle_im[N][n*k%N];
+        const T multi_re = twiddle<T>::re[N][n*k%N];
+        const T multi_im = twiddle<T>::im[N][n*k%N];
 
         int idx = fft_start + n * stride;
 
@@ -84,8 +84,8 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
     // transpose
     cross_sg_transpose<N, M, stride>(real, imag, sg);
     // twiddle
-    T tmp_real = real * twiddle_re[N*M][k*n] - imag * twiddle_im[N*M][k*n];
-    imag = real * twiddle_im[N*M][k*n] + imag * twiddle_re[N*M][k*n];
+    T tmp_real = real * twiddle<T>::re[N*M][k*n] - imag * twiddle<T>::im[N*M][k*n];
+    imag = real * twiddle<T>::im[N*M][k*n] + imag * twiddle<T>::re[N*M][k*n];
     real = tmp_real;
     // factor M
     cross_sg_dft<M, N*stride>(real, imag, sg);
@@ -205,8 +205,8 @@ void sg_dft(T_ptr inout, sycl::sub_group& sg){
 
         detail::cross_sg_dft<N, 1>(real, imag, sg);
 
-        T tmp_real = real * detail::twiddle_re[N*M][k*n] - imag * detail::twiddle_im[N*M][k*n];
-        imag = real * detail::twiddle_im[N*M][k*n] + imag * detail::twiddle_re[N*M][k*n];
+        T tmp_real = real * detail::twiddle<T>::re[N*M][k*n] - imag * detail::twiddle<T>::im[N*M][k*n];
+        imag = real * detail::twiddle<T>::im[N*M][k*n] + imag * detail::twiddle<T>::re[N*M][k*n];
         real = tmp_real;
     });
 
