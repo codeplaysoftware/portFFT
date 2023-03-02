@@ -30,8 +30,18 @@ include_guard()
 # (reqrs source /opt/intel/oneapi/compilers/2023.0.0/env/vars.sh)
 find_package(IntelDPCPP QUIET)
 if(IntelDPCPP_FOUND)
-    function(add_sycl_to_target)            
-        # SYCL is already added to targets for DPC++ release.     
+    function(add_sycl_to_target)
+    set(options)
+    set(one_value_args TARGET)
+    cmake_parse_arguments(ARG
+      "${options}"
+      "${one_value_args}"
+      "${multi_value_args}"
+      ${ARGN}
+    )
+    set(COMPILE_FLAGS "-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
+    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})   
+    target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     endfunction()
 endif()
 

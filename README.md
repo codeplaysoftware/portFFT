@@ -29,6 +29,14 @@ cmake -Bbuild -DCMAKE_CXX_COMPILER=/path/to/dpcpp/bin/clang++ -DCMAKE_C_COMPILER
 cmake --build build
 ```
 
+To compile AOT for a specific device, mention the target device as 
+
+```
+-DSYCLFFT_DEVICE_TRIPLE=<T>[T1,..,Tn]
+```
+
+The list of available targets can be found on [DPC++ compiler documentation page]
+
 Run the tests from the build folder with:
 
 ```shell
@@ -61,3 +69,4 @@ contact.
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
 [ComputeCpp website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
+[DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
