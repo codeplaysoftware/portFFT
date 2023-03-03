@@ -86,7 +86,6 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     T tmp_buffer[2*N*M];
     unrolled_loop<0,M,1>([&](int i) __attribute__((always_inline)) {
         wi_dft<N, M*stride_in, 1>(in + 2*i*stride_in, tmp_buffer + 2*i*N);
-        //wi_dft<N, M*stride_in, M*stride_out>(in + 2*i*stride_in, out + 2*i*stride_out);
         unrolled_loop<0,N,1>([&](int j) __attribute__((always_inline)) {
             T tmp_val = tmp_buffer[2*i*N + 2*j] * twiddle<T>::re[N*M][i*j] - tmp_buffer[2*i*N + 2*j + 1] * twiddle<T>::im[N*M][i*j];
             tmp_buffer[2*i*N + 2*j + 1] = tmp_buffer[2*i*N + 2*j] * twiddle<T>::im[N*M][i*j] + tmp_buffer[2*i*N + 2*j + 1] * twiddle<T>::re[N*M][i*j];
@@ -96,10 +95,6 @@ inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out)
     unrolled_loop<0,N,1>([&](int i) __attribute__((always_inline)) {
         wi_dft<M, N, N*stride_out>(tmp_buffer + 2*i, out + 2*i*stride_out);
     });
-    /*unrolled_loop<0,N*M,1>([&](int i) __attribute__((always_inline)) {
-      out[2*i*stride_out] = tmp_buffer[2*i];
-      out[2*i*stride_out+1] = tmp_buffer[2*i+1];
-    });*/
 }
 
 /**
@@ -147,6 +142,89 @@ constexpr bool fits_in_wi(int N) {
   int complex_size = 2 * sizeof(Scalar);
   int register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
   return N_complex * complex_size <= register_space;
+}
+
+/**
+ * Struct with precalculated values for al relevant arguments to 
+ * fits_in_wi for use on device, where recursive functions are not allowed.
+ * 
+ * @tparam Scalar type of the real scalar used for the computation
+ */
+template <typename Scalar>
+struct fits_in_wi_device_struct{
+  static constexpr bool buf[56] = {
+    fits_in_wi<Scalar>(1),
+    fits_in_wi<Scalar>(2),
+    fits_in_wi<Scalar>(3),
+    fits_in_wi<Scalar>(4),
+    fits_in_wi<Scalar>(5),
+    fits_in_wi<Scalar>(6),
+    fits_in_wi<Scalar>(7),
+    fits_in_wi<Scalar>(8),
+    fits_in_wi<Scalar>(9),
+    fits_in_wi<Scalar>(10),
+    fits_in_wi<Scalar>(11),
+    fits_in_wi<Scalar>(12),
+    fits_in_wi<Scalar>(13),
+    fits_in_wi<Scalar>(14),
+    fits_in_wi<Scalar>(15),
+    fits_in_wi<Scalar>(16),
+    fits_in_wi<Scalar>(17),
+    fits_in_wi<Scalar>(18),
+    fits_in_wi<Scalar>(19),
+    fits_in_wi<Scalar>(20),
+    fits_in_wi<Scalar>(21),
+    fits_in_wi<Scalar>(22),
+    fits_in_wi<Scalar>(23),
+    fits_in_wi<Scalar>(24),
+    fits_in_wi<Scalar>(25),
+    fits_in_wi<Scalar>(26),
+    fits_in_wi<Scalar>(27),
+    fits_in_wi<Scalar>(28),
+    fits_in_wi<Scalar>(29),
+    fits_in_wi<Scalar>(30),
+    fits_in_wi<Scalar>(31),
+    fits_in_wi<Scalar>(32),
+    fits_in_wi<Scalar>(33),
+    fits_in_wi<Scalar>(34),
+    fits_in_wi<Scalar>(35),
+    fits_in_wi<Scalar>(36),
+    fits_in_wi<Scalar>(37),
+    fits_in_wi<Scalar>(38),
+    fits_in_wi<Scalar>(39),
+    fits_in_wi<Scalar>(40),
+    fits_in_wi<Scalar>(41),
+    fits_in_wi<Scalar>(42),
+    fits_in_wi<Scalar>(43),
+    fits_in_wi<Scalar>(44),
+    fits_in_wi<Scalar>(45),
+    fits_in_wi<Scalar>(46),
+    fits_in_wi<Scalar>(47),
+    fits_in_wi<Scalar>(48),
+    fits_in_wi<Scalar>(49),
+    fits_in_wi<Scalar>(50),
+    fits_in_wi<Scalar>(51),
+    fits_in_wi<Scalar>(52),
+    fits_in_wi<Scalar>(53),
+    fits_in_wi<Scalar>(54),
+    fits_in_wi<Scalar>(55),
+    fits_in_wi<Scalar>(56),
+  };
+};
+
+/**
+ * Checks whether a problem can be solved with workitem implementation without
+ * registers spilling. Non-recursive implementation for the use on device.
+ * @tparam Scalar type of the real scalar used for the computation
+ * @param N Size of the problem, in complex values
+ * @return true if the problem fits in the registers
+ */
+template <typename Scalar>
+bool fits_in_wi_device(int fft_size) {
+  if(fft_size>56){
+    return false;
+  }
+  return fits_in_wi_device_struct<Scalar>::buf[fft_size-1];
 }
 
 }; //namespace detail

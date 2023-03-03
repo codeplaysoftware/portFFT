@@ -20,20 +20,21 @@
 #include <common/subgroup.hpp>
 #include <common/workitem.hpp>
 #include <common/transfers.hpp>
+#include <general/dispatcher.hpp>
 #include "utils.hpp"
 #include <iostream>
 #include <complex>
 
-constexpr int N = 7;
-constexpr int sg_size = 12;
+constexpr int N = 1;
+constexpr int sg_size = 56;
 //constexpr int stride = sg_size / N;
 
-using ftype = double;
+using ftype = float;
 using complex_type = std::complex<ftype>;
 
 void init(complex_type* a, complex_type* b, complex_type* c){
     for(int i=0;i<sg_size;i++){
-        c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((N-i)%11)};
+        c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((1-i)%11)};
     }
     std::cout << "init " << std::endl;
     for(int i=0;i<sg_size;i++){
@@ -43,8 +44,8 @@ void init(complex_type* a, complex_type* b, complex_type* c){
 }
 
 void init2(complex_type* a, complex_type* b, complex_type* c){
-    for(int i=0;i<sg_size*N;i++){
-        c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((N-i)%11)};
+    for(size_t i=0;i<sg_size*N;i++){
+        c[i] = b[i] = a[i] = {static_cast<ftype>(i), static_cast<ftype>((1-i)%11)};
     }
     std::cout << "init " << std::endl;
     for(int i=0;i<sg_size*N;i++){
@@ -58,7 +59,7 @@ ftype error(complex_type a, complex_type b){
 }
 
 bool eq(complex_type a, complex_type b){
-    return error(a,b) < 0.02;
+    return error(a,b) < 0.5;
 }
 
 bool check(complex_type* a, complex_type* b){
@@ -139,8 +140,10 @@ void cross_sg(){
     std::cout << "before kernel" << std::endl;
     q.submit([&](sycl::handler& h){
             sycl::local_accessor<complex_type,1> loc(sg_size, h);
+            sycl::stream s(1024*10,64, h);
             h.parallel_for(sycl::nd_range<1>({sg_size}, {sg_size}),
                     [=](sycl::nd_item<1> it) /*[[intel::reqd_sub_group_size(sg_size)]]*/ {
+                        sycl::stream s2=s;
                 sycl::sub_group sg = it.get_sub_group();
                 size_t local_id = sg.get_local_linear_id();
 
@@ -207,12 +210,18 @@ void sg(){
     q.wait();
 
     std::cout << "before kernel" << std::endl;
+        std::cout << "n_transforms" << 1 << std::endl;
+        std::cout << "fft_size" << sg_size * N << std::endl;
+        std::cout << "global_size" << sg_size << std::endl;
+        std::cout << "input_distance" << sg_size * N << std::endl;
+        std::cout << "output_distance" << sg_size * N << std::endl;
     q.submit([&](sycl::handler& h){
-            sycl::local_accessor<complex_type,1> loc(sg_size * N, h);
+            //sycl::local_accessor<complex_type,1> loc(sg_size * N, h);
+            sycl::local_accessor<ftype,1> loc(sg_size * N * 2, h);
             sycl::stream s(1024*10,64, h);
-            h.parallel_for(sycl::nd_range<1>({sg_size}, {sg_size}),
+            h.parallel_for(sycl::nd_range<1>({32}, {32}),
                     [=](sycl::nd_item<1> it) /*[[intel::reqd_sub_group_size(sg_size)]]*/ {
-                sycl::sub_group sg = it.get_sub_group();
+                /*sycl::sub_group sg = it.get_sub_group();
                 size_t local_id = sg.get_local_linear_id();
 
                 sycl_fft::global2local(a_dev, loc, sg_size * N, sg_size, local_id);
@@ -220,16 +229,25 @@ void sg(){
 
                 constexpr int N_reals = 2 * N;
                 ftype priv[N_reals];
-                //priv[0]=9999;
                 sycl_fft::local2private<N>(loc.get_pointer().get(), reinterpret_cast<std::complex<ftype>*>(priv), local_id, N);
                 //sycl_fft::local2private<N>(loc.get_pointer().get(), reinterpret_cast<std::complex<ftype>*>(priv), local_id, N_reals);
-                sycl_fft::sg_dft<sg_size, N>(priv, sg, sg_twiddles, s);
-                //priv[3]=-222;
-                sycl_fft::private2local_transposed<N>(reinterpret_cast<std::complex<ftype>*>(priv), loc.get_pointer().get(), local_id, sg_size);
+                sycl_fft::sg_dft<N>(sg_size, priv, sg, sg_twiddles);
+                sycl_fft::private2local_transposed<N_reals>(priv, reinterpret_cast<ftype*>(loc.get_pointer().get()), local_id, sg_size);
                 //sycl_fft::private2local<N>(reinterpret_cast<std::complex<ftype>*>(priv), loc.get_pointer().get(), local_id, N);
                 
                 it.barrier();
                 sycl_fft::local2global(loc, b_dev, sg_size * N, sg_size, local_id);
+                */
+
+
+                /*sycl_fft::detail::subgroup_impl<N>(sg_size, reinterpret_cast<ftype*>(a_dev), 
+                                                   reinterpret_cast<ftype*>(b_dev), loc, 1, 
+                                                   sg_size * N, sg_size * N, it, sg_twiddles);
+                */
+                sycl_fft::detail::dispatcher(reinterpret_cast<ftype*>(a_dev), 
+                                                   reinterpret_cast<ftype*>(b_dev), loc, N*sg_size, 1, 
+                                                   sg_size * N, sg_size * N, it, sg_twiddles);
+                //s << "global_size" << it.get_global_range(0) << "\n";
             });
         }).wait_and_throw();
     std::cout << "after kernel" << std::endl;

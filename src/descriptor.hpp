@@ -62,18 +62,21 @@ class commited_descriptor{
     std::size_t n_compute_units;
     std::size_t buffer_kernel_subgroup_size;
     std::size_t usm_kernel_subgroup_size;
+    Scalar* twiddles;
 
     commited_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
-             : params{params}, queue(queue),dev(queue.get_device()),ctx(queue.get_context()){
+             : params{params}, queue(queue),dev(queue.get_device()),ctx(queue.get_context()) {
         //TODO: check and support all the parameter values
         assert(params.lengths.size() == 1);
-        assert(params.lengths[0] <= 64);
 
         // get some properties we will use for tunning
         n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
         //TODO: query for those
         buffer_kernel_subgroup_size = 32;
         usm_kernel_subgroup_size = 32;
+
+        //TODO should we use two different sets of twiddles for each kernel?
+        twiddles = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_subgroup_size);
     }
 
 public:
@@ -105,6 +108,7 @@ public:
      * @param out buffer containing output data
      */
     void compute_forward(const sycl::buffer<complex_type, 1> &in, sycl::buffer<complex_type, 1> &out){
+        // copy values to local variables to avoid capturing whole this object
         std::size_t n_transforms = params.number_of_transforms;
         std::size_t fft_size = params.lengths[0]; //1d only for now
         std::size_t global_size = buffer_kernel_subgroup_size * 
@@ -114,13 +118,17 @@ public:
         std::size_t output_distance = params.backward_distance;
         auto in_scalar = in.template reinterpret<Scalar,1>(2 * in.get_size());
         auto out_scalar = out.template reinterpret<Scalar,1>(2 * out.get_size());
+        Scalar* twiddles_local = twiddles;
+        int local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, usm_kernel_subgroup_size);
         queue.submit([&](sycl::handler& cgh){
             auto in_acc = in_scalar.get_access<sycl::access::mode::read>(cgh);
             auto out_acc = out_scalar.get_access<sycl::access::mode::write>(cgh);
-            sycl::local_accessor<Scalar,1> loc(2*fft_size*buffer_kernel_subgroup_size, cgh);
+            sycl::local_accessor<Scalar,1> loc(local_elements, cgh);
+            sycl::stream s(1024*10,64, cgh);
             cgh.parallel_for<detail::buffer_kernel<Scalar, Domain>>(sycl::nd_range<1>{{global_size}, 
                                                               {buffer_kernel_subgroup_size}},[=](sycl::nd_item<1> it){
-                detail::workitem_dispatcher(in_acc, out_acc, loc, fft_size, n_transforms, input_distance, output_distance, it);
+                detail::dispatcher(in_acc, out_acc, loc, fft_size, n_transforms, input_distance, 
+                                            output_distance, it, twiddles_local);
             });
         });
     }
@@ -148,6 +156,7 @@ public:
     */
     sycl::event compute_forward(const complex_type* in, complex_type* out,
                                 const std::vector<sycl::event>& dependencies = {}){
+        // copy values to local variables to avoid capturing whole this object
         std::size_t n_transforms = params.number_of_transforms;
         std::size_t fft_size = params.lengths[0]; //1d only for now
         std::size_t global_size = usm_kernel_subgroup_size * 
@@ -157,12 +166,16 @@ public:
         std::size_t output_distance = params.backward_distance;
         const Scalar* in_scalar = reinterpret_cast<const Scalar*>(in);
         Scalar* out_scalar = reinterpret_cast<Scalar*>(out);
+        Scalar* twiddles_local = twiddles;
+        int local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, usm_kernel_subgroup_size);
         return queue.submit([&](sycl::handler& cgh){
             cgh.depends_on(dependencies);
-            sycl::local_accessor<Scalar,1> loc(2*fft_size*usm_kernel_subgroup_size, cgh);
+            sycl::stream s(1024*10,64, cgh);
+            sycl::local_accessor<Scalar,1> loc(local_elements, cgh);
             cgh.parallel_for<detail::usm_kernel<Scalar, Domain>>(sycl::nd_range<1>{{global_size}, 
                                                            {usm_kernel_subgroup_size}},[=](sycl::nd_item<1> it){
-                detail::workitem_dispatcher(in_scalar, out_scalar, loc, fft_size, n_transforms, input_distance, output_distance, it);
+                detail::dispatcher(in_scalar, out_scalar, loc, fft_size, n_transforms, input_distance, 
+                                            output_distance, it, twiddles_local);
             });
         });
     }
