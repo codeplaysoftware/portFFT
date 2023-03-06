@@ -136,25 +136,6 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id
  * @param local_offset offset to the local pointer
 */
 template<std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
-inline void private2local_transposed_complex(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, std::size_t workers_in_sg, std::size_t local_offset=0){
-    for(std::size_t i=0;i<num_elems_per_wi;i++){
-        local[local_offset + local_id + i * workers_in_sg] = priv[i];
-    }
-}
-
-/**
- * Copies data from private memory to local memory. Each work item writes a chunk of consecutive values to local memory.
- * 
- * @tparam num_elems_per_wi Number of elements to copy by each work item
- * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or sycl::multi_ptr.
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or sycl::multi_ptr.
- * @param priv pointer to private memory
- * @param local pointer to local memory
- * @param local_id local id of work item
- * @param workers_in_sg how many workitems are working in each subgroup (can be less than subgroup size)
- * @param local_offset offset to the local pointer
-*/
-template<std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
 inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, 
                                     std::size_t workers_in_sg, std::size_t local_offset=0){
     for(std::size_t i=0;i<num_elems_per_wi;i+=2){
