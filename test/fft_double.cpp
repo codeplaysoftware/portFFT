@@ -18,9 +18,9 @@
  *
  **************************************************************************/
 
-#include "workitem_test_utils.hpp"
+#include "fft_test_utils.hpp"
 
-TEST_P(WorkItemTest, USM_C2C_Fwd_Double) {
+TEST_P(FFTTest, USM_C2C_Fwd_Double) {
   int32_t length = GetParam();
   auto queue = get_queue(fp64_selector);
   if (!queue)

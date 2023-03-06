@@ -64,6 +64,12 @@ class commited_descriptor{
     std::size_t usm_kernel_subgroup_size;
     Scalar* twiddles;
 
+    /**
+     * Constructor.
+     * 
+     * @param params descriptor this is created from
+     * @param queue queue to use qhen enqueueing device work
+     */
     commited_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
              : params{params}, queue(queue),dev(queue.get_device()),ctx(queue.get_context()) {
         //TODO: check and support all the parameter values
@@ -89,6 +95,15 @@ public:
      * Alias for `Domain`.
      */
     static constexpr domain domain_value = Domain;
+
+    /**
+     * Destructor
+     */
+    ~commited_descriptor(){
+        if(twiddles != nullptr){
+            sycl::free(twiddles, queue);
+        }
+    }
 
     /**
      * Computes in-place forward FFT, working on a buffer.

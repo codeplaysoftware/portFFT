@@ -48,20 +48,20 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
 template<int N, int stride, typename T>
 void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg){
     int local_id = sg.get_local_linear_id();
-    int k = (local_id/stride) % N;
-    int fft_start = local_id - k * stride;
+    int idx_out = (local_id/stride) % N;
+    int fft_start = local_id - idx_out * stride;
 
     T res_real = 0;
     T res_imag = 0;
     
-    unrolled_loop<0,N,1>([&](int n) __attribute__((always_inline)) {
-        const T multi_re = twiddle<T>::re[N][n*k%N];
-        const T multi_im = twiddle<T>::im[N][n*k%N];
+    unrolled_loop<0,N,1>([&](int idx_in) __attribute__((always_inline)) {
+        const T multi_re = twiddle<T>::re[N][idx_in*idx_out%N];
+        const T multi_im = twiddle<T>::im[N][idx_in*idx_out%N];
 
-        int idx = fft_start + n * stride;
+        int source_wi_id = fft_start + idx_in * stride;
 
-        T cur_real = sycl::group_broadcast(sg, real, idx);
-        T cur_imag = sycl::group_broadcast(sg, imag, idx);
+        T cur_real = sycl::group_broadcast(sg, real, source_wi_id);
+        T cur_imag = sycl::group_broadcast(sg, imag, source_wi_id);
 
         //multiply cur and multi
         res_real += cur_real * multi_re - cur_imag * multi_im;
@@ -88,12 +88,12 @@ template<int N, int M, int stride, typename T>
 void __attribute__((always_inline)) cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg){
     int local_id = sg.get_local_linear_id();
     int index_in_outer_dft = (local_id/stride) % (N * M);
-    int k = index_in_outer_dft % N; // in fft
-    int n = index_in_outer_dft / N; // fft number
+    int k = index_in_outer_dft % N; // index in the contiguous factor/fft
+    int n = index_in_outer_dft / N; // index of the contiguous factor/fft
     int fft_start = local_id - index_in_outer_dft * stride;
-    int target_index = fft_start + stride * (k * M + n);
-    real = sycl::select_from_group(sg, real, target_index);
-    imag = sycl::select_from_group(sg, imag, target_index);
+    int source_wi_id = fft_start + stride * (k * M + n);
+    real = sycl::select_from_group(sg, real, source_wi_id);
+    imag = sycl::select_from_group(sg, imag, source_wi_id);
 }
 
 /**
@@ -112,8 +112,8 @@ template<int N, int M, int stride, typename T>
 void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg){
     int local_id = sg.get_local_linear_id();
     int index_in_outer_dft = (local_id/stride) % (N * M);
-    int k = index_in_outer_dft % N; // in fft
-    int n = index_in_outer_dft / N; // fft number
+    int k = index_in_outer_dft % N; // index in the contiguous factor/fft
+    int n = index_in_outer_dft / N; // index of the contiguous factor/fft
 
     // factor N
     cross_sg_dft<N, M*stride>(real, imag, sg);
@@ -175,11 +175,10 @@ int factorize_sg(int N, int sg_size) {
 template<typename T>
 void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg){
     switch(fft_size){
+      //TODO instantiating only the sizes up to subgroup size speeds up the compilation
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(N)                                   \
   case N:                                                                \
-    if constexpr (N<=32) {                                    \
       cross_sg_dft<N, 1>(real, imag, sg);                                          \
-    }                                                                    \
     break;
       SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
       SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
@@ -265,18 +264,18 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles)
     using T = detail::remove_ptr<T_ptr>;
     int n = sg.get_local_linear_id();
 
-    unrolled_loop<0,M,1>([&](int k) __attribute__((always_inline)) {
+    detail::unrolled_loop<0,M,1>([&](int k) __attribute__((always_inline)) {
         T& real = inout[2*k];
         T& imag = inout[2*k+1];
 
-        detail::cross_sg_dispatcher(N, real, imag, sg); //TODO should the function call happen outside of loop?
+        detail::cross_sg_dispatcher(N, real, imag, sg); //TODO the function call should happen outside of the loop
 
         T twiddle_real = sg_twiddles[k * N + n];
         T twiddle_imag = sg_twiddles[(k + M) * N + n];
         T tmp_real = real * twiddle_real - imag * twiddle_imag;
         imag = real * twiddle_imag + imag * twiddle_real;
         real = tmp_real;
-    }
+    });
 
     wi_dft<M,1,1>(inout, inout);
 }

@@ -126,7 +126,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
 }
 
 /**
- * Dispatcher to workitem implementations of FFT.
+ * Selects appropriate template instantiation of workitem implementations for given size of DFT.
  * 
  * @tparam T_in type of the accessor or pointer to global memory containing input data
  * @tparam T_out type of the accessor or pointer to global memory for output data
@@ -135,7 +135,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size values
  * @param fft_size size of each transform
- * @param n_transforms number of FT transforms to do in one call
+ * @param n_transforms number of FFT transforms to do in one call
  * @param input_distance Distance between data for two FFT transforms within input data
  * @param output_distance Distance between data for two FFT transforms within output data
  * @param it sycl::nd_item<1> for the kernel launch
@@ -212,22 +212,22 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
 }
 
 /**
- * @brief 
+ * Selects appropriate template instantiation of subgroup implementation for given factor_wi. 
  * 
- * @tparam T_in 
- * @tparam T_out 
- * @tparam T 
- * @tparam T_twiddles 
- * @param factor_wi 
- * @param factor_sg 
- * @param input 
- * @param output 
- * @param loc 
- * @param n_transforms 
- * @param input_distance 
- * @param output_distance 
- * @param it 
- * @param twiddles 
+ * @tparam T_in type of the accessor or pointer to global memory containing input data
+ * @tparam T_out type of the accessor or pointer to global memory for output data
+ * @tparam T type of the scalar used for computations
+ * @tparam T_twiddles type of the accessor or pointer to global memory containing twiddle factors
+ * @param factor_wi factor that is worked on by workitems individually
+ * @param factor_sg factor that is worked on jointly by subgroup
+ * @param input accessor or pointer to global memory containing input data
+ * @param output accessor or pointer to global memory for output data
+ * @param loc local accessor. Must have enough space for 2*N*subgroup_size values
+ * @param n_transforms number of FFT transforms to do in one call
+ * @param input_distance Distance between data for two FFT transforms within input data
+ * @param output_distance Distance between data for two FFT transforms within output data
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles twiddle factors to use
  */
 template<typename T_in, typename T_out, typename T, typename T_twiddles>
 void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t n_transforms, 
@@ -300,6 +300,23 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
   }
 }
 
+/**
+ * Selects appropriate implementation for given problem size.
+ * 
+ * @tparam T_in type of the accessor or pointer to global memory containing input data
+ * @tparam T_out type of the accessor or pointer to global memory for output data
+ * @tparam T type of the scalar used for computations
+ * @tparam T_twiddles type of the accessor or pointer to global memory containing twiddle factors
+ * @param input accessor or pointer to global memory containing input data
+ * @param output accessor or pointer to global memory for output data
+ * @param loc local accessor. Must have enough space for 2*N*subgroup_size values
+ * @param fft_size size of each transform
+ * @param n_transforms number of FFT transforms to do in one call
+ * @param input_distance Distance between data for two FFT transforms within input data
+ * @param output_distance Distance between data for two FFT transforms within output data
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles twiddle factors to use
+ */
 template<typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t fft_size,
                    std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance, 
@@ -315,11 +332,20 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, 
                        input_distance, output_distance, it, twiddles);
     } else{
       // TODO: do we have any way to report an error from a kernel?
+      // this is not yet implemented
     }
   }
 }
 
-
+/**
+ * Calculates twiddle factors needed for given problem
+ * 
+ * @tparam T type of the scalar used for computations
+ * @param fft_size size of each transform
+ * @param q queue
+ * @param subgroup_size size of subgroup used by the compute kernel
+ * @return T* pointer to device memory containing twiddle factors
+ */
 template<typename T>
 T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup_size){
   if (fits_in_wi<T>(fft_size)){
@@ -345,15 +371,22 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
   }
 }
 
+/**
+ * Calculates the amount of local memory needed for given problem
+ * 
+ * @tparam T type of the scalar used for computations
+ * @param fft_size size of each transform
+ * @param subgroup_size size of subgroup used by the compute kernel
+ * @return int number of elements of size T that need to fit into local memory
+ */
 template<typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size){
   if (fits_in_wi<T>(fft_size)){
     return 2 * fft_size * subgroup_size;
   } else{
-    return 2*fft_size;
+    return 2 * fft_size;
   }
 }
-
 
 }
 }

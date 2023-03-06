@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef WORKITEM_TEST_UTILS
-#define WORKITEM_TEST_UTILS
+#ifndef FFT_TEST_UTILS
+#define FFT_TEST_UTILS
 
 #include "descriptor.hpp"
 #include "utils.hpp"
@@ -29,7 +29,7 @@
 
 using namespace sycl_fft;
 
-class WorkItemTest : public ::testing::TestWithParam<int32_t> {};
+class FFTTest : public ::testing::TestWithParam<int32_t> {};
 
 template <typename ftype>
 void check_fft(int32_t length, sycl::queue& queue) {
@@ -63,7 +63,13 @@ void check_fft(int32_t length, sycl::queue& queue) {
   sycl::free(device_foutput, queue);
 }
 
-INSTANTIATE_TEST_CASE_P(workItemTest, WorkItemTest,
-                        ::testing::Values(1,2,3,4,5,6,7, 8, 9,10,11,12 13, 16, 24,27,32,48, 56,
-                         64, 65, 84, 87, 121, 128, 256, 323, 384, 403, 416));
+// sizes that use workitem implementation
+INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
+                        ::testing::Values(1,2,3,4,5,6,7, 8, 9,10,11,12, 13));
+//sizes that might use workitem or subgroup implementation depending on device and configuration
+INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
+                        ::testing::Values(16, 24,27,32,48, 56));
+//sizes that use subgroup implementation
+INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
+                        ::testing::Values(64, 65, 84, 87, 121, 128, 256, 323, 384, 403, 416));
 #endif

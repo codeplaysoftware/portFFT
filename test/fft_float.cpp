@@ -18,9 +18,9 @@
  *
  **************************************************************************/
 
-#include "workitem_test_utils.hpp"
+#include "fft_test_utils.hpp"
 
-TEST_P(WorkItemTest, USM_C2C_Fwd_Float) {
+TEST_P(FFTTest, USM_C2C_Fwd_Float) {
   int32_t length = GetParam();
   ASSERT_TRUE(length > 0);
   sycl::queue queue;

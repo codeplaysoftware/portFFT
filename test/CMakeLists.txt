@@ -52,5 +52,5 @@ foreach(UNIT_TEST_FILE ${UNIT_TESTS})
         sycl_fft
         GTest::gtest_main
     )
-    gtest_discover_tests(${TEST_TARGET})
+    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
 endforeach()
