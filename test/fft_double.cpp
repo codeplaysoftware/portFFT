@@ -29,5 +29,3 @@ TEST_P(FFTTest, USM_C2C_Fwd_Double) {
 
   check_fft<double>(length, queue.value());
 }
-
-

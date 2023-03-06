@@ -65,11 +65,14 @@ void check_fft(int32_t length, sycl::queue& queue) {
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                        ::testing::Values(1,2,3,4,5,6,7, 8, 9,10,11,12, 13));
-//sizes that might use workitem or subgroup implementation depending on device and configuration
+                         ::testing::Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                                           12, 13));
+// sizes that might use workitem or subgroup implementation depending on device
+// and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
-                        ::testing::Values(16, 24,27,32,48, 56));
-//sizes that use subgroup implementation
+                         ::testing::Values(16, 24, 27, 32, 48, 56));
+// sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
-                        ::testing::Values(64, 65, 84, 87, 121, 128, 256, 323, 384, 403, 416));
+                         ::testing::Values(64, 65, 84, 87, 121, 128, 256, 323,
+                                           384, 403, 416));
 #endif
