@@ -44,7 +44,6 @@ mark_as_advanced(DPCPP_FOUND DPCPP_LIB)
 if(DPCPP_FOUND AND NOT TARGET DPCPP::DPCPP)
   set(CMAKE_CXX_STANDARD 17)
   add_library(DPCPP::DPCPP INTERFACE IMPORTED)
-  set(SYCLFFT_DEVICE_TRIPLE "spir64")
   set_target_properties(DPCPP::DPCPP PROPERTIES
     INTERFACE_COMPILE_OPTIONS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
     INTERFACE_LINK_OPTIONS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
