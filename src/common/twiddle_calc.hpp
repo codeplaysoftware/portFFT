@@ -36,7 +36,7 @@ namespace detail {
 template <typename T>
 std::complex<T> calculate_twiddle(std::size_t n, std::size_t total) {
   T theta = -2 * M_PI * n / total;
-  return {std::cos(theta), std::sin(theta)};
+  return {sycl::cos(theta), sycl::sin(theta)};
 }
 
 }  // namespace detail
