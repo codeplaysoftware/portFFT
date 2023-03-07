@@ -71,7 +71,7 @@ class committed_descriptor{
      * @param params descriptor this is created from
      * @param queue queue to use qhen enqueueing device work
      */
-    commited_descriptor(const descriptor<Scalar, Domain>& params,
+    committed_descriptor(const descriptor<Scalar, Domain>& params,
                         sycl::queue& queue)
         : params{params},
           queue(queue),
@@ -105,7 +105,7 @@ public:
     /**
      * Destructor
      */
-    ~commited_descriptor() {
+    ~committed_descriptor() {
       last_event.wait();
       if (twiddles != nullptr) {
         sycl::free(twiddles, queue);
@@ -251,7 +251,7 @@ struct descriptor{
      * @param queue queue to use for computations
      * @return commited_descriptor<Scalar, Domain> 
      */
-    commited_descriptor<Scalar, Domain> commit(sycl::queue& queue){
+    committed_descriptor<Scalar, Domain> commit(sycl::queue& queue){
         return {*this, queue};
     }
 };
