@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_SOUBGROUP_HPP
-#define SYCL_FFT_COMMON_SOUBGROUP_HPP
+#ifndef SYCL_FFT_COMMON_SUBGROUP_HPP
+#define SYCL_FFT_COMMON_SUBGROUP_HPP
 
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
@@ -276,9 +276,9 @@ void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
 /**
  * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The
  * end result needs to be transposed when storing it to the local memory!
- * @tparam N number of workitems in a subgroup that work on one FFT
  * @tparam M number of elements per workitem
  * @tparam T_prt type of the pointer to the data
+ * @param N number of workitems in a subgroup that work on one FFT
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in

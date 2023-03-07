@@ -187,6 +187,8 @@ struct fits_in_wi_device_struct {
  */
 template <typename Scalar>
 bool fits_in_wi_device(int fft_size) {
+  // 56 is the maximal size we support in workitem implementation and also 
+  // the size of the array above that is used if this if is not taken 
   if (fft_size > 56) {
     return false;
   }

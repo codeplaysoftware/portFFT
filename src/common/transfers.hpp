@@ -26,7 +26,7 @@
 namespace sycl_fft{
 
 /**
- * Copies data from global memory to local memory. Depending of how parameters
+ * Copies data from global memory to local memory. Depending on how parameters
  * are set, this can work on work group or subgroup level.
  *
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or

@@ -51,7 +51,7 @@ struct descriptor;
  * @tparam Domain domain of the FFT
  */
 template<typename Scalar, domain Domain>
-class commited_descriptor{
+class committed_descriptor{
     using complex_type = std::complex<Scalar>;
 
     friend class descriptor<Scalar, Domain>;
@@ -63,6 +63,7 @@ class commited_descriptor{
     std::size_t buffer_kernel_subgroup_size;
     std::size_t usm_kernel_subgroup_size;
     Scalar* twiddles;
+    sycl::event last_event;
 
     /**
      * Constructor.
@@ -105,6 +106,7 @@ public:
      * Destructor
      */
     ~commited_descriptor() {
+      last_event.wait();
       if (twiddles != nullptr) {
         sycl::free(twiddles, queue);
       }
@@ -143,7 +145,7 @@ public:
       Scalar* twiddles_local = twiddles;
       int local_elements = detail::num_scalars_in_local_mem<Scalar>(
           fft_size, usm_kernel_subgroup_size);
-      queue.submit([&](sycl::handler& cgh) {
+      last_event = queue.submit([&](sycl::handler& cgh) {
         auto in_acc = in_scalar.get_access<sycl::access::mode::read>(cgh);
         auto out_acc = out_scalar.get_access<sycl::access::mode::write>(cgh);
         sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
@@ -195,7 +197,7 @@ public:
       Scalar* twiddles_local = twiddles;
       int local_elements = detail::num_scalars_in_local_mem<Scalar>(
           fft_size, usm_kernel_subgroup_size);
-      return queue.submit([&](sycl::handler& cgh) {
+      last_event = queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(dependencies);
         sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
         cgh.parallel_for<detail::usm_kernel<Scalar, Domain>>(
@@ -206,6 +208,7 @@ public:
                                  it, twiddles_local);
             });
       });
+      return last_event;
     }
 };
 
