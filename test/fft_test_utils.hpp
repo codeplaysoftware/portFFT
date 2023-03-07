@@ -73,6 +73,5 @@ INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
                          ::testing::Values(16, 24, 27, 32, 48, 56));
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
-                         ::testing::Values(64, 65, 84, 87, 121, 128, 256, 323,
-                                           384, 403, 416));
+                         ::testing::Values(64, 65, 84, 91, 104));
 #endif

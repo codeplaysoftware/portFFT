@@ -64,8 +64,8 @@ cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
 
     int source_wi_id = fft_start + idx_in * stride;
 
-    T cur_real = sycl::group_broadcast(sg, real, source_wi_id);
-    T cur_imag = sycl::group_broadcast(sg, imag, source_wi_id);
+    T cur_real = sycl::select_from_group(sg, real, source_wi_id);
+    T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
 
     // multiply cur and multi
     res_real += cur_real * multi_re - cur_imag * multi_im;
