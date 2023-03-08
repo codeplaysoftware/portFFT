@@ -23,6 +23,7 @@
 
 #include <general/dispatcher.hpp>
 #include <enums.hpp>
+#include <utils.hpp>
 
 #include <sycl/sycl.hpp>
 
@@ -33,8 +34,9 @@
 namespace sycl_fft{
 
 namespace detail{
+
 // kernel names
-template<typename Scalar, domain Domain>
+template <typename Scalar, domain Domain>
 class buffer_kernel;
 template<typename Scalar, domain Domain>
 class usm_kernel;
@@ -68,12 +70,14 @@ class commited_descriptor{
         //TODO: check and support all the parameter values
         assert(params.lengths.size() == 1);
         assert(params.lengths[0] <= 64);
-
+        // query the kernels associated with the queue, and get the sub_group info
+        auto exec_bundle = get_kernel_bundle<sycl::bundle_state::executable>(
+            queue.get_context());
+        
+        buffer_kernel_subgroup_size = get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain>>(dev, exec_bundle);
+        usm_kernel_subgroup_size = get_max_sub_group_size<detail::usm_kernel<Scalar, Domain>>(dev, exec_bundle);
         // get some properties we will use for tunning
         n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-        //TODO: query for those
-        buffer_kernel_subgroup_size = 32;
-        usm_kernel_subgroup_size = 32;
     }
 
 public:
