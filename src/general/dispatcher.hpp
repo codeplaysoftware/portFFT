@@ -102,7 +102,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
                           const sycl::local_accessor<T, 1>& loc,
                           std::size_t n_transforms, std::size_t input_distance,
                           std::size_t output_distance, sycl::nd_item<1> it,
-                          T_twiddles twiddles) {
+                          T_twiddles twiddles, sycl::stream s) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
@@ -113,30 +113,66 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
   std::size_t global_size = it.get_global_range(0);
   std::size_t subgroup_id = sg.get_group_id();
   std::size_t id_of_sg_in_kernel =
-      subgroup_id + it.get_group_linear_id() * subgroup_size;
+      subgroup_id + it.get_group_linear_id() * sg.get_group_linear_range();
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * subgroup_size;
 
-  const int N_reals = factor_sg * N_reals_per_wi;
+  input_distance*=2;
+  output_distance*=2;
 
-  for (size_t i = id_of_sg_in_kernel; i < n_transforms; i += n_sgs_in_kernel) {
-    bool working = subgroup_local_id < factor_sg;
-    int n_working = factor_sg;
+  int n_ffts_per_sg = subgroup_size / factor_sg;
+  int max_wis_working = n_ffts_per_sg * factor_sg;
+  int N_reals_per_fft = factor_sg * N_reals_per_wi;
+  int N_reals_per_sg = n_ffts_per_sg * N_reals_per_fft;
+  std::size_t n_ffts_per_iteration = n_sgs_in_kernel * n_ffts_per_sg;
+  bool is_input_contiguous = input_distance == N_reals_per_fft;
+  bool is_output_contiguous = output_distance == N_reals_per_fft;
+  int id_of_fft_in_sg = subgroup_local_id / n_ffts_per_sg;
+  std::size_t id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
+  std::size_t n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
+  s << "input_distance " << input_distance << " id_of_sg_in_kernel " << id_of_sg_in_kernel
+    << " subgroup_size " << subgroup_size << " n_transforms " << n_transforms
+    << "\n" << sycl::flush; 
 
-    global2local(input, loc, N_reals, subgroup_size, subgroup_local_id,
-                 input_distance * i, subgroup_id * N_reals);
+  std::size_t rounded_up_n_transforms = roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg);
+  for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_transforms; i += n_ffts_in_kernel) {
+    bool working = subgroup_local_id < max_wis_working && i < n_transforms;
+    int n_wis_working = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_kernel))*factor_sg, max_wis_working);
+    s << i << " working " << working << " n_wis_working " << n_wis_working << "\n" << sycl::flush;
+    if(is_input_contiguous) {
+      s << "in contiguous\n" << sycl::flush; 
+      global2local(input, loc, N_reals_per_sg, subgroup_size, subgroup_local_id,
+                  input_distance * i, subgroup_id * N_reals_per_sg);
+    } else {
+      s << "in non-contiguous\n" << sycl::flush;
+      for(int j=0;j<n_ffts_per_sg;j++){
+        global2local(input, loc, N_reals_per_fft, subgroup_size, subgroup_local_id,
+                    input_distance * (i + j), subgroup_id * N_reals_per_sg + j * N_reals_per_fft);
+      }
+    }
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals_per_wi>(loc, priv, subgroup_local_id,
-                                    N_reals_per_wi, subgroup_id * N_reals);
+                                    N_reals_per_wi, subgroup_id * N_reals_per_sg);
     }
+    s << "before " << priv[0] << " " << priv[N_reals_per_wi-1] << "\n" << sycl::flush;
     sg_dft<factor_wi>(factor_sg, priv, sg, twiddles);
+    s << "before " << priv[0] << " " << priv[N_reals_per_wi-1] << "\n" << sycl::flush;
     if (working) {
       private2local_transposed<N_reals_per_wi>(
-          priv, loc, subgroup_local_id, n_working, subgroup_id * N_reals);
+          priv, loc, subgroup_local_id, n_wis_working, subgroup_id * N_reals_per_sg);
     }
     sycl::group_barrier(sg);
-    local2global(loc, output, N_reals, subgroup_size, subgroup_local_id,
-                 subgroup_id * N_reals, output_distance * i);
+    if(is_output_contiguous){
+      s << "out contiguous\n" << sycl::flush;
+      local2global(loc, output, N_reals_per_sg, subgroup_size, subgroup_local_id,
+                  subgroup_id * N_reals_per_sg, output_distance * i);
+    } else{
+      for(int j=0;j<n_ffts_per_sg;j++){
+        s << "out non-contiguous\n" << sycl::flush;
+        local2global(loc, output, N_reals_per_fft, subgroup_size, subgroup_local_id,
+                    subgroup_id * N_reals_per_sg + j * N_reals_per_fft, output_distance * (i + j));
+      }
+    }
     sycl::group_barrier(sg);
   }
 }
@@ -263,13 +299,13 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
                          const sycl::local_accessor<T, 1>& loc,
                          std::size_t n_transforms, std::size_t input_distance,
                          std::size_t output_distance, sycl::nd_item<1> it,
-                         T_twiddles twiddles) {
+                         T_twiddles twiddles, sycl::stream s) {
   switch (factor_wi) {
 #define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                              \
   case N:                                                              \
     if constexpr (fits_in_wi<T>(N)) {                                  \
       subgroup_impl<N>(factor_sg, input, output, loc, n_transforms,    \
-                       input_distance, output_distance, it, twiddles); \
+                       input_distance, output_distance, it, twiddles, s); \
     }                                                                  \
     break;
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
@@ -288,7 +324,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(14)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(15)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(18)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(19)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(20)
@@ -327,7 +363,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(53)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(54)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(55)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(56)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(56)*/
 #undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
   }
 }
@@ -359,10 +395,10 @@ template <typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
                 std::size_t fft_size, std::size_t n_transforms,
                 std::size_t input_distance, std::size_t output_distance,
-                sycl::nd_item<1> it, T_twiddles twiddles) {
+                sycl::nd_item<1> it, T_twiddles twiddles, sycl::stream s) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
-  if (fits_in_wi_device<T>(fft_size)) {
+  if (false && fits_in_wi_device<T>(fft_size)) {
     workitem_dispatcher(input, output, loc, fft_size, n_transforms,
                         input_distance, output_distance, it);
   } else {
@@ -372,7 +408,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
     if (fits_in_wi_device<T>(factor_wi)) {
       subgroup_dispatcher(factor_wi, factor_sg, input, output, loc,
                           n_transforms, input_distance, output_distance, it,
-                          twiddles);
+                          twiddles, s);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented
@@ -392,7 +428,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
 template <typename T>
 T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
                       std::size_t subgroup_size) {
-  if (fits_in_wi<T>(fft_size)) {
+  if (false && fits_in_wi<T>(fft_size)) {
     return nullptr;
   } else {
     std::size_t factor_sg = detail::factorize_sg(fft_size, subgroup_size);
@@ -426,10 +462,13 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
  */
 template <typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
-  if (fits_in_wi<T>(fft_size)) {
+  if (false && fits_in_wi<T>(fft_size)) {
     return 2 * fft_size * subgroup_size;
   } else {
-    return 2 * fft_size;
+    int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
+    int n_ffts_per_sg = subgroup_size / factor_sg;
+    std::cout << "local allocation" << 2 * fft_size * n_ffts_per_sg;
+    return 2 * fft_size * n_ffts_per_sg;
   }
 }
 }

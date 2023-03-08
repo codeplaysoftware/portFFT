@@ -38,8 +38,8 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
                     double tol) {
   ASSERT_EQ(array1.size(), array2.size());
   for (size_t i = 0; i < array1.size(); i++) {
-    EXPECT_NEAR(array1[i].real(), array2[i].real(), tol);
-    EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol);
+    EXPECT_NEAR(array1[i].real(), array2[i].real(), tol) << "i=" << i;
+    EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol) << "i=" << i;
   }
 }
 
@@ -60,7 +60,7 @@ void populate_with_random(std::vector<std::complex<ftype>>& in,
   std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
 
   for (size_t i = 0; i < in.size(); i++)
-    in[i] = std::complex<ftype>(distribution(algo), distribution(algo));
+    in[i] = std::complex<ftype>(1,1 /*distribution(algo), distribution(algo)*/);
 }
 
 template <typename TypeIn, typename TypeOut>

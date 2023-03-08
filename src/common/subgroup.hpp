@@ -174,6 +174,9 @@ cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
  * @return the factor below or equal to subgroup size
  */
 int factorize_sg(int N, int sg_size) {
+  if(N%2==0 && N/2<56){
+    return 2;
+  }
   for (int i = sg_size; i > 1; i--) {
     if (N % i == 0) {
       return i;
