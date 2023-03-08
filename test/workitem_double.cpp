@@ -18,16 +18,32 @@
  *
  **************************************************************************/
 
-#include "workitem_test_utils.hpp"
+#include "fft_test_utils.hpp"
 
-TEST_P(WorkItemTest, USM_C2C_Fwd_Double) {
+TEST_P(WorkItemTest, USM_IP_C2C_Fwd_Double) {
   int32_t length = GetParam();
   auto queue = get_queue(fp64_selector);
-  if (!queue)
-    GTEST_SKIP() << "Skipping Test with input type as double. No compatible "
-                    "device found\n";
-
-  check_fft<double>(length, queue.value());
+  CHECK_QUEUE(queue);
+  check_fft_usm<double, placement::IN_PLACE>(length, queue.first.value());
 }
 
+TEST_P(WorkItemTest, USM_OOP_C2C_Fwd_Double) {
+  int32_t length = GetParam();
+  auto queue = get_queue(fp64_selector);
+  CHECK_QUEUE(queue);
+  check_fft_usm<double, placement::OUT_OF_PLACE>(length, queue.first.value());
+}
 
+TEST_P(WorkItemTest, BUFFER_IP_C2C_Fwd_Double) {
+  int32_t length = GetParam();
+  auto queue = get_queue(fp64_selector);
+  CHECK_QUEUE(queue);
+  check_fft_buffer<double, placement::IN_PLACE>(length, queue.first.value());
+}
+
+TEST_P(WorkItemTest, BUFFER_OOP_C2C_Fwd_Double) {
+  int32_t length = GetParam();
+  auto queue = get_queue(fp64_selector);
+  CHECK_QUEUE(queue);
+  check_fft_buffer<double, placement::OUT_OF_PLACE>(length, queue.first.value());
+}

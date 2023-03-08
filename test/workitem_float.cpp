@@ -18,11 +18,28 @@
  *
  **************************************************************************/
 
-#include "workitem_test_utils.hpp"
+#include "fft_test_utils.hpp"
 
-TEST_P(WorkItemTest, USM_C2C_Fwd_Float) {
+TEST_P(WorkItemTest, USM_IP_C2C_Fwd_Float) {
   int32_t length = GetParam();
-  ASSERT_TRUE(length > 0);
   sycl::queue queue;
-  check_fft<float>(length, queue);
+  check_fft_usm<float, placement::IN_PLACE>(length, queue);
+}
+
+TEST_P(WorkItemTest, USM_OOP_C2C_Fwd_Float) {
+  int32_t length = GetParam();
+  sycl::queue queue;
+  check_fft_usm<float, placement::OUT_OF_PLACE>(length, queue);
+}
+
+TEST_P(WorkItemTest, BUFFER_IP_C2C_Fwd_Float) {
+  int32_t length = GetParam();
+  sycl::queue queue;
+  check_fft_buffer<float, placement::IN_PLACE>(length, queue);
+}
+
+TEST_P(WorkItemTest, BUFFER_OOP_C2C_Fwd_Float) {
+  int32_t length = GetParam();
+  sycl::queue queue;
+  check_fft_buffer<float, placement::OUT_OF_PLACE>(length, queue);
 }

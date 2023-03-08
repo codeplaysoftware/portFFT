@@ -26,12 +26,13 @@
 #include <iostream>
 #include <optional>
 #include <random>
+#include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
 
-using fcomplex = std::complex<float>;
-using dcomplex = std::complex<double>;
-
 using namespace std::complex_literals;
+
+#define CHECK_QUEUE(queue) \
+  if (!queue.first) GTEST_SKIP() << queue.second;
 
 template <typename type>
 void compare_arrays(std::vector<type> array1, std::vector<type> array2,
@@ -44,8 +45,8 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
 }
 
 template <typename type>
-void populate_with_random(std::vector<type>& in, float lowerLimit = -1,
-                          float higherLimit = 1) {
+void populate_with_random(std::vector<type>& in, float lowerLimit = 1,
+                          float higherLimit = -1) {
   std::mt19937 algo(0);
   std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
 
@@ -53,14 +54,14 @@ void populate_with_random(std::vector<type>& in, float lowerLimit = -1,
     in[i] = static_cast<type>(distribution(algo));
 }
 
-template <typename ftype>
-void populate_with_random(std::vector<std::complex<ftype>>& in,
-                          float lowerLimit, float higherLimit) {
+template <typename type>
+void populate_with_random(std::vector<std::complex<type>>& in, float lowerLimit,
+                          float higherLimit) {
   std::mt19937 algo(0);
   std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
 
   for (size_t i = 0; i < in.size(); i++)
-    in[i] = std::complex<ftype>(distribution(algo), distribution(algo));
+    in[i] = std::complex<type>(distribution(algo), distribution(algo));
 }
 
 template <typename TypeIn, typename TypeOut>
@@ -81,12 +82,13 @@ void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out) {
 }
 
 template <typename deviceSelector>
-std::optional<sycl::queue> get_queue(deviceSelector selector) {
+std::pair<std::optional<sycl::queue>, std::string> get_queue(
+    deviceSelector selector) {
   try {
-    sycl::queue Queue(selector);
-    return Queue;
-  } catch (std::exception& e) {
-    return std::nullopt;
+    sycl::queue queue(selector);
+    return std::make_pair(queue, "");
+  } catch (sycl::exception& e) {
+    return std::make_pair(std::nullopt, e.what());
   }
 }
 

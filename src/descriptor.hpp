@@ -71,7 +71,7 @@ class commited_descriptor{
         assert(params.lengths.size() == 1);
         assert(params.lengths[0] <= 64);
         // query the kernels associated with the queue, and get the sub_group info
-        auto exec_bundle = get_kernel_bundle<sycl::bundle_state::executable>(
+        auto exec_bundle = sycl::get_kernel_bundle<sycl::bundle_state::executable>(
             queue.get_context());
         
         buffer_kernel_subgroup_size = get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain>>(dev, exec_bundle);
@@ -116,15 +116,15 @@ public:
                                     (n_transforms + buffer_kernel_subgroup_size - 1) / buffer_kernel_subgroup_size);
         std::size_t input_distance = params.forward_distance;
         std::size_t output_distance = params.backward_distance;
-        auto in_scalar = in.template reinterpret<Scalar,1>(2 * in.get_size());
-        auto out_scalar = out.template reinterpret<Scalar,1>(2 * out.get_size());
+        auto in_scalar = in.template reinterpret<Scalar,1>(2 * in.size());
+        auto out_scalar = out.template reinterpret<Scalar,1>(2 * out.size());
         queue.submit([&](sycl::handler& cgh){
-            auto in_acc = in_scalar.get_access<sycl::access::mode::read>(cgh);
-            auto out_acc = out_scalar.get_access<sycl::access::mode::write>(cgh);
+            auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
+            auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
             sycl::local_accessor<Scalar,1> loc(2*fft_size*buffer_kernel_subgroup_size, cgh);
             cgh.parallel_for<detail::buffer_kernel<Scalar, Domain>>(sycl::nd_range<1>{{global_size}, 
                                                               {buffer_kernel_subgroup_size}},[=](sycl::nd_item<1> it){
-                detail::workitem_dispatcher(in_acc, out_acc, loc, fft_size, n_transforms, input_distance, output_distance, it);
+                detail::workitem_dispatcher(in_acc.get_pointer(), out_acc.get_pointer(), loc, fft_size, n_transforms, input_distance, output_distance, it);
             });
         });
     }
