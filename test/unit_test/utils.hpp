@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_TEST_UTILS_HPP
-#define SYCL_FFT_TEST_UTILS_HPP
+#ifndef SYCL_FFT_UNIT_TEST_UTILS_HPP
+#define SYCL_FFT_UNIT_TEST_UTILS_HPP
 
 #include <complex>
 #include <gtest/gtest.h>
@@ -42,26 +42,6 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
     EXPECT_NEAR(array1[i].real(), array2[i].real(), tol);
     EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol);
   }
-}
-
-template <typename type>
-void populate_with_random(std::vector<type>& in, float lowerLimit = 1,
-                          float higherLimit = -1) {
-  std::mt19937 algo(0);
-  std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
-
-  for (size_t i = 0; i < in.size(); i++)
-    in[i] = static_cast<type>(distribution(algo));
-}
-
-template <typename type>
-void populate_with_random(std::vector<std::complex<type>>& in, float lowerLimit,
-                          float higherLimit) {
-  std::mt19937 algo(0);
-  std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
-
-  for (size_t i = 0; i < in.size(); i++)
-    in[i] = std::complex<type>(distribution(algo), distribution(algo));
 }
 
 template <typename TypeIn, typename TypeOut>

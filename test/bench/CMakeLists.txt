@@ -36,9 +36,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googlebenchmark)
 
-file(GLOB BENCHMARKS ${PROJECT_SOURCE_DIR}/bench/*.cpp)
+set(SYCL_FFT_BENCHMARKS
+    workitem.cpp
+    workitem_dispatcher.cpp
+)
 
-foreach(BENCHMARK_FILE ${BENCHMARKS})
+foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
     get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
     set(BENCHMARK_TARGET "bench_${FILE_NAME}")
     add_executable(
@@ -52,4 +55,12 @@ foreach(BENCHMARK_FILE ${BENCHMARKS})
         sycl_fft
         benchmark::benchmark
     )
+    target_include_directories(${BENCHMARK_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endforeach()
+
+if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
+    add_executable(bench_cufft cufft.cpp)
+    find_package(CUDAToolkit REQUIRED)
+    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark)
+    target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+endif()

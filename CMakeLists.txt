@@ -37,6 +37,7 @@ list(APPEND CMAKE_MODULE_PATH
 
 option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
+option(SYCLFFT_ENABLE_CUFFT_BENCHMARKS "Whether to also build the cufft benchmark for comparison" OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 
@@ -90,11 +91,4 @@ export(EXPORT sycl_fft
   FILE sycl_fft-config.cmake
 )
 
-if(${SYCLFFT_BUILD_TESTS})
-  enable_testing()
-  add_subdirectory(test)
-endif()
-
-if(${SYCLFFT_BUILD_BENCHMARKS})
-  add_subdirectory(bench)
-endif()
+add_subdirectory(test)

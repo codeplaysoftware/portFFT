@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_HELPERS_HPP
-#define SYCL_FFT_BENCH_HELPERS_HPP
+#ifndef SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#define SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
 
 #include <cmath>
 
@@ -31,7 +31,7 @@
  * @return estimated number of operations to compute FFT. Returns a double to
  * avoid rounding.
  */
-inline double ops_estimate(int fft_size, int batches = 1) {
+inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
   return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
 }
 

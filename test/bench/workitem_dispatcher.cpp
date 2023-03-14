@@ -21,28 +21,21 @@
 #include <benchmark/benchmark.h>
 #include <descriptor.hpp>
 
-#include "helpers.hpp"
+#include "number_generators.hpp"
+#include "ops_estimate.hpp"
 
 #include <complex>
 #include <iostream>
 
 constexpr int N_transforms = 1024 * 512;
 
-template <typename T_complex>
-void init(int size, T_complex* a) {
-  for (int i = 0; i < size; i++) {
-    a[i] = {static_cast<typename T_complex::value_type>(i * 0.3),
-            static_cast<typename T_complex::value_type>(((64 - i) % 11) * 0.7)};
-  }
-}
-
 template <typename ftype>
 static void BM_dft_real_time(benchmark::State& state) {
   using complex_type = std::complex<ftype>;
   size_t N = state.range(0);
-  double ops = ops_estimate(N, N_transforms);
+  double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(N * N_transforms);
-  init(N * N_transforms, a.data());
+  populate_with_random(a);
 
   sycl::queue q;
   complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);
@@ -76,9 +69,9 @@ template <typename ftype>
 static void BM_dft_device_time(benchmark::State& state) {
   using complex_type = std::complex<ftype>;
   size_t N = state.range(0);
-  double ops = ops_estimate(N, N_transforms);
+  double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(N * N_transforms);
-  init(N * N_transforms, a.data());
+  populate_with_random(a);
 
   sycl::queue q({sycl::property::queue::enable_profiling()});
   complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);

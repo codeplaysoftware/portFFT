@@ -36,7 +36,7 @@ TEST(transfers, all) {
   a.resize(N * sg_size);
   b.resize(N * sg_size);
 
-  populate_with_random(a, -1, 1);
+  populate_with_random(a, ftype{-1.0}, ftype{1.0});
 
   sycl::queue q;
   complex_type* a_dev = sycl::malloc_device<complex_type>(N * sg_size, q);

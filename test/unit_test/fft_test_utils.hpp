@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_FFT_TEST_UTILS
-#define SYCL_FFT_FFT_TEST_UTILS
+#ifndef SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
+#define SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
 
 #include "descriptor.hpp"
 #include "utils.hpp"
@@ -44,7 +44,7 @@ void check_fft_usm(int32_t length, sycl::queue& queue) {
   std::complex<ftype>* device_output = nullptr;
   if(test_type == placement::OUT_OF_PLACE)
     device_output = sycl::malloc_device<std::complex<ftype>>(length, queue);
-  populate_with_random<std::complex<ftype>>(host_input, -1, 1);
+  populate_with_random(host_input, ftype{-1.0}, ftype{1.0});
 
   auto copy_event = queue.copy(host_input.data(), device_input, length);
   
@@ -69,8 +69,8 @@ void check_fft_buffer(int32_t length, sycl::queue& queue) {
   std::vector<std::complex<ftype>> host_input(length);
   std::vector<std::complex<ftype>> host_reference_output(length);
   std::vector<std::complex<ftype>> buffer(length);
-  
-  populate_with_random<std::complex<ftype>>(host_input, -1, 1);
+
+  populate_with_random(host_input, ftype{-1.0}, ftype{1.0});
   {
     sycl::buffer<std::complex<ftype>, 1> output_buffer(nullptr, 0);
     sycl::buffer<std::complex<ftype>, 1> input_buffer(host_input.data(), length);
