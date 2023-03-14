@@ -18,21 +18,22 @@
  *
  **************************************************************************/
 
+#ifndef SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
+#define SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
+
 #include <benchmark/benchmark.h>
 #include <descriptor.hpp>
+#include <type_traits.hpp>
 
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
 
-#include <complex>
-#include <iostream>
-
-constexpr int N_transforms = 1024 * 512;
-
-template <typename ftype>
-static void BM_dft_real_time(benchmark::State& state) {
+template <typename ftype, sycl_fft::domain domain>
+void bench_dft_real_time(benchmark::State& state,
+                         sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
-  size_t N = state.range(0);
+  std::size_t N = desc.get_total_length();
+  std::size_t N_transforms = desc.number_of_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(N * N_transforms);
   populate_with_random(a);
@@ -41,8 +42,6 @@ static void BM_dft_real_time(benchmark::State& state) {
   complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);
   q.copy(a.data(), a_dev, N * N_transforms);
 
-  sycl_fft::descriptor<ftype, sycl_fft::domain::COMPLEX> desc{{N}};
-  desc.number_of_transforms = N_transforms;
   auto committed = desc.commit(q);
 
   q.wait();
@@ -65,10 +64,12 @@ static void BM_dft_real_time(benchmark::State& state) {
   sycl::free(a_dev, q);
 }
 
-template <typename ftype>
-static void BM_dft_device_time(benchmark::State& state) {
+template <typename ftype, sycl_fft::domain domain>
+void bench_dft_device_time(benchmark::State& state,
+                           sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
-  size_t N = state.range(0);
+  std::size_t N = desc.get_total_length();
+  std::size_t N_transforms = desc.number_of_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(N * N_transforms);
   populate_with_random(a);
@@ -77,8 +78,6 @@ static void BM_dft_device_time(benchmark::State& state) {
   complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);
   q.copy(a.data(), a_dev, N * N_transforms);
 
-  sycl_fft::descriptor<ftype, sycl_fft::domain::COMPLEX> desc{{N}};
-  desc.number_of_transforms = N_transforms;
   auto committed = desc.commit(q);
 
   q.wait();
@@ -100,26 +99,28 @@ static void BM_dft_device_time(benchmark::State& state) {
   sycl::free(a_dev, q);
 }
 
-// 29 / 13 are max sizes that fit into integrated GPU (128 32b registers)
-BENCHMARK(BM_dft_real_time<float>)
-    ->UseManualTime()
-    ->Arg(8)
-    ->Arg(16)
-    ->Arg(17)
-    ->Arg(27)
-    ->Arg(29);
-BENCHMARK(BM_dft_device_time<float>)
-    ->UseManualTime()
-    ->Arg(8)
-    ->Arg(16)
-    ->Arg(17)
-    ->Arg(27)
-    ->Arg(29);
-BENCHMARK(BM_dft_real_time<double>)->UseManualTime()->Arg(8)->Arg(12)->Arg(13);
-BENCHMARK(BM_dft_device_time<double>)
-    ->UseManualTime()
-    ->Arg(8)
-    ->Arg(12)
-    ->Arg(13);
+template <typename ftype, sycl_fft::domain domain>
+sycl_fft::descriptor<ftype, domain> create_descriptor(benchmark::State& state) {
+  std::size_t N = state.range(0);
+  sycl_fft::descriptor<ftype, sycl_fft::domain::COMPLEX> desc{{N}};
+  desc.number_of_transforms = state.range(1);
+  return desc;
+}
 
-BENCHMARK_MAIN();
+template <typename T>
+void bench_dft_real_time(benchmark::State& state) {
+  using ftype = typename sycl_fft::get_real<T>::type;
+  constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
+  auto desc = create_descriptor<ftype, domain>(state);
+  bench_dft_real_time<ftype, domain>(state, desc);
+}
+
+template <typename T>
+void bench_dft_device_time(benchmark::State& state) {
+  using ftype = typename sycl_fft::get_real<T>::type;
+  constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
+  auto desc = create_descriptor<ftype, domain>(state);
+  bench_dft_device_time<ftype, domain>(state, desc);
+}
+
+#endif

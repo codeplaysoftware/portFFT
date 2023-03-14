@@ -227,7 +227,7 @@ static void cufft_oop_device_time(benchmark::State& state) noexcept {
     if (cudaEventElapsedTime(&ms, before, after) != cudaSuccess) {
       state.SkipWithError("cudaEventElapsedTime failed");
     }
-    state.SetIterationTime(ms/1000.0);
+    state.SetIterationTime(ms / 1000.0);
   }
 
   if (cudaEventDestroy(before) != cudaSuccess ||

@@ -27,9 +27,11 @@
 
 #include <sycl/sycl.hpp>
 
-#include <vector>
-#include <cstdint>
 #include <complex>
+#include <cstdint>
+#include <functional>
+#include <numeric>
+#include <vector>
 
 namespace sycl_fft{
 
@@ -261,6 +263,11 @@ struct descriptor{
      */
     committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) {
       return {*this, queue};
+    }
+
+    std::size_t get_total_length() const {
+      return std::accumulate(lengths.begin(), lengths.end(), 1,
+                             std::multiplies<std::size_t>());
     }
 };
 
