@@ -28,60 +28,94 @@
 
 #include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
+#include <tuple>
 
 using namespace sycl_fft;
+using param_tuple = std::tuple<int, int>;
 
-class WorkItemTest : public ::testing::TestWithParam<int32_t> {};
+struct test_params {
+  int batch;
+  int length;
+  test_params(param_tuple params)
+      : batch(std::get<0>(params)), length(std::get<1>(params)) {}
+};
+
+void operator<<(std::ostream& stream, const test_params& params) {
+  stream << "Batch = " << params.batch << ", Length = " << params.length
+         << '\n';
+}
+
+class WorkItemTest : public ::testing::TestWithParam<test_params> {
+};  // batch, length
 
 // test for out-of-place and in-place ffts.
 template <typename ftype, placement test_type>
-void check_fft_usm(int32_t length, sycl::queue& queue) {
-  ASSERT_TRUE(length > 0);
-  std::vector<std::complex<ftype>> host_input(length);
-  std::vector<std::complex<ftype>> host_reference_output(length);
-  std::vector<std::complex<ftype>> buffer(length);
+void check_fft_usm(test_params& params, sycl::queue& queue) {
+  ASSERT_TRUE(params.length > 0);
+  auto num_elements = params.batch * params.length;
+  std::vector<std::complex<ftype>> host_input(num_elements);
+  std::vector<std::complex<ftype>> host_reference_output(num_elements);
+  std::vector<std::complex<ftype>> buffer(num_elements);
 
-  auto device_input  = sycl::malloc_device<std::complex<ftype>>(length, queue);
+  auto device_input =
+      sycl::malloc_device<std::complex<ftype>>(num_elements, queue);
   std::complex<ftype>* device_output = nullptr;
-  if(test_type == placement::OUT_OF_PLACE)
-    device_output = sycl::malloc_device<std::complex<ftype>>(length, queue);
+  if (test_type == placement::OUT_OF_PLACE) {
+    device_output =
+        sycl::malloc_device<std::complex<ftype>>(num_elements, queue);
+  }
   populate_with_random(host_input, ftype(-1.0), ftype(1.0));
 
-  auto copy_event = queue.copy(host_input.data(), device_input, length);
-  
+  auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
+
   descriptor<ftype, domain::COMPLEX> desc{
-      {static_cast<unsigned long>(length)}};
+      {static_cast<unsigned long>(params.length)}};
+  desc.number_of_transforms = params.batch;
   auto commited_descriptor = desc.commit(queue);
 
   auto fft_event = test_type == placement::OUT_OF_PLACE ? 
                                 commited_descriptor.compute_forward(device_input, device_output, {copy_event}) :
                                 commited_descriptor.compute_forward(device_input, {copy_event});
-  reference_forward_dft(host_input, host_reference_output);
-  queue.copy(test_type == placement::OUT_OF_PLACE ? device_output : device_input,
-             buffer.data(),
-             length, {fft_event});
+  for (size_t i = 0; i < params.batch; i++)
+    reference_forward_dft(host_input, host_reference_output, params.length,
+                          i * params.length);
+  queue.copy(
+      test_type == placement::OUT_OF_PLACE ? device_output : device_input,
+      buffer.data(), num_elements, {fft_event});
   queue.wait();
   compare_arrays(host_reference_output, buffer, 1e-5);
+  sycl::free(device_input, queue);
+  if (test_type == placement::OUT_OF_PLACE) {
+    sycl::free(device_output, queue);
+  }
 }
 
 template <typename ftype, placement test_type>
-void check_fft_buffer(int32_t length, sycl::queue& queue) {
-  ASSERT_TRUE(length > 0);
-  std::vector<std::complex<ftype>> host_input(length);
-  std::vector<std::complex<ftype>> host_reference_output(length);
-  std::vector<std::complex<ftype>> buffer(length);
+void check_fft_buffer(test_params& params, sycl::queue& queue) {
+  ASSERT_TRUE(params.length > 0);
+  auto num_elements = params.batch * params.length;
+  std::vector<std::complex<ftype>> host_input(num_elements);
+  std::vector<std::complex<ftype>> host_reference_output(num_elements);
+  std::vector<std::complex<ftype>> buffer(num_elements);
 
   populate_with_random(host_input, ftype(-1.0), ftype(1.0));
   {
     sycl::buffer<std::complex<ftype>, 1> output_buffer(nullptr, 0);
-    sycl::buffer<std::complex<ftype>, 1> input_buffer(host_input.data(), length);
-    if(test_type == placement::OUT_OF_PLACE)
-      output_buffer = sycl::buffer<std::complex<ftype>, 1>(buffer.data(), length);
+    sycl::buffer<std::complex<ftype>, 1> input_buffer(host_input.data(),
+                                                      num_elements);
+    if (test_type == placement::OUT_OF_PLACE) {
+      output_buffer =
+          sycl::buffer<std::complex<ftype>, 1>(buffer.data(), num_elements);
+    }
 
-    descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(length)}};
+    descriptor<ftype, domain::COMPLEX> desc{
+        {static_cast<unsigned long>(params.length)}};
+    desc.number_of_transforms = params.batch;
     auto commited_descriptor = desc.commit(queue);
 
-    reference_forward_dft(host_input, host_reference_output);
+    for (size_t i = 0; i < params.batch; i++)
+      reference_forward_dft(host_input, host_reference_output, params.length,
+                            i * params.length);
     test_type == placement::OUT_OF_PLACE
         ? commited_descriptor.compute_forward(input_buffer, output_buffer)
         : commited_descriptor.compute_forward(input_buffer);
@@ -92,5 +126,7 @@ void check_fft_buffer(int32_t length, sycl::queue& queue) {
 }
 
 INSTANTIATE_TEST_SUITE_P(workItemTest, WorkItemTest,
-                        ::testing::Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 33, 32000),
+                                                ::testing::Range(1, 14))));
 #endif

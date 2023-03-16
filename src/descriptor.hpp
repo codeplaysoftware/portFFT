@@ -114,8 +114,9 @@ public:
         std::size_t global_size = buffer_kernel_subgroup_size * 
                             std::min(4*n_compute_units, 
                                     (n_transforms + buffer_kernel_subgroup_size - 1) / buffer_kernel_subgroup_size);
-        std::size_t input_distance = params.forward_distance;
-        std::size_t output_distance = params.backward_distance;
+        // in kernel we want the distances in reals, not complex values
+        std::size_t input_distance = params.forward_distance * 2;
+        std::size_t output_distance = params.backward_distance * 2;
         auto in_scalar = in.template reinterpret<Scalar,1>(2 * in.size());
         auto out_scalar = out.template reinterpret<Scalar,1>(2 * out.size());
         queue.submit([&](sycl::handler& cgh){
@@ -157,8 +158,9 @@ public:
         std::size_t global_size = usm_kernel_subgroup_size * 
                             std::min(4*n_compute_units, 
                                     (n_transforms + usm_kernel_subgroup_size - 1) / usm_kernel_subgroup_size);
-        std::size_t input_distance = params.forward_distance;
-        std::size_t output_distance = params.backward_distance;
+        // in kernel we want the distances in reals, not complex values
+        std::size_t input_distance = params.forward_distance * 2;
+        std::size_t output_distance = params.backward_distance * 2;
         const Scalar* in_scalar = reinterpret_cast<const Scalar*>(in);
         Scalar* out_scalar = reinterpret_cast<Scalar*>(out);
         return queue.submit([&](sycl::handler& cgh){

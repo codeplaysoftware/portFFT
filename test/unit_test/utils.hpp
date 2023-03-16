@@ -45,19 +45,20 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
 }
 
 template <typename TypeIn, typename TypeOut>
-void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out) {
+void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out,
+                           size_t length, size_t offset = 0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
 
-  size_t N = out.size();
-  for (int k = 0; k < N; k++) {
-    std::complex<long double>
-        out_temp = 0;  // Do the calculations using long double
-    for (int n = 0; n < N; n++) {
+  size_t N = length;
+  for (size_t k = 0; k < N; k++) {
+    std::complex<long double> out_temp = 0;
+    for (size_t n = 0; n < N; n++) {
       auto multiplier = std::complex<long double>{std::cos(n * k * TWOPI / N),
                                                   -std::sin(n * k * TWOPI / N)};
-      out_temp += static_cast<std::complex<long double>>(in[n]) * multiplier;
+      out_temp +=
+          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
     }
-    out[k] = static_cast<TypeOut>(out_temp);
+    out[offset + k] = static_cast<TypeOut>(out_temp);
   }
 }
 

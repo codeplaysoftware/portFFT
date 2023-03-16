@@ -58,9 +58,11 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
 
     for(size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i+=global_size){
         bool working = i < n_transforms;
-        int n_working = sycl::min(subgroup_size, n_transforms - i + global_id);
+        int n_working =
+            sycl::min(subgroup_size, n_transforms - i + subgroup_id);
 
-        global2local(input + input_distance * (i - global_id), loc, N_reals*n_working, subgroup_size, subgroup_id);
+        global2local(input + input_distance * (i - subgroup_id), loc,
+                     N_reals * n_working, subgroup_size, subgroup_id);
         sycl::group_barrier(sg);
         if(working){
             local2private<N_reals>(loc, priv, subgroup_id, N_reals);
@@ -68,7 +70,8 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
             private2local<N_reals>(priv, loc, subgroup_id, N_reals);
         }
         sycl::group_barrier(sg);
-        local2global(loc, output + output_distance * (i - global_id), N_reals*n_working, subgroup_size, subgroup_id);
+        local2global(loc, output + output_distance * (i - subgroup_id),
+                     N_reals * n_working, subgroup_size, subgroup_id);
         sycl::group_barrier(sg);
     }
 }
