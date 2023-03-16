@@ -35,7 +35,7 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-file(GLOB UNIT_TESTS ${PROJECT_SOURCE_DIR}/test/*.cpp)
+file(GLOB UNIT_TESTS ${PROJECT_SOURCE_DIR}/test/unit_test/*.cpp)
 
 include(GoogleTest)
 foreach(UNIT_TEST_FILE ${UNIT_TESTS})
