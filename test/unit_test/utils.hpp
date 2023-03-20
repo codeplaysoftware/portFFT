@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_TEST_UTILS_HPP
-#define SYCL_FFT_TEST_UTILS_HPP
+#ifndef SYCL_FFT_UNIT_TEST_UTILS_HPP
+#define SYCL_FFT_UNIT_TEST_UTILS_HPP
 
 #include <complex>
 #include <gtest/gtest.h>
@@ -28,10 +28,10 @@
 #include <random>
 #include <sycl/sycl.hpp>
 
-using fcomplex = std::complex<float>;
-using dcomplex = std::complex<double>;
-
 using namespace std::complex_literals;
+
+#define CHECK_QUEUE(queue) \
+  if (!queue.first) GTEST_SKIP() << queue.second;
 
 template <typename type>
 void compare_arrays(std::vector<type> array1, std::vector<type> array2,
@@ -43,50 +43,32 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
   }
 }
 
-template <typename type>
-void populate_with_random(std::vector<type>& in, float lowerLimit = -1,
-                          float higherLimit = 1) {
-  std::mt19937 algo(0);
-  std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
-
-  for (size_t i = 0; i < in.size(); i++)
-    in[i] = static_cast<type>(distribution(algo));
-}
-
-template <typename ftype>
-void populate_with_random(std::vector<std::complex<ftype>>& in,
-                          float lowerLimit, float higherLimit) {
-  std::mt19937 algo(0);
-  std::uniform_real_distribution<> distribution(lowerLimit, higherLimit);
-
-  for (size_t i = 0; i < in.size(); i++)
-    in[i] = std::complex<ftype>(1,1 /*distribution(algo), distribution(algo)*/);
-}
-
 template <typename TypeIn, typename TypeOut>
-void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out) {
+void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out,
+                           size_t length, size_t offset = 0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
 
-  size_t N = out.size();
-  for (int k = 0; k < N; k++) {
-    std::complex<long double>
-        out_temp = 0;  // Do the calculations using long double
-    for (int n = 0; n < N; n++) {
+  size_t N = length;
+  for (size_t k = 0; k < N; k++) {
+    std::complex<long double> out_temp = 0;
+    for (size_t n = 0; n < N; n++) {
       auto multiplier = std::complex<long double>{std::cos(n * k * TWOPI / N),
                                                   -std::sin(n * k * TWOPI / N)};
-      out_temp += static_cast<std::complex<long double>>(in[n]) * multiplier;
+      out_temp +=
+          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
     }
-    out[k] = static_cast<TypeOut>(out_temp);
+    out[offset + k] = static_cast<TypeOut>(out_temp);
   }
 }
 
 template <typename deviceSelector>
-std::optional<sycl::queue> get_queue(deviceSelector selector) {
+std::pair<std::optional<sycl::queue>, std::string> get_queue(
+    deviceSelector selector) {
   try {
-    sycl::queue Queue(selector);
-    return Queue;
-  } catch (std::exception& e) {
-    return std::nullopt;
+    sycl::queue queue(selector);
+    return std::make_pair(queue, "");
+  } catch (sycl::exception& e) {
+    return std::make_pair(std::nullopt, e.what());
   }
 }
 

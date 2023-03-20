@@ -18,14 +18,31 @@
  *
  **************************************************************************/
 
+<<<<<<<< HEAD:test/fft_float.cpp
 #include "fft_test_utils.hpp"
 
-TEST_P(FFTTest, USM_C2C_Fwd_Double) {
+TEST_P(FFTTest, USM_C2C_Fwd_Float) {
   int32_t length = GetParam();
-  auto queue = get_queue(fp64_selector);
-  if (!queue)
-    GTEST_SKIP() << "Skipping Test with input type as double. No compatible "
-                    "device found\n";
+  ASSERT_TRUE(length > 0);
+  sycl::queue queue;
+  check_fft<float>(length, queue);
+========
+#ifndef SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#define SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
 
-  check_fft<double>(length, queue.value());
+#include <cmath>
+
+/**
+ * Estimates the number of operations required to compute the FFT.
+ * The estimate is based on radix-2 decimation in time Cooley-Tukey.
+ * @param fft_size size of the FFT problem
+ * @param batches number of batches computed. Defaults to 1.
+ * @return estimated number of operations to compute FFT. Returns a double to
+ * avoid rounding.
+ */
+inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
+  return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
+>>>>>>>> main:test/bench/ops_estimate.hpp
 }
+
+#endif

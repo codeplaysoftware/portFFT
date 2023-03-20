@@ -20,9 +20,27 @@
 
 #include "fft_test_utils.hpp"
 
-TEST_P(FFTTest, USM_C2C_Fwd_Float) {
-  int32_t length = GetParam();
-  ASSERT_TRUE(length > 0);
+TEST_P(FFTTest, USM_IP_C2C_Fwd_Float) {
+  auto param = GetParam();
   sycl::queue queue;
-  check_fft<float>(length, queue);
+  check_fft_usm<float, placement::IN_PLACE>(param, queue);
 }
+/*
+TEST_P(FFTTest, USM_OOP_C2C_Fwd_Float) {
+  auto param = GetParam();
+  sycl::queue queue;
+  check_fft_usm<float, placement::OUT_OF_PLACE>(param, queue);
+}
+
+TEST_P(FFTTest, BUFFER_IP_C2C_Fwd_Float) {
+  auto param = GetParam();
+  sycl::queue queue;
+  check_fft_buffer<float, placement::IN_PLACE>(param, queue);
+}
+
+TEST_P(FFTTest, BUFFER_OOP_C2C_Fwd_Float) {
+  auto param = GetParam();
+  sycl::queue queue;
+  check_fft_buffer<float, placement::OUT_OF_PLACE>(param, queue);
+}
+*/

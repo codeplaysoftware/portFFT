@@ -148,7 +148,7 @@ constexpr bool fits_in_wi(int N) {
 }
 
 /**
- * Struct with precalculated values for al relevant arguments to
+ * Struct with precalculated values for all relevant arguments to
  * fits_in_wi for use on device, where recursive functions are not allowed.
  *
  * @tparam Scalar type of the real scalar used for the computation
@@ -187,8 +187,8 @@ struct fits_in_wi_device_struct {
  */
 template <typename Scalar>
 bool fits_in_wi_device(int fft_size) {
-  // 56 is the maximal size we support in workitem implementation and also 
-  // the size of the array above that is used if this if is not taken 
+  // 56 is the maximal size we support in workitem implementation and also
+  // the size of the array above that is used if this if is not taken
   if (fft_size > 56) {
     return false;
   }

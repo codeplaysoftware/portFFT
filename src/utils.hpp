@@ -17,22 +17,27 @@
  *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
+#ifndef SYCL_FFT_UTILS_HPP
+#define SYCL_FFT_UTILS_HPP
 
-#ifndef SYCL_FFT_BENCH_HELPERS_HPP
-#define SYCL_FFT_BENCH_HELPERS_HPP
+#include <sycl/sycl.hpp>
+constexpr int SYCL_FFT_DEFAULT_SUB_GROUP_SIZE = 32;
 
-#include <cmath>
-
-/**
- * Estimates the number of operations required to compute the FFT.
- * The estimate is based on radix-2 decimation in time Cooley-Tukey.
- * @param fft_size size of the FFT problem
- * @param batches number of batches computed. Defaults to 1.
- * @return estimated number of operations to compute FFT. Returns a double to
- * avoid rounding.
- */
-inline double ops_estimate(int fft_size, int batches = 1) {
-  return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
+template <typename kernel>
+int get_max_sub_group_size(
+    sycl::device& dev,
+    sycl::kernel_bundle<sycl::bundle_state::executable>& exec_bundle) {
+  try {
+    auto k = exec_bundle.get_kernel(sycl::get_kernel_id<kernel>());
+    try {
+      return k.template get_info<
+          sycl::info::kernel_device_specific::max_sub_group_size>(dev);
+    } catch (const std::exception& e) {
+      return SYCL_FFT_DEFAULT_SUB_GROUP_SIZE;
+    }
+  } catch (const std::exception& e) {
+    return SYCL_FFT_DEFAULT_SUB_GROUP_SIZE;
+  }
 }
 
 #endif

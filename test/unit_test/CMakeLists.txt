@@ -25,31 +25,33 @@
 
 find_package(SYCL)
 
-# Disable build of unit-tests for googlebenchmark:
-set(BENCHMARK_ENABLE_TESTING OFF)
-# Fetch googlebenchmark:
+# Get google test.
 include(FetchContent)
 FetchContent_Declare(
-    googlebenchmark
-    GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG v1.7.1
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
 )
-FetchContent_MakeAvailable(googlebenchmark)
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
-file(GLOB BENCHMARKS ${PROJECT_SOURCE_DIR}/bench/*.cpp)
+file(GLOB UNIT_TESTS ${PROJECT_SOURCE_DIR}/test/unit_test/*.cpp)
 
-foreach(BENCHMARK_FILE ${BENCHMARKS})
-    get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
-    set(BENCHMARK_TARGET "bench_${FILE_NAME}")
+include(GoogleTest)
+foreach(UNIT_TEST_FILE ${UNIT_TESTS})
+    get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
+    set(TEST_TARGET "test_${FILE_NAME}")
     add_executable(
-        ${BENCHMARK_TARGET}
-        ${BENCHMARK_FILE}
+        ${TEST_TARGET}
+        ${UNIT_TEST_FILE}
     )
-    add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
+    add_sycl_to_target(TARGET ${TEST_TARGET} SOURCES ${UNIT_TEST_FILE})
     target_link_libraries(
-        ${BENCHMARK_TARGET}
+        ${TEST_TARGET}
         PRIVATE
         sycl_fft
-        benchmark::benchmark
+        GTest::gtest_main
     )
+    target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
 endforeach()

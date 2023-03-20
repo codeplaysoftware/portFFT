@@ -174,9 +174,6 @@ cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
  * @return the factor below or equal to subgroup size
  */
 int factorize_sg(int N, int sg_size) {
-  if(N%2==0 && N/2<56){
-    return 2;
-  }
   for (int i = sg_size; i > 1; i--) {
     if (N % i == 0) {
       return i;
@@ -297,9 +294,8 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
     T& real = inout[2 * k];
     T& imag = inout[2 * k + 1];
 
-    detail::cross_sg_dispatcher(
-        N, real, imag,
-        sg);  // TODO the function call should happen outside of the loop
+    // TODO the function call should happen outside of the loop
+    detail::cross_sg_dispatcher(N, real, imag, sg);
 
     T twiddle_real = sg_twiddles[k * N + n];
     T twiddle_imag = sg_twiddles[(k + M) * N + n];
