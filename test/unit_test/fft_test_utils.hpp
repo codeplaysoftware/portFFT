@@ -45,7 +45,7 @@ void operator<<(std::ostream& stream, const test_params& params) {
          << '\n';
 }
 
-class WorkItemTest : public ::testing::TestWithParam<test_params> {
+class FFTTest : public ::testing::TestWithParam<test_params> {
 };  // batch, length
 
 // test for out-of-place and in-place ffts.
@@ -125,8 +125,22 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
                  host_reference_output, 1e-5);
 }
 
-INSTANTIATE_TEST_SUITE_P(workItemTest, WorkItemTest,
+// sizes that use workitem implementation
+INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 33, 32000),
                                                 ::testing::Range(1, 14))));
+// sizes that might use workitem or subgroup implementation depending on device
+// and configuration
+INSTANTIATE_TEST_SUITE_P(
+    workItemOrSubgroupTest, FFTTest,
+    ::testing::ConvertGenerator<param_tuple>(
+        ::testing::Combine(::testing::Values(1, 3, 555),
+                           ::testing::Values(16, 24, 27, 32, 48, 56))));
+// sizes that use subgroup implementation
+INSTANTIATE_TEST_SUITE_P(
+    SubgroupTest, FFTTest,
+    ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
+        ::testing::Values(1, 3, 555), ::testing::Values(64, 65, 84, 91, 104))));
+
 #endif

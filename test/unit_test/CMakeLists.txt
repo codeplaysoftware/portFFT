@@ -53,5 +53,5 @@ foreach(UNIT_TEST_FILE ${UNIT_TESTS})
         GTest::gtest_main
     )
     target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
-    gtest_discover_tests(${TEST_TARGET})
+    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
 endforeach()

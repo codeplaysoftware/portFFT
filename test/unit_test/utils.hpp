@@ -26,7 +26,6 @@
 #include <iostream>
 #include <optional>
 #include <random>
-#include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
 
 using namespace std::complex_literals;

@@ -48,22 +48,25 @@ inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
     using T = remove_ptr<T_ptr>;
     constexpr T TWOPI = 2.0 * M_PI;
     T tmp[2*N];
-    unrolled_loop<0,N,1>([&](int k) __attribute__((always_inline)) {
-        tmp[2*k+0] = 0;
-        tmp[2*k+1] = 0;
-        unrolled_loop<0,N,1>([&](int n) __attribute__((always_inline)) {
-            // this multiplier is not really a twiddle factor, but it is calculated the same way
-            const T multi_re = twiddle<T>::re[N][n*k%N];
-            const T multi_im = twiddle<T>::im[N][n*k%N];
+    unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+      tmp[2 * idx_out + 0] = 0;
+      tmp[2 * idx_out + 1] = 0;
+      unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+        // this multiplier is not really a twiddle factor, but it is calculated
+        // the same way
+        const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
+        const T multi_im = twiddle<T>::im[N][idx_in * idx_out % N];
 
-            // multiply in and multi
-            tmp[2*k+0] += in[2*n*stride_in] * multi_re - in[2*n*stride_in + 1] * multi_im;
-            tmp[2*k+1] += in[2*n*stride_in] * multi_im + in[2*n*stride_in + 1] * multi_re;
-        });
+        // multiply in and multi
+        tmp[2 * idx_out + 0] += in[2 * idx_in * stride_in] * multi_re -
+                                in[2 * idx_in * stride_in + 1] * multi_im;
+        tmp[2 * idx_out + 1] += in[2 * idx_in * stride_in] * multi_im +
+                                in[2 * idx_in * stride_in + 1] * multi_re;
+      });
     });
-    unrolled_loop<0,2*N,2>([&](int k){
-        out[k*stride_out+0] = tmp[k+0];
-        out[k*stride_out+1] = tmp[k+1];
+    unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
+      out[idx_out * stride_out + 0] = tmp[idx_out + 0];
+      out[idx_out * stride_out + 1] = tmp[idx_out + 1];
     });
 }
 
@@ -142,6 +145,54 @@ constexpr bool fits_in_wi(int N) {
   int complex_size = 2 * sizeof(Scalar);
   int register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
   return N_complex * complex_size <= register_space;
+}
+
+/**
+ * Struct with precalculated values for all relevant arguments to
+ * fits_in_wi for use on device, where recursive functions are not allowed.
+ *
+ * @tparam Scalar type of the real scalar used for the computation
+ */
+template <typename Scalar>
+struct fits_in_wi_device_struct {
+  static constexpr bool buf[56] = {
+      fits_in_wi<Scalar>(1),  fits_in_wi<Scalar>(2),  fits_in_wi<Scalar>(3),
+      fits_in_wi<Scalar>(4),  fits_in_wi<Scalar>(5),  fits_in_wi<Scalar>(6),
+      fits_in_wi<Scalar>(7),  fits_in_wi<Scalar>(8),  fits_in_wi<Scalar>(9),
+      fits_in_wi<Scalar>(10), fits_in_wi<Scalar>(11), fits_in_wi<Scalar>(12),
+      fits_in_wi<Scalar>(13), fits_in_wi<Scalar>(14), fits_in_wi<Scalar>(15),
+      fits_in_wi<Scalar>(16), fits_in_wi<Scalar>(17), fits_in_wi<Scalar>(18),
+      fits_in_wi<Scalar>(19), fits_in_wi<Scalar>(20), fits_in_wi<Scalar>(21),
+      fits_in_wi<Scalar>(22), fits_in_wi<Scalar>(23), fits_in_wi<Scalar>(24),
+      fits_in_wi<Scalar>(25), fits_in_wi<Scalar>(26), fits_in_wi<Scalar>(27),
+      fits_in_wi<Scalar>(28), fits_in_wi<Scalar>(29), fits_in_wi<Scalar>(30),
+      fits_in_wi<Scalar>(31), fits_in_wi<Scalar>(32), fits_in_wi<Scalar>(33),
+      fits_in_wi<Scalar>(34), fits_in_wi<Scalar>(35), fits_in_wi<Scalar>(36),
+      fits_in_wi<Scalar>(37), fits_in_wi<Scalar>(38), fits_in_wi<Scalar>(39),
+      fits_in_wi<Scalar>(40), fits_in_wi<Scalar>(41), fits_in_wi<Scalar>(42),
+      fits_in_wi<Scalar>(43), fits_in_wi<Scalar>(44), fits_in_wi<Scalar>(45),
+      fits_in_wi<Scalar>(46), fits_in_wi<Scalar>(47), fits_in_wi<Scalar>(48),
+      fits_in_wi<Scalar>(49), fits_in_wi<Scalar>(50), fits_in_wi<Scalar>(51),
+      fits_in_wi<Scalar>(52), fits_in_wi<Scalar>(53), fits_in_wi<Scalar>(54),
+      fits_in_wi<Scalar>(55), fits_in_wi<Scalar>(56),
+  };
+};
+
+/**
+ * Checks whether a problem can be solved with workitem implementation without
+ * registers spilling. Non-recursive implementation for the use on device.
+ * @tparam Scalar type of the real scalar used for the computation
+ * @param N Size of the problem, in complex values
+ * @return true if the problem fits in the registers
+ */
+template <typename Scalar>
+bool fits_in_wi_device(int fft_size) {
+  // 56 is the maximal size we support in workitem implementation and also
+  // the size of the array above that is used if this if is not taken
+  if (fft_size > 56) {
+    return false;
+  }
+  return fits_in_wi_device_struct<Scalar>::buf[fft_size - 1];
 }
 
 }; //namespace detail
