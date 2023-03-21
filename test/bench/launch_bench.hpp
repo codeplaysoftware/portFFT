@@ -23,7 +23,7 @@
 
 #include <benchmark/benchmark.h>
 #include <descriptor.hpp>
-#include <type_traits.hpp>
+#include <traits.hpp>
 
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"

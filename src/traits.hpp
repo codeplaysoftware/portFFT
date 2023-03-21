@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_TYPE_TRAITS_HPP
-#define SYCL_FFT_TYPE_TRAITS_HPP
+#ifndef SYCL_FFT_TRAITS_HPP
+#define SYCL_FFT_TRAITS_HPP
 
 #include "enums.hpp"
 

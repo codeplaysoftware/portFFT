@@ -25,6 +25,6 @@
 #include "common/workitem.hpp"
 #include "descriptor.hpp"
 #include "enums.hpp"
-#include "type_traits.hpp"
+#include "traits.hpp"
 
 #endif
