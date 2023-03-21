@@ -39,6 +39,7 @@ static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"storage", "s"},      {"format", "f"},       {"placement", "p"},
 };
 
+// Order must match with the ARG_KEYS array
 enum key_idx {
   DOMAIN,
   LENGTHS,
