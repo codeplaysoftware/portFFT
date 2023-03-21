@@ -131,17 +131,17 @@ std::string_view get_arg(arg_map_t& arg_map, key_idx key_idx) {
 
 std::size_t get_size_t(const std::string_view& key,
                        const std::string_view& value) {
-  long size;
   try {
-    size = std::stol(std::string(value));
+    long size = std::stol(std::string(value));
+    if (size <= 0) {
+      throw std::exception();
+    }
+    return static_cast<std::size_t>(size);
   } catch (...) {
     throw bench_error{"Invalid '", key, "' value: '", value,
                       "' must be a positive integer"};
   }
-  if (size <= 0) {
-    throw bench_error{"Invalid '", key, "' must be a positive integer: ", size};
-  }
-  return static_cast<std::size_t>(size);
+  return 0;
 }
 
 std::vector<std::size_t> get_vec_size_t(const std::string_view& key,
