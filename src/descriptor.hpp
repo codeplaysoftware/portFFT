@@ -265,7 +265,7 @@ struct descriptor{
       return {*this, queue};
     }
 
-    std::size_t get_total_length() const {
+    std::size_t get_total_length() const noexcept {
       return std::accumulate(lengths.begin(), lengths.end(), 1,
                              std::multiplies<std::size_t>());
     }
