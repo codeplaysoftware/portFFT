@@ -249,11 +249,9 @@ void register_benchmark(const std::string_view& desc_str) {
     throw invalid_value{"domain", domain_str};
   }
 
-  std::vector<std::size_t> lengths;
   std::string_view lengths_str = get_arg(arg_map, LENGTHS);
-  if (!lengths_str.empty()) {
-    lengths = get_vec_size_t("lengths", lengths_str);
-  } else {
+  std::vector<std::size_t> lengths = get_vec_size_t("lengths", lengths_str);
+  if (lengths.empty()) {
     throw bench_error{"'lengths' must be specified"};
   }
 
