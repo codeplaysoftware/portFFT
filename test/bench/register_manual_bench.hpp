@@ -21,17 +21,18 @@
 #ifndef SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
 #define SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
 
-#include <cstring>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
 #include "launch_bench.hpp"
 
-static const std::pair<std::string, std::string> ARG_KEYS[] = {
+static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},       {"lengths", "n"},      {"batch", "b"},
     {"fwd_strides", "fs"}, {"bwd_strides", "bs"}, {"fwd_dist", "fd"},
     {"bwd_dist", "bd"},    {"fwd_scale", "fx"},   {"bwd_scale", "bx"},
@@ -53,48 +54,69 @@ enum key_idx {
   PLACEMENT,
 };
 
-using arg_map_t = std::unordered_map<std::string, std::string>;
+using arg_map_t = std::unordered_map<std::string_view, std::string_view>;
+
+template <typename... Ts>
+std::string concat(Ts... args) {
+  std::stringstream ss;
+  (ss << ... << std::forward<Ts>(args));
+  return ss.str();
+}
+
+template <typename... Ts>
+class bench_error : public std::runtime_error {
+ public:
+  explicit bench_error(Ts... args) : std::runtime_error{concat(args...)} {}
+};
 
 class invalid_value : public std::runtime_error {
  public:
-  explicit invalid_value(const std::string& key, const std::string& value)
-      : std::runtime_error{"Invalid '" + key + "' value: '" + value + "'"} {}
+  explicit invalid_value(const std::string_view& key,
+                         const std::string_view& value)
+      : std::runtime_error{concat("Invalid '", key, "' value: '", value, "'")} {
+  }
 };
 
-arg_map_t get_arg_map(std::string arg) {
+arg_map_t get_arg_map(std::string_view arg) {
   arg_map_t arg_map;
-  std::string delimiters = ",";
-  // Use char* as strtok can return a nullptr
-  char* token = std::strtok(arg.data(), delimiters.c_str());
-  while (token) {
-    std::string token_str(token);
-    auto split_idx = token_str.find('=');
-    if (split_idx == std::string::npos) {
-      throw std::runtime_error{"Invalid token '" + token_str + "'"};
+  const char delimiter = ',';
+  std::size_t delim_idx = arg.find(delimiter);
+  std::string_view token = arg.substr(0, delim_idx);
+  while (!token.empty()) {
+    auto split_idx = token.find('=');
+    if (split_idx == std::string_view::npos) {
+      throw bench_error{"Invalid token '", token, "'"};
     }
-    std::string key = token_str.substr(0, split_idx);
-    std::string value = token_str.substr(split_idx + 1);
+    std::string_view key = token.substr(0, split_idx);
+    std::string_view value = token.substr(split_idx + 1);
     if (arg_map.find(key) != arg_map.end()) {
-      throw std::runtime_error{"Key can only be specified once: '" + key + "'"};
+      throw bench_error{"Key can only be specified once: '", key, "'"};
     }
-    bool is_key_valid =
-        std::any_of(std::begin(ARG_KEYS), std::end(ARG_KEYS),
-                    [&key](const std::pair<std::string, std::string>& pair) {
-                      return key == pair.first || key == pair.second;
-                    });
+    bool is_key_valid = std::any_of(
+        std::begin(ARG_KEYS), std::end(ARG_KEYS),
+        [&key](const std::pair<std::string_view, std::string_view>& pair) {
+          return key == pair.first || key == pair.second;
+        });
     if (!is_key_valid) {
-      throw std::runtime_error{"Invalid key: '" + key + "'"};
+      throw bench_error{"Invalid key: '", key, "'"};
     }
     if (value.empty()) {
       throw invalid_value(key, value);
     }
     arg_map[key] = value;
-    token = std::strtok(nullptr, delimiters.c_str());
+
+    // Last iteration sets delim_idx to npos
+    if (delim_idx == std::string_view::npos) {
+      break;
+    }
+    arg.remove_prefix(delim_idx + 1);
+    delim_idx = arg.find(delimiter);
+    token = arg.substr(0, delim_idx);
   }
   return arg_map;
 }
 
-std::string get_arg(arg_map_t& arg_map, key_idx key_idx) {
+std::string_view get_arg(arg_map_t& arg_map, key_idx key_idx) {
   const auto& key_names = ARG_KEYS[key_idx];
   auto long_it = arg_map.find(key_names.first);
   if (long_it != arg_map.end()) {
@@ -107,31 +129,37 @@ std::string get_arg(arg_map_t& arg_map, key_idx key_idx) {
   return "";
 }
 
-std::size_t get_size_t(const std::string& key, const std::string& value) {
+std::size_t get_size_t(const std::string_view& key,
+                       const std::string_view& value) {
   long size;
   try {
-    size = std::stol(value);
+    size = std::stol(std::string(value));
   } catch (...) {
-    throw std::runtime_error{"Invalid '" + key + "' value: '" + value +
-                             "' must be a positive integer"};
+    throw bench_error{"Invalid '", key, "' value: '", value,
+                      "' must be a positive integer"};
   }
   if (size <= 0) {
-    throw std::runtime_error{
-        "Invalid '" + key +
-        "' must be a positive integer: " + std::to_string(size)};
+    throw bench_error{"Invalid '", key, "' must be a positive integer: ", size};
   }
   return static_cast<std::size_t>(size);
 }
 
-std::vector<std::size_t> get_vec_size_t(const std::string& key,
-                                        std::string& value) {
+std::vector<std::size_t> get_vec_size_t(const std::string_view& key,
+                                        std::string_view value) {
   std::vector<std::size_t> vec;
-  std::string delimiters = "x";
-  // Use char* as strtok can return a nullptr
-  char* token = std::strtok(value.data(), delimiters.c_str());
-  while (token) {
+  const char delimiter = 'x';
+  std::size_t delim_idx = value.find(delimiter);
+  std::string_view token = value.substr(0, delim_idx);
+  while (!token.empty()) {
     vec.push_back(get_size_t(key, token));
-    token = std::strtok(nullptr, delimiters.c_str());
+
+    // Last iteration sets delim_idx to npos
+    if (delim_idx == std::string_view::npos) {
+      break;
+    }
+    value.remove_prefix(delim_idx + 1);
+    delim_idx = value.find(delimiter);
+    token = value.substr(0, delim_idx);
   }
   return vec;
 }
@@ -139,7 +167,7 @@ std::vector<std::size_t> get_vec_size_t(const std::string& key,
 template <typename ftype, sycl_fft::domain domain>
 void fill_descriptor(arg_map_t& arg_map,
                      sycl_fft::descriptor<ftype, domain>& desc) {
-  std::string arg = get_arg(arg_map, BATCH);
+  std::string_view arg = get_arg(arg_map, BATCH);
   if (!arg.empty()) {
     desc.number_of_transforms = get_size_t("batch", arg);
   }
@@ -166,12 +194,12 @@ void fill_descriptor(arg_map_t& arg_map,
 
   arg = get_arg(arg_map, FWD_SCALE);
   if (!arg.empty()) {
-    desc.forward_scale = static_cast<ftype>(std::stod(arg));
+    desc.forward_scale = static_cast<ftype>(std::stod(std::string(arg)));
   }
 
   arg = get_arg(arg_map, BWD_SCALE);
   if (!arg.empty()) {
-    desc.backward_scale = static_cast<ftype>(std::stod(arg));
+    desc.backward_scale = static_cast<ftype>(std::stod(std::string(arg)));
   }
 
   arg = get_arg(arg_map, STORAGE);
@@ -203,59 +231,60 @@ void fill_descriptor(arg_map_t& arg_map,
 }
 
 template <typename ftype>
-void register_benchmark(const std::string& desc_str) {
+void register_benchmark(const std::string_view& desc_str) {
   using namespace sycl_fft;
   arg_map_t arg_map = get_arg_map(desc_str);
 
   // Set the domain and lengths first to create the descriptor
   domain domain;
-  std::string domain_str = get_arg(arg_map, DOMAIN);
+  std::string_view domain_str = get_arg(arg_map, DOMAIN);
   if (domain_str == "complex" || domain_str == "cpx") {
     domain = domain::COMPLEX;
   } else if (domain_str == "real" || domain_str == "re") {
     domain = domain::REAL;
   } else if (domain_str.empty()) {
-    throw std::runtime_error{"'domain' must be specified"};
+    throw bench_error{"'domain' must be specified"};
   } else {
     throw invalid_value{"domain", domain_str};
   }
 
   std::vector<std::size_t> lengths;
-  std::string lengths_str = get_arg(arg_map, LENGTHS);
+  std::string_view lengths_str = get_arg(arg_map, LENGTHS);
   if (!lengths_str.empty()) {
     lengths = get_vec_size_t("lengths", lengths_str);
   } else {
-    throw std::runtime_error{"'lengths' must be specified"};
+    throw bench_error{"'lengths' must be specified"};
   }
 
-  std::string ftype_str = typeid(ftype).name();
-  std::string real_bench_name = "real_time," + ftype_str + ":" + desc_str;
-  std::string device_bench_name = "device_time," + ftype_str + ":" + desc_str;
+  std::string_view ftype_str = typeid(ftype).name();
+  std::stringstream real_bench_name;
+  std::stringstream device_bench_name;
+  real_bench_name << "real_time," << ftype_str << ":" << desc_str;
+  device_bench_name << "device_time," << ftype_str << ":" << desc_str;
   if (domain == domain::COMPLEX) {
     descriptor<ftype, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.c_str(),
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(),
                                  bench_dft_real_time<ftype, domain::COMPLEX>,
                                  desc);
-    benchmark::RegisterBenchmark(device_bench_name.c_str(),
+    benchmark::RegisterBenchmark(device_bench_name.str().c_str(),
                                  bench_dft_device_time<ftype, domain::COMPLEX>,
                                  desc);
   } else if (domain == domain::REAL) {
     descriptor<ftype, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.c_str(),
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(),
                                  bench_dft_real_time<ftype, domain::REAL>,
                                  desc);
-    benchmark::RegisterBenchmark(device_bench_name.c_str(),
+    benchmark::RegisterBenchmark(device_bench_name.str().c_str(),
                                  bench_dft_device_time<ftype, domain::REAL>,
                                  desc);
   } else {
-    throw std::runtime_error{"Unexpected domain: " +
-                             std::to_string(static_cast<int>(domain))};
+    throw bench_error{"Unexpected domain: ", static_cast<int>(domain)};
   }
 }
 
-void print_help(const std::string& name) {
+void print_help(const std::string_view& name) {
   auto print_keys = [](key_idx key) {
     std::stringstream ss;
     ss << "\t'" << ARG_KEYS[key].first << "', '" << ARG_KEYS[key].second << "'";
@@ -314,7 +343,7 @@ void print_help(const std::string& name) {
 template <typename ftype>
 void register_benchmarks(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
+    std::string_view arg = argv[i];
     if (arg == "-h" || arg == "--help") {
       print_help(argv[0]);
       return;
