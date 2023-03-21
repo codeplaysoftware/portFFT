@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <type_traits>
+#include <vector>
 
 #include <cuda_runtime.h>
 #include <cufft.h>
@@ -98,21 +99,32 @@ struct cufft_state {
                   cuda_freer<typename type_info::device_backward_type>>
       out;
 
-  cufft_state(benchmark::State& state, int N, int batch)
+  cufft_state(benchmark::State& state, std::vector<int>& lengths, int batch)
       : test_state(state),
         plan(state, {}),
         in(nullptr, cuda_freer<typename type_info::device_forward_type>{state}),
         out(nullptr,
             cuda_freer<typename type_info::device_backward_type>{state}) {
+    if (lengths.empty()) {
+      test_state.SkipWithError("invalid configuration");
+    }
+    int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
+                                   std::multiplies<int>());
+    // nullptr inembed and onembed is equivalent to giving the lengths for both
+    int *inembed = nullptr, *onembed = nullptr;
+    int istride = 1, ostride = 1;
+    int idist = fft_size, odist = fft_size;
     cufftHandle plan_tmp;
-    if (cufftPlan1d(&plan_tmp, N, type_info::plan_type, batch) ==
-        CUFFT_SUCCESS) {
+    auto res = cufftPlanMany(&plan_tmp, lengths.size(), lengths.data(), inembed,
+                             istride, idist, onembed, ostride, odist,
+                             type_info::plan_type, batch);
+    if (res == CUFFT_SUCCESS) {
       plan.handle = plan_tmp;
     } else {
       test_state.SkipWithError("plan creation failed");
     }
 
-    const auto elements = static_cast<std::size_t>(N * batch);
+    const auto elements = static_cast<std::size_t>(fft_size * batch);
 
     typename type_info::device_forward_type* in_tmp;
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
@@ -158,10 +170,10 @@ inline cufftResult cufft_exec(
 }
 
 template <typename forward_type>
-static void cufft_oop_real_time(benchmark::State& state) noexcept {
+static void cufft_oop_real_time(benchmark::State& state,
+                                std::vector<int> lengths, int batch) noexcept {
   // setup state
-  cufft_state<forward_type> cu_state(state, static_cast<int>(state.range(0)),
-                                     static_cast<int>(state.range(1)));
+  cufft_state<forward_type> cu_state(state, lengths, batch);
 
   // remove all the extra guff stored in the state
   auto plan = cu_state.plan.handle.value();
@@ -185,10 +197,11 @@ static void cufft_oop_real_time(benchmark::State& state) noexcept {
 }
 
 template <typename forward_type>
-static void cufft_oop_device_time(benchmark::State& state) noexcept {
+static void cufft_oop_device_time(benchmark::State& state,
+                                  std::vector<int> lengths,
+                                  int batch) noexcept {
   // setup state
-  cufft_state<forward_type> cu_state(state, static_cast<int>(state.range(0)),
-                                     static_cast<int>(state.range(1)));
+  cufft_state<forward_type> cu_state(state, lengths, batch);
 
   // remove all the extra guff stored in the state
   auto plan = cu_state.plan.handle.value();
@@ -236,50 +249,67 @@ static void cufft_oop_device_time(benchmark::State& state) noexcept {
   }
 }
 
+// Helper functions for GBench
+template <typename... Args>
+void cufft_oop_real_time_complex_float(Args&&... args) {
+  cufft_oop_real_time<std::complex<float>>(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+void cufft_oop_real_time_float(Args&&... args) {
+  cufft_oop_real_time<float>(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+void cufft_oop_device_time_complex_float(Args&&... args) {
+  cufft_oop_device_time<std::complex<float>>(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+void cufft_oop_device_time_float(Args&&... args) {
+  cufft_oop_device_time<float>(std::forward<Args>(args)...);
+}
+
+template <typename T>
+std::vector<T> vec(std::initializer_list<T> init) {
+  return {init};
+};
+
+#define BENCH_COMPLEX_FLOAT(...)                                     \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)
+
+#define BENCH_SINGLE_FLOAT(...)                              \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)
+
 // clang-format off
 // Forward, float, out-of-place only:
-// 1. small        complex 1D fits in workitem Cooley-Tukey 	 (batch=8*1024*1024 N=16)
-// 2. medium-small complex 1D fits in subgroup Cooley-Tukey 	 (batch=1024*1024   N=128)
+// 1. small        complex 1D fits in workitem Cooley-Tukey 	   (batch=8*1024*1024 N=16)
+// 2. medium-small complex 1D fits in subgroup Cooley-Tukey 	   (batch=512*1024    N=256)
 // 3. medium-large complex 1D fits in local memory Cooley-Tukey  (batch=32*1024     N=4*1024)
 // 4. large        complex 1D fits in global memory Cooley-Tukey (batch=2*1024      N=64*1024)
 // 5. large        complex 1D fits in global memory Bluestein    (batch=2*1024      N=64*1024+1)
 // 6. large        complex 2D fits in global memory              (batch=8           N=4096x4096)
-// 7. small        real    1D fits in workitem Cooley-Tukey 	 (batch=8*1024*1024 N=32)
-// 8. medium-small real    1D fits in subgroup Cooley-Tukey 	 (batch=1024*1024   N=256)
+// 7. small        real    1D fits in workitem Cooley-Tukey 	   (batch=8*1024*1024 N=32)
+// 8. medium-small real    1D fits in subgroup Cooley-Tukey 	   (batch=512*1024    N=512)
 // 9. medium-large real    1D fits in local memory Cooley-Tukey  (batch=32*1024     N=8*1024)
 // 10. large       real    1D fits in global memory Cooley-Tukey (batch=2*1024      N=128*1024)
+// 11. small       real    3D                                    (batch=1024        N=64x64x64)
+
+// Arguments: N, batch
+BENCH_COMPLEX_FLOAT(small_1d,        vec({16}),            8 * 1024 * 1024);
+BENCH_COMPLEX_FLOAT(medium_small_1d, vec({256}),           512 * 1024);
+BENCH_COMPLEX_FLOAT(medium_large_1d, vec({4 * 1024}),      32 * 1024);
+BENCH_COMPLEX_FLOAT(large_1d,        vec({64 * 1024}),     2 * 1024);
+BENCH_COMPLEX_FLOAT(large_1d_prime,  vec({64 * 1024 + 1}), 2 * 1024);
+BENCH_COMPLEX_FLOAT(large_2d,        vec({4096, 4096}),    8);
+
+BENCH_SINGLE_FLOAT(small_1d,        vec({32}),         8 * 1024 * 1024);
+BENCH_SINGLE_FLOAT(medium_small_1d, vec({512}),        512 * 1024);
+BENCH_SINGLE_FLOAT(medium_large_1d, vec({8 * 1024}),   32 * 1024);
+BENCH_SINGLE_FLOAT(large_1d,        vec({128 * 1024}), 2 * 1024);
+BENCH_SINGLE_FLOAT(small_3d,        vec({64, 64, 64}), 1024);
 // clang-format on
-
-BENCHMARK(cufft_oop_real_time<std::complex<float>>)
-    //  ->Args({N, batch})
-    ->Args({16, 8 * 1024 * 1024})
-    ->Args({128, 1024 * 1024})
-    ->Args({4 * 1024, 32 * 1024})
-    ->Args({64 * 1024, 2 * 1024})
-    ->Args({64 * 1024 + 1, 2 * 1024})
-    ->Args({4096 * 4096, 8});
-BENCHMARK(cufft_oop_real_time<float>)
-    //  ->Args({N, batch})
-    ->Args({32, 8 * 1024 * 1024})
-    ->Args({256, 1024 * 1024})
-    ->Args({8 * 1024, 32 * 1024})
-    ->Args({128 * 1024, 2 * 1024});
-
-BENCHMARK(cufft_oop_device_time<std::complex<float>>)
-    ->UseManualTime()
-    //  ->Args({N, batch})
-    ->Args({16, 8 * 1024 * 1024})
-    ->Args({128, 1024 * 1024})
-    ->Args({4 * 1024, 32 * 1024})
-    ->Args({64 * 1024, 2 * 1024})
-    ->Args({64 * 1024 + 1, 2 * 1024})
-    ->Args({4096 * 4096, 8});
-BENCHMARK(cufft_oop_device_time<float>)
-    ->UseManualTime()
-    //  ->Args({N, batch})
-    ->Args({32, 8 * 1024 * 1024})
-    ->Args({256, 1024 * 1024})
-    ->Args({8 * 1024, 32 * 1024})
-    ->Args({128 * 1024, 2 * 1024});
 
 BENCHMARK_MAIN();
