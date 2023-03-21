@@ -34,34 +34,51 @@ void bench_dft_real_time(benchmark::State& state,
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
+  std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a(N * N_transforms);
+  std::vector<complex_type> a(num_elements);
   populate_with_random(a);
 
   sycl::queue q;
-  complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);
-  q.copy(a.data(), a_dev, N * N_transforms);
+  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+  complex_type* out_dev =
+      desc.placement == sycl_fft::placement::IN_PLACE
+          ? nullptr
+          : sycl::malloc_device<complex_type>(num_elements, q);
+  q.copy(a.data(), in_dev, num_elements);
 
   auto committed = desc.commit(q);
 
   q.wait();
 
   // warmup
-  committed.compute_forward(a_dev).wait();
+  auto event = desc.placement == sycl_fft::placement::IN_PLACE
+                   ? committed.compute_forward(in_dev)
+                   : committed.compute_forward(in_dev, out_dev);
+  event.wait();
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
-    auto start = std::chrono::high_resolution_clock::now();
-    committed.compute_forward(a_dev).wait();
-    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::time_point<std::chrono::high_resolution_clock> start;
+    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    if (desc.placement == sycl_fft::placement::IN_PLACE) {
+      start = std::chrono::high_resolution_clock::now();
+      committed.compute_forward(in_dev).wait();
+      end = std::chrono::high_resolution_clock::now();
+    } else {
+      start = std::chrono::high_resolution_clock::now();
+      committed.compute_forward(in_dev, out_dev).wait();
+      end = std::chrono::high_resolution_clock::now();
+    }
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
             .count();
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
-  sycl::free(a_dev, q);
+  sycl::free(in_dev, q);
+  sycl::free(out_dev, q);
 }
 
 template <typename ftype, sycl_fft::domain domain>
@@ -70,23 +87,34 @@ void bench_dft_device_time(benchmark::State& state,
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
+  std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a(N * N_transforms);
+  std::vector<complex_type> a(num_elements);
   populate_with_random(a);
 
   sycl::queue q({sycl::property::queue::enable_profiling()});
-  complex_type* a_dev = sycl::malloc_device<complex_type>(N * N_transforms, q);
-  q.copy(a.data(), a_dev, N * N_transforms);
+  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+  complex_type* out_dev =
+      desc.placement == sycl_fft::placement::IN_PLACE
+          ? nullptr
+          : sycl::malloc_device<complex_type>(num_elements, q);
+  q.copy(a.data(), in_dev, num_elements);
 
   auto committed = desc.commit(q);
 
   q.wait();
 
+  auto compute = [&]() {
+    return desc.placement == sycl_fft::placement::IN_PLACE
+               ? committed.compute_forward(in_dev)
+               : committed.compute_forward(in_dev, out_dev);
+  };
+
   // warmup
-  committed.compute_forward(a_dev).wait();
+  compute().wait();
 
   for (auto _ : state) {
-    sycl::event e = committed.compute_forward(a_dev);
+    sycl::event e = compute();
     e.wait();
     int64_t start =
         e.get_profiling_info<sycl::info::event_profiling::command_start>();
@@ -96,7 +124,8 @@ void bench_dft_device_time(benchmark::State& state,
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
-  sycl::free(a_dev, q);
+  sycl::free(in_dev, q);
+  sycl::free(out_dev, q);
 }
 
 template <typename ftype, sycl_fft::domain domain>
