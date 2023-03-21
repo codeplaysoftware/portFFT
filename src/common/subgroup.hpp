@@ -32,7 +32,7 @@ namespace detail {
 
 // forward declaration
 template <int N, int stride, typename T>
-inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
+inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg, sycl::stream s);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
@@ -50,7 +50,7 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  */
 template <int N, int stride, typename T>
 void __attribute__((always_inline))
-cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
+cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg, sycl::stream s) {
   int local_id = sg.get_local_linear_id();
   int idx_out = (local_id / stride) % N;
   int fft_start = local_id - idx_out * stride;
@@ -71,6 +71,8 @@ cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
     res_real += cur_real * multi_re - cur_imag * multi_im;
     res_imag += cur_real * multi_im + cur_imag * multi_re;
   });
+
+  //s << "res " << res_real << " " << res_imag << "\n" << sycl::flush;
 
   real = res_real;
   imag = res_imag;
@@ -120,14 +122,14 @@ cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
  */
 template <int N, int M, int stride, typename T>
 void __attribute__((always_inline))
-cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
+cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg, sycl::stream s) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
   int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<N, M * stride>(real, imag, sg);
+  cross_sg_dft<N, M * stride>(real, imag, sg, s);
   // transpose
   cross_sg_transpose<N, M, stride>(real, imag, sg);
   // twiddle
@@ -137,7 +139,7 @@ cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
       real * twiddle<T>::im[N * M][k * n] + imag * twiddle<T>::re[N * M][k * n];
   real = tmp_real;
   // factor M
-  cross_sg_dft<M, N * stride>(real, imag, sg);
+  cross_sg_dft<M, N * stride>(real, imag, sg, s);
 }
 
 /**
@@ -156,12 +158,12 @@ cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
  */
 template <int N, int stride, typename T>
 inline void __attribute__((always_inline))
-cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
+cross_sg_dft(T& real, T& imag, sycl::sub_group& sg, sycl::stream s) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
-    cross_sg_cooley_tukey_dft<N / F0, F0, stride>(real, imag, sg);
+    cross_sg_cooley_tukey_dft<N / F0, F0, stride>(real, imag, sg, s);
   } else {
-    cross_sg_naive_dft<N, stride>(real, imag, sg);
+    cross_sg_naive_dft<N, stride>(real, imag, sg, s);
   }
 }
 
@@ -195,13 +197,13 @@ int factorize_sg(int N, int sg_size) {
  * @param sg subgroup
  */
 template <typename T>
-void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
+void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg, sycl::stream s) {
   switch (fft_size) {
     // TODO instantiating only the sizes up to subgroup size speeds up the
     // compilation
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(N) \
   case N:                                    \
-    cross_sg_dft<N, 1>(real, imag, sg);      \
+    cross_sg_dft<N, 1>(real, imag, sg, s);      \
     break;
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
@@ -286,7 +288,7 @@ void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
  */
 template <int M, typename T_ptr, typename T_twiddles_ptr>
 void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
-            T_twiddles_ptr sg_twiddles) {
+            T_twiddles_ptr sg_twiddles, sycl::stream s) {
   using T = detail::remove_ptr<T_ptr>;
   int n = sg.get_local_linear_id();
 
@@ -295,13 +297,17 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
     T& imag = inout[2 * k + 1];
 
     // TODO the function call should happen outside of the loop
-    detail::cross_sg_dispatcher(N, real, imag, sg);
+    detail::cross_sg_dispatcher(N, real, imag, sg, s);
+
+    s << "csg " << real << " " << imag << "\n" << sycl::flush;
 
     T twiddle_real = sg_twiddles[k * N + n];
     T twiddle_imag = sg_twiddles[(k + M) * N + n];
     T tmp_real = real * twiddle_real - imag * twiddle_imag;
     imag = real * twiddle_imag + imag * twiddle_real;
     real = tmp_real;
+    
+    s << "tw " << real << " " << imag << "twiddle " << twiddle_real << " " << twiddle_imag << "\n" << sycl::flush;
   });
 
   wi_dft<M, 1, 1>(inout, inout);
@@ -319,11 +325,12 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
  * @param sg_twiddles destination into which to store the twiddles
  */
 template <typename T_ptr>
-void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles) {
+void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles, sycl::stream s) {
   using T = detail::remove_ptr<T_ptr>;
   std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
   sg_twiddles[k * N + n] = twiddle.real();
   sg_twiddles[(k + M) * N + n] = twiddle.imag();
+  s << "tw @ " <<n<<" " << k << " of " << N << " " << M << " is " <<twiddle.real() << " " << twiddle.imag() << "\n" << sycl::flush;
 }
 
 };  // namespace sycl_fft

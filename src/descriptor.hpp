@@ -210,7 +210,7 @@ class committed_descriptor {
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::stream s(1024*10,1024*30,cgh);
+      sycl::stream s(1024*10,1024*60,cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain>>(
           sycl::nd_range<1>{{global_size}, {usm_kernel_subgroup_size}},
           [=](sycl::nd_item<1> it) {

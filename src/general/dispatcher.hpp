@@ -218,7 +218,7 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
       SYCL_FFT_WI_DISPATCHER_IMPL(6)
       SYCL_FFT_WI_DISPATCHER_IMPL(7)
       SYCL_FFT_WI_DISPATCHER_IMPL(8)
-      SYCL_FFT_WI_DISPATCHER_IMPL(9)
+      /*SYCL_FFT_WI_DISPATCHER_IMPL(9)
       SYCL_FFT_WI_DISPATCHER_IMPL(10)
       SYCL_FFT_WI_DISPATCHER_IMPL(11)
       SYCL_FFT_WI_DISPATCHER_IMPL(12)
@@ -265,7 +265,7 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
       SYCL_FFT_WI_DISPATCHER_IMPL(53)
       SYCL_FFT_WI_DISPATCHER_IMPL(54)
       SYCL_FFT_WI_DISPATCHER_IMPL(55)
-      SYCL_FFT_WI_DISPATCHER_IMPL(56)
+      SYCL_FFT_WI_DISPATCHER_IMPL(56)*/
 #undef SYCL_FFT_WI_DISPATCHER_IMPL
     }
 }
@@ -317,7 +317,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(6)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(7)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(8)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(9)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(9)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(10)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(11)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(12)
@@ -325,7 +325,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(14)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(15)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
-    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(18)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(19)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(20)
@@ -438,11 +438,12 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
     if (fits_in_wi<T>(factor_wi)) {
       T* res = sycl::malloc_device<T>(fft_size * 2, q);
       q.submit([&](sycl::handler& cgh) {
+        sycl::stream s(32,1024,cgh);
         cgh.parallel_for(sycl::range<2>({factor_sg, factor_wi}),
                          [=](sycl::item<2> it) {
                            int n = it.get_id(0);
                            int k = it.get_id(1);
-                           sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
+                           sg_calc_twiddles(factor_sg, factor_wi, n, k, res, s);
                          });
       });
       q.wait();  // waiting once here can be better than depending on the event
