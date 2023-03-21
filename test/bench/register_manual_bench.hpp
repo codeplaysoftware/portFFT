@@ -323,12 +323,15 @@ void print_help(const std::string_view& name) {
   cout_aligned() << print_keys(STORAGE)     << "Storage used for complex domain.\n";
   cout_aligned() << "\t"                    << "  'complex', 'cpx' Output is stored in a single complex output container.\n";
   cout_aligned() << "\t"                    << "  'real', 're' Output is stored in 2 real output containers. The first container holds real parts and the second holds imaginary parts of the output.\n";
+  cout_aligned() << "\t"                    << "  Default to 'complex'.\n"
   cout_aligned() << print_keys(FORMAT)      << "Packed format used.\n";
   cout_aligned() << "\t"                    << "  'complex', 'cpx'\n";
   cout_aligned() << "\t"                    << "  'conjugate_even', 'ce'\n";
+  cout_aligned() << "\t"                    << "  Default to 'complex'.\n"
   cout_aligned() << print_keys(PLACEMENT)   << "Placement used.\n";
   cout_aligned() << "\t"                    << "  'in_place', 'ip' Re-use the input container as the output one.\n";
   cout_aligned() << "\t"                    << "  'out_of_place', 'oop' Use separate input and output container.\n";
+  cout_aligned() << "\t"                    << "  Default to 'out_of_place'.\n"
   std::cout << std::endl;
   // clang-format on
 }
