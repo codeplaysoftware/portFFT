@@ -129,8 +129,8 @@ std::string_view get_arg(arg_map_t& arg_map, key_idx key_idx) {
   return "";
 }
 
-std::size_t get_size_t(const std::string_view& key,
-                       const std::string_view& value) {
+std::size_t get_unsigned(const std::string_view& key,
+                         const std::string_view& value) {
   try {
     long size = std::stol(std::string(value));
     if (size <= 0) {
@@ -144,14 +144,14 @@ std::size_t get_size_t(const std::string_view& key,
   return 0;
 }
 
-std::vector<std::size_t> get_vec_size_t(const std::string_view& key,
-                                        std::string_view value) {
+std::vector<std::size_t> get_vec_unsigned(const std::string_view& key,
+                                          std::string_view value) {
   std::vector<std::size_t> vec;
   const char delimiter = 'x';
   std::size_t delim_idx = value.find(delimiter);
   std::string_view token = value.substr(0, delim_idx);
   while (!token.empty()) {
-    vec.push_back(get_size_t(key, token));
+    vec.push_back(get_unsigned(key, token));
 
     // Last iteration sets delim_idx to npos
     if (delim_idx == std::string_view::npos) {
@@ -169,27 +169,27 @@ void fill_descriptor(arg_map_t& arg_map,
                      sycl_fft::descriptor<ftype, domain>& desc) {
   std::string_view arg = get_arg(arg_map, BATCH);
   if (!arg.empty()) {
-    desc.number_of_transforms = get_size_t("batch", arg);
+    desc.number_of_transforms = get_unsigned("batch", arg);
   }
 
   arg = get_arg(arg_map, FWD_STRIDES);
   if (!arg.empty()) {
-    desc.forward_strides = get_vec_size_t("fwd_strides", arg);
+    desc.forward_strides = get_vec_unsigned("fwd_strides", arg);
   }
 
   arg = get_arg(arg_map, BWD_STRIDES);
   if (!arg.empty()) {
-    desc.backward_strides = get_vec_size_t("bwd_strides", arg);
+    desc.backward_strides = get_vec_unsigned("bwd_strides", arg);
   }
 
   arg = get_arg(arg_map, FWD_DIST);
   if (!arg.empty()) {
-    desc.forward_distance = get_size_t("fwd_dist", arg);
+    desc.forward_distance = get_unsigned("fwd_dist", arg);
   }
 
   arg = get_arg(arg_map, BWD_DIST);
   if (!arg.empty()) {
-    desc.backward_distance = get_size_t("bwd_dist", arg);
+    desc.backward_distance = get_unsigned("bwd_dist", arg);
   }
 
   arg = get_arg(arg_map, SCALE);
@@ -246,7 +246,7 @@ void register_benchmark(const std::string_view& desc_str) {
   }
 
   std::string_view lengths_str = get_arg(arg_map, LENGTHS);
-  std::vector<std::size_t> lengths = get_vec_size_t("lengths", lengths_str);
+  std::vector<std::size_t> lengths = get_vec_unsigned("lengths", lengths_str);
   if (lengths.empty()) {
     throw bench_error{"'lengths' must be specified"};
   }
