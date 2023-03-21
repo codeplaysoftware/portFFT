@@ -35,8 +35,8 @@
 static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},       {"lengths", "n"},      {"batch", "b"},
     {"fwd_strides", "fs"}, {"bwd_strides", "bs"}, {"fwd_dist", "fd"},
-    {"bwd_dist", "bd"},    {"fwd_scale", "fx"},   {"bwd_scale", "bx"},
-    {"storage", "s"},      {"format", "f"},       {"placement", "p"},
+    {"bwd_dist", "bd"},    {"scale", "sx"},       {"storage", "s"},
+    {"format", "f"},       {"placement", "p"},
 };
 
 // Order must match with the ARG_KEYS array
@@ -48,8 +48,7 @@ enum key_idx {
   BWD_STRIDES,
   FWD_DIST,
   BWD_DIST,
-  FWD_SCALE,
-  BWD_SCALE,
+  SCALE,
   STORAGE,
   FORMAT,
   PLACEMENT,
@@ -193,14 +192,11 @@ void fill_descriptor(arg_map_t& arg_map,
     desc.backward_distance = get_size_t("bwd_dist", arg);
   }
 
-  arg = get_arg(arg_map, FWD_SCALE);
+  arg = get_arg(arg_map, SCALE);
   if (!arg.empty()) {
-    desc.forward_scale = static_cast<ftype>(std::stod(std::string(arg)));
-  }
-
-  arg = get_arg(arg_map, BWD_SCALE);
-  if (!arg.empty()) {
-    desc.backward_scale = static_cast<ftype>(std::stod(std::string(arg)));
+    auto scale = static_cast<ftype>(std::stod(std::string(arg)));
+    desc.forward_scale = scale;
+    desc.backward_scale = scale;
   }
 
   arg = get_arg(arg_map, STORAGE);
@@ -322,9 +318,7 @@ void print_help(const std::string_view& name) {
   cout_aligned() << "\t"                    << "  Ni is the distance (i.e. batch stride) used to access the next batch of the output (or input) for the forward (resp. backward) direction.\n";
   cout_aligned() << "\t"                    << "  The size is in number of elements.\n";
   cout_aligned() << "\t"                    << "  Default value is set to the size of one transform.\n";
-  cout_aligned() << print_keys(FWD_SCALE)   << "float number, scale used for the forward direction.\n";
-  cout_aligned() << "\t"                    << "  Default to 1.\n";
-  cout_aligned() << print_keys(BWD_SCALE)   << "float number, scale used for the backward direction.\n";
+  cout_aligned() << print_keys(SCALE)       << "float number, scale used for both directions.\n";
   cout_aligned() << "\t"                    << "  Default to 1.\n";
   cout_aligned() << print_keys(STORAGE)     << "Storage used for complex domain.\n";
   cout_aligned() << "\t"                    << "  'complex', 'cpx' Output is stored in a single complex output container.\n";
