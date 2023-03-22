@@ -36,7 +36,7 @@ static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},       {"lengths", "n"},      {"batch", "b"},
     {"fwd_strides", "fs"}, {"bwd_strides", "bs"}, {"fwd_dist", "fd"},
     {"bwd_dist", "bd"},    {"scale", "sx"},       {"storage", "s"},
-    {"format", "f"},       {"placement", "p"},
+    {"placement", "p"},
 };
 
 // Order must match with the ARG_KEYS array
@@ -50,7 +50,6 @@ enum key_idx {
   BWD_DIST,
   SCALE,
   STORAGE,
-  FORMAT,
   PLACEMENT,
 };
 
@@ -208,15 +207,6 @@ void fill_descriptor(arg_map_t& arg_map,
     throw invalid_value{"storage", arg};
   }
 
-  arg = get_arg(arg_map, FORMAT);
-  if (arg == "complex" || arg == "cpx") {
-    desc.packed_format = sycl_fft::packed_format::COMPLEX;
-  } else if (arg == "conjugate_even" || arg == "ce") {
-    desc.packed_format = sycl_fft::packed_format::CONJUGATE_EVEN;
-  } else if (!arg.empty()) {
-    throw invalid_value{"format", arg};
-  }
-
   arg = get_arg(arg_map, PLACEMENT);
   if (arg == "in_place" || arg == "ip") {
     desc.placement = sycl_fft::placement::IN_PLACE;
@@ -323,15 +313,11 @@ void print_help(const std::string_view& name) {
   cout_aligned() << print_keys(STORAGE)     << "Storage used for complex domain.\n";
   cout_aligned() << "\t"                    << "  'complex', 'cpx' Output is stored in a single complex output container.\n";
   cout_aligned() << "\t"                    << "  'real', 're' Output is stored in 2 real output containers. The first container holds real parts and the second holds imaginary parts of the output.\n";
-  cout_aligned() << "\t"                    << "  Default to 'complex'.\n"
-  cout_aligned() << print_keys(FORMAT)      << "Packed format used.\n";
-  cout_aligned() << "\t"                    << "  'complex', 'cpx'\n";
-  cout_aligned() << "\t"                    << "  'conjugate_even', 'ce'\n";
-  cout_aligned() << "\t"                    << "  Default to 'complex'.\n"
+  cout_aligned() << "\t"                    << "  Default to 'complex'.\n";
   cout_aligned() << print_keys(PLACEMENT)   << "Placement used.\n";
   cout_aligned() << "\t"                    << "  'in_place', 'ip' Re-use the input container as the output one.\n";
   cout_aligned() << "\t"                    << "  'out_of_place', 'oop' Use separate input and output container.\n";
-  cout_aligned() << "\t"                    << "  Default to 'out_of_place'.\n"
+  cout_aligned() << "\t"                    << "  Default to 'out_of_place'.\n";
   std::cout << std::endl;
   // clang-format on
 }

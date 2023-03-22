@@ -235,7 +235,6 @@ struct descriptor{
     Scalar backward_scale = 1;
     std::size_t number_of_transforms = 1;
     complex_storage complex_storage = complex_storage::COMPLEX;
-    packed_format packed_format = packed_format::CONJUGATE_EVEN;
     placement placement = placement::OUT_OF_PLACE;
     std::vector<std::size_t> forward_strides;
     std::vector<std::size_t> backward_strides;
