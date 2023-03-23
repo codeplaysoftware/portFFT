@@ -302,7 +302,6 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
     T tmp_real = real * twiddle_real - imag * twiddle_imag;
     imag = real * twiddle_imag + imag * twiddle_real;
     real = tmp_real;
-    
   });
 
   wi_dft<M, 1, 1>(inout, inout);

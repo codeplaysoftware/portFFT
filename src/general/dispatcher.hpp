@@ -447,7 +447,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
 }
 
 /**
- * Calculates twiddle factors needed for given problem
+ * Calculates twiddle factors needed for given problem.
  *
  * @tparam T type of the scalar used for computations
  * @param fft_size size of each transform
@@ -483,7 +483,7 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
 }
 
 /**
- * Calculates the amount of local memory needed for given problem
+ * Calculates the amount of local memory needed for given problem.
  *
  * @tparam T type of the scalar used for computations
  * @param fft_size size of each transform
