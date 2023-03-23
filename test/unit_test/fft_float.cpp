@@ -25,7 +25,7 @@ TEST_P(FFTTest, USM_IP_C2C_Fwd_Float) {
   sycl::queue queue;
   check_fft_usm<float, placement::IN_PLACE>(param, queue);
 }
-/*
+
 TEST_P(FFTTest, USM_OOP_C2C_Fwd_Float) {
   auto param = GetParam();
   sycl::queue queue;
@@ -43,4 +43,3 @@ TEST_P(FFTTest, BUFFER_OOP_C2C_Fwd_Float) {
   sycl::queue queue;
   check_fft_buffer<float, placement::OUT_OF_PLACE>(param, queue);
 }
-*/

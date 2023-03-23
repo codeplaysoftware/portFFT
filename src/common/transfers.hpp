@@ -156,8 +156,8 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local,
 }
 
 /**
- * Copies data from private memory to local memory. Each work item writes a
- * chunk of consecutive values to local memory.
+ * Copies data from private memory to local memory. Consecutive workitems write
+ * consecutive elements.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or

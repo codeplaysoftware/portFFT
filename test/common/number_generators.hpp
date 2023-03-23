@@ -45,10 +45,8 @@ void populate_with_random(std::vector<std::complex<type>>& in,
   engine algo(0);
   std::uniform_real_distribution<type> distribution(lowerLimit, higherLimit);
 
-  int i=0;
   for (auto& val : in) {
-    val = std::complex<type>(i,i);
-    i++;
+    val = std::complex<type>(distribution(algo), distribution(algo));
   }
 }
 

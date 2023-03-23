@@ -18,15 +18,6 @@
  *
  **************************************************************************/
 
-<<<<<<<< HEAD:test/fft_float.cpp
-#include "fft_test_utils.hpp"
-
-TEST_P(FFTTest, USM_C2C_Fwd_Float) {
-  int32_t length = GetParam();
-  ASSERT_TRUE(length > 0);
-  sycl::queue queue;
-  check_fft<float>(length, queue);
-========
 #ifndef SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
 #define SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
 
@@ -42,7 +33,6 @@ TEST_P(FFTTest, USM_C2C_Fwd_Float) {
  */
 inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
   return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
->>>>>>>> main:test/bench/ops_estimate.hpp
 }
 
 #endif

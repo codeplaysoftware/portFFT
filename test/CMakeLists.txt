@@ -28,7 +28,6 @@ if(${SYCLFFT_BUILD_TESTS})
   add_subdirectory(unit_test)
 endif()
 
-
 if(${SYCLFFT_BUILD_BENCHMARKS})
   add_subdirectory(bench)
 endif()

@@ -158,14 +158,13 @@ class committed_descriptor {
           in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc =
           out_scalar.template get_access<sycl::access::mode::write>(cgh);
-      sycl::stream s(1024*10,1024*30,cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain>>(
           sycl::nd_range<1>{{global_size}, {buffer_kernel_subgroup_size}},
           [=](sycl::nd_item<1> it) {
             detail::dispatcher(in_acc, out_acc, loc, fft_size, n_transforms,
                                input_distance, output_distance, it,
-                               twiddles_local, s);
+                               twiddles_local);
           });
     });
   }
@@ -210,13 +209,12 @@ class committed_descriptor {
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::stream s(1024*10,1024*60,cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain>>(
           sycl::nd_range<1>{{global_size}, {usm_kernel_subgroup_size}},
           [=](sycl::nd_item<1> it) {
             detail::dispatcher(in_scalar, out_scalar, loc, fft_size,
                                n_transforms, input_distance, output_distance,
-                               it, twiddles_local, s);
+                               it, twiddles_local);
           });
     });
   }
