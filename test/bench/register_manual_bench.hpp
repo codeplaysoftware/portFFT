@@ -55,25 +55,26 @@ enum key_idx {
 
 using arg_map_t = std::unordered_map<std::string_view, std::string_view>;
 
-template <typename... Ts>
-std::string concat(const Ts&... args) {
-  std::stringstream ss;
-  (ss << ... << args);
-  return ss.str();
-}
-
-template <typename... Ts>
 class bench_error : public std::runtime_error {
+ private:
+  template <typename... Ts>
+  std::string concat(const Ts&... args) {
+    std::stringstream ss;
+    (ss << ... << args);
+    return ss.str();
+  }
+
  public:
-  explicit bench_error(Ts... args) : std::runtime_error{concat(args...)} {}
+  template <typename... Ts>
+  explicit bench_error(const Ts&... args)
+      : std::runtime_error{concat(args...)} {}
 };
 
-class invalid_value : public std::runtime_error {
+class invalid_value : public bench_error {
  public:
   explicit invalid_value(const std::string_view& key,
                          const std::string_view& value)
-      : std::runtime_error{concat("Invalid '", key, "' value: '", value, "'")} {
-  }
+      : bench_error{"Invalid '", key, "' value: '", value, "'"} {}
 };
 
 arg_map_t get_arg_map(std::string_view arg) {
