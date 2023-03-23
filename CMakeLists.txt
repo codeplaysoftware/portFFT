@@ -38,6 +38,7 @@ list(APPEND CMAKE_MODULE_PATH
 option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
 option(SYCLFFT_ENABLE_CUFFT_BENCHMARKS "Whether to also build the cufft benchmark for comparison" OFF)
+option(SYCLFFT_CHECK_BENCHMARK "Whether to check FFT results during benchmarking. Crosschecks in the first iteration only" OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 

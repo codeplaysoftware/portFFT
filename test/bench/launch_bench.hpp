@@ -23,10 +23,41 @@
 
 #include <benchmark/benchmark.h>
 #include <descriptor.hpp>
+#include <cassert>
 #include <traits.hpp>
 
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
+
+template <typename type>
+bool compare_arrays(std::vector<type> array1, std::vector<type> array2,
+                    double tol) {
+  (array1.size(), array2.size());
+  bool correct = 1;
+  for (size_t i = 0; i < array1.size(); i++) {
+    correct = correct & (std::abs(array1[i].real() - array2[i].real()) <= tol);
+  }
+  return correct;
+}
+
+template <typename TypeIn, typename TypeOut>
+void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out,
+                           size_t length, size_t offset = 0) {
+  long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
+
+  size_t N = length;
+  for (size_t k = 0; k < N; k++) {
+    std::complex<long double> out_temp = 0;
+    for (size_t n = 0; n < N; n++) {
+      auto multiplier = std::complex<long double>{std::cos(n * k * TWOPI / N),
+                                                  -std::sin(n * k * TWOPI / N)};
+      out_temp +=
+          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
+    }
+    out[offset + k] = static_cast<TypeOut>(out_temp);
+  }
+}
+
 
 template <typename ftype, sycl_fft::domain domain>
 void bench_dft_real_time(benchmark::State& state,
@@ -37,8 +68,8 @@ void bench_dft_real_time(benchmark::State& state,
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(num_elements);
+  std::vector<complex_type> host_result(num_elements);
   populate_with_random(a);
-
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =
@@ -56,6 +87,18 @@ void bench_dft_real_time(benchmark::State& state,
                    ? committed.compute_forward(in_dev)
                    : committed.compute_forward(in_dev, out_dev);
   event.wait();
+
+#ifdef SYCLFFT_CHECK_BENCHMARK
+  for (std::size_t i = 0; i < N_transforms; i++) {
+    reference_forward_dft(a, host_result, N, i * N);
+  }
+  q.copy(a.data(),
+         desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+         num_elements)
+      .wait();
+  int correct = compare_arrays(a, host_result, 1e-5);
+  assert(correct);
+#endif
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
@@ -112,7 +155,17 @@ void bench_dft_device_time(benchmark::State& state,
 
   // warmup
   compute().wait();
-
+#ifdef SYCLFFT_CHECK_BENCHMARK
+  for (std::size_t i = 0; i < N_transforms; i++) {
+    reference_forward_dft(a, host_result, N, i * N);
+  }
+  q.copy(a.data(),
+         desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+         num_elements)
+      .wait();
+  int correct = compare_arrays(a, host_result, 1e-5);
+  assert(correct);
+#endif
   for (auto _ : state) {
     sycl::event e = compute();
     e.wait();
