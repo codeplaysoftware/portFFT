@@ -56,9 +56,9 @@ enum key_idx {
 using arg_map_t = std::unordered_map<std::string_view, std::string_view>;
 
 template <typename... Ts>
-std::string concat(Ts... args) {
+std::string concat(const Ts&... args) {
   std::stringstream ss;
-  (ss << ... << std::forward<Ts>(args));
+  (ss << ... << args);
   return ss.str();
 }
 
