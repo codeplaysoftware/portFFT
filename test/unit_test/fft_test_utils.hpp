@@ -126,10 +126,10 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 }
 
 // sizes that use workitem implementation
-INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3, 33, 32000),
-                                                ::testing::Range(1, 14))));
+INSTANTIATE_TEST_SUITE_P(
+    workItemTest, FFTTest,
+    ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
+        ::testing::Values(1, 3, 33, 32000), ::testing::Range(1, 14))));
 
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
@@ -139,11 +139,12 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ConvertGenerator<param_tuple>(
         ::testing::Combine(::testing::Values(1, 3, 33, 555),
                            ::testing::Values(16, 24, 27, 32, 33, 48, 56))));
-                                  
+
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(
     SubgroupTest, FFTTest,
-    ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
-        ::testing::Values(1, 3, 33, 555), ::testing::Values(64, 65, 84, 91, 104))));
+    ::testing::ConvertGenerator<param_tuple>(
+        ::testing::Combine(::testing::Values(1, 3, 33, 555),
+                           ::testing::Values(64, 65, 84, 91, 104))));
 
 #endif
