@@ -43,11 +43,19 @@ Run the tests from the build folder with:
 ctest
 ```
 
-Run the benchmarks from the build folder with:
+Run pre-defined benchmarks from the build folder with:
 
 ```shell
-./bench/bench_workitem
+./test/bench/bench_float
 ```
+
+Run manual benchmarks from the build folder with for instance:
+
+```shell
+./test/bench/bench_manual_float d=cpx,n=5
+```
+
+Use the `--help` flag to print help message on the configuration syntax.
 
 ## Troubleshooting
 
