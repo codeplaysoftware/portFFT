@@ -21,6 +21,8 @@
 #ifndef SYCLFFT_BENCH_UTILS_HPP
 #define SYCLFFT_BENCH_UTILS_HPP
 
+#include <iostream>
+#include <vector>
 
 template <typename type>
 bool compare_arrays(std::vector<type> array1, std::vector<type> array2,
@@ -35,19 +37,28 @@ bool compare_arrays(std::vector<type> array1, std::vector<type> array2,
 
 template <typename TypeIn, typename TypeOut>
 void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out,
-                           size_t length, size_t offset = 0) {
+                           const std::vector<std::size_t> length, size_t offset = 0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
+  std::vector<std::size_t> dims{1, 1, 1};
+  dims.insert(dims.begin(), length.begin(), length.end());
 
-  size_t N = length;
-  for (size_t k = 0; k < N; k++) {
-    std::complex<long double> out_temp = 0;
-    for (size_t n = 0; n < N; n++) {
-      auto multiplier = std::complex<long double>{std::cos(n * k * TWOPI / N),
-                                                  -std::sin(n * k * TWOPI / N)};
-      out_temp +=
-          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
-    }
-    out[offset + k] = static_cast<TypeOut>(out_temp);
+  for (size_t ox = 0; ox < dims[0]; ox++) {
+      for(size_t oy = 0; oy <  dims[1]; oy++){
+        for(size_t oz = 0; oz < dims[2]; oz++){
+          std::complex<long double> out_temp = 0;
+          for(size_t ix = 0; ix < dims[0]; ix++){
+            for(size_t iy = 0; iy < dims[1]; iy++){
+              for(size_t iz = 0; iz < dims[2]; iz++){
+                double theta = -1 * TWOPI * ((ix * ox / dims[0]) + (iy * oy / dims[1]) + (iz * oz / dims[2]));
+                auto element = static_cast<std::complex<long double>>(in[offset + ix * dims[1] * dims[2] + iy * dims[2] + iz]);
+                auto multiplier = std::complex<long double>(std::cos(theta), std::sin(theta));
+                out_temp += element * multiplier;
+              }
+            }
+          }
+          out[offset + ox * dims[1] * dims[2] + oy * dims[2] + oz] = static_cast<TypeOut>(out_temp);
+        }
+      }
   }
 }
 

@@ -61,7 +61,7 @@ void bench_dft_real_time(benchmark::State& state,
 
 #ifdef SYCLFFT_CHECK_BENCHMARK
   for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a, host_result, N, i * N);
+    reference_forward_dft(a, host_result, {N}, i * N);
   }
   q.copy(a.data(),
          desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
@@ -127,8 +127,9 @@ void bench_dft_device_time(benchmark::State& state,
   // warmup
   compute().wait();
 #ifdef SYCLFFT_CHECK_BENCHMARK
+  std::vector<complex_type> host_result(N * N_transforms);
   for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a, host_result, N, i * N);
+    reference_forward_dft(a, host_result, {N}, i * N);
   }
   q.copy(a.data(),
          desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,

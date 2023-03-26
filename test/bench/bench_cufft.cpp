@@ -99,6 +99,12 @@ struct cufft_state {
                   cuda_freer<typename type_info::device_backward_type>>
       out;
 
+  using result_type = typename type_info::device_backward_type;
+  std::vector<result_type> host_result;
+  size_t rsize = sizeof(result_type);
+  std::vector<forward_type> forward;
+  std::vector<result_type> result_vector;
+
   cufft_state(benchmark::State& state, std::vector<int>& lengths, int batch)
       : test_state(state),
         plan(state, {}),
@@ -125,7 +131,8 @@ struct cufft_state {
     }
 
     const auto elements = static_cast<std::size_t>(fft_size * batch);
-
+    forward.resize(elements);
+    result_vector.resize(elements);
     typename type_info::device_forward_type* in_tmp;
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
       in.reset(in_tmp);
@@ -140,8 +147,10 @@ struct cufft_state {
     } else {
       test_state.SkipWithError("out allocation failed");
     }
-
-    std::vector<forward_type> forward(elements);
+#ifdef SYCLFFT_CHECK_BENCHMARK
+    host_result.resize(elements);
+#endif
+    (elements);
     populate_with_random(forward);
 
     if (cudaMemcpyAsync(
@@ -188,6 +197,17 @@ static void cufft_oop_real_time(benchmark::State& state,
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
     state.SkipWithError("warmup synchronize failed");
   }
+
+#ifdef SYCLFFT_CHECK_BENCHMARK
+  int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
+                                   std::multiplies<int>());
+  cudaMemcpy(cu_state.host_result.data(), out.get(), fft_size * batch * sizeof(cu_state.rsize));
+  for (std::size_t i = 0; i < N_transforms; i++) {
+    reference_forward_dft(cu_state.forward, cu_state.result_vector, lengths, i * fft_size);
+  }
+  int correct = compare_arrays(cu_state.result_vector, cu_state.host_result, 1e-5);
+  assert(correct);
+#endif
 
   // benchmark
   for (auto _ : state) {
