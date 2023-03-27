@@ -477,7 +477,9 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
                  // for all future calls to compute
       return res;
     } else {
-      throw std::exception();
+      throw std::runtime_error("FFT size " + std::to_string(fft_size) +
+                               " is not supported for subgroup_size " +
+                               std::to_string(subgroup_size));
     }
   }
 }
