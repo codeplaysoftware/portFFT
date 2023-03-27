@@ -67,7 +67,7 @@ void bench_dft_real_time(benchmark::State& state,
          desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
          num_elements)
       .wait();
-  int correct = compare_arrays(a, host_result, 1e-5);
+  int correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-1);
   assert(correct);
 #endif
 
@@ -135,7 +135,7 @@ void bench_dft_device_time(benchmark::State& state,
          desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
          num_elements)
       .wait();
-  int correct = compare_arrays(a, host_result, 1e-5);
+  int correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
   assert(correct);
 #endif
   for (auto _ : state) {

@@ -64,7 +64,7 @@ foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
 endforeach()
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
-    add_executable(bench_cufft cufft.cpp)
+    add_executable(bench_cufft bench_cufft.cpp)
     if(${SYCLFFT_CHECK_BENCHMARK})
         target_compile_definitions(bench_cufft PRIVATE SYCLFFT_CHECK_BENCHMARK)
     endif()
