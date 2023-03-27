@@ -33,11 +33,6 @@ enum class complex_storage {
     REAL_REAL
 };
 
-enum class packed_format {
-    COMPLEX,
-    CONJUGATE_EVEN
-};
-
 enum class placement {
     IN_PLACE,
     OUT_OF_PLACE

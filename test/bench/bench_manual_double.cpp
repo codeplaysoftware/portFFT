@@ -18,13 +18,11 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#include "register_manual_bench.hpp"
 
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
-
-#endif
+int main(int argc, char** argv) {
+  register_benchmarks<double>(argc, argv);
+  benchmark::Initialize(&argc, argv);
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+}

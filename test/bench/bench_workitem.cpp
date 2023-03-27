@@ -138,9 +138,8 @@ static void BM_dft(benchmark::State& state) {
        sycl::local_accessor<complex_type, 1> loc(N * sg_size, h);
        h.parallel_for(
            sycl::nd_range<1>({sg_size * n_sgs}, {sg_size}),
-           [=
-       ](sycl::nd_item<1> it,
-           sycl::kernel_handler kh) [[intel::reqd_sub_group_size(sg_size)]] {
+           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [
+               [intel::reqd_sub_group_size(sg_size)]] {
              int Nn = kh.get_specialization_constant<size_spec_const>();
              sycl::sub_group sg = it.get_sub_group();
              size_t local_id = sg.get_local_linear_id();

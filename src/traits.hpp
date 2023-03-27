@@ -18,13 +18,35 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#ifndef SYCL_FFT_TRAITS_HPP
+#define SYCL_FFT_TRAITS_HPP
 
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
 #include "enums.hpp"
-#include "traits.hpp"
+
+#include <complex>
+
+namespace sycl_fft {
+
+template <typename T>
+struct get_real {
+  using type = T;
+};
+
+template <typename T>
+struct get_real<std::complex<T>> {
+  using type = T;
+};
+
+template <typename T>
+struct get_domain {
+  static constexpr domain value = domain::REAL;
+};
+
+template <typename T>
+struct get_domain<std::complex<T>> {
+  static constexpr domain value = domain::COMPLEX;
+};
+
+}  // namespace sycl_fft
 
 #endif
