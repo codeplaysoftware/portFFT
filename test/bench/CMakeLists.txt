@@ -37,13 +37,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googlebenchmark)
 
 set(SYCL_FFT_BENCHMARKS
-    workitem.cpp
-    workitem_dispatcher.cpp
+    bench_workitem.cpp
+    bench_float.cpp
+    bench_manual_float.cpp
+    bench_manual_double.cpp
 )
 
 foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
     get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
-    set(BENCHMARK_TARGET "bench_${FILE_NAME}")
+    set(BENCHMARK_TARGET "${FILE_NAME}")
     add_executable(
         ${BENCHMARK_TARGET}
         ${BENCHMARK_FILE}

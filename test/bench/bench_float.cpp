@@ -18,13 +18,17 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#include <benchmark/benchmark.h>
 
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
+#include "launch_bench.hpp"
 
-#endif
+BENCHMARK(bench_dft_real_time<std::complex<float>>)
+    ->UseManualTime()
+    ->Args({16, 8 * 1024 * 1024})
+    ->Args({256, 512 * 1024});
+BENCHMARK(bench_dft_device_time<std::complex<float>>)
+    ->UseManualTime()
+    ->Args({16, 8 * 1024 * 1024})
+    ->Args({256, 512 * 1024});
+
+BENCHMARK_MAIN();

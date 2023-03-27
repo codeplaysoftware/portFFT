@@ -18,7 +18,7 @@ Build using DPC++ 2023.0.0 as:
 
 ```shell
 source /opt/intel/oneapi/compiler/2023.0.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.0.0/linux/bin/icpx -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.0.0/linux/bin/icx -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
+cmake -Bbuild -DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.0.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.0.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
@@ -43,11 +43,19 @@ Run the tests from the build folder with:
 ctest
 ```
 
-Run the benchmarks from the build folder with:
+Run pre-defined benchmarks from the build folder with:
 
 ```shell
-./bench/bench_workitem
+./test/bench/bench_float
 ```
+
+Run manual benchmarks from the build folder with for instance:
+
+```shell
+./test/bench/bench_manual_float d=cpx,n=5
+```
+
+Use the `--help` flag to print help message on the configuration syntax.
 
 ## Troubleshooting
 
