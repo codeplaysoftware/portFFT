@@ -23,6 +23,11 @@
 # *
 # **************************************************************************/
 
+if(${SYCLFFT_BUILD_TESTS} OR ${SYCLFFT_BUILD_BENCHMARKS})
+  set(THREADS_PREFER_PTHREAD_FLAG ON)
+  find_package(Threads REQUIRED)
+endif()
+
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()
   add_subdirectory(unit_test)
