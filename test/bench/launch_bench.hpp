@@ -28,7 +28,7 @@
 
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
-#include "utils.hpp"
+#include "bench_utils.hpp"
 
 template <typename ftype, sycl_fft::domain domain>
 void bench_dft_real_time(benchmark::State& state,
@@ -39,7 +39,6 @@ void bench_dft_real_time(benchmark::State& state,
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a(num_elements);
-  std::vector<complex_type> host_result(num_elements);
   populate_with_random(a);
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
@@ -60,14 +59,15 @@ void bench_dft_real_time(benchmark::State& state,
   event.wait();
 
 #ifdef SYCLFFT_CHECK_BENCHMARK
+  std::vector<complex_type> host_result(num_elements);
   for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a, host_result, {N}, i * N);
+    reference_forward_dft(a.data(), host_result.data(), {static_cast<int>(N)}, i * N);
   }
-  q.copy(a.data(),
-         desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+          a.data(),
          num_elements)
       .wait();
-  int correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-1);
+  bool correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
   assert(correct);
 #endif
 
@@ -129,13 +129,13 @@ void bench_dft_device_time(benchmark::State& state,
 #ifdef SYCLFFT_CHECK_BENCHMARK
   std::vector<complex_type> host_result(N * N_transforms);
   for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a, host_result, {N}, i * N);
+    reference_forward_dft(a.data(), host_result.data(), {static_cast<int>(N)}, i * N);
   }
-  q.copy(a.data(),
-         desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
+          a.data(),
          num_elements)
       .wait();
-  int correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
+  bool correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
   assert(correct);
 #endif
   for (auto _ : state) {

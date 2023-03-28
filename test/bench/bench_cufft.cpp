@@ -27,10 +27,9 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-#include <benchmark/benchmark.h>
-#include "cufft_utils.hpp"
-#include "utils.hpp"
+#include "bench_utils.hpp"
 #include "number_generators.hpp"
+#include <benchmark/benchmark.h>
 
 template <typename Backward, typename DeviceForward, typename DeviceBackward,
           cufftType plan>
@@ -201,10 +200,14 @@ static void cufft_oop_real_time(benchmark::State& state,
 
 #ifdef SYCLFFT_CHECK_BENCHMARK
   int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
-                                   std::multiplies<int>());
-  cudaMemcpy(cu_state.host_result.data(), out, fft_size * batch * sizeof(cu_state.rsize), cudaMemcpyDeviceToHost);
+                                 std::multiplies<int>());
+  cudaMemcpy(cu_state.host_result.data(), out,
+             fft_size * batch * sizeof(cu_state.rsize), cudaMemcpyDeviceToHost);
   for (std::size_t i = 0; i < batch; i++) {
-    cuda_reference_forward_dft(cu_state.forward, cu_state.result_vector, lengths, i * fft_size);
+    reference_forward_dft(
+        reinterpret_cast<std::complex<float>*>(cu_state.forward.data()),
+        reinterpret_cast<std::complex<float>*>(cu_state.result_vector.data()),
+        lengths, i * fft_size);
   }
   int correct = compare_arrays(
       reinterpret_cast<std::complex<long double>*>(
@@ -243,14 +246,17 @@ static void cufft_oop_device_time(benchmark::State& state,
   }
 #ifdef SYCLFFT_CHECK_BENCHMARK
   int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
-                                   std::multiplies<int>());
-  cudaMemcpy(cu_state.host_result.data(), out, fft_size * batch * sizeof(cu_state.rsize), cudaMemcpyDeviceToHost);
+                                 std::multiplies<int>());
+  cudaMemcpy(cu_state.host_result.data(), out,
+             fft_size * batch * sizeof(cu_state.rsize), cudaMemcpyDeviceToHost);
   for (std::size_t i = 0; i < batch; i++) {
-    cuda_reference_forward_dft(cu_state.forward, cu_state.result_vector, lengths, i * fft_size);
+    reference_forward_dft(
+        reinterpret_cast<std::complex<float>*>(cu_state.forward.data()),
+        reinterpret_cast<std::complex<float>*>(cu_state.result_vector.data()),
+        lengths, i * fft_size);
   }
   int correct = compare_arrays(
-      reinterpret_cast<std::complex<long double>*>(
-          cu_state.result_vector.data()),
+      reinterpret_cast<std::complex<float>*>(cu_state.result_vector.data()),
       reinterpret_cast<std::complex<long double>*>(cu_state.host_result.data()),
       batch * fft_size, 1e-2);
   assert(correct);
