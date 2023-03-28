@@ -210,9 +210,9 @@ static void cufft_oop_real_time(benchmark::State& state,
         lengths, i * fft_size);
   }
   int correct = compare_arrays(
-      reinterpret_cast<std::complex<long double>*>(
+      reinterpret_cast<std::complex<float>*>(
           cu_state.result_vector.data()),
-      reinterpret_cast<std::complex<long double>*>(cu_state.host_result.data()),
+      reinterpret_cast<std::complex<float>*>(cu_state.host_result.data()),
       batch * fft_size, 1e-2);
   assert(correct);
 #endif
@@ -257,7 +257,7 @@ static void cufft_oop_device_time(benchmark::State& state,
   }
   int correct = compare_arrays(
       reinterpret_cast<std::complex<float>*>(cu_state.result_vector.data()),
-      reinterpret_cast<std::complex<long double>*>(cu_state.host_result.data()),
+      reinterpret_cast<std::complex<float>*>(cu_state.host_result.data()),
       batch * fft_size, 1e-2);
   assert(correct);
 #endif

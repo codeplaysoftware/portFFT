@@ -29,7 +29,10 @@ bool compare_arrays(type1* array1, type2* array2, size_t num_elements,
                     double tol) {
   bool correct = true;
   for (size_t i = 0; i < num_elements; i++) {
-    correct = correct && (std::abs(array1[i].real() - array2[i].real()) <= tol);
+    correct =
+        correct &&
+        (std::abs(static_cast<std::complex<long double>>(array1[i]) -
+                  static_cast<std::complex<long double>>(array2[i])) <= tol);
   }
   return correct;
 }
