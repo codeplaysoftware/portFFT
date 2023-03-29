@@ -288,17 +288,17 @@ template <int M, typename T_ptr, typename T_twiddles_ptr>
 void sg_dft(int N, T_ptr inout, sycl::sub_group& sg,
             T_twiddles_ptr sg_twiddles) {
   using T = detail::remove_ptr<T_ptr>;
-  int n = sg.get_local_linear_id();
+  int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
-  detail::unrolled_loop<0, M, 1>([&](int k) __attribute__((always_inline)) {
-    T& real = inout[2 * k];
-    T& imag = inout[2 * k + 1];
+  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
+    T& real = inout[2 * idx_of_element_in_wi];
+    T& imag = inout[2 * idx_of_element_in_wi + 1];
 
     // TODO the function call should happen outside of the loop
     detail::cross_sg_dispatcher(N, real, imag, sg);
 
-    T twiddle_real = sg_twiddles[k * N + n];
-    T twiddle_imag = sg_twiddles[(k + M) * N + n];
+    T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
+    T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
     T tmp_real = real * twiddle_real - imag * twiddle_imag;
     imag = real * twiddle_imag + imag * twiddle_real;
     real = tmp_real;
