@@ -283,33 +283,6 @@ std::vector<T> vec(std::initializer_list<T> init) {
   BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
   BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
 
-// clang-format off
-// Forward, float, out-of-place only:
-// 1. small        complex 1D fits in workitem Cooley-Tukey 	   (batch=8*1024*1024 N=16)
-// 2. medium-small complex 1D fits in subgroup Cooley-Tukey 	   (batch=512*1024    N=256)
-// 3. medium-large complex 1D fits in local memory Cooley-Tukey  (batch=32*1024     N=4*1024)
-// 4. large        complex 1D fits in global memory Cooley-Tukey (batch=2*1024      N=64*1024)
-// 5. large        complex 1D fits in global memory Bluestein    (batch=2*1024      N=64*1024+1)
-// 6. large        complex 2D fits in global memory              (batch=8           N=4096x4096)
-// 7. small        real    1D fits in workitem Cooley-Tukey 	   (batch=8*1024*1024 N=32)
-// 8. medium-small real    1D fits in subgroup Cooley-Tukey 	   (batch=512*1024    N=512)
-// 9. medium-large real    1D fits in local memory Cooley-Tukey  (batch=32*1024     N=8*1024)
-// 10. large       real    1D fits in global memory Cooley-Tukey (batch=2*1024      N=128*1024)
-// 11. small       real    3D                                    (batch=1024        N=64x64x64)
-
-// Arguments: N, batch
-BENCH_COMPLEX_FLOAT(small_1d,        vec({16}),            8 * 1024 * 1024);
-BENCH_COMPLEX_FLOAT(medium_small_1d, vec({256}),           512 * 1024);
-BENCH_COMPLEX_FLOAT(medium_large_1d, vec({4 * 1024}),      32 * 1024);
-BENCH_COMPLEX_FLOAT(large_1d,        vec({64 * 1024}),     2 * 1024);
-BENCH_COMPLEX_FLOAT(large_1d_prime,  vec({64 * 1024 + 1}), 2 * 1024);
-BENCH_COMPLEX_FLOAT(large_2d,        vec({4096, 4096}),    8);
-
-BENCH_SINGLE_FLOAT(small_1d,        vec({32}),         8 * 1024 * 1024);
-BENCH_SINGLE_FLOAT(medium_small_1d, vec({512}),        512 * 1024);
-BENCH_SINGLE_FLOAT(medium_large_1d, vec({8 * 1024}),   32 * 1024);
-BENCH_SINGLE_FLOAT(large_1d,        vec({128 * 1024}), 2 * 1024);
-BENCH_SINGLE_FLOAT(small_3d,        vec({64, 64, 64}), 1024);
-// clang-format on
+#include "reference_dft_set.cxx"
 
 BENCHMARK_MAIN();
