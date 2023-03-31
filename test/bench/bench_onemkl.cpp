@@ -81,6 +81,12 @@ struct onemkl_state {
 
   inline sycl::event compute() { return compute_forward(desc, in_dev); }
 
+  /// The count of bytes for each FFT. Product of lengths.
+  inline std::size_t get_total_length() {
+    return std::accumulate(lengths.cbegin(), lengths.cend(), 1,
+                           std::multiplies<>());
+  }
+
   // Queue & allocations for test
   descriptor_t desc;
   sycl::queue sycl_queue;
@@ -90,12 +96,6 @@ struct onemkl_state {
   std::vector<std::int64_t> lengths;
   std::int64_t number_of_transforms;
   std::size_t num_elements;
-
-  /// The count of bytes for each FFT. Product of lengths.
-  inline std::size_t get_total_length() {
-    return std::accumulate(lengths.cbegin(), lengths.cend(), 1,
-                           std::multiplies<>());
-  }
 };
 
 /*** Benchmark a DFT on the host.
@@ -129,11 +129,10 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
-    using time_point_t =
-        std::chrono::time_point<std::chrono::high_resolution_clock>;
-    time_point_t start = std::chrono::high_resolution_clock::now();
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
     fft_state.compute().wait();
-    time_point_t end = std::chrono::high_resolution_clock::now();
+    auto end = clock::now();
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
             .count();
