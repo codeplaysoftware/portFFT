@@ -27,6 +27,8 @@ find_package(SYCL)
 
 # Disable build of unit-tests for googlebenchmark:
 set(BENCHMARK_ENABLE_TESTING OFF)
+# The icpx compiler causes errors when in release mode:
+set(BENCHMARK_ENABLE_WERROR OFF)
 # Fetch googlebenchmark:
 include(FetchContent)
 FetchContent_Declare(
