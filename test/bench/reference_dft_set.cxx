@@ -33,6 +33,13 @@
  * macros should do.
  **/
 
+#ifndef BENCH_COMPLEX_FLOAT
+#error Expected BENCH_COMPLEX_FLOAT macro to be defined
+#endif
+#ifndef BENCH_SINGLE_FLOAT
+#error Expected BENCH_SINGLE_FLOAT macro to be defined
+#endif
+
 #include <vector>
 
 // clang-format off
