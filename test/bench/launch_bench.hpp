@@ -30,6 +30,18 @@
 #include "ops_estimate.hpp"
 #include "bench_utils.hpp"
 
+template<typename T>
+void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl_fft::placement Placement){
+  std::vector<T> host_result(N * batch);
+  for (std::size_t i = 0; i < batch; i++) {
+    reference_forward_dft(input, host_result.data(), {static_cast<int>(N)}, i * N);
+  }
+  bool correct = compare_arrays(device_data, host_result.data(), batch * N, 1e-5);
+  if(!correct){
+    std::runtime_error("Verification Failed");
+  }
+}
+
 template <typename ftype, sycl_fft::domain domain>
 void bench_dft_real_time(benchmark::State& state,
                          sycl_fft::descriptor<ftype, domain> desc) {
@@ -58,17 +70,13 @@ void bench_dft_real_time(benchmark::State& state,
                    : committed.compute_forward(in_dev, out_dev);
   event.wait();
 
-#ifdef SYCLFFT_CHECK_BENCHMARK
-  std::vector<complex_type> host_result(num_elements);
-  for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a.data(), host_result.data(), {static_cast<int>(N)}, i * N);
-  }
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
-          a.data(),
+          host_buffer.data(),
          num_elements)
       .wait();
-  bool correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
-  assert(correct);
+  verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
 #endif
 
   for (auto _ : state) {
@@ -126,18 +134,15 @@ void bench_dft_device_time(benchmark::State& state,
 
   // warmup
   compute().wait();
-#ifdef SYCLFFT_CHECK_BENCHMARK
-  std::vector<complex_type> host_result(N * N_transforms);
-  for (std::size_t i = 0; i < N_transforms; i++) {
-    reference_forward_dft(a.data(), host_result.data(), {static_cast<int>(N)}, i * N);
-  }
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev,
-          a.data(),
+          host_buffer.data(),
          num_elements)
       .wait();
-  bool correct = compare_arrays(a.data(), host_result.data(), N_transforms * N, 1e-5);
-  assert(correct);
+  verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
 #endif
+
   for (auto _ : state) {
     sycl::event e = compute();
     e.wait();
