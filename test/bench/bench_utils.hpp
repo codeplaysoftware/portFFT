@@ -23,16 +23,16 @@
 
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
-template <typename type1, typename type2>
-bool compare_arrays(type1* array1, type2* array2, size_t num_elements,
+template <typename type>
+bool compare_arrays(type* array1, type* array2, size_t num_elements,
                     double tol) {
   bool correct = true;
   for (size_t i = 0; i < num_elements; i++) {
     correct =
         correct &&
-        (std::abs(static_cast<std::complex<long double>>(array1[i]) -
-                  static_cast<std::complex<long double>>(array2[i])) <= tol);
+        (std::abs(array1[i] - array2[i]) <= tol);
   }
   return correct;
 }
@@ -43,7 +43,7 @@ void reference_forward_dft(TypeIn* in, TypeOut* out,
                            size_t offset = 0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
-  dims.insert(dims.begin(), length.begin(), length.end());
+  std::copy(length.begin(), length.end(), dims.end());
 
   for (size_t ox = 0; ox < dims[0]; ox++) {
     for (size_t oy = 0; oy < dims[1]; oy++) {
