@@ -61,7 +61,7 @@ foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
 endforeach()
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
-    add_executable(bench_cufft cufft.cpp)
+    add_executable(bench_cufft bench_cufft.cpp)
     find_package(CUDAToolkit REQUIRED)
     target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark)
     target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
