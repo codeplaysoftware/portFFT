@@ -28,6 +28,7 @@
 
 // Intel's closed-source OneMKL library header.
 #include <oneapi/mkl/dfti.hpp>
+#include <oneapi/mkl/exceptions.hpp>
 
 #include <benchmark/benchmark.h>
 
@@ -51,7 +52,7 @@ std::vector<TOut> cast_vector_elements(const std::vector<TIn>& in_vec) {
 }
 
 /** A class to own DFT descriptor and benchmark USM allocations. Currently
- * inplace DFT only.
+ * out-of-place DFT only.
  * @tparam prec DFT precision
  * @tparam domain DFT domain
  */
@@ -75,11 +76,17 @@ struct onemkl_state {
     num_elements = get_total_length() * number_of_transforms;
     // Allocate memory.
     in_dev = sycl::malloc_device<complex_t>(num_elements, sycl_queue);
+    out_dev = sycl::malloc_device<complex_t>(num_elements, sycl_queue);
   }
 
-  ~onemkl_state() { sycl::free(in_dev, sycl_queue); }
+  ~onemkl_state() {
+    sycl::free(in_dev, sycl_queue);
+    sycl::free(out_dev, sycl_queue);
+  }
 
-  inline sycl::event compute() { return compute_forward(desc, in_dev); }
+  inline sycl::event compute() {
+    return compute_forward(desc, in_dev, out_dev);
+  }
 
   /// The count of bytes for each FFT. Product of lengths.
   inline std::size_t get_total_length() {
@@ -91,6 +98,7 @@ struct onemkl_state {
   descriptor_t desc;
   sycl::queue sycl_queue;
   complex_t* in_dev = nullptr;
+  complex_t* out_dev = nullptr;
 
   // Descriptor data to avoid having to use get_value.
   std::vector<std::int64_t> lengths;
@@ -120,11 +128,15 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
 
   q.copy(a.data(), fft_state.in_dev, fft_state.num_elements);
 
-  fft_state.desc.commit(q);
-  q.wait_and_throw();
-
-  // warmup
-  fft_state.compute().wait_and_throw();
+  try {
+    fft_state.desc.commit(q);
+    q.wait_and_throw();
+    // warmup
+    fft_state.compute().wait_and_throw();
+  } catch (sycl::_V1::runtime_error&) {
+    // Can't run this benchmark!
+    return;
+  }
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
@@ -164,19 +176,28 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
 
   q.copy(a.data(), fft_state.in_dev, fft_state.num_elements);
 
-  fft_state.desc.commit(q);
-  q.wait_and_throw();
-
-  // warmup
-  fft_state.compute().wait_and_throw();
+  try {
+    fft_state.desc.commit(q);
+    q.wait_and_throw();
+    // warmup
+    fft_state.compute().wait_and_throw();
+  } catch (sycl::_V1::runtime_error&) {
+    // Can't run this benchmark!
+    return;
+  }
 
   for (auto _ : state) {
-    sycl::event e = fft_state.compute();
-    e.wait();
-    int64_t start =
-        e.get_profiling_info<sycl::info::event_profiling::command_start>();
-    int64_t end =
-        e.get_profiling_info<sycl::info::event_profiling::command_end>();
+    int64_t start{0}, end{0};
+    try {
+      sycl::event e = fft_state.compute();
+      e.wait();
+      start =
+          e.get_profiling_info<sycl::info::event_profiling::command_start>();
+      end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
+    } catch (sycl::_V1::runtime_error&) {
+      // e may not have profiling info, so this benchmark is useless
+      start = end;
+    }
     double elapsed_seconds = (end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
