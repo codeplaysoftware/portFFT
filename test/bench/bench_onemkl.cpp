@@ -70,8 +70,8 @@ struct onemkl_state {
         lengths{lengths},
         number_of_transforms{number_of_transforms} {
     using config_param_t = oneapi::mkl::dft::config_param;
-    // For now, inplace only.
-    desc.set_value(config_param_t::PLACEMENT, DFTI_INPLACE);
+    // For now, out-of-place only.
+    desc.set_value(config_param_t::PLACEMENT, DFTI_NOT_INPLACE);
     desc.set_value(config_param_t::NUMBER_OF_TRANSFORMS, number_of_transforms);
     num_elements = get_total_length() * number_of_transforms;
     // Allocate memory.
