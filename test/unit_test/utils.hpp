@@ -21,12 +21,12 @@
 #ifndef SYCL_FFT_UNIT_TEST_UTILS_HPP
 #define SYCL_FFT_UNIT_TEST_UTILS_HPP
 
+#include "enums.hpp"
 #include <complex>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <optional>
 #include <random>
-#include "enums.hpp"
 #include <sycl/sycl.hpp>
 
 using namespace std::complex_literals;

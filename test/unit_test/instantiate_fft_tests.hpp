@@ -28,17 +28,14 @@ using param_tuple = std::tuple<int, int>;
 struct test_params {
   int batch;
   int length;
-  test_params(param_tuple params)
-      : batch(std::get<0>(params)), length(std::get<1>(params)) {}
+  test_params(param_tuple params) : batch(std::get<0>(params)), length(std::get<1>(params)) {}
 };
 
 void operator<<(std::ostream& stream, const test_params& params) {
-  stream << "Batch = " << params.batch << ", Length = " << params.length
-         << '\n';
+  stream << "Batch = " << params.batch << ", Length = " << params.length << '\n';
 }
 
-class FFTTest : public ::testing::TestWithParam<test_params> {
-};  // batch, length
+class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 
 // sizes that use workitem implementation
@@ -47,16 +44,13 @@ INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                                                                                      ::testing::Range(1, 14))));
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
-INSTANTIATE_TEST_SUITE_P(
-    workItemOrSubgroupTest, FFTTest,
-    ::testing::ConvertGenerator<param_tuple>(
-        ::testing::Combine(::testing::Values(1, 3, 555),
-                           ::testing::Values(16, 24, 27, 32, 48, 56))));
+INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
+                             ::testing::Values(1, 3, 555), ::testing::Values(16, 24, 27, 32, 48, 56))));
 // sizes that use subgroup implementation
-INSTANTIATE_TEST_SUITE_P(
-    SubgroupTest, FFTTest,
-    ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
-        ::testing::Values(1, 3, 555), ::testing::Values(64, 65, 84, 91, 104))));
+INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3, 555), ::testing::Values(64, 65, 84, 91, 104))));
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 555),

@@ -106,19 +106,16 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     for (std::size_t i = 0; i < params.batch; i++)
       reference_dft<dir>(host_input, host_reference_output, params.length, i * params.length, scaling_factor);
 
-    if constexpr (test_type == placement::OUT_OF_PLACE){
-      if constexpr (dir == direction::FORWARD){
+    if constexpr (test_type == placement::OUT_OF_PLACE) {
+      if constexpr (dir == direction::FORWARD) {
         commited_descriptor.compute_forward(input_buffer, output_buffer);
-      }
-      else{
+      } else {
         commited_descriptor.compute_backward(input_buffer, output_buffer);
       }
-    }
-    else{ 
-      if constexpr (dir == direction::FORWARD){
+    } else {
+      if constexpr (dir == direction::FORWARD) {
         commited_descriptor.compute_forward(input_buffer);
-      }
-    else{
+      } else {
         commited_descriptor.compute_backward(input_buffer);
       }
     }

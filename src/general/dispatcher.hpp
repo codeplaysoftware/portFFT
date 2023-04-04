@@ -66,14 +66,12 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
   std::size_t subgroup_size = sg.get_local_linear_range();
   std::size_t global_size = it.get_global_range(0);
 
-  for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size);
-       i += global_size) {
+  for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i += global_size) {
     bool working = i < n_transforms;
-    int n_working =
-        sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
+    int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local(input, loc, N_reals * n_working, subgroup_size,
-                 subgroup_local_id, input_distance * (i - subgroup_local_id));
+    global2local(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
+                 input_distance * (i - subgroup_local_id));
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals>(loc, priv, subgroup_local_id, N_reals);
@@ -85,8 +83,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
       private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
     }
     sycl::group_barrier(sg);
-    local2global(loc, output, N_reals * n_working, subgroup_size,
-                 subgroup_local_id, 0,
+    local2global(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
                  output_distance * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }

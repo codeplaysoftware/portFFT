@@ -21,10 +21,10 @@
 #ifndef SYCL_FFT_COMMON_WORKITEM_HPP
 #define SYCL_FFT_COMMON_WORKITEM_HPP
 
-#include <sycl/sycl.hpp>
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
 #include <enums.hpp>
+#include <sycl/sycl.hpp>
 
 namespace sycl_fft{
 
