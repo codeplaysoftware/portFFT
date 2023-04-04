@@ -136,6 +136,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
     fft_state.compute().wait_and_throw();
   } catch (...) {
     // Can't run this benchmark!
+    state.SkipWithError("Exception thrown: commit or warm-up failed.");
     return;
   }
 
@@ -184,7 +185,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
     // warmup
     fft_state.compute().wait_and_throw();
   } catch (...) {
-    // Can't run this benchmark!
+    state.SkipWithError("Exception thrown: commit or warm-up failed.");
     return;
   }
 
@@ -196,8 +197,10 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
       start =
           e.get_profiling_info<sycl::info::event_profiling::command_start>();
       end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-    } catch (sycl::_V1::runtime_error&) {
+    } catch (sycl::runtime_error& e) {
       // e may not have profiling info, so this benchmark is useless
+      auto errorMessage = std::string("Exception thrown ") + e.what();
+      state.SkipWithError(errorMessage.c_str());
       start = end;
     }
     double elapsed_seconds = (end - start) / 1e9;
