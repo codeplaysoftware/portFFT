@@ -50,19 +50,22 @@ void bench_dft_real_time(benchmark::State& state,
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a(num_elements);
-  populate_with_random(a);
+  std::vector<complex_type> a;
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =
       desc.placement == sycl_fft::placement::IN_PLACE
           ? nullptr
           : sycl::malloc_device<complex_type>(num_elements, q);
-  q.copy(a.data(), in_dev, num_elements);
-
+  memFill(in_dev, q, num_elements);
   auto committed = desc.commit(q);
 
   q.wait();
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  a.resize(num_elements);
+  q.copy(in_dev, a.data(), num_elements).wait();
+#endif
 
   // warmup
   auto event = desc.placement == sycl_fft::placement::IN_PLACE
@@ -111,8 +114,7 @@ void bench_dft_device_time(benchmark::State& state,
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a(num_elements);
-  populate_with_random(a);
+  std::vector<complex_type> a;
 
   sycl::queue q({sycl::property::queue::enable_profiling()});
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
@@ -120,18 +122,22 @@ void bench_dft_device_time(benchmark::State& state,
       desc.placement == sycl_fft::placement::IN_PLACE
           ? nullptr
           : sycl::malloc_device<complex_type>(num_elements, q);
-  q.copy(a.data(), in_dev, num_elements);
 
   auto committed = desc.commit(q);
 
   q.wait();
+  memFill(in_dev, q, num_elements);
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  a.resize(num_elements);
+  q.copy(in_dev, a.data(), num_elements).wait();
+#endif
 
   auto compute = [&]() {
     return desc.placement == sycl_fft::placement::IN_PLACE
                ? committed.compute_forward(in_dev)
                : committed.compute_forward(in_dev, out_dev);
   };
-
   // warmup
   compute().wait();
 #ifdef SYCLFFT_VERIFY_BENCHMARK

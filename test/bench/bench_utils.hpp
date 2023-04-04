@@ -24,6 +24,26 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <sycl/sycl.hpp>
+#include <cmath>
+
+template<typename T>
+class memFillKernel;
+
+template<typename T>
+void memFill(T* input, sycl::queue& queue, std::size_t num_elements){
+  constexpr int group_dim = 32;
+  auto global_range = static_cast<int>(ceil(static_cast<float>(num_elements) / group_dim) * group_dim);
+  queue.submit([&](sycl::handler& h){
+    h.parallel_for<memFillKernel<T>>(sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)), [=](sycl::nd_item<1> itm){
+      auto idx = itm.get_global_id(0);
+      if (idx  < num_elements){
+        input[idx] = static_cast<T>(std::complex<float>(idx, num_elements - idx));
+      }
+    });
+  });
+  queue.wait();
+}
 
 template <typename type>
 bool compare_arrays(type* array1, type* array2, size_t num_elements,
