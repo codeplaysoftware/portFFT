@@ -182,4 +182,4 @@ void bench_dft_device_time(benchmark::State& state) {
   bench_dft_device_time<ftype, domain>(state, desc);
 }
 
-#endif
+#endif //SYCL_FFT_BENCH_LAUNCH_BENCH_HPP

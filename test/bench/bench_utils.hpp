@@ -30,6 +30,14 @@
 template <typename T>
 class memFillKernel;
 
+/**
+ * @brief Kernel for populating device pointer with values
+ * 
+ * @tparam T Type of the input pointer
+ * @param input The Device pointer 
+ * @param queue sycl::queue associated with the device
+ * @param num_elements Batch times the number of elements in each FFT
+ */
 template <typename T>
 void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
   constexpr int group_dim = 32;
@@ -46,15 +54,36 @@ void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
   queue.wait();
 }
 
+/**
+ * @brief Compares two arrays 
+ * 
+ * @tparam type Type of the two arrays
+ * @param array1 pointer of type to the first array
+ * @param array2 pointer of type to the second array
+ * @param num_elements total number of elements to compare
+ * @param absTol absolute tolerance value during to pass the comparision
+ * @return true 
+ * @return false 
+ */
 template <typename type>
-bool compare_arrays(type* array1, type* array2, size_t num_elements, double tol) {
+bool compare_arrays(type* array1, type* array2, size_t num_elements, double absTol) {
   bool correct = true;
   for (size_t i = 0; i < num_elements; i++) {
-    correct = correct && (std::abs(array1[i] - array2[i]) <= tol);
+    correct = correct && (std::abs(array1[i] - array2[i]) <= absTol);
   }
   return correct;
 }
 
+/**
+ * @brief Multidimensional Refernce DFT implementation
+ * 
+ * @tparam TypeIn Type of the input
+ * @tparam TypeOut Type of the output
+ * @param in Pointer of TypeIn pointing to the input
+ * @param out Pointer of TypeOut pointing to the output
+ * @param length Vector containing the length in every dimension
+ * @param offset memory offset for in and out pointers
+ */
 template <typename TypeIn, typename TypeOut>
 void reference_forward_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t offset = 0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
@@ -84,4 +113,4 @@ void reference_forward_dft(TypeIn* in, TypeOut* out, std::vector<int> length, si
   }
 }
 
-#endif
+#endif //SYCLFFT_BENCH_UTILS_HPP
