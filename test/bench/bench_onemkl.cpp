@@ -239,13 +239,13 @@ void device_time_float(Args&&... args) {
       std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                           \
-  BENCHMARK_CAPTURE(real_time_complex_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(device_time_complex_float, __VA_ARGS__)
+#define BENCH_COMPLEX_FLOAT(...)                                            \
+  BENCHMARK_CAPTURE(real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                    \
-  BENCHMARK_CAPTURE(real_time_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(device_time_float, __VA_ARGS__)
+#define BENCH_SINGLE_FLOAT(...)                                     \
+  BENCHMARK_CAPTURE(real_time_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 
