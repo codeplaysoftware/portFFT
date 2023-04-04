@@ -62,8 +62,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
         int n_working =
             sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-        global2local(input, loc, N_reals * n_working, subgroup_size,
-                     subgroup_local_id,
+        global2local(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
                      input_distance * (i - subgroup_local_id));
         sycl::group_barrier(sg);
         if(working){
@@ -72,8 +71,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
           private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
         }
         sycl::group_barrier(sg);
-        local2global(loc, output, N_reals * n_working, subgroup_size,
-                     subgroup_local_id, 0,
+        local2global(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
                      output_distance * (i - subgroup_local_id));
         sycl::group_barrier(sg);
     }
@@ -126,21 +124,17 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
     bool working = subgroup_local_id < factor_sg;
     int n_working = factor_sg;
 
-    global2local(input, loc, N_reals, subgroup_size, subgroup_local_id,
-                 input_distance * i, subgroup_id * N_reals);
+    global2local(input, loc, N_reals, subgroup_size, subgroup_local_id, input_distance * i, subgroup_id * N_reals);
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals_per_wi>(loc, priv, subgroup_local_id,
-                                    N_reals_per_wi, subgroup_id * N_reals);
+      local2private<N_reals_per_wi>(loc, priv, subgroup_local_id, N_reals_per_wi, subgroup_id * N_reals);
     }
     sg_dft<factor_wi>(factor_sg, priv, sg, twiddles);
     if (working) {
-      private2local_transposed<N_reals_per_wi>(
-          priv, loc, subgroup_local_id, n_working, subgroup_id * N_reals);
+      private2local_transposed<N_reals_per_wi>(priv, loc, subgroup_local_id, n_working, subgroup_id * N_reals);
     }
     sycl::group_barrier(sg);
-    local2global(loc, output, N_reals, subgroup_size, subgroup_local_id,
-                 subgroup_id * N_reals, output_distance * i);
+    local2global(loc, output, N_reals, subgroup_size, subgroup_local_id, subgroup_id * N_reals, output_distance * i);
     sycl::group_barrier(sg);
   }
 }
