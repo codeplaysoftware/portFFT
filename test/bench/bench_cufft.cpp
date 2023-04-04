@@ -23,12 +23,13 @@
 #include <optional>
 #include <type_traits>
 #include <vector>
+#include <numeric>
 
 #include <cuda_runtime.h>
 #include <cufft.h>
 
 #include "bench_utils.hpp"
-#include "number_generators.hpp"
+#include "cufft_utils.hpp"
 #include <benchmark/benchmark.h>
 
 template<cufftType T>
@@ -135,8 +136,6 @@ struct cufft_state {
   std::unique_ptr<typename type_info::device_backward_type,
                   cuda_freer<typename type_info::device_backward_type>>
       out;
-  
-  std::vector<forward_type> forward;
 
   cufft_state(benchmark::State& state, std::vector<int>& lengths, int batch)
       : test_state(state),
@@ -164,7 +163,6 @@ struct cufft_state {
     }
 
     const auto elements = static_cast<std::size_t>(fft_size * batch);
-    forward.resize(elements);
     typename type_info::device_forward_type* in_tmp;
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
       in.reset(in_tmp);
@@ -179,14 +177,7 @@ struct cufft_state {
     } else {
       test_state.SkipWithError("out allocation failed");
     }
-    populate_with_random(forward);
-
-    if (cudaMemcpyAsync(
-            in.get(), forward.data(),
-            sizeof(typename decltype(forward)::value_type) * forward.size(),
-            cudaMemcpyHostToDevice, nullptr) != cudaSuccess) {
-      test_state.SkipWithError("memcpy failed");
-    }
+    populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()), 2 * elements);
   }
 };
 
@@ -229,12 +220,14 @@ static void cufft_oop_real_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
                                  std::multiplies<int>());
-  using output_type = std::remove_pointer<decltype(cu_state.out)>::value;
   using info = typename decltype(cu_state)::type_info;
-  std::vector<output_type> host_buffer(fft_size * batch);
-  cudaMemcpy(cu_state.host_result.data(), out,
-             fft_size * batch * sizeof(output_type), cudaMemcpyDeviceToHost);
-verify_dft<info::plan_type>(cu_state.forward.data(), host_buffer.data(), batch, lengths);
+  std::vector<info::device_forward_type> host_input(batch * fft_size);
+  std::vector<info::device_backward_type> host_output(batch * fft_size);
+  cudaMemcpy(host_output.data(), out,
+             fft_size * batch * sizeof(info::device_backward_type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), in,
+             fft_size * batch * sizeof(info::device_forward_type), cudaMemcpyDeviceToHost);
+verify_dft<info::plan_type>(host_input.data(), host_output.data(), batch, lengths);
 #endif
 
   // benchmark
@@ -267,12 +260,14 @@ static void cufft_oop_device_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
                                  std::multiplies<int>());
-  using output_type = std::remove_pointer<decltype(cu_state.out)>::value;
   using info = typename decltype(cu_state)::type_info;
-  std::vector<output_type> host_buffer(fft_size * batch);
-  cudaMemcpy(cu_state.host_result.data(), out,
-             fft_size * batch * sizeof(output_type), cudaMemcpyDeviceToHost);
-verify_dft<info::plan_type>(cu_state.forward.data(), host_buffer.data(), batch, lengths);
+  std::vector<info::device_forward_type> host_input(batch * fft_size);
+  std::vector<info::device_backward_type> host_output(batch * fft_size);
+  cudaMemcpy(host_output.data(), out,
+             fft_size * batch * sizeof(info::device_backward_type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), in,
+             fft_size * batch * sizeof(info::device_forward_type), cudaMemcpyDeviceToHost);
+verify_dft<info::plan_type>(host_input.data(), host_output.data(), batch, lengths);
 #endif
 
   cudaEvent_t before;
