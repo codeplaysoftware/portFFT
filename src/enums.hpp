@@ -21,24 +21,15 @@
 #ifndef SYCL_FFT_ENUMS_HPP
 #define SYCL_FFT_ENUMS_HPP
 
-namespace sycl_fft{
+namespace sycl_fft {
 
-enum class domain {
-   REAL,
-   COMPLEX
-};
+enum class domain { REAL, COMPLEX };
 
-enum class complex_storage {
-    COMPLEX,
-    REAL_REAL
-};
+enum class complex_storage { COMPLEX, REAL_REAL };
 
-enum class placement {
-    IN_PLACE,
-    OUT_OF_PLACE
-};
+enum class placement { IN_PLACE, OUT_OF_PLACE };
 
 enum class direction { FORWARD, BACKWARD };
-}
+}  // namespace sycl_fft
 
 #endif

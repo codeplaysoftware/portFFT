@@ -24,13 +24,11 @@
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
-namespace sycl_fft::detail{
+namespace sycl_fft::detail {
 
-
-
-template<typename T>
-struct remove_multi_ptr{
-    using type = T;
+template <typename T>
+struct remove_multi_ptr {
+  using type = T;
 };
 
 #ifdef SYCL_IMPLEMENTATION_ONEAPI
@@ -38,28 +36,28 @@ struct remove_multi_ptr{
 // not work in all cases.
 #if __LIBSYCL_MAJOR_VERSION >= 6 & __LIBSYCL_MINOR_VERSION >= 1
 #define SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-#endif // __LIBSYCL version
-#endif // SYCL_IMPLEMENTATION_ONEAPI
+#endif  // __LIBSYCL version
+#endif  // SYCL_IMPLEMENTATION_ONEAPI
 #ifdef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-template<typename T, sycl::access::address_space Space,
-          sycl::access::decorated DecorateAddress>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space, DecorateAddress>>{
-    using type = T;
+template <typename T, sycl::access::address_space Space, sycl::access::decorated DecorateAddress>
+struct remove_multi_ptr<sycl::multi_ptr<T, Space, DecorateAddress>> {
+  using type = T;
 };
 #else
-template<typename T, sycl::access::address_space Space>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space>>{
-    using type = T;
+template <typename T, sycl::access::address_space Space>
+struct remove_multi_ptr<sycl::multi_ptr<T, Space>> {
+  using type = T;
 };
-#endif // SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
+#endif  // SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
 #undef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
 
 /**
  * Removes pointer or sycl::multi_ptr.
  * @tparam T type to remove pointer from
-*/
-template<typename T>
-using remove_ptr = std::conditional_t<std::is_pointer_v<T>, std::remove_pointer_t<T>, typename remove_multi_ptr<T>::type>;
+ */
+template <typename T>
+using remove_ptr =
+    std::conditional_t<std::is_pointer_v<T>, std::remove_pointer_t<T>, typename remove_multi_ptr<T>::type>;
 
 /**
  * Implements a loop that will be fully unrolled.
@@ -67,14 +65,15 @@ using remove_ptr = std::conditional_t<std::is_pointer_v<T>, std::remove_pointer_
  * @tparam Stop loop counter value before which the loop terminates
  * @tparam Step Increment of the loop counter
  * @tparam Functor type of the callable
- * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have __attribute__((always_inline)).
-*/
-template<int Start, int Stop, int Step, typename Functor>
-void __attribute__((always_inline)) unrolled_loop(Functor&& funct){
-    if constexpr (Start<Stop){
-        funct(Start);
-        unrolled_loop<Start+Step, Stop, Step>(funct);
-    }
+ * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
+ * __attribute__((always_inline)).
+ */
+template <int Start, int Stop, int Step, typename Functor>
+void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+  if constexpr (Start < Stop) {
+    funct(Start);
+    unrolled_loop<Start + Step, Stop, Step>(funct);
+  }
 }
 
 /**
@@ -83,10 +82,10 @@ void __attribute__((always_inline)) unrolled_loop(Functor&& funct){
  * @param dividend divident
  * @param divisor divisor
  * @return rounded-up quotient
-*/
-template<typename T>
-inline T divideCeil(T dividend, T divisor){
-    return (dividend + divisor - 1) / divisor;
+ */
+template <typename T>
+inline T divideCeil(T dividend, T divisor) {
+  return (dividend + divisor - 1) / divisor;
 }
 
 /**
@@ -95,12 +94,12 @@ inline T divideCeil(T dividend, T divisor){
  * @param value value to round up
  * @param factor factor that divides the result
  * @return rounded-up value
-*/
-template<typename T>
-inline T roundUpToMultiple(T value, T factor){
-    return divideCeil(value, factor) * factor;
+ */
+template <typename T>
+inline T roundUpToMultiple(T value, T factor) {
+  return divideCeil(value, factor) * factor;
 }
 
-};
+};  // namespace sycl_fft::detail
 
 #endif

@@ -27,7 +27,7 @@
 #define SYCL_FFT_N_LOCAL_BANKS 32
 #endif
 
-namespace sycl_fft{
+namespace sycl_fft {
 
 namespace detail{
 
@@ -210,15 +210,13 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local,
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
-inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local,
-                                     std::size_t local_id,
-                                     std::size_t workers_in_group,
-                                     std::size_t local_offset = 0) {
+inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id,
+                                     std::size_t workers_in_group, std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i += 2) {
     local[local_offset + local_id * 2 + i * workers_in_group] = priv[i];
     local[local_offset + local_id * 2 + i * workers_in_group + 1] = priv[i + 1];
   }
 }
-};
+};  // namespace sycl_fft
 
 #endif

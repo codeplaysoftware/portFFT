@@ -94,8 +94,7 @@ void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::s
  * @param sg subgroup
  */
 template <int N, int M, int stride, typename T>
-void __attribute__((always_inline))
-cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
+void __attribute__((always_inline)) cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
