@@ -59,6 +59,7 @@ foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
         PRIVATE
         sycl_fft
         benchmark::benchmark
+        Threads::Threads
     )
     target_include_directories(${BENCHMARK_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endforeach()

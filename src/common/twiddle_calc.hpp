@@ -23,7 +23,6 @@
 
 #include <cmath>
 #include <complex>
-
 namespace sycl_fft {
 namespace detail {
 

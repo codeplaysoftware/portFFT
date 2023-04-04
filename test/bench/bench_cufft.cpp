@@ -319,11 +319,11 @@ std::vector<T> vec(std::initializer_list<T> init) {
 
 #define BENCH_COMPLEX_FLOAT(...)                                     \
   BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)
+  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime()
 
 #define BENCH_SINGLE_FLOAT(...)                              \
   BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)
+  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
 
 // clang-format off
 // Forward, float, out-of-place only:
