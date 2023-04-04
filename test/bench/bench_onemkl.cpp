@@ -38,9 +38,7 @@
 
 /// Get the floating-point type from the MKL precision enum.
 template <oneapi::mkl::dft::precision prec>
-using get_float_t =
-    std::conditional_t<prec == oneapi::mkl::dft::precision::SINGLE, float,
-                       double>;
+using get_float_t = std::conditional_t<prec == oneapi::mkl::dft::precision::SINGLE, float, double>;
 
 /// Copy an input vector to an output vector, with element-wise casts.
 template <typename TOut, typename TIn>
@@ -64,12 +62,8 @@ struct onemkl_state {
   using complex_t = std::complex<float_t>;
 
   // Constructor. Allocates required memory.
-  onemkl_state(sycl::queue sycl_queue, std::vector<std::int64_t> lengths,
-               std::int64_t number_of_transforms)
-      : desc(lengths),
-        sycl_queue(sycl_queue),
-        lengths{lengths},
-        number_of_transforms{number_of_transforms} {
+  onemkl_state(sycl::queue sycl_queue, std::vector<std::int64_t> lengths, std::int64_t number_of_transforms)
+      : desc(lengths), sycl_queue(sycl_queue), lengths{lengths}, number_of_transforms{number_of_transforms} {
     using config_param_t = oneapi::mkl::dft::config_param;
     // For now, out-of-place only.
     desc.set_value(config_param_t::PLACEMENT, DFTI_NOT_INPLACE);
@@ -85,14 +79,11 @@ struct onemkl_state {
     sycl::free(out_dev, sycl_queue);
   }
 
-  inline sycl::event compute() {
-    return compute_forward(desc, in_dev, out_dev);
-  }
+  inline sycl::event compute() { return compute_forward(desc, in_dev, out_dev); }
 
   /// The count of elements for each FFT. Product of lengths.
   inline std::size_t get_total_length() {
-    return std::accumulate(lengths.cbegin(), lengths.cend(), 1,
-                           std::multiplies<std::int64_t>());
+    return std::accumulate(lengths.cbegin(), lengths.cend(), 1, std::multiplies<std::int64_t>());
   }
 
   // Queue & allocations for test
@@ -115,8 +106,7 @@ struct onemkl_state {
  * @param number_of_transforms The DFT batch size.
  */
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
-                         int number_of_transforms) {
+void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
   using float_type = get_float_t<prec>;
   using complex_type = std::complex<float_type>;
   sycl::queue q;
@@ -127,8 +117,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
   std::vector<complex_type> host_data(fft_state.num_elements);
   populate_with_random(host_data);
 
-  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements)
-      .wait_and_throw();
+  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
 
   try {
     fft_state.desc.commit(q);
@@ -148,9 +137,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
     auto start = clock::now();
     fft_state.compute().wait();
     auto end = clock::now();
-    double elapsed_seconds =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
-            .count();
+    double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
@@ -164,8 +151,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
  * @param number_of_transforms The DFT batch size.
  */
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
-                           int number_of_transforms) {
+void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
   using float_type = get_float_t<prec>;
   using complex_type = std::complex<float_type>;
   // Get key information out of the descriptor.
@@ -177,8 +163,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
   std::vector<complex_type> host_data(fft_state.num_elements);
   populate_with_random(host_data);
 
-  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements)
-      .wait_and_throw();
+  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
 
   try {
     fft_state.desc.commit(q);
@@ -195,8 +180,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
     try {
       sycl::event e = fft_state.compute();
       e.wait();
-      start =
-          e.get_profiling_info<sycl::info::event_profiling::command_start>();
+      start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
       end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
     } catch (sycl::runtime_error& e) {
       // e may not have profiling info, so this benchmark is useless
@@ -213,29 +197,24 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
 // Helper functions for GBench
 template <typename... Args>
 void real_time_complex_float(Args&&... args) {
-  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE,
-                      oneapi::mkl::dft::domain::COMPLEX>(
+  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
       std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void real_time_float(Args&&... args) {
-  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE,
-                      oneapi::mkl::dft::domain::REAL>(
-      std::forward<Args>(args)...);
+  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void device_time_complex_float(Args&&... args) {
-  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE,
-                        oneapi::mkl::dft::domain::COMPLEX>(
+  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
       std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void device_time_float(Args&&... args) {
-  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE,
-                        oneapi::mkl::dft::domain::REAL>(
+  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
       std::forward<Args>(args)...);
 }
 

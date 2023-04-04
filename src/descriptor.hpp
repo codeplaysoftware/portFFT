@@ -33,24 +33,24 @@
 #include <numeric>
 #include <vector>
 
-namespace sycl_fft{
+namespace sycl_fft {
 
-namespace detail{
+namespace detail {
 
 // kernel names
 template <typename Scalar, domain Domain, direction dir>
 class buffer_kernel;
 template <typename Scalar, domain Domain, direction dir>
 class usm_kernel;
-}
+}  // namespace detail
 
-//forward declaration
-template<typename Scalar, domain Domain>
+// forward declaration
+template <typename Scalar, domain Domain>
 struct descriptor;
 
 /**
  * A commited descriptor that contains everything that is needed to run FFT.
- * 
+ *
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
  */
@@ -316,55 +316,51 @@ class committed_descriptor {
 
 /**
  * A descriptor containing FFT problem parameters.
- * 
+ *
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
  */
-template<typename Scalar, domain Domain>
-struct descriptor{
-    std::vector<std::size_t> lengths;
-    Scalar forward_scale = 1;
-    Scalar backward_scale = 1;
-    std::size_t number_of_transforms = 1;
-    complex_storage complex_storage = complex_storage::COMPLEX;
-    placement placement = placement::OUT_OF_PLACE;
-    std::vector<std::size_t> forward_strides;
-    std::vector<std::size_t> backward_strides;
-    std::size_t forward_distance = 1;
-    std::size_t backward_distance = 1;
-    //TODO: add TRANSPOSE, WORKSPACE and ORDERING if we determine they make sense
-    
-    /**
-     * Construct a new descriptor object.
-     * 
-     * @param lengths size of the FFT transform
-     */
-    explicit descriptor(std::vector<std::size_t> lengths) : lengths(lengths), forward_strides{1}, 
-                                                                                backward_strides{1}{
-        //TODO: properly set default values for forward_strides, backward_strides, forward_distance, backward_distance
-        forward_distance = lengths[0];
-        backward_distance = lengths[0];
-        for (auto l : lengths) {
-          backward_scale *= 1.0 / l;
-        }
-    }
+template <typename Scalar, domain Domain>
+struct descriptor {
+  std::vector<std::size_t> lengths;
+  Scalar forward_scale = 1;
+  Scalar backward_scale = 1;
+  std::size_t number_of_transforms = 1;
+  complex_storage complex_storage = complex_storage::COMPLEX;
+  placement placement = placement::OUT_OF_PLACE;
+  std::vector<std::size_t> forward_strides;
+  std::vector<std::size_t> backward_strides;
+  std::size_t forward_distance = 1;
+  std::size_t backward_distance = 1;
+  // TODO: add TRANSPOSE, WORKSPACE and ORDERING if we determine they make sense
 
-    /**
-     * Commits the descriptor, precalculating what can be done in advance.
-     * 
-     * @param queue queue to use for computations
-     * @return commited_descriptor<Scalar, Domain> 
-     */
-    committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) {
-      return {*this, queue};
+  /**
+   * Construct a new descriptor object.
+   *
+   * @param lengths size of the FFT transform
+   */
+  explicit descriptor(std::vector<std::size_t> lengths) : lengths(lengths), forward_strides{1}, backward_strides{1} {
+    // TODO: properly set default values for forward_strides, backward_strides, forward_distance, backward_distance
+    forward_distance = lengths[0];
+    backward_distance = lengths[0];
+    for (auto l : lengths) {
+      backward_scale *= 1.0 / l;
     }
+  }
 
-    std::size_t get_total_length() const noexcept {
-      return std::accumulate(lengths.begin(), lengths.end(), 1,
-                             std::multiplies<std::size_t>());
-    }
+  /**
+   * Commits the descriptor, precalculating what can be done in advance.
+   *
+   * @param queue queue to use for computations
+   * @return commited_descriptor<Scalar, Domain>
+   */
+  committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
+
+  std::size_t get_total_length() const noexcept {
+    return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<std::size_t>());
+  }
 };
 
-}
+}  // namespace sycl_fft
 
 #endif

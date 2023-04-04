@@ -26,13 +26,13 @@
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
-namespace sycl_fft{
+namespace sycl_fft {
 
-//forward declaration
+// forward declaration
 template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
 inline void wi_dft(T_ptr in, T_ptr out);
 
-namespace detail{
+namespace detail {
 
 /**
  * Calculates DFT using naive algorithm. Can work in or out of place.
@@ -72,7 +72,7 @@ inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
   });
 }
 
-//mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
+// mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
 // TODO explore if this tmp can be reduced/eliminated ^^^^^^
 /**
  * Calculates DFT using Cooley-Tukey FFT algorithm. Can work in or out of place. Size of the problem is N*M
@@ -166,25 +166,20 @@ constexpr bool fits_in_wi(int N) {
 template <typename Scalar>
 struct fits_in_wi_device_struct {
   static constexpr bool buf[56] = {
-      fits_in_wi<Scalar>(1),  fits_in_wi<Scalar>(2),  fits_in_wi<Scalar>(3),
-      fits_in_wi<Scalar>(4),  fits_in_wi<Scalar>(5),  fits_in_wi<Scalar>(6),
-      fits_in_wi<Scalar>(7),  fits_in_wi<Scalar>(8),  fits_in_wi<Scalar>(9),
-      fits_in_wi<Scalar>(10), fits_in_wi<Scalar>(11), fits_in_wi<Scalar>(12),
-      fits_in_wi<Scalar>(13), fits_in_wi<Scalar>(14), fits_in_wi<Scalar>(15),
-      fits_in_wi<Scalar>(16), fits_in_wi<Scalar>(17), fits_in_wi<Scalar>(18),
-      fits_in_wi<Scalar>(19), fits_in_wi<Scalar>(20), fits_in_wi<Scalar>(21),
-      fits_in_wi<Scalar>(22), fits_in_wi<Scalar>(23), fits_in_wi<Scalar>(24),
-      fits_in_wi<Scalar>(25), fits_in_wi<Scalar>(26), fits_in_wi<Scalar>(27),
-      fits_in_wi<Scalar>(28), fits_in_wi<Scalar>(29), fits_in_wi<Scalar>(30),
-      fits_in_wi<Scalar>(31), fits_in_wi<Scalar>(32), fits_in_wi<Scalar>(33),
-      fits_in_wi<Scalar>(34), fits_in_wi<Scalar>(35), fits_in_wi<Scalar>(36),
-      fits_in_wi<Scalar>(37), fits_in_wi<Scalar>(38), fits_in_wi<Scalar>(39),
-      fits_in_wi<Scalar>(40), fits_in_wi<Scalar>(41), fits_in_wi<Scalar>(42),
-      fits_in_wi<Scalar>(43), fits_in_wi<Scalar>(44), fits_in_wi<Scalar>(45),
-      fits_in_wi<Scalar>(46), fits_in_wi<Scalar>(47), fits_in_wi<Scalar>(48),
-      fits_in_wi<Scalar>(49), fits_in_wi<Scalar>(50), fits_in_wi<Scalar>(51),
-      fits_in_wi<Scalar>(52), fits_in_wi<Scalar>(53), fits_in_wi<Scalar>(54),
-      fits_in_wi<Scalar>(55), fits_in_wi<Scalar>(56),
+      fits_in_wi<Scalar>(1),  fits_in_wi<Scalar>(2),  fits_in_wi<Scalar>(3),  fits_in_wi<Scalar>(4),
+      fits_in_wi<Scalar>(5),  fits_in_wi<Scalar>(6),  fits_in_wi<Scalar>(7),  fits_in_wi<Scalar>(8),
+      fits_in_wi<Scalar>(9),  fits_in_wi<Scalar>(10), fits_in_wi<Scalar>(11), fits_in_wi<Scalar>(12),
+      fits_in_wi<Scalar>(13), fits_in_wi<Scalar>(14), fits_in_wi<Scalar>(15), fits_in_wi<Scalar>(16),
+      fits_in_wi<Scalar>(17), fits_in_wi<Scalar>(18), fits_in_wi<Scalar>(19), fits_in_wi<Scalar>(20),
+      fits_in_wi<Scalar>(21), fits_in_wi<Scalar>(22), fits_in_wi<Scalar>(23), fits_in_wi<Scalar>(24),
+      fits_in_wi<Scalar>(25), fits_in_wi<Scalar>(26), fits_in_wi<Scalar>(27), fits_in_wi<Scalar>(28),
+      fits_in_wi<Scalar>(29), fits_in_wi<Scalar>(30), fits_in_wi<Scalar>(31), fits_in_wi<Scalar>(32),
+      fits_in_wi<Scalar>(33), fits_in_wi<Scalar>(34), fits_in_wi<Scalar>(35), fits_in_wi<Scalar>(36),
+      fits_in_wi<Scalar>(37), fits_in_wi<Scalar>(38), fits_in_wi<Scalar>(39), fits_in_wi<Scalar>(40),
+      fits_in_wi<Scalar>(41), fits_in_wi<Scalar>(42), fits_in_wi<Scalar>(43), fits_in_wi<Scalar>(44),
+      fits_in_wi<Scalar>(45), fits_in_wi<Scalar>(46), fits_in_wi<Scalar>(47), fits_in_wi<Scalar>(48),
+      fits_in_wi<Scalar>(49), fits_in_wi<Scalar>(50), fits_in_wi<Scalar>(51), fits_in_wi<Scalar>(52),
+      fits_in_wi<Scalar>(53), fits_in_wi<Scalar>(54), fits_in_wi<Scalar>(55), fits_in_wi<Scalar>(56),
   };
 };
 
@@ -205,7 +200,7 @@ bool fits_in_wi_device(int fft_size) {
   return fits_in_wi_device_struct<Scalar>::buf[fft_size - 1];
 }
 
-}; //namespace detail
+};  // namespace detail
 
 /**
  * Calculates DFT using FFT algorithm. Can work in or out of place.
@@ -230,13 +225,13 @@ inline __attribute__((always_inline)) void wi_dft(T_ptr in, T_ptr out) {
     out[0 * stride_out + 0] = a;
     out[0 * stride_out + 1] = b;
     out[2 * stride_out + 0] = c;
-    } else if constexpr(F0 >= 2 && N/F0 >= 2){
-      detail::cooley_tukey_dft<dir, N / F0, F0, stride_in, stride_out>(in, out);
-    } else {
-      detail::naive_dft<dir, N, stride_in, stride_out, T_ptr>(in, out);
-    }
+  } else if constexpr (F0 >= 2 && N / F0 >= 2) {
+    detail::cooley_tukey_dft<dir, N / F0, F0, stride_in, stride_out>(in, out);
+  } else {
+    detail::naive_dft<dir, N, stride_in, stride_out, T_ptr>(in, out);
+  }
 }
 
-}; //namespace sycl_fft
+};  // namespace sycl_fft
 
 #endif

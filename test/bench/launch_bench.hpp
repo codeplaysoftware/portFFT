@@ -45,8 +45,7 @@ void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl
 }
 
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_real_time(benchmark::State& state,
-                         sycl_fft::descriptor<ftype, domain> desc) {
+void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
@@ -70,9 +69,8 @@ void bench_dft_real_time(benchmark::State& state,
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   // warmup
-  auto event = desc.placement == sycl_fft::placement::IN_PLACE
-                   ? committed.compute_forward(in_dev)
-                   : committed.compute_forward(in_dev, out_dev);
+  auto event = desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                               : committed.compute_forward(in_dev, out_dev);
   event.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
@@ -95,9 +93,7 @@ void bench_dft_real_time(benchmark::State& state,
       committed.compute_forward(in_dev, out_dev).wait();
       end = std::chrono::high_resolution_clock::now();
     }
-    double elapsed_seconds =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
-            .count();
+    double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
@@ -106,8 +102,7 @@ void bench_dft_real_time(benchmark::State& state,
 }
 
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_device_time(benchmark::State& state,
-                           sycl_fft::descriptor<ftype, domain> desc) {
+void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
@@ -133,9 +128,8 @@ void bench_dft_device_time(benchmark::State& state,
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   auto compute = [&]() {
-    return desc.placement == sycl_fft::placement::IN_PLACE
-               ? committed.compute_forward(in_dev)
-               : committed.compute_forward(in_dev, out_dev);
+    return desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                           : committed.compute_forward(in_dev, out_dev);
   };
   // warmup
   compute().wait();
@@ -148,10 +142,8 @@ void bench_dft_device_time(benchmark::State& state,
   for (auto _ : state) {
     sycl::event e = compute();
     e.wait();
-    int64_t start =
-        e.get_profiling_info<sycl::info::event_profiling::command_start>();
-    int64_t end =
-        e.get_profiling_info<sycl::info::event_profiling::command_end>();
+    int64_t start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
+    int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
     double elapsed_seconds = (end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);

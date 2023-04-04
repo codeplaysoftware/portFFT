@@ -56,7 +56,7 @@ TEST(transfers, unpadded) {
         [=](sycl::nd_item<1> it) {
           size_t local_id = it.get_sub_group().get_local_linear_id();
 
-          complex_type priv[N];
+                                            complex_type priv[N];
 
           sycl_fft::global2local<false>(a_dev, loc1, N * sg_size, sg_size, local_id);
           group_barrier(it.get_group());

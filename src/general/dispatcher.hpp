@@ -147,8 +147,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
   std::size_t subgroup_size = sg.get_local_linear_range();
   std::size_t subgroup_id = sg.get_group_id();
   std::size_t n_sgs_in_wg = it.get_local_range(0) / subgroup_size;
-  std::size_t id_of_sg_in_kernel =
-      subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
+  std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
   int n_ffts_per_sg = subgroup_size / factor_sg;
@@ -158,22 +157,17 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
   bool is_input_contiguous = input_distance == n_reals_per_fft;
   bool is_output_contiguous = output_distance == n_reals_per_fft;
   int id_of_fft_in_sg = subgroup_local_id / factor_sg;
-  std::size_t id_of_fft_in_kernel =
-      id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
+  std::size_t id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
   std::size_t n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
   int id_of_wi_in_fft = subgroup_local_id % factor_sg;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
   std::size_t rounded_up_n_ffts =
-      roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg) +
-      (subgroup_local_id >= max_wis_working);
+      roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
-  for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts;
-       i += n_ffts_in_kernel) {
+  for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
-    int n_ffts_worked_on_by_sg =
-        sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_kernel)),
-                  n_ffts_per_sg);
+    int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_kernel)), n_ffts_per_sg);
 
     if (is_input_contiguous) {
       global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
@@ -201,9 +195,8 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
       priv[i + 1] *= scaling_factor;
     });
     if (working) {
-      private2local_transposed<N_reals_per_wi>(
-          priv, loc, id_of_wi_in_fft, factor_sg,
-          subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+      private2local_transposed<N_reals_per_wi>(priv, loc, id_of_wi_in_fft, factor_sg,
+                                               subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
     }
     sycl::group_barrier(sg);
 
@@ -452,8 +445,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
     workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, input_distance, output_distance, it,
                              scaling_factor);
   } else {
-    int factor_sg = detail::factorize_sg(
-        fft_size, it.get_sub_group().get_local_linear_range());
+    int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms, input_distance, output_distance,
@@ -484,19 +476,17 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
     if (fits_in_wi<T>(factor_wi)) {
       T* res = sycl::malloc_device<T>(fft_size * 2, q);
       q.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<2>({factor_sg, factor_wi}),
-                         [=](sycl::item<2> it) {
-                           int n = it.get_id(0);
-                           int k = it.get_id(1);
-                           sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
-                         });
+        cgh.parallel_for(sycl::range<2>({factor_sg, factor_wi}), [=](sycl::item<2> it) {
+          int n = it.get_id(0);
+          int k = it.get_id(1);
+          sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
+        });
       });
       q.wait();  // waiting once here can be better than depending on the event
                  // for all future calls to compute
       return res;
     } else {
-      throw std::runtime_error("FFT size " + std::to_string(fft_size) +
-                               " is not supported for subgroup_size " +
+      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported for subgroup_size " +
                                std::to_string(subgroup_size));
     }
   }

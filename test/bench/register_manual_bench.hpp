@@ -33,10 +33,8 @@
 #include "launch_bench.hpp"
 
 static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
-    {"domain", "d"},       {"lengths", "n"},      {"batch", "b"},
-    {"fwd_strides", "fs"}, {"bwd_strides", "bs"}, {"fwd_dist", "fd"},
-    {"bwd_dist", "bd"},    {"scale", "sx"},       {"storage", "s"},
-    {"placement", "p"},
+    {"domain", "d"},    {"lengths", "n"},   {"batch", "b"},  {"fwd_strides", "fs"}, {"bwd_strides", "bs"},
+    {"fwd_dist", "fd"}, {"bwd_dist", "bd"}, {"scale", "sx"}, {"storage", "s"},      {"placement", "p"},
 };
 
 // Order must match with the ARG_KEYS array
@@ -66,14 +64,12 @@ class bench_error : public std::runtime_error {
 
  public:
   template <typename... Ts>
-  explicit bench_error(const Ts&... args)
-      : std::runtime_error{concat(args...)} {}
+  explicit bench_error(const Ts&... args) : std::runtime_error{concat(args...)} {}
 };
 
 class invalid_value : public bench_error {
  public:
-  explicit invalid_value(const std::string_view& key,
-                         const std::string_view& value)
+  explicit invalid_value(const std::string_view& key, const std::string_view& value)
       : bench_error{"Invalid '", key, "' value: '", value, "'"} {}
 };
 
@@ -92,11 +88,10 @@ arg_map_t get_arg_map(std::string_view arg) {
     if (arg_map.find(key) != arg_map.end()) {
       throw bench_error{"Key can only be specified once: '", key, "'"};
     }
-    bool is_key_valid = std::any_of(
-        std::begin(ARG_KEYS), std::end(ARG_KEYS),
-        [&key](const std::pair<std::string_view, std::string_view>& pair) {
-          return key == pair.first || key == pair.second;
-        });
+    bool is_key_valid = std::any_of(std::begin(ARG_KEYS), std::end(ARG_KEYS),
+                                    [&key](const std::pair<std::string_view, std::string_view>& pair) {
+                                      return key == pair.first || key == pair.second;
+                                    });
     if (!is_key_valid) {
       throw bench_error{"Invalid key: '", key, "'"};
     }
@@ -129,8 +124,7 @@ std::string_view get_arg(arg_map_t& arg_map, key_idx key_idx) {
   return "";
 }
 
-std::size_t get_unsigned(const std::string_view& key,
-                         const std::string_view& value) {
+std::size_t get_unsigned(const std::string_view& key, const std::string_view& value) {
   try {
     long size = std::stol(std::string(value));
     if (size <= 0) {
@@ -138,14 +132,12 @@ std::size_t get_unsigned(const std::string_view& key,
     }
     return static_cast<std::size_t>(size);
   } catch (...) {
-    throw bench_error{"Invalid '", key, "' value: '", value,
-                      "' must be a positive integer"};
+    throw bench_error{"Invalid '", key, "' value: '", value, "' must be a positive integer"};
   }
   return 0;
 }
 
-std::vector<std::size_t> get_vec_unsigned(const std::string_view& key,
-                                          std::string_view value) {
+std::vector<std::size_t> get_vec_unsigned(const std::string_view& key, std::string_view value) {
   std::vector<std::size_t> vec;
   const char delimiter = 'x';
   std::size_t delim_idx = value.find(delimiter);
@@ -165,8 +157,7 @@ std::vector<std::size_t> get_vec_unsigned(const std::string_view& key,
 }
 
 template <typename ftype, sycl_fft::domain domain>
-void fill_descriptor(arg_map_t& arg_map,
-                     sycl_fft::descriptor<ftype, domain>& desc) {
+void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<ftype, domain>& desc) {
   std::string_view arg = get_arg(arg_map, BATCH);
   if (!arg.empty()) {
     desc.number_of_transforms = get_unsigned("batch", arg);
@@ -250,21 +241,17 @@ void register_benchmark(const std::string_view& desc_str) {
   if (domain == domain::COMPLEX) {
     descriptor<ftype, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(),
-                                 bench_dft_real_time<ftype, domain::COMPLEX>,
-                                 desc)->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.str().c_str(),
-                                 bench_dft_device_time<ftype, domain::COMPLEX>,
-                                 desc)->UseManualTime();
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::COMPLEX>, desc)
+        ->UseManualTime();
+    benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::COMPLEX>, desc)
+        ->UseManualTime();
   } else if (domain == domain::REAL) {
     descriptor<ftype, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(),
-                                 bench_dft_real_time<ftype, domain::REAL>,
-                                 desc)->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.str().c_str(),
-                                 bench_dft_device_time<ftype, domain::REAL>,
-                                 desc)->UseManualTime();
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::REAL>, desc)
+        ->UseManualTime();
+    benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::REAL>, desc)
+        ->UseManualTime();
   } else {
     throw bench_error{"Unexpected domain: ", static_cast<int>(domain)};
   }
@@ -277,9 +264,7 @@ void print_help(const std::string_view& name) {
     return ss.str();
   };
   const int w = 25;
-  auto cout_aligned = [w]() -> std::ostream& {
-    return std::cout << std::left << std::setw(w);
-  };
+  auto cout_aligned = [w]() -> std::ostream& { return std::cout << std::left << std::setw(w); };
   // clang-format off
   std::cout << "Usage " << name << " [option]... [configuration]...\n";
   std::cout << "\nOptions:\n";

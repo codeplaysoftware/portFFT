@@ -24,14 +24,11 @@
 constexpr int SYCL_FFT_DEFAULT_SUB_GROUP_SIZE = 32;
 
 template <typename kernel>
-int get_max_sub_group_size(
-    sycl::device& dev,
-    sycl::kernel_bundle<sycl::bundle_state::executable>& exec_bundle) {
+int get_max_sub_group_size(sycl::device& dev, sycl::kernel_bundle<sycl::bundle_state::executable>& exec_bundle) {
   try {
     auto k = exec_bundle.get_kernel(sycl::get_kernel_id<kernel>());
     try {
-      return k.template get_info<
-          sycl::info::kernel_device_specific::max_sub_group_size>(dev);
+      return k.template get_info<sycl::info::kernel_device_specific::max_sub_group_size>(dev);
     } catch (const std::exception& e) {
       return SYCL_FFT_DEFAULT_SUB_GROUP_SIZE;
     }
