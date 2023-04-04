@@ -17,28 +17,18 @@
  *  A set of common reference DFT benchmarks.
  *
  **************************************************************************/
-#ifdef SYCL_FFT_REFERENCE_DFT_SET_CXX
-#error The reference benchmark set has already been included in this TU.
-#else
-#define SYCL_FFT_REFERENCE_DFT_SET_CXX
-#endif
+#ifndef SYCL_FFT_REFERENCE_DFT_SET_HPP
+#define SYCL_FFT_REFERENCE_DFT_SET_HPP
 
 /**
  * A common set of reference benchmarks. To use, two macros must be defined:
  * BENCH_COMPLEX_FLOAT(...)
  * BENCH_SINGLE_FLOAT(...)
- * and then this file must be included:
- * #include "reference_dft_set.cxx"
+ * and then the benchmarks can be instantiated:
+ * INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT)
  * See pre-existing benchmark implementations for examples of what these
  * macros should do.
  **/
-
-#ifndef BENCH_COMPLEX_FLOAT
-#error Expected BENCH_COMPLEX_FLOAT macro to be defined
-#endif
-#ifndef BENCH_SINGLE_FLOAT
-#error Expected BENCH_SINGLE_FLOAT macro to be defined
-#endif
 
 #include <vector>
 
@@ -57,16 +47,19 @@
 // 11. small       real    3D                                      (batch=1024        N=64x64x64)
 
 // Arguments: N, batch
-BENCH_COMPLEX_FLOAT(small_1d,        std::vector<int>({16}),            8 * 1024 * 1024);
-BENCH_COMPLEX_FLOAT(medium_small_1d, std::vector<int>({256}),           512 * 1024);
-BENCH_COMPLEX_FLOAT(medium_large_1d, std::vector<int>({4 * 1024}),      32 * 1024);
-BENCH_COMPLEX_FLOAT(large_1d,        std::vector<int>({64 * 1024}),     2 * 1024);
-BENCH_COMPLEX_FLOAT(large_1d_prime,  std::vector<int>({64 * 1024 + 1}), 2 * 1024);
-BENCH_COMPLEX_FLOAT(large_2d,        std::vector<int>({4096, 4096}),    8);
-
-BENCH_SINGLE_FLOAT(small_1d,        std::vector<int>({32}),         8 * 1024 * 1024);
-BENCH_SINGLE_FLOAT(medium_small_1d, std::vector<int>({512}),        512 * 1024);
-BENCH_SINGLE_FLOAT(medium_large_1d, std::vector<int>({8 * 1024}),   32 * 1024);
-BENCH_SINGLE_FLOAT(large_1d,        std::vector<int>({128 * 1024}), 2 * 1024);
-BENCH_SINGLE_FLOAT(small_3d,        std::vector<int>({64, 64, 64}), 1024);
+#define INSTANTIATE_REFERENCE_BENCHMARK_SET(bench_complex_float_macro, bench_single_float_macro)    \
+bench_complex_float_macro(small_1d,        std::vector<int>({16}),            8 * 1024 * 1024);     \
+bench_complex_float_macro(medium_small_1d, std::vector<int>({256}),           512 * 1024);          \
+bench_complex_float_macro(medium_large_1d, std::vector<int>({4 * 1024}),      32 * 1024);           \
+bench_complex_float_macro(large_1d,        std::vector<int>({64 * 1024}),     2 * 1024);            \
+bench_complex_float_macro(large_1d_prime,  std::vector<int>({64 * 1024 + 1}), 2 * 1024);            \
+bench_complex_float_macro(large_2d,        std::vector<int>({4096, 4096}),    8);                   \
+                                                                                                    \
+bench_single_float_macro(small_1d,        std::vector<int>({32}),         8 * 1024 * 1024);         \
+bench_single_float_macro(medium_small_1d, std::vector<int>({512}),        512 * 1024);              \
+bench_single_float_macro(medium_large_1d, std::vector<int>({8 * 1024}),   32 * 1024);               \
+bench_single_float_macro(large_1d,        std::vector<int>({128 * 1024}), 2 * 1024);                \
+bench_single_float_macro(small_3d,        std::vector<int>({64, 64, 64}), 1024);
 // clang-format on
+
+#endif  // SYCL_FFT_REFERENCE_DFT_SET_HPP

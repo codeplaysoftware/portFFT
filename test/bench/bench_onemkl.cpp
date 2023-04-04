@@ -34,6 +34,7 @@
 
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
+#include "reference_dft_set.hpp"
 
 /// Get the floating-point type from the MKL precision enum.
 template <oneapi::mkl::dft::precision prec>
@@ -246,6 +247,6 @@ void device_time_float(Args&&... args) {
   BENCHMARK_CAPTURE(real_time_float, __VA_ARGS__); \
   BENCHMARK_CAPTURE(device_time_float, __VA_ARGS__)
 
-#include "reference_dft_set.cxx"
+INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 
 BENCHMARK_MAIN();

@@ -30,6 +30,7 @@
 #include <benchmark/benchmark.h>
 
 #include "number_generators.hpp"
+#include "reference_dft_set.hpp"
 
 template <typename Backward, typename DeviceForward, typename DeviceBackward,
           cufftType plan>
@@ -283,6 +284,6 @@ std::vector<T> vec(std::initializer_list<T> init) {
   BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
   BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
 
-#include "reference_dft_set.cxx"
+INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 
 BENCHMARK_MAIN();
