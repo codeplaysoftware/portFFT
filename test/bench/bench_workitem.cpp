@@ -23,12 +23,14 @@
 #include <common/workitem.hpp>
 #include <iostream>
 
-constexpr int N = 36;
-constexpr int sg_size = 16;
-constexpr int n_sgs = 100;
-constexpr int n_transforms = sg_size * n_sgs;
+#include "ops_estimate.hpp"
+
 using ftype = float;
 using complex_type = std::complex<ftype>;
+constexpr int N = 16;
+constexpr int sg_size = 32;
+constexpr int n_transforms = 1024*1024*1024 / sizeof(complex_type) / N;
+constexpr int n_sgs = n_transforms / sg_size;
 
 void init(int size, complex_type* a) {
   for (int i = 0; i < size; i++) {
@@ -119,44 +121,78 @@ void __attribute__((noinline)) dft_wrapper(T2_ptr in_out) {
 constexpr static sycl::specialization_id<int> size_spec_const;
 
 static void BM_dft(benchmark::State& state) {
-  complex_type a[N * sg_size * n_sgs];
-  complex_type b[N * sg_size * n_sgs];
-  init(N * sg_size * n_sgs, a);
+  double ops = cooley_tukey_ops_estimate(N, n_transforms);
+  //complex_type a[N * n_transforms];
+  //complex_type b[N * n_transforms];
+  //init(N * n_transforms, a);
 
   sycl::queue q;
-  complex_type* a_dev =
-      sycl::malloc_device<complex_type>(N * sg_size * n_sgs, q);
-  complex_type* b_dev =
-      sycl::malloc_device<complex_type>(N * sg_size * n_sgs, q);
-  q.copy(a, a_dev, N * sg_size * n_sgs);
+  size_t compute_units = q.get_device().get_info<sycl::info::device::max_compute_units>();
+  ftype* a_dev =
+      sycl::malloc_device<ftype>(2 * N * n_transforms, q);
+  ftype* b_dev =
+      sycl::malloc_device<ftype>(2 * N * n_transforms, q);
+  //q.copy(a, a_dev, N * n_transforms);
 
   q.wait();
 
   auto run = [&]() {
+    auto start = std::chrono::high_resolution_clock::now();
     q.submit([&](sycl::handler& h) {
-       h.set_specialization_constant<size_spec_const>(N);
-       sycl::local_accessor<complex_type, 1> loc(N * sg_size, h);
+       //h.set_specialization_constant<size_spec_const>(N);
+       sycl::local_accessor<ftype, 1> loc(2 * (N+1) * sg_size, h);
        h.parallel_for(
-           sycl::nd_range<1>({sg_size * n_sgs}, {sg_size}),
+           sycl::nd_range<1>({n_transforms/*sg_size * 8 * 64 * compute_units*/}, {/*4**/sg_size}),
            [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [
                [intel::reqd_sub_group_size(sg_size)]] {
-             int Nn = kh.get_specialization_constant<size_spec_const>();
+            constexpr int N_reals = 2*N;
+             //int Nn = kh.get_specialization_constant<size_spec_const>();
              sycl::sub_group sg = it.get_sub_group();
              size_t local_id = sg.get_local_linear_id();
+             size_t global_id = it.get_global_id(0);
+             size_t global_size = it.get_global_range(0);
 
-             complex_type priv[N];
+             ftype priv[N_reals];
+             size_t i=global_id;
+             //for(int i=global_id; i<n_transforms; i+=global_size){
+              //sycl_fft::global2local(a_dev, loc, N_reals * sg_size, sg_size, local_id, 
+                //                      N_reals * (i - local_id));
+              for (std::size_t i = local_id; i < N_reals * sg_size; i += sg_size*32) {
+                for(std::size_t j=0; j< sg_size*32; j+=sg_size){
+                  loc[0 + i + j + i/32] = a_dev[N_reals * (i - local_id) + i + j];
+                }
+              }
+              sycl::group_barrier(sg);
+              //sycl_fft::local2private<N_reals>(loc, priv, local_id, N_reals);
+              for (std::size_t i = 0; i < N_reals; i++) {
+                priv[i] = loc[0 + local_id * (N_reals+1) + i];
+              }
 
-             sycl_fft::global2local(a_dev, loc, N * sg_size, sg_size, local_id);
-             sycl::group_barrier(sg);
-             sycl_fft::local2private<N>(loc, priv, local_id, sg_size);
-             for (long j = 0; j < 10; j++) {
-               dft_wrapper<N>(reinterpret_cast<ftype*>(priv));
-             }
-             sycl_fft::private2local<N>(priv, loc, local_id, sg_size);
-             sycl::group_barrier(sg);
-             sycl_fft::local2global(loc, b_dev, N * sg_size, sg_size, local_id);
+              //dft_wrapper<N>(priv);
+              sycl_fft::wi_dft<N, 1, 1>(priv, priv);
+
+              //sycl_fft::private2local<N_reals>(priv, loc, local_id, N_reals);
+              for (std::size_t i = 0; i < N_reals; i++) {
+                loc[0 + local_id * (N_reals+1) + i] = priv[i];
+              }
+              //loc[local_id] = priv[0];
+              sycl::group_barrier(sg);
+              //sycl_fft::local2global(loc, b_dev, N_reals * sg_size, sg_size, local_id, 
+                //                     0, N_reals * (i - local_id));
+              for (std::size_t i = local_id; i < N_reals * sg_size; i += sg_size*32) {
+                for(std::size_t j=0; j< sg_size*32; j+=sg_size){
+                  a_dev[N_reals * (i - local_id) + i + j] = loc[0 + i + j + i/32];
+                }
+              }
+             //}
            });
      }).wait();
+    auto end = std::chrono::high_resolution_clock::now();
+    double elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start)
+            .count();
+    state.counters["flops"] = ops / elapsed_seconds;
+    state.SetIterationTime(elapsed_seconds);
   };
 
   // warmup
@@ -169,6 +205,6 @@ static void BM_dft(benchmark::State& state) {
   sycl::free(b_dev, q);
 }
 
-BENCHMARK(BM_dft);
+BENCHMARK(BM_dft)->UseManualTime();
 
 BENCHMARK_MAIN();

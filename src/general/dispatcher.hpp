@@ -46,7 +46,8 @@ namespace detail{
  * @param it sycl::nd_item<1> for the kernel launch
  */
 template<int N, typename T_in, typename T_out, typename T>
-inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t n_transforms, 
+// noinline here improves performance on amd and nvidia, and degrades it on intel
+__attribute__((noinline)) void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t n_transforms, 
                    std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it){
     constexpr int N_reals = 2*N;
 
@@ -66,30 +67,30 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
             sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
         if (is_input_contiguous) {
-          global2local(input, loc, N_reals * n_working, subgroup_size,
+          global2local<true>(input, loc, N_reals * n_working, subgroup_size,
                        subgroup_local_id,
                        input_distance * (i - subgroup_local_id));
         } else {
           for (int j = 0; j < n_working; j++) {
-            global2local(input, loc, N_reals, subgroup_size, subgroup_local_id,
+            global2local<true>(input, loc, N_reals, subgroup_size, subgroup_local_id,
                          input_distance * (i - subgroup_local_id + j),
                          j * N_reals);
           }
         }
         sycl::group_barrier(sg);
         if(working){
-          local2private<N_reals>(loc, priv, subgroup_local_id, N_reals);
+          local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
           wi_dft<N, 1, 1>(priv, priv);
-          private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
+          private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals);
         }
         sycl::group_barrier(sg);
         if (is_output_contiguous) {
-          local2global(loc, output, N_reals * n_working, subgroup_size,
+          local2global<true>(loc, output, N_reals * n_working, subgroup_size,
                        subgroup_local_id, 0,
                        output_distance * (i - subgroup_local_id));
         } else {
           for (int j = 0; j < n_working; j++) {
-            local2global(loc, output, N_reals, subgroup_size, subgroup_local_id,
+            local2global<true>(loc, output, N_reals, subgroup_size, subgroup_local_id,
                          j * N_reals,
                          output_distance * (i - subgroup_local_id + j));
           }
@@ -120,7 +121,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  */
 template <int factor_wi, typename T_in, typename T_out, typename T,
           typename T_twiddles>
-inline void subgroup_impl(int factor_sg, T_in input, T_out output,
+__attribute__((noinline)) void subgroup_impl(int factor_sg, T_in input, T_out output,
                           const sycl::local_accessor<T, 1>& loc,
                           std::size_t n_transforms, std::size_t input_distance,
                           std::size_t output_distance, sycl::nd_item<1> it,
@@ -129,7 +130,6 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
 
   T priv[N_reals_per_wi];
   sycl::sub_group sg = it.get_sub_group();
-
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_size = sg.get_local_linear_range();
   std::size_t subgroup_id = sg.get_group_id();
@@ -163,13 +163,13 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
                   n_ffts_per_sg);
 
     if (is_input_contiguous) {
-      global2local(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      global2local<false>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                    subgroup_size, subgroup_local_id,
                    input_distance * (i - id_of_fft_in_sg),
                    subgroup_id * n_reals_per_sg);
     } else {
       for (int j = 0; j < n_ffts_worked_on_by_sg; j++) {
-        global2local(input, loc, n_reals_per_fft, subgroup_size,
+        global2local<false>(input, loc, n_reals_per_fft, subgroup_size,
                      subgroup_local_id,
                      input_distance * (i - id_of_fft_in_sg + j),
                      subgroup_id * n_reals_per_sg + j * n_reals_per_fft);
@@ -178,7 +178,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
 
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals_per_wi>(loc, priv, subgroup_local_id,
+      local2private<N_reals_per_wi, false>(loc, priv, subgroup_local_id,
                                     N_reals_per_wi,
                                     subgroup_id * n_reals_per_sg);
     }
@@ -191,13 +191,13 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
     sycl::group_barrier(sg);
 
     if (is_output_contiguous) {
-      local2global(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      local2global<false>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
                    subgroup_size, subgroup_local_id,
                    subgroup_id * n_reals_per_sg,
                    output_distance * (i - id_of_fft_in_sg));
     } else {
       for (int j = 0; j < n_ffts_worked_on_by_sg; j++) {
-        local2global(loc, output, n_reals_per_fft, subgroup_size,
+        local2global<false>(loc, output, n_reals_per_fft, subgroup_size,
                      subgroup_local_id,
                      subgroup_id * n_reals_per_sg + j * n_reals_per_fft,
                      output_distance * (i - id_of_fft_in_sg + j));
@@ -495,7 +495,7 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
 template <typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
-    return 2 * fft_size * subgroup_size;
+    return (2 * fft_size + 1) * subgroup_size;
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
     int n_ffts_per_sg = subgroup_size / factor_sg;
@@ -516,7 +516,7 @@ int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
 template <typename T>
 std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms,
                             std::size_t subgroup_size, size_t n_compute_units) {
-  std::size_t maximum_n_sgs = 4 * n_compute_units;
+  std::size_t maximum_n_sgs = 8 * n_compute_units * 8;
   std::size_t n_sgs_we_can_utilize;
   if (fits_in_wi<T>(fft_size)) {
     n_sgs_we_can_utilize = (n_transforms + subgroup_size - 1) / subgroup_size;

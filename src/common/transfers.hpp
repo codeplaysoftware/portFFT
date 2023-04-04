@@ -42,13 +42,17 @@ namespace sycl_fft{
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <typename T_glob_ptr, typename T_loc_ptr>
+template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
 inline void global2local(T_glob_ptr global, T_loc_ptr local,
                          std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t global_offset = 0,
                          std::size_t local_offset = 0) {
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
-    local[local_offset + i] = global[global_offset + i];
+    std::size_t local_idx = local_offset + i;
+    if constexpr(Pad){
+      local_idx += local_idx/32;
+    }
+    local[local_idx] = global[global_offset + i];
   }
 }
 
@@ -69,14 +73,18 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <typename T_loc_ptr, typename T_glob_ptr>
+template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
 inline void local2global(T_loc_ptr local, T_glob_ptr global,
                          std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t local_offset = 0,
                          std::size_t global_offset = 0) {
-  // we can use exactly the same code for transfers in the other direction
-  global2local(local, global, total_num_elems, local_size, local_id,
-               local_offset, global_offset);
+  for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
+    std::size_t local_idx = local_offset + i;
+    if constexpr(Pad){
+      local_idx += local_idx/32;
+    }
+    global[global_offset + i] = local[local_idx];
+  }
 }
 
 /**
@@ -95,12 +103,16 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
 inline void local2private(T_loc_ptr local, T_priv_ptr priv,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    priv[i] = local[local_offset + local_id * stride + i];
+    std::size_t local_idx = local_offset + local_id * stride + i;
+    if constexpr(Pad){
+      local_idx += local_idx/32;
+    }
+    priv[i] = local[local_idx];
   }
 }
 
@@ -120,7 +132,7 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv,
  * less than subgroup size)
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
 inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
                                      std::size_t local_id,
                                      std::size_t workers_in_sg,
@@ -146,12 +158,16 @@ inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
 inline void private2local(T_priv_ptr priv, T_loc_ptr local,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    local[local_offset + local_id * stride + i] = priv[i];
+    std::size_t local_idx = local_offset + local_id * stride + i;
+    if constexpr(Pad){
+      local_idx += local_idx/32;
+    }
+    local[local_idx] = priv[i];
   }
 }
 
