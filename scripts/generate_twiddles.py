@@ -39,11 +39,11 @@ struct twiddle{{
 
 // We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one workitem on current GPUs
 
-//clang-format off
+// clang-format off
 static constexpr T re[{size}][{size}] = {{ {real_forward} }};
 
 static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
-//clang-format on
+// clang-format on
 
 }};
 }}
