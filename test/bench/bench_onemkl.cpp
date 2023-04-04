@@ -88,10 +88,10 @@ struct onemkl_state {
     return compute_forward(desc, in_dev, out_dev);
   }
 
-  /// The count of bytes for each FFT. Product of lengths.
+  /// The count of elements for each FFT. Product of lengths.
   inline std::size_t get_total_length() {
     return std::accumulate(lengths.cbegin(), lengths.cend(), 1,
-                           std::multiplies<>());
+                           std::multiplies<std::int64_t>());
   }
 
   // Queue & allocations for test
@@ -123,17 +123,18 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths,
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
   std::size_t N = fft_state.get_total_length();
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
-  std::vector<complex_type> a(fft_state.num_elements);
-  populate_with_random(a);
+  std::vector<complex_type> host_data(fft_state.num_elements);
+  populate_with_random(host_data);
 
-  q.copy(a.data(), fft_state.in_dev, fft_state.num_elements);
+  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements)
+      .wait_and_throw();
 
   try {
     fft_state.desc.commit(q);
     q.wait_and_throw();
     // warmup
     fft_state.compute().wait_and_throw();
-  } catch (sycl::_V1::runtime_error&) {
+  } catch (...) {
     // Can't run this benchmark!
     return;
   }
@@ -171,17 +172,18 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths,
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
   std::size_t N = fft_state.get_total_length();
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
-  std::vector<complex_type> a(fft_state.num_elements);
-  populate_with_random(a);
+  std::vector<complex_type> host_data(fft_state.num_elements);
+  populate_with_random(host_data);
 
-  q.copy(a.data(), fft_state.in_dev, fft_state.num_elements);
+  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements)
+      .wait_and_throw();
 
   try {
     fft_state.desc.commit(q);
     q.wait_and_throw();
     // warmup
     fft_state.compute().wait_and_throw();
-  } catch (sycl::_V1::runtime_error&) {
+  } catch (...) {
     // Can't run this benchmark!
     return;
   }
