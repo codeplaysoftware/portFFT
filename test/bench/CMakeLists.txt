@@ -27,6 +27,8 @@ find_package(SYCL)
 
 # Disable build of unit-tests for googlebenchmark:
 set(BENCHMARK_ENABLE_TESTING OFF)
+# The icpx compiler causes errors when in release mode:
+set(BENCHMARK_ENABLE_WERROR OFF)
 # Fetch googlebenchmark:
 include(FetchContent)
 FetchContent_Declare(
@@ -66,4 +68,12 @@ if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
     find_package(CUDAToolkit REQUIRED)
     target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark)
     target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+endif()
+
+if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS})
+    add_executable(bench_onemkl bench_onemkl.cpp)
+    find_package(MKL CONFIG REQUIRED)
+    target_compile_options(bench_onemkl PRIVATE ${MKL_COPT})
+    target_link_libraries(bench_onemkl PRIVATE MKL::MKL ${MKL_LINK_SYCL} benchmark::benchmark)
+    target_include_directories(bench_onemkl PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endif()
