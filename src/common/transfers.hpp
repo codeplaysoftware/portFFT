@@ -23,12 +23,18 @@
 
 #include <sycl/sycl.hpp>
 
+#ifndef SYCL_FFT_N_LOCAL_BANKS
+#define SYCL_FFT_N_LOCAL_BANKS 32
+#endif
+
 namespace sycl_fft{
 
 /**
  * Copies data from global memory to local memory. Depending on how parameters
  * are set, this can work on work group or subgroup level.
  *
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow 
+ * strided reads without bank conflicts
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -50,7 +56,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
     std::size_t local_idx = local_offset + i;
     if constexpr(Pad){
-      local_idx += local_idx/32;
+      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
     }
     local[local_idx] = global[global_offset + i];
   }
@@ -60,6 +66,8 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
  * Copies data from local memory to global memory. Depending of how parameters
  * are set, this can work on work group or subgroup level.
  *
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow 
+ * strided reads without bank conflicts
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
@@ -92,6 +100,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
  * of consecutive values from local memory.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
@@ -110,7 +119,7 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv,
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
     std::size_t local_idx = local_offset + local_id * stride + i;
     if constexpr(Pad){
-      local_idx += local_idx/32;
+      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
     }
     priv[i] = local[local_idx];
   }
@@ -147,6 +156,7 @@ inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
  * chunk of consecutive values to local memory.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -165,7 +175,7 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local,
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
     std::size_t local_idx = local_offset + local_id * stride + i;
     if constexpr(Pad){
-      local_idx += local_idx/32;
+      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
     }
     local[local_idx] = priv[i];
   }
