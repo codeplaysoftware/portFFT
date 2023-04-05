@@ -31,22 +31,22 @@ template = """
 #ifndef SYCL_FFT_COMMON_TWIDDLE_HPP
 #define SYCL_FFT_COMMON_TWIDDLE_HPP
 
-namespace sycl_fft::detail{{
+namespace sycl_fft::detail {{
 
-template<typename T>
-struct twiddle{{
-// twiddle_re[N][K] and twiddle_im[N][K] contain real and imaginary components of a twiddle factor K out of N.
+template <typename T>
+struct twiddle {{
+  // twiddle_re[N][K] and twiddle_im[N][K] contain real and imaginary components of a twiddle factor K out of N.
 
-// We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one workitem on current GPUs
+  // We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one
+  // workitem on current GPUs
 
-// clang-format off
+  // clang-format off
 static constexpr T re[{size}][{size}] = {{ {real_forward} }};
 
 static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
-// clang-format on
-
+  // clang-format on
 }};
-}}
+}}  // namespace sycl_fft::detail
 
 #endif
 """
