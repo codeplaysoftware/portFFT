@@ -38,7 +38,6 @@ enum class placement {
     OUT_OF_PLACE
 };
 
-enum class direction { FORWARD, BACKWARD };
 }
 
 #endif

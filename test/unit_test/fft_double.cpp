@@ -19,60 +19,31 @@
  **************************************************************************/
 
 #include "fft_test_utils.hpp"
-#include "instantiate_fft_tests.hpp"
 
 TEST_P(FFTTest, USM_IP_C2C_Fwd_Double) {
   auto param = GetParam();
   auto queue = get_queue(fp64_selector);
   CHECK_QUEUE(queue);
-  check_fft_usm<double, placement::IN_PLACE, direction::FORWARD>(param, queue.first.value());
+  check_fft_usm<double, placement::IN_PLACE>(param, queue.first.value());
 }
 
 TEST_P(FFTTest, USM_OOP_C2C_Fwd_Double) {
   auto param = GetParam();
   auto queue = get_queue(fp64_selector);
   CHECK_QUEUE(queue);
-  check_fft_usm<double, placement::OUT_OF_PLACE, direction::FORWARD>(param, queue.first.value());
+  check_fft_usm<double, placement::OUT_OF_PLACE>(param, queue.first.value());
 }
 
 TEST_P(FFTTest, BUFFER_IP_C2C_Fwd_Double) {
   auto param = GetParam();
   auto queue = get_queue(fp64_selector);
   CHECK_QUEUE(queue);
-  check_fft_buffer<double, placement::IN_PLACE, direction::FORWARD>(param, queue.first.value());
+  check_fft_buffer<double, placement::IN_PLACE>(param, queue.first.value());
 }
 
 TEST_P(FFTTest, BUFFER_OOP_C2C_Fwd_Double) {
   auto param = GetParam();
   auto queue = get_queue(fp64_selector);
   CHECK_QUEUE(queue);
-  check_fft_buffer<double, placement::OUT_OF_PLACE, direction::FORWARD>(param, queue.first.value());
-}
-
-TEST_P(BwdTest, USM_IP_C2C_Bwd_Double) {
-  auto param = GetParam();
-  auto queue = get_queue(fp64_selector);
-  CHECK_QUEUE(queue);
-  check_fft_usm<double, placement::IN_PLACE, direction::BACKWARD>(param, queue.first.value());
-}
-
-TEST_P(BwdTest, USM_OOP_C2C_Bwd_Double) {
-  auto param = GetParam();
-  auto queue = get_queue(fp64_selector);
-  CHECK_QUEUE(queue);
-  check_fft_usm<double, placement::OUT_OF_PLACE, direction::BACKWARD>(param, queue.first.value());
-}
-
-TEST_P(BwdTest, BUFFER_IP_C2C_Bwd_Double) {
-  auto param = GetParam();
-  auto queue = get_queue(fp64_selector);
-  CHECK_QUEUE(queue);
-  check_fft_buffer<double, placement::IN_PLACE, direction::BACKWARD>(param, queue.first.value());
-}
-
-TEST_P(BwdTest, BUFFER_OOP_C2C_Bwd_Double) {
-  auto param = GetParam();
-  auto queue = get_queue(fp64_selector);
-  CHECK_QUEUE(queue);
-  check_fft_buffer<double, placement::OUT_OF_PLACE, direction::BACKWARD>(param, queue.first.value());
+  check_fft_buffer<double, placement::OUT_OF_PLACE>(param, queue.first.value());
 }
