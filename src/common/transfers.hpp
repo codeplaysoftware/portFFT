@@ -89,7 +89,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
     std::size_t local_idx = local_offset + i;
     if constexpr(Pad){
-      local_idx += local_idx/32;
+      local_idx += local_idx/SYCL_FFT_N_LOCAL_BANKS;
     }
     global[global_offset + i] = local[local_idx];
   }
