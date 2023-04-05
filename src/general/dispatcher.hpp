@@ -495,7 +495,7 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
 template <typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
-    return (2 * fft_size + 1) * subgroup_size;
+    return 2 * fft_size * (subgroup_size + 1);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
     int n_ffts_per_sg = subgroup_size / factor_sg;
