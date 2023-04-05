@@ -21,7 +21,6 @@
 #include <benchmark/benchmark.h>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
-#include <enums.hpp>
 #include <iostream>
 
 constexpr int N = 36;
@@ -114,7 +113,7 @@ void DFT_dispatcher(T priv, std::size_t size) {
 
 template <int N, typename T2_ptr>
 void __attribute__((noinline)) dft_wrapper(T2_ptr in_out) {
-  sycl_fft::wi_dft<sycl_fft::direction::FORWARD, N, 1, 1>(in_out, in_out);
+  sycl_fft::wi_dft<N, 1, 1>(in_out, in_out);
 }
 
 constexpr static sycl::specialization_id<int> size_spec_const;
