@@ -159,44 +159,17 @@ static void BM_dft(benchmark::State& state) {
              //for(int i=global_id; i<n_transforms; i+=global_size){
               sycl_fft::global2local<avoid_bank_conflicts>(a_dev, loc, N_reals * sg_size, sg_size, local_id, 
                                       N_reals * (i - local_id));
-              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size*32) {
-                for(std::size_t j=0; j< sg_size*32; j+=sg_size){
-                  loc[0 + k + j + k/32] = a_dev[N_reals * (i - local_id) + k + j];
-                }
-              }*/
-              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size) {
-                std::size_t local_idx = 0 + k;
-                local_idx += local_idx/32;
-                loc[local_idx] = a_dev[N_reals * (i - local_id) + k];
-              }*/
               sycl::group_barrier(sg);
               sycl_fft::local2private<N_reals, avoid_bank_conflicts>(loc, priv, local_id, N_reals);
-              /*for (std::size_t i = 0; i < N_reals; i++) {
-                priv[i] = loc[0 + local_id * (N_reals+1) + i];
-              }*/
 
               //dft_wrapper<N>(priv);
               sycl_fft::wi_dft<N, 1, 1>(priv, priv);
               //DFT_dispatcher(priv, N);
 
               sycl_fft::private2local<N_reals, avoid_bank_conflicts>(priv, loc, local_id, N_reals);
-              /*for (std::size_t i = 0; i < N_reals; i++) {
-                loc[0 + local_id * (N_reals+1) + i] = priv[i];
-              }*/
-              //loc[local_id] = priv[0];
               sycl::group_barrier(sg);
               sycl_fft::local2global<avoid_bank_conflicts>(loc, b_dev, N_reals * sg_size, sg_size, local_id, 
                                      0, N_reals * (i - local_id));
-              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size*32) {
-                for(std::size_t j=0; j< sg_size*32; j+=sg_size){
-                  a_dev[N_reals * (i - local_id) + k + j] = loc[0 + k + j + k/32];
-                }
-              }*/
-              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size) {
-                std::size_t local_idx = 0 + k;
-                local_idx += local_idx/32;
-                b_dev[N_reals * (i - local_id) + k] = loc[local_idx];
-              }*/
              //}
            });
      }).wait();
