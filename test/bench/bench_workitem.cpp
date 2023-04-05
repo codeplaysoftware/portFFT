@@ -32,6 +32,8 @@ constexpr int sg_size = 32;
 constexpr int n_transforms = 1024*1024*1024 / sizeof(complex_type) / N;
 constexpr int n_sgs = n_transforms / sg_size;
 
+constexpr bool avoid_bank_conflicts = true;
+
 void init(int size, complex_type* a) {
   for (int i = 0; i < size; i++) {
     a[i] = {static_cast<ftype>(i * 0.3),
@@ -40,7 +42,7 @@ void init(int size, complex_type* a) {
 }
 
 template <typename T>
-void DFT_dispatcher(T priv, std::size_t size) {
+void __attribute__((noinline)) DFT_dispatcher(T priv, std::size_t size) {
   switch (size) {
 #define IMPL(N)                            \
   case N:                                  \
@@ -62,7 +64,7 @@ void DFT_dispatcher(T priv, std::size_t size) {
     IMPL(14)
     IMPL(15)
     IMPL(16)
-    IMPL(17)
+    /*IMPL(17)
     IMPL(18)
     IMPL(19)
     IMPL(20)
@@ -78,7 +80,7 @@ void DFT_dispatcher(T priv, std::size_t size) {
     IMPL(30)
     IMPL(31)
     IMPL(32)
-    /*IMPL(33)
+    IMPL(33)
     IMPL(34)
     IMPL(35)
     IMPL(36)
@@ -155,35 +157,46 @@ static void BM_dft(benchmark::State& state) {
              ftype priv[N_reals];
              size_t i=global_id;
              //for(int i=global_id; i<n_transforms; i+=global_size){
-              //sycl_fft::global2local(a_dev, loc, N_reals * sg_size, sg_size, local_id, 
-                //                      N_reals * (i - local_id));
-              for (std::size_t i = local_id; i < N_reals * sg_size; i += sg_size*32) {
+              sycl_fft::global2local<avoid_bank_conflicts>(a_dev, loc, N_reals * sg_size, sg_size, local_id, 
+                                      N_reals * (i - local_id));
+              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size*32) {
                 for(std::size_t j=0; j< sg_size*32; j+=sg_size){
-                  loc[0 + i + j + i/32] = a_dev[N_reals * (i - local_id) + i + j];
+                  loc[0 + k + j + k/32] = a_dev[N_reals * (i - local_id) + k + j];
                 }
-              }
+              }*/
+              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size) {
+                std::size_t local_idx = 0 + k;
+                local_idx += local_idx/32;
+                loc[local_idx] = a_dev[N_reals * (i - local_id) + k];
+              }*/
               sycl::group_barrier(sg);
-              //sycl_fft::local2private<N_reals>(loc, priv, local_id, N_reals);
-              for (std::size_t i = 0; i < N_reals; i++) {
+              sycl_fft::local2private<N_reals, avoid_bank_conflicts>(loc, priv, local_id, N_reals);
+              /*for (std::size_t i = 0; i < N_reals; i++) {
                 priv[i] = loc[0 + local_id * (N_reals+1) + i];
-              }
+              }*/
 
               //dft_wrapper<N>(priv);
               sycl_fft::wi_dft<N, 1, 1>(priv, priv);
+              //DFT_dispatcher(priv, N);
 
-              //sycl_fft::private2local<N_reals>(priv, loc, local_id, N_reals);
-              for (std::size_t i = 0; i < N_reals; i++) {
+              sycl_fft::private2local<N_reals, avoid_bank_conflicts>(priv, loc, local_id, N_reals);
+              /*for (std::size_t i = 0; i < N_reals; i++) {
                 loc[0 + local_id * (N_reals+1) + i] = priv[i];
-              }
+              }*/
               //loc[local_id] = priv[0];
               sycl::group_barrier(sg);
-              //sycl_fft::local2global(loc, b_dev, N_reals * sg_size, sg_size, local_id, 
-                //                     0, N_reals * (i - local_id));
-              for (std::size_t i = local_id; i < N_reals * sg_size; i += sg_size*32) {
+              sycl_fft::local2global<avoid_bank_conflicts>(loc, b_dev, N_reals * sg_size, sg_size, local_id, 
+                                     0, N_reals * (i - local_id));
+              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size*32) {
                 for(std::size_t j=0; j< sg_size*32; j+=sg_size){
-                  a_dev[N_reals * (i - local_id) + i + j] = loc[0 + i + j + i/32];
+                  a_dev[N_reals * (i - local_id) + k + j] = loc[0 + k + j + k/32];
                 }
-              }
+              }*/
+              /*for (std::size_t k = local_id; k < N_reals * sg_size; k += sg_size) {
+                std::size_t local_idx = 0 + k;
+                local_idx += local_idx/32;
+                b_dev[N_reals * (i - local_id) + k] = loc[local_idx];
+              }*/
              //}
            });
      }).wait();
@@ -194,6 +207,7 @@ static void BM_dft(benchmark::State& state) {
     state.counters["flops"] = ops / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   };
+
 
   // warmup
   run();
