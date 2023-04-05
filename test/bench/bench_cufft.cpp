@@ -221,7 +221,7 @@ static void cufft_oop_real_time(benchmark::State& state,
   cudaMemcpy(host_output.data(), out, fft_size * batch * sizeof(info::device_backward_type), cudaMemcpyDeviceToHost);
   cudaMemcpy(host_input.data(), in, fft_size * batch * sizeof(info::device_forward_type), cudaMemcpyDeviceToHost);
   verify_dft<info::plan_type>(host_input.data(), host_output.data(), batch, lengths);
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   // benchmark
   for (auto _ : state) {
@@ -258,7 +258,7 @@ static void cufft_oop_device_time(benchmark::State& state,
   cudaMemcpy(host_output.data(), out, fft_size * batch * sizeof(info::device_backward_type), cudaMemcpyDeviceToHost);
   cudaMemcpy(host_input.data(), in, fft_size * batch * sizeof(info::device_forward_type), cudaMemcpyDeviceToHost);
   verify_dft<info::plan_type>(host_input.data(), host_output.data(), batch, lengths);
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   cudaEvent_t before;
   cudaEvent_t after;

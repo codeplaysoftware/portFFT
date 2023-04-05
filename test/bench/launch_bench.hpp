@@ -65,7 +65,7 @@ void bench_dft_real_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   a.resize(num_elements);
   q.copy(in_dev, a.data(), num_elements).wait();
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   // warmup
   auto event = desc.placement == sycl_fft::placement::IN_PLACE
@@ -77,7 +77,7 @@ void bench_dft_real_time(benchmark::State& state,
   std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
   verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
@@ -128,7 +128,7 @@ void bench_dft_device_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   a.resize(num_elements);
   q.copy(in_dev, a.data(), num_elements).wait();
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   auto compute = [&]() {
     return desc.placement == sycl_fft::placement::IN_PLACE
@@ -141,7 +141,7 @@ void bench_dft_device_time(benchmark::State& state,
   std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
   verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
-#endif
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     sycl::event e = compute();
