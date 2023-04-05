@@ -163,13 +163,13 @@ __attribute__((noinline)) void subgroup_impl(int factor_sg, T_in input, T_out ou
                   n_ffts_per_sg);
 
     if (is_input_contiguous) {
-      global2local<false>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                    subgroup_size, subgroup_local_id,
                    input_distance * (i - id_of_fft_in_sg),
                    subgroup_id * n_reals_per_sg);
     } else {
       for (int j = 0; j < n_ffts_worked_on_by_sg; j++) {
-        global2local<false>(input, loc, n_reals_per_fft, subgroup_size,
+        global2local<true>(input, loc, n_reals_per_fft, subgroup_size,
                      subgroup_local_id,
                      input_distance * (i - id_of_fft_in_sg + j),
                      subgroup_id * n_reals_per_sg + j * n_reals_per_fft);
@@ -178,7 +178,7 @@ __attribute__((noinline)) void subgroup_impl(int factor_sg, T_in input, T_out ou
 
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals_per_wi, false>(loc, priv, subgroup_local_id,
+      local2private<N_reals_per_wi, true>(loc, priv, subgroup_local_id,
                                     N_reals_per_wi,
                                     subgroup_id * n_reals_per_sg);
     }
@@ -531,3 +531,4 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms,
 }
 
 #endif
+
