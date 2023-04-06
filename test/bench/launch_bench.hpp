@@ -37,7 +37,8 @@ void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl
                 double scaling_factor = 1.0) {
   std::vector<T> host_result(N * batch);
   for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<dir>(input, host_result.data(), {static_cast<int>(N)}, i * N, scaling_factor);
+    const auto offset = i * N;
+    reference_dft<dir>(input + offset, host_result.data() + offset, {static_cast<int>(N)}, scaling_factor);
   }
   bool correct = compare_arrays(device_data, host_result.data(), batch * N, 1e-5);
   if (!correct) {
