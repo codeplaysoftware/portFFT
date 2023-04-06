@@ -65,9 +65,10 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
   for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
-                                                reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                                lengths, i * fft_size);
+    const std::size_t offset = i * fft_size;
+    reference_dft<sycl_fft::direction::FORWARD>(
+        reinterpret_cast<std::complex<scalar_type>*>(host_input.data()) + offset,
+        reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()) + offset, lengths);
   }
   int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
@@ -157,6 +158,7 @@ struct cufft_state {
 
     const auto elements = static_cast<std::size_t>(fft_size * batch);
     typename type_info::device_forward_type* in_tmp;
+    // TODO overallocing in the REAL-COMPLEX case
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
       in.reset(in_tmp);
     } else {
@@ -291,11 +293,6 @@ template <typename... Args>
 void cufft_oop_device_time_float(Args&&... args) {
   cufft_oop_device_time<float>(std::forward<Args>(args)...);
 }
-
-template <typename T>
-std::vector<T> vec(std::initializer_list<T> init) {
-  return {init};
-};
 
 #define BENCH_COMPLEX_FLOAT(...)                                     \
   BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__); \
