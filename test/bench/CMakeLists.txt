@@ -53,8 +53,8 @@ foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
         ${BENCHMARK_FILE}
     )
     add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
-    if(${SYCLFFT_CHECK_BENCHMARK})
-        target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_CHECK_BENCHMARK)
+    if(${SYCLFFT_VERIFY_BENCHMARK})
+        target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
     endif()
     target_link_libraries(
         ${BENCHMARK_TARGET}

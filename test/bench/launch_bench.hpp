@@ -27,7 +27,7 @@
 #include <traits.hpp>
 
 #include "bench_utils.hpp"
-#include "number_generators.hpp"
+#include "device_number_generator.hpp"
 #include "ops_estimate.hpp"
 
 template <typename T>
@@ -51,6 +51,7 @@ void bench_dft_real_time(benchmark::State& state,
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::vector<complex_type> a;
+  
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =

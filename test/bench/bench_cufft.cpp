@@ -30,6 +30,7 @@
 
 #include "bench_utils.hpp"
 #include "cufft_utils.hpp"
+
 #include <benchmark/benchmark.h>
 #include "reference_dft_set.hpp"
 

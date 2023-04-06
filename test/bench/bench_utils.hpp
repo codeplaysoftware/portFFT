@@ -18,41 +18,13 @@
  *
  **************************************************************************/
 
-#ifndef SYCLFFT_BENCH_UTILS_HPP
-#define SYCLFFT_BENCH_UTILS_HPP
+#ifndef SYCLFFT_BENCH_BENCH_UTILS_HPP
+#define SYCLFFT_BENCH_BENCH_UTILS_HPP
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <sycl/sycl.hpp>
 #include <vector>
-
-template <typename T>
-class memFillKernel;
-
-/**
- * @brief Kernel for populating device pointer with values
- * 
- * @tparam T Type of the input pointer
- * @param input The Device pointer 
- * @param queue sycl::queue associated with the device
- * @param num_elements Batch times the number of elements in each FFT
- */
-template <typename T>
-void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
-  constexpr int group_dim = 32;
-  auto global_range = static_cast<int>(ceil(static_cast<float>(num_elements) / group_dim) * group_dim);
-  queue.submit([&](sycl::handler& h) {
-    h.parallel_for<memFillKernel<T>>(sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)),
-                                     [=](sycl::nd_item<1> itm) {
-                                       auto idx = itm.get_global_id(0);
-                                       if (idx < num_elements) {
-                                         input[idx] = static_cast<T>(std::complex<float>(idx, num_elements - idx));
-                                       }
-                                     });
-  });
-  queue.wait();
-}
 
 /**
  * @brief Compares two arrays 
@@ -113,4 +85,4 @@ void reference_forward_dft(TypeIn* in, TypeOut* out, std::vector<int> length, si
   }
 }
 
-#endif //SYCLFFT_BENCH_UTILS_HPP
+#endif //SYCLFFT_BENCH_BENCH_UTILS_HPP
