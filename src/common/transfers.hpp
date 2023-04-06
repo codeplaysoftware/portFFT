@@ -29,6 +29,30 @@
 
 namespace sycl_fft{
 
+namespace detail{
+
+/**
+ * If Pad is true ransforms an index into local memory to skip one element for every 
+ * SYCL_FFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing 
+ * elements with a stride that is multiple of (or has any common divisor greater than 1 with) 
+ * the number of local banks. Does nothing if Pad is false.
+ * 
+ * Can also be used to transform size of a local allocation to account for padding indices in it this way.
+ * 
+ * @tparam Pad whether to do padding
+ * @param local_idx index to transform
+ * @return transformed local_idx
+ */
+template<bool Pad = true>
+inline std::size_t pad_local(std::size_t local_idx){
+  if constexpr(Pad){
+      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
+  }
+  return local_idx;
+}
+
+}
+
 /**
  * Copies data from global memory to local memory. Depending on how parameters
  * are set, this can work on work group or subgroup level.
@@ -54,10 +78,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
                          std::size_t local_id, std::size_t global_offset = 0,
                          std::size_t local_offset = 0) {
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
-    std::size_t local_idx = local_offset + i;
-    if constexpr(Pad){
-      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
-    }
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
     local[local_idx] = global[global_offset + i];
   }
 }
@@ -87,10 +108,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
                          std::size_t local_id, std::size_t local_offset = 0,
                          std::size_t global_offset = 0) {
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
-    std::size_t local_idx = local_offset + i;
-    if constexpr(Pad){
-      local_idx += local_idx/SYCL_FFT_N_LOCAL_BANKS;
-    }
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
     global[global_offset + i] = local[local_idx];
   }
 }
@@ -117,10 +135,7 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    std::size_t local_idx = local_offset + local_id * stride + i;
-    if constexpr(Pad){
-      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
-    }
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     priv[i] = local[local_idx];
   }
 }
@@ -173,10 +188,7 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    std::size_t local_idx = local_offset + local_id * stride + i;
-    if constexpr(Pad){
-      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
-    }
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     local[local_idx] = priv[i];
   }
 }

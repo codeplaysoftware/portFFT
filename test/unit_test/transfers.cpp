@@ -92,8 +92,8 @@ TEST(transfers, padded) {
   q.wait();
 
   q.submit([&](sycl::handler& h) {
-    sycl::local_accessor<complex_type, 1> loc1(N * sg_size, h);
-    sycl::local_accessor<complex_type, 1> loc2(N * sg_size, h);
+    sycl::local_accessor<complex_type, 1> loc1(sycl_fft::detail::pad_local(N * sg_size), h);
+    sycl::local_accessor<complex_type, 1> loc2(sycl_fft::detail::pad_local(N * sg_size), h);
     h.parallel_for<test_transfers_kernel_padded>(
         sycl::nd_range<1>({sg_size}, {sg_size}),
         [=](sycl::nd_item<1> it) {

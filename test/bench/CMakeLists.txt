@@ -39,7 +39,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googlebenchmark)
 
 set(SYCL_FFT_BENCHMARKS
-    bench_workitem.cpp
     bench_float.cpp
     bench_manual_float.cpp
     bench_manual_double.cpp
