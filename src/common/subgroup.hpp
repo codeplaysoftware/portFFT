@@ -129,16 +129,16 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
   int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
 
-  const T multi_re = twiddle<T>::re[N * M][k * n];
-  const T multi_im = [&]() {
-    if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
-    return -twiddle<T>::im[N * M][k * n];
-  }();
   // factor N
   cross_sg_dft<dir, N, M * stride>(real, imag, sg);
   // transpose
   cross_sg_transpose<N, M, stride>(real, imag, sg);
   // twiddle
+  const T multi_re = twiddle<T>::re[N * M][k * n];
+  const T multi_im = [&]() {
+    if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
+    return -twiddle<T>::im[N * M][k * n];
+  }();
   T tmp_real = real * multi_re - imag * multi_im;
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;

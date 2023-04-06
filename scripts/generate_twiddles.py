@@ -52,49 +52,49 @@ static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
 """
 
 def generate(max_size):
-    res_real_forward = []
-    res_imag_forward = []
+    res_real = []
+    res_imag = []
     for size in range(max_size+1):
-        tmp_real_forward = []
-        tmp_imag_forward = []
+        tmp_real = []
+        tmp_imag = []
         for i in range(size):
             # make sure zeros are exact to let compiler do further optimizations
             if i == 0:
-                tmp_real_forward.append(1.0)
-                tmp_imag_forward.append(0.0)
+                tmp_real.append(1.0)
+                tmp_imag.append(0.0)
             elif 2*i == size:
-                tmp_real_forward.append(-1.0)
-                tmp_imag_forward.append(0.0)
+                tmp_real.append(-1.0)
+                tmp_imag.append(0.0)
             elif 4*i == size:
-                tmp_real_forward.append(0.0)
-                tmp_imag_forward.append(-1.0)
+                tmp_real.append(0.0)
+                tmp_imag.append(-1.0)
             elif 4*i == size*3:
-                tmp_real_forward.append(0.0)
-                tmp_imag_forward.append(1.0)
+                tmp_real.append(0.0)
+                tmp_imag.append(1.0)
             else:
                 theta = -2. * math.pi * i / size
-                tmp_real_forward.append(math.cos(theta))
-                tmp_imag_forward.append(math.sin(theta))
+                tmp_real.append(math.cos(theta))
+                tmp_imag.append(math.sin(theta))
 
         # pad with zeros to max_size
-        tmp_real_forward += [0] * (max_size - size + 1)
-        tmp_imag_forward += [0] * (max_size - size + 1)
+        tmp_real += [0] * (max_size - size + 1)
+        tmp_imag += [0] * (max_size - size + 1)
 
-        res_real_forward.append(tmp_real_forward)
-        res_imag_forward.append(tmp_imag_forward)
+        res_real.append(tmp_real)
+        res_imag.append(tmp_imag)
     
-    return [res_real_forward, res_imag_forward]
+    return [res_real, res_imag]
 
 
 def write(path, size):
-    real_forward, imag_forward  = generate(size)
+    real, imag  = generate(size)
     with open(path, "w") as fil:
-        realstr_forward = ",\n".join("{" + ", ".join(str(j)
-                                                     for j in i) + "}" for i in real_forward)
-        imagstr_forward = ",\n".join("{" + ", ".join(str(j)
-                                                     for j in i) + "}" for i in imag_forward)
+        realstr = ",\n".join("{" + ", ".join(str(j)
+                                                     for j in i) + "}" for i in real)
+        imagstr = ",\n".join("{" + ", ".join(str(j)
+                                                     for j in i) + "}" for i in imag)
         
-        content = template.format(size=size+1, real_forward=realstr_forward, imag_forward=imagstr_forward)
+        content = template.format(size=size+1, real_forward=realstr, imag_forward=imagstr)
         fil.write(content)
 
 
