@@ -28,6 +28,7 @@
 /**
  * @brief Multidimensional Refernce DFT implementation
  * 
+ * @tparam FFT direction, takes sycl::direction::FORWARD/BACKWARD
  * @tparam TypeIn Type of the input
  * @tparam TypeOut Type of the output
  * @param in Pointer of TypeIn pointing to the input
