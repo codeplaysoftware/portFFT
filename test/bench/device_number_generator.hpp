@@ -44,7 +44,7 @@ void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
                                      [=](sycl::nd_item<1> itm) {
                                        auto idx = itm.get_global_id(0);
                                        if (idx < num_elements) {
-                                         input[idx] = static_cast<T>(std::complex<float>(idx, num_elements - idx));
+                                         input[idx] = static_cast<T>(std::complex<float>(itm.get_local_id(0), itm.get_local_id(0) + 1));
                                        }
                                      });
   });
