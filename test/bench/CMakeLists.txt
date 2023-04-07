@@ -72,7 +72,7 @@ if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
         target_compile_definitions(bench_cufft PRIVATE SYCLFFT_CHECK_BENCHMARK)
     endif()
     find_package(CUDAToolkit REQUIRED)
-    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark CUDA::curand)
+    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark CUDA::curand sycl_fft)
     target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endif()
 

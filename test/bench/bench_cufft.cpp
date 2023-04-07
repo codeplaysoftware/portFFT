@@ -29,6 +29,7 @@
 #include <cufft.h>
 
 #include "bench_utils.hpp"
+#include "reference_dft.hpp"
 #include "cufft_utils.hpp"
 
 #include <benchmark/benchmark.h>

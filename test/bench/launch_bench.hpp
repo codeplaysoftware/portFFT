@@ -27,14 +27,16 @@
 #include <traits.hpp>
 
 #include "bench_utils.hpp"
+#include "reference_dft.hpp"
+#include "enums.hpp"
 #include "device_number_generator.hpp"
 #include "ops_estimate.hpp"
 
-template <typename T>
-void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl_fft::placement Placement) {
+template <sycl_fft::direction dir, typename T>
+void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl_fft::placement Placement, double scaling_factor = 1.0) {
   std::vector<T> host_result(N * batch);
   for (std::size_t i = 0; i < batch; i++) {
-    reference_forward_dft(input, host_result.data(), {static_cast<int>(N)}, i * N);
+    reference_dft<dir>(input, host_result.data(), {static_cast<int>(N)}, i * N, scaling_factor);
   }
   bool correct = compare_arrays(device_data, host_result.data(), batch * N, 1e-5);
   if (!correct) {
@@ -77,7 +79,7 @@ void bench_dft_real_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
-  verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
+  verify_dft<sycl_fft::direction::FORWARD>(a.data(), host_buffer.data(), N_transforms, N, desc.placement, desc.forward_scale);
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
@@ -141,7 +143,7 @@ void bench_dft_device_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_buffer(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
-  verify_dft(a.data(), host_buffer.data(), N_transforms, N, desc.placement);
+  verify_dft<sycl_fft::direction::FORWARD>(a.data(), host_buffer.data(), N_transforms, N, desc.placement, desc.forward_scale);
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
