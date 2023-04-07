@@ -45,30 +45,6 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
   }
 }
 
-template <direction dir, typename TypeIn, typename TypeOut>
-void reference_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out, size_t length, size_t offset = 0,
-                   double scale_factor = 1.0) {
-  long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
-
-  size_t N = length;
-  for (size_t k = 0; k < N; k++) {
-    std::complex<long double> out_temp = 0;
-    for (size_t n = 0; n < N; n++) {
-      auto multiplier = [&]() {
-        if constexpr (dir == direction::FORWARD)
-          return std::complex<long double>(scale_factor) *
-                 std::complex<long double>{std::cos(n * k * TWOPI / N), -std::sin(n * k * TWOPI / N)};
-        else
-          return std::complex<long double>(scale_factor) *
-                 std::complex<long double>{std::cos(n * k * TWOPI / N), std::sin(n * k * TWOPI / N)};
-      }();
-      out_temp +=
-          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
-    }
-    out[offset + k] = static_cast<TypeOut>(out_temp);
-  }
-}
-
 template <typename deviceSelector>
 std::pair<std::optional<sycl::queue>, std::string> get_queue(
     deviceSelector selector) {
