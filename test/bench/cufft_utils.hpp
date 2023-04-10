@@ -35,11 +35,11 @@ template <typename T>
 void populate_with_random(T* dev_ptr, std::size_t N) {
   curandGenerator_t generator;
   if (curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_XORWOW) != CURAND_STATUS_SUCCESS) {
-    std::runtime_error("Failed to Create Random Number Generator");
+    throw std::runtime_error("Failed to Create Random Number Generator");
   }
 
   if (curandSetPseudoRandomGeneratorSeed(generator, 5678) != CURAND_STATUS_SUCCESS) {
-    std::runtime_error("Failed to Set Random Seed");
+    throw std::runtime_error("Failed to Set Random Seed");
   }
 
   if ([&]() {
@@ -51,7 +51,7 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
           return curandGenerateNormalDouble(generator, dev_ptr, 2 * N, 0, 2);
         }
       }() != CURAND_STATUS_SUCCESS) {
-    std::runtime_error("Failed to populate device pointer with random values");
+    throw std::runtime_error("Failed to populate device pointer with random values");
   }
   cudaDeviceSynchronize();
   curandDestroyGenerator(generator);

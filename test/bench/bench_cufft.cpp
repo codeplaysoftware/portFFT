@@ -69,7 +69,7 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
   if (!correct) {
-    std::runtime_error("Verification Failed");
+    throw std::runtime_error("Verification Failed");
   }
 }
 

@@ -40,7 +40,7 @@ void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl
   }
   bool correct = compare_arrays(device_data, host_result.data(), batch * N, 1e-5);
   if (!correct) {
-    std::runtime_error("Verification Failed");
+    throw std::runtime_error("Verification Failed");
   }
 }
 
