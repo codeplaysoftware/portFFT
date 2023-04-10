@@ -52,8 +52,7 @@ void bench_dft_real_time(benchmark::State& state,
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a;
-  
+
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =
@@ -66,8 +65,8 @@ void bench_dft_real_time(benchmark::State& state,
   q.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  a.resize(num_elements);
-  q.copy(in_dev, a.data(), num_elements).wait();
+  std::vector<complex_type> host_input(num_elements);
+  q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   // warmup
@@ -77,9 +76,9 @@ void bench_dft_real_time(benchmark::State& state,
   event.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<complex_type> host_buffer(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
-  verify_dft<sycl_fft::direction::FORWARD>(a.data(), host_buffer.data(), N_transforms, N, desc.placement, desc.forward_scale);
+  std::vector<complex_type> host_output(num_elements);
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
+  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), N_transforms, N, desc.placement, desc.forward_scale);
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
@@ -114,7 +113,7 @@ void bench_dft_device_time(benchmark::State& state,
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::vector<complex_type> a;
+  
 
   sycl::queue q({sycl::property::queue::enable_profiling()});
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
@@ -129,8 +128,8 @@ void bench_dft_device_time(benchmark::State& state,
   memFill(in_dev, q, num_elements);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  a.resize(num_elements);
-  q.copy(in_dev, a.data(), num_elements).wait();
+  std::vector<complex_type> host_input(num_elements);
+  q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   auto compute = [&]() {
@@ -141,9 +140,9 @@ void bench_dft_device_time(benchmark::State& state,
   // warmup
   compute().wait();
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<complex_type> host_buffer(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_buffer.data(), num_elements).wait();
-  verify_dft<sycl_fft::direction::FORWARD>(a.data(), host_buffer.data(), N_transforms, N, desc.placement, desc.forward_scale);
+  std::vector<complex_type> host_output(num_elements);
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
+  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), N_transforms, N, desc.placement, desc.forward_scale);
 #endif //SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
