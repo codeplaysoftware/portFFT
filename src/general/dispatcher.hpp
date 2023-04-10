@@ -25,30 +25,39 @@
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
+#include <enums.hpp>
 
-namespace sycl_fft{
+namespace sycl_fft {
 
-namespace detail{
+namespace detail {
 
 /**
  * Implementation of FFT for sizes that can be done by independent work items.
- * 
+ *
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N size of each transform
- * @tparam T_in type of the accessor or pointer to global memory containing input data
- * @tparam T_out type of the accessor or pointer to global memory for output data
+ * @tparam T_in type of the accessor or pointer to global memory containing
+ * input data
+ * @tparam T_out type of the accessor or pointer to global memory for output
+ * data
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*N*subgroup_size values
+ * @param loc local accessor. Must have enough space for 2*N*subgroup_size
+ * values
  * @param n_transforms number of FT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within input data
- * @param output_distance Distance between data for two FFT transforms within output data
+ * @param input_distance Distance between data for two FFT transforms within
+ * input data
+ * @param output_distance Distance between data for two FFT transforms within
+ * output data
  * @param it sycl::nd_item<1> for the kernel launch
+ * @param scaling_factor Scaling factor applied to the result
  */
-template<int N, typename T_in, typename T_out, typename T>
-inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t n_transforms, 
-                   std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it){
-    constexpr int N_reals = 2*N;
+template <direction dir, int N, typename T_in, typename T_out, typename T>
+inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t n_transforms,
+                          std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it,
+                          T scaling_factor) {
+    constexpr int N_reals = 2 * N;
 
     T priv[N_reals];
     sycl::sub_group sg = it.get_sub_group();
@@ -79,7 +88,11 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
         sycl::group_barrier(sg);
         if(working){
           local2private<N_reals>(loc, priv, subgroup_local_id, N_reals);
-          wi_dft<N, 1, 1>(priv, priv);
+          wi_dft<dir, N, 1, 1>(priv, priv);
+          unrolled_loop<0, N_reals, 2>([&](const int i) {
+            priv[i] *= scaling_factor;
+            priv[i + 1] *= scaling_factor;
+          });
           private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
         }
         sycl::group_barrier(sg);
@@ -101,12 +114,14 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
 /**
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N size of each transform
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
  * data
  * @tparam T type of the scalar used for computations
+ * @tparam T_twiddles pointer containing the twiddles
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
@@ -117,14 +132,13 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  * @param output_distance Distance between data for two FFT transforms within
  * output data
  * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles pointer containing twiddles
+ * @param scaling_factor Scaling factor applied to the result
  */
-template <int factor_wi, typename T_in, typename T_out, typename T,
-          typename T_twiddles>
-inline void subgroup_impl(int factor_sg, T_in input, T_out output,
-                          const sycl::local_accessor<T, 1>& loc,
-                          std::size_t n_transforms, std::size_t input_distance,
-                          std::size_t output_distance, sycl::nd_item<1> it,
-                          T_twiddles twiddles) {
+template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
+inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
+                          std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
+                          sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
@@ -182,7 +196,11 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
                                     N_reals_per_wi,
                                     subgroup_id * n_reals_per_sg);
     }
-    sg_dft<factor_wi>(factor_sg, priv, sg, twiddles);
+    sg_dft<dir, factor_wi>(factor_sg, priv, sg, twiddles);
+    unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) {
+      priv[i] *= scaling_factor;
+      priv[i + 1] *= scaling_factor;
+    });
     if (working) {
       private2local_transposed<N_reals_per_wi>(
           priv, loc, id_of_wi_in_fft, factor_sg,
@@ -211,6 +229,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
  * Selects appropriate template instantiation of workitem implementations for
  * given size of DFT.
  *
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -227,82 +246,84 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output,
  * @param output_distance Distance between data for two FFT transforms within
  * output data
  * @param it sycl::nd_item<1> for the kernel launch
+ * @param scaling_factor Scaling factor applied to the result
  */
-template<typename T_in, typename T_out, typename T>
-void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,1>& loc, std::size_t fft_size,
-                   std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it){
-    switch(fft_size){
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                   \
-  case N:                                                                \
-    if constexpr (fits_in_wi<T>(N)) {                                    \
-      workitem_impl<N>(input, output, loc, n_transforms, input_distance, \
-                       output_distance, it);                             \
-    }                                                                    \
+template <direction dir, typename T_in, typename T_out, typename T>
+void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+                         std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
+                         sycl::nd_item<1> it, T scaling_factor) {
+  switch (fft_size) {
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                              \
+  case N:                                                                                                           \
+    if constexpr (fits_in_wi<T>(N)) {                                                                               \
+      workitem_impl<dir, N>(input, output, loc, n_transforms, input_distance, output_distance, it, scaling_factor); \
+    }                                                                                                               \
     break;
-      SYCL_FFT_WI_DISPATCHER_IMPL(1)
-      SYCL_FFT_WI_DISPATCHER_IMPL(2)
-      SYCL_FFT_WI_DISPATCHER_IMPL(3)
-      SYCL_FFT_WI_DISPATCHER_IMPL(4)
-      SYCL_FFT_WI_DISPATCHER_IMPL(5)
-      SYCL_FFT_WI_DISPATCHER_IMPL(6)
-      SYCL_FFT_WI_DISPATCHER_IMPL(7)
-      SYCL_FFT_WI_DISPATCHER_IMPL(8)
-      SYCL_FFT_WI_DISPATCHER_IMPL(9)
-      SYCL_FFT_WI_DISPATCHER_IMPL(10)
-      SYCL_FFT_WI_DISPATCHER_IMPL(11)
-      SYCL_FFT_WI_DISPATCHER_IMPL(12)
-      SYCL_FFT_WI_DISPATCHER_IMPL(13)
-      SYCL_FFT_WI_DISPATCHER_IMPL(14)
-      SYCL_FFT_WI_DISPATCHER_IMPL(15)
-      SYCL_FFT_WI_DISPATCHER_IMPL(16)
-      SYCL_FFT_WI_DISPATCHER_IMPL(17)
-      SYCL_FFT_WI_DISPATCHER_IMPL(18)
-      SYCL_FFT_WI_DISPATCHER_IMPL(19)
-      SYCL_FFT_WI_DISPATCHER_IMPL(20)
-      SYCL_FFT_WI_DISPATCHER_IMPL(21)
-      SYCL_FFT_WI_DISPATCHER_IMPL(22)
-      SYCL_FFT_WI_DISPATCHER_IMPL(23)
-      SYCL_FFT_WI_DISPATCHER_IMPL(24)
-      SYCL_FFT_WI_DISPATCHER_IMPL(25)
-      SYCL_FFT_WI_DISPATCHER_IMPL(26)
-      SYCL_FFT_WI_DISPATCHER_IMPL(27)
-      SYCL_FFT_WI_DISPATCHER_IMPL(28)
-      SYCL_FFT_WI_DISPATCHER_IMPL(29)
-      SYCL_FFT_WI_DISPATCHER_IMPL(30)
-      SYCL_FFT_WI_DISPATCHER_IMPL(31)
-      SYCL_FFT_WI_DISPATCHER_IMPL(32)
-      SYCL_FFT_WI_DISPATCHER_IMPL(33)
-      SYCL_FFT_WI_DISPATCHER_IMPL(34)
-      SYCL_FFT_WI_DISPATCHER_IMPL(35)
-      SYCL_FFT_WI_DISPATCHER_IMPL(36)
-      SYCL_FFT_WI_DISPATCHER_IMPL(37)
-      SYCL_FFT_WI_DISPATCHER_IMPL(38)
-      SYCL_FFT_WI_DISPATCHER_IMPL(39)
-      SYCL_FFT_WI_DISPATCHER_IMPL(40)
-      SYCL_FFT_WI_DISPATCHER_IMPL(41)
-      SYCL_FFT_WI_DISPATCHER_IMPL(42)
-      SYCL_FFT_WI_DISPATCHER_IMPL(43)
-      SYCL_FFT_WI_DISPATCHER_IMPL(44)
-      SYCL_FFT_WI_DISPATCHER_IMPL(45)
-      SYCL_FFT_WI_DISPATCHER_IMPL(46)
-      SYCL_FFT_WI_DISPATCHER_IMPL(47)
-      SYCL_FFT_WI_DISPATCHER_IMPL(48)
-      SYCL_FFT_WI_DISPATCHER_IMPL(49)
-      SYCL_FFT_WI_DISPATCHER_IMPL(50)
-      SYCL_FFT_WI_DISPATCHER_IMPL(51)
-      SYCL_FFT_WI_DISPATCHER_IMPL(52)
-      SYCL_FFT_WI_DISPATCHER_IMPL(53)
-      SYCL_FFT_WI_DISPATCHER_IMPL(54)
-      SYCL_FFT_WI_DISPATCHER_IMPL(55)
-      SYCL_FFT_WI_DISPATCHER_IMPL(56)
+    SYCL_FFT_WI_DISPATCHER_IMPL(1)
+    SYCL_FFT_WI_DISPATCHER_IMPL(2)
+    SYCL_FFT_WI_DISPATCHER_IMPL(3)
+    SYCL_FFT_WI_DISPATCHER_IMPL(4)
+    SYCL_FFT_WI_DISPATCHER_IMPL(5)
+    SYCL_FFT_WI_DISPATCHER_IMPL(6)
+    SYCL_FFT_WI_DISPATCHER_IMPL(7)
+    SYCL_FFT_WI_DISPATCHER_IMPL(8)
+    SYCL_FFT_WI_DISPATCHER_IMPL(9)
+    SYCL_FFT_WI_DISPATCHER_IMPL(10)
+    SYCL_FFT_WI_DISPATCHER_IMPL(11)
+    SYCL_FFT_WI_DISPATCHER_IMPL(12)
+    SYCL_FFT_WI_DISPATCHER_IMPL(13)
+    SYCL_FFT_WI_DISPATCHER_IMPL(14)
+    SYCL_FFT_WI_DISPATCHER_IMPL(15)
+    SYCL_FFT_WI_DISPATCHER_IMPL(16)
+    SYCL_FFT_WI_DISPATCHER_IMPL(17)
+    SYCL_FFT_WI_DISPATCHER_IMPL(18)
+    SYCL_FFT_WI_DISPATCHER_IMPL(19)
+    SYCL_FFT_WI_DISPATCHER_IMPL(20)
+    SYCL_FFT_WI_DISPATCHER_IMPL(21)
+    SYCL_FFT_WI_DISPATCHER_IMPL(22)
+    SYCL_FFT_WI_DISPATCHER_IMPL(23)
+    SYCL_FFT_WI_DISPATCHER_IMPL(24)
+    SYCL_FFT_WI_DISPATCHER_IMPL(25)
+    SYCL_FFT_WI_DISPATCHER_IMPL(26)
+    SYCL_FFT_WI_DISPATCHER_IMPL(27)
+    SYCL_FFT_WI_DISPATCHER_IMPL(28)
+    SYCL_FFT_WI_DISPATCHER_IMPL(29)
+    SYCL_FFT_WI_DISPATCHER_IMPL(30)
+    SYCL_FFT_WI_DISPATCHER_IMPL(31)
+    SYCL_FFT_WI_DISPATCHER_IMPL(32)
+    SYCL_FFT_WI_DISPATCHER_IMPL(33)
+    SYCL_FFT_WI_DISPATCHER_IMPL(34)
+    SYCL_FFT_WI_DISPATCHER_IMPL(35)
+    SYCL_FFT_WI_DISPATCHER_IMPL(36)
+    SYCL_FFT_WI_DISPATCHER_IMPL(37)
+    SYCL_FFT_WI_DISPATCHER_IMPL(38)
+    SYCL_FFT_WI_DISPATCHER_IMPL(39)
+    SYCL_FFT_WI_DISPATCHER_IMPL(40)
+    SYCL_FFT_WI_DISPATCHER_IMPL(41)
+    SYCL_FFT_WI_DISPATCHER_IMPL(42)
+    SYCL_FFT_WI_DISPATCHER_IMPL(43)
+    SYCL_FFT_WI_DISPATCHER_IMPL(44)
+    SYCL_FFT_WI_DISPATCHER_IMPL(45)
+    SYCL_FFT_WI_DISPATCHER_IMPL(46)
+    SYCL_FFT_WI_DISPATCHER_IMPL(47)
+    SYCL_FFT_WI_DISPATCHER_IMPL(48)
+    SYCL_FFT_WI_DISPATCHER_IMPL(49)
+    SYCL_FFT_WI_DISPATCHER_IMPL(50)
+    SYCL_FFT_WI_DISPATCHER_IMPL(51)
+    SYCL_FFT_WI_DISPATCHER_IMPL(52)
+    SYCL_FFT_WI_DISPATCHER_IMPL(53)
+    SYCL_FFT_WI_DISPATCHER_IMPL(54)
+    SYCL_FFT_WI_DISPATCHER_IMPL(55)
+    SYCL_FFT_WI_DISPATCHER_IMPL(56)
 #undef SYCL_FFT_WI_DISPATCHER_IMPL
-    }
+  }
 }
 
 /**
  * Selects appropriate template instantiation of subgroup implementation for
  * given factor_wi.
  *
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -323,20 +344,19 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
  * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
+ * @param scaling_factor Scaling factor applied to the result
  */
-template <typename T_in, typename T_out, typename T, typename T_twiddles>
-void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
-                         const sycl::local_accessor<T, 1>& loc,
-                         std::size_t n_transforms, std::size_t input_distance,
-                         std::size_t output_distance, sycl::nd_item<1> it,
-                         T_twiddles twiddles) {
+template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
+void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
+                         std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
+                         sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
-#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                              \
-  case N:                                                              \
-    if constexpr (fits_in_wi<T>(N)) {                                  \
-      subgroup_impl<N>(factor_sg, input, output, loc, n_transforms,    \
-                       input_distance, output_distance, it, twiddles); \
-    }                                                                  \
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                     \
+  case N:                                                                                                     \
+    if constexpr (fits_in_wi<T>(N)) {                                                                         \
+      subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, input_distance, output_distance, it, \
+                            twiddles, scaling_factor);                                                        \
+    }                                                                                                         \
     break;
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
@@ -401,6 +421,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
 /**
  * Selects appropriate implementation for given problem size.
  *
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -420,25 +441,24 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
  * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
+ * @param scaling_factor Scaling factor applied to the result
  */
-template <typename T_in, typename T_out, typename T, typename T_twiddles>
-void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                std::size_t fft_size, std::size_t n_transforms,
-                std::size_t input_distance, std::size_t output_distance,
-                sycl::nd_item<1> it, T_twiddles twiddles) {
+template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
+void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+                std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it,
+                T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher(input, output, loc, fft_size, n_transforms,
-                        input_distance, output_distance, it);
+    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, input_distance, output_distance, it,
+                             scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(
         fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher(factor_wi, factor_sg, input, output, loc,
-                          n_transforms, input_distance, output_distance, it,
-                          twiddles);
+      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms, input_distance, output_distance,
+                               it, twiddles, scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented
@@ -456,8 +476,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
  * @return T* pointer to device memory containing twiddle factors
  */
 template <typename T>
-T* calculate_twiddles(std::size_t fft_size, sycl::queue& q,
-                      std::size_t subgroup_size) {
+T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
     return nullptr;
   } else {
@@ -527,7 +546,7 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms,
   }
   return subgroup_size * std::min(maximum_n_sgs, n_sgs_we_can_utilize);
 }
-}
-}
+}  // namespace detail
+}  // namespace sycl_fft
 
 #endif
