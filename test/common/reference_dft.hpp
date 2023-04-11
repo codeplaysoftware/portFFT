@@ -40,7 +40,7 @@ template <sycl_fft::direction dir, typename TypeIn, typename TypeOut>
 void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t offset = 0, double scaling_factor = 1.0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
-  std::copy(length.begin(), length.end(), dims.end());
+  std::copy(length.begin(), length.end(), dims.begin());
 
   for (size_t ox = 0; ox < dims[0]; ox++) {
     for (size_t oy = 0; oy < dims[1]; oy++) {

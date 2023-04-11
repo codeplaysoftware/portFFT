@@ -34,7 +34,7 @@
  * @param array2 pointer of type to the second array
  * @param num_elements total number of elements to compare
  * @param absTol absolute tolerance value during to pass the comparision
- * @return true 
+ * @return true if the arrays are equal within the given tolerance
  * @return false 
  */
 template <typename type>

@@ -54,11 +54,11 @@ struct scalar_data_type<CUFFT_Z2Z> {
 template <cufftType plan_type, typename TypeIn, typename TypeOut>
 void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths, std::size_t batch) {
   std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
-  std::size_t num_elements = batch * std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  std::size_t num_elements = batch * fft_size;
   std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
   std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
-  cudaMemcpy(host_output.data(), dev_output, fft_size * batch * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input, fft_size * batch * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
@@ -181,13 +181,8 @@ struct cufft_state {
     } else {
       test_state.SkipWithError("out allocation failed");
     }
-    try{
-      populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
-                         2 * elements);
-    } catch(std::runtime_error e){
-      std::cerr<<e.what()<<"\n";
-      test_state.SkipWithError("Unable to populate device input");
-    }
+    populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
+                         elements);
   }
 };
 

@@ -73,7 +73,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   double scaling_factor = dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
   for (std::size_t i = 0; i < params.batch; i++)
-    reference_dft<dir>(host_input, host_reference_output, params.length, i * params.length, scaling_factor);
+    reference_dft<dir>(host_input.data(), host_reference_output.data(), {params.length}, i * params.length, scaling_factor);
 
   queue.copy(test_type == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
              {fft_event});
@@ -106,7 +106,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     auto commited_descriptor = desc.commit(queue);
     double scaling_factor = dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
     for (std::size_t i = 0; i < params.batch; i++)
-      reference_dft<dir>(host_input, host_reference_output, params.length, i * params.length, scaling_factor);
+      reference_dft<dir>(host_input.data(), host_reference_output.data(), {params.length}, i * params.length, scaling_factor);
 
     if constexpr (test_type == placement::OUT_OF_PLACE) {
       if constexpr (dir == direction::FORWARD) {
