@@ -59,6 +59,16 @@ Run manual benchmarks from the build folder with for instance:
 
 Use the `--help` flag to print help message on the configuration syntax.
 
+## Third party benchmarks
+
+One can build third party benchmarks with the following CMake flags and command line:
+
+| FFT library | CMake argument | Command line |
+| ----------- |--------------- | ------------ |
+| [open-source oneMKL] | `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT` | `./test/bench/bench_open_onemkl` |
+| [close-source oneMKL] | `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON` | `./test/bench/bench_closed_onemkl` |
+| [cuFFT] | `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON` | `./test/bench/bench_cufft` |
+
 ## Troubleshooting
 
 The library should compile without error on our supported platforms.
@@ -80,3 +90,6 @@ contact.
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
+[open-source oneMKL]: https://github.com/oneapi-src/oneMKL
+[close-source oneMKL]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html
+[cuFFT]: https://docs.nvidia.com/cuda/cufft/
