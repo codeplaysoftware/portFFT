@@ -35,7 +35,6 @@
  * @param num_elements total number of elements to compare
  * @param absTol absolute tolerance value during to pass the comparision
  * @return true if the arrays are equal within the given tolerance
- * @return false 
  */
 template <typename type>
 bool compare_arrays(type* array1, type* array2, size_t num_elements, double absTol) {

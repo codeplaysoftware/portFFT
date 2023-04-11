@@ -59,12 +59,12 @@ void bench_dft_real_time(benchmark::State& state,
       desc.placement == sycl_fft::placement::IN_PLACE
           ? nullptr
           : sycl::malloc_device<complex_type>(num_elements, q);
-  memFill(in_dev, q, num_elements);
-  auto committed = desc.commit(q);
 
+  auto committed = desc.commit(q);
   q.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
+  memFill(in_dev, q, num_elements);
   std::vector<complex_type> host_input(num_elements);
   q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif //SYCLFFT_VERIFY_BENCHMARK
@@ -125,9 +125,9 @@ void bench_dft_device_time(benchmark::State& state,
   auto committed = desc.commit(q);
 
   q.wait();
-  memFill(in_dev, q, num_elements);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
+  memFill(in_dev, q, num_elements);
   std::vector<complex_type> host_input(num_elements);
   q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif //SYCLFFT_VERIFY_BENCHMARK

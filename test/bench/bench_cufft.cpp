@@ -181,8 +181,10 @@ struct cufft_state {
     } else {
       test_state.SkipWithError("out allocation failed");
     }
+#ifdef SYCLFFT_VERIFY_BENCHMARK
     populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
                          elements);
+#endif //SYCLFFT_VERIFY_BENCHMARK
   }
 };
 
