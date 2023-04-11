@@ -212,7 +212,7 @@ class committed_descriptor {
 
  private:
   /**
-   * @brief Common interface to dispatch compute called by compute_forward and compute_backward
+   * Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam Tin Type of the input USM pointer

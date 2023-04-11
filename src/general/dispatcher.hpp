@@ -57,36 +57,58 @@ template <direction dir, int N, typename T_in, typename T_out, typename T>
 inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t n_transforms,
                           std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it,
                           T scaling_factor) {
-  constexpr int N_reals = 2 * N;
+    constexpr int N_reals = 2 * N;
 
-  T priv[N_reals];
-  sycl::sub_group sg = it.get_sub_group();
-  std::size_t subgroup_local_id = sg.get_local_linear_id();
-  std::size_t global_id = it.get_global_id(0);
-  std::size_t subgroup_size = sg.get_local_linear_range();
-  std::size_t global_size = it.get_global_range(0);
+    T priv[N_reals];
+    sycl::sub_group sg = it.get_sub_group();
+    std::size_t subgroup_local_id = sg.get_local_linear_id();
+    std::size_t global_id = it.get_global_id(0);
+    std::size_t subgroup_size = sg.get_local_linear_range();
+    std::size_t global_size = it.get_global_range(0);
 
-  for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i += global_size) {
-    bool working = i < n_transforms;
-    int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
+    bool is_input_contiguous = input_distance == N_reals;
+    bool is_output_contiguous = output_distance == N_reals;
 
-    global2local(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
-                 input_distance * (i - subgroup_local_id));
-    sycl::group_barrier(sg);
-    if (working) {
-      local2private<N_reals>(loc, priv, subgroup_local_id, N_reals);
-      wi_dft<dir, N, 1, 1>(priv, priv);
-      unrolled_loop<0, N_reals, 2>([&](const int i) {
-        priv[i] *= scaling_factor;
-        priv[i + 1] *= scaling_factor;
-      });
-      private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
+    for(size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i+=global_size){
+        bool working = i < n_transforms;
+        int n_working =
+            sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
+
+        if (is_input_contiguous) {
+          global2local(input, loc, N_reals * n_working, subgroup_size,
+                       subgroup_local_id,
+                       input_distance * (i - subgroup_local_id));
+        } else {
+          for (int j = 0; j < n_working; j++) {
+            global2local(input, loc, N_reals, subgroup_size, subgroup_local_id,
+                         input_distance * (i - subgroup_local_id + j),
+                         j * N_reals);
+          }
+        }
+        sycl::group_barrier(sg);
+        if(working){
+          local2private<N_reals>(loc, priv, subgroup_local_id, N_reals);
+          wi_dft<dir, N, 1, 1>(priv, priv);
+          unrolled_loop<0, N_reals, 2>([&](const int i) {
+            priv[i] *= scaling_factor;
+            priv[i + 1] *= scaling_factor;
+          });
+          private2local<N_reals>(priv, loc, subgroup_local_id, N_reals);
+        }
+        sycl::group_barrier(sg);
+        if (is_output_contiguous) {
+          local2global(loc, output, N_reals * n_working, subgroup_size,
+                       subgroup_local_id, 0,
+                       output_distance * (i - subgroup_local_id));
+        } else {
+          for (int j = 0; j < n_working; j++) {
+            local2global(loc, output, N_reals, subgroup_size, subgroup_local_id,
+                         j * N_reals,
+                         output_distance * (i - subgroup_local_id + j));
+          }
+        }
+        sycl::group_barrier(sg);
     }
-    sycl::group_barrier(sg);
-    local2global(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
-                 output_distance * (i - subgroup_local_id));
-    sycl::group_barrier(sg);
-  }
 }
 
 /**

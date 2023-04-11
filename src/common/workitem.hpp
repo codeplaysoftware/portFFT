@@ -50,20 +50,20 @@ inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
   T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int k) __attribute__((always_inline)) {
-    tmp[2 * k + 0] = 0;
-    tmp[2 * k + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int n) __attribute__((always_inline)) {
+  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+    tmp[2 * idx_out + 0] = 0;
+    tmp[2 * idx_out + 1] = 0;
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
-      auto re_multiplier = twiddle<T>::re[N][n * k % N];
+      auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
-        if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][n * k % N];
-        return -twiddle<T>::im[N][n * k % N];
+        if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
+        return -twiddle<T>::im[N][idx_in * idx_out % N];
       }();
 
       // multiply in and multi
-      tmp[2 * k + 0] += in[2 * n * stride_in] * re_multiplier - in[2 * n * stride_in + 1] * im_multiplier;
-      tmp[2 * k + 1] += in[2 * n * stride_in] * im_multiplier + in[2 * n * stride_in + 1] * re_multiplier;
+      tmp[2 * idx_out + 0] += in[2 * idx_in * stride_in] * re_multiplier - in[2 * idx_in * stride_in + 1] * im_multiplier;
+      tmp[2 * idx_out + 1] += in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
     });
   });
   unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
