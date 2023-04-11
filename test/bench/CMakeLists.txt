@@ -53,6 +53,9 @@ foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
         ${BENCHMARK_FILE}
     )
     add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
+    if(${SYCLFFT_VERIFY_BENCHMARK})
+        target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+    endif()
     target_link_libraries(
         ${BENCHMARK_TARGET}
         PRIVATE
@@ -65,8 +68,11 @@ endforeach()
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
     add_executable(bench_cufft bench_cufft.cpp)
+    if(${SYCLFFT_VERIFY_BENCHMARK})
+        target_compile_definitions(bench_cufft PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+    endif()
     find_package(CUDAToolkit REQUIRED)
-    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark)
+    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark CUDA::curand sycl_fft)
     target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endif()
 

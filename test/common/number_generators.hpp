@@ -50,4 +50,4 @@ void populate_with_random(std::vector<std::complex<type>>& in,
   }
 }
 
-#endif
+#endif //SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
