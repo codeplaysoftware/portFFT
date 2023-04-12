@@ -20,6 +20,7 @@
 
 #include <complex>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -27,10 +28,50 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-#include <benchmark/benchmark.h>
+#include "bench_utils.hpp"
+#include "reference_dft.hpp"
+#include "cufft_utils.hpp"
+#include "enums.hpp"
 
-#include "number_generators.hpp"
+#include <benchmark/benchmark.h>
 #include "reference_dft_set.hpp"
+
+template <cufftType T>
+struct scalar_data_type {
+  using type = float;  // default value;
+};
+
+template <>
+struct scalar_data_type<CUFFT_D2Z> {
+  using type = double;
+};
+
+template <>
+struct scalar_data_type<CUFFT_Z2Z> {
+  using type = double;
+};
+
+template <cufftType plan_type, typename TypeIn, typename TypeOut>
+void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths, std::size_t batch) {
+  std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  std::size_t num_elements = batch * fft_size;
+  std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
+  std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
+  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
+
+  using scalar_type = typename scalar_data_type<plan_type>::type;
+  std::vector<TypeOut> result_vector(num_elements);
+  for (std::size_t i = 0; i < batch; i++) {
+    reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
+                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths, i * fft_size);
+  }
+  int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                               reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
+  if (!correct) {
+    throw std::runtime_error("Verification Failed");
+  }
+}
 
 template <typename Backward, typename DeviceForward, typename DeviceBackward,
           cufftType plan>
@@ -126,7 +167,6 @@ struct cufft_state {
     }
 
     const auto elements = static_cast<std::size_t>(fft_size * batch);
-
     typename type_info::device_forward_type* in_tmp;
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
       in.reset(in_tmp);
@@ -141,16 +181,10 @@ struct cufft_state {
     } else {
       test_state.SkipWithError("out allocation failed");
     }
-
-    std::vector<forward_type> forward(elements);
-    populate_with_random(forward);
-
-    if (cudaMemcpyAsync(
-            in.get(), forward.data(),
-            sizeof(typename decltype(forward)::value_type) * forward.size(),
-            cudaMemcpyHostToDevice, nullptr) != cudaSuccess) {
-      test_state.SkipWithError("memcpy failed");
-    }
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+    populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
+                         elements);
+#endif //SYCLFFT_VERIFY_BENCHMARK
   }
 };
 
@@ -190,6 +224,11 @@ static void cufft_oop_real_time(benchmark::State& state,
     state.SkipWithError("warmup synchronize failed");
   }
 
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  using info = typename decltype(cu_state)::type_info;
+  verify_dft<info::plan_type>(in, out, lengths, batch);
+#endif //SYCLFFT_VERIFY_BENCHMARK
+
   // benchmark
   for (auto _ : state) {
     cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
@@ -217,6 +256,11 @@ static void cufft_oop_device_time(benchmark::State& state,
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
     state.SkipWithError("warmup synchronize failed");
   }
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  using info = typename decltype(cu_state)::type_info;
+  verify_dft<info::plan_type>(in, out, lengths, batch);
+#endif //SYCLFFT_VERIFY_BENCHMARK
 
   cudaEvent_t before;
   cudaEvent_t after;

@@ -18,21 +18,31 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
-#define SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#ifndef SYCLFFT_BENCH_BENCH_UTILS_HPP
+#define SYCLFFT_BENCH_BENCH_UTILS_HPP
 
+#include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <vector>
 
 /**
- * Estimates the number of operations required to compute the FFT.
- * The estimate is based on radix-2 decimation in time Cooley-Tukey.
- * @param fft_size size of the FFT problem
- * @param batches number of batches computed. Defaults to 1.
- * @return estimated number of operations to compute FFT. Returns a double to
- * avoid rounding.
+ * @brief Compares two arrays 
+ * 
+ * @tparam type Type of the two arrays
+ * @param array1 pointer of type to the first array
+ * @param array2 pointer of type to the second array
+ * @param num_elements total number of elements to compare
+ * @param absTol absolute tolerance value during to pass the comparision
+ * @return true if the arrays are equal within the given tolerance
  */
-inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
-  return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
+template <typename type>
+bool compare_arrays(type* array1, type* array2, size_t num_elements, double absTol) {
+  bool correct = true;
+  for (size_t i = 0; i < num_elements; i++) {
+    correct = correct && (std::abs(array1[i] - array2[i]) <= absTol);
+  }
+  return correct;
 }
 
-#endif //SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#endif //SYCLFFT_BENCH_BENCH_UTILS_HPP

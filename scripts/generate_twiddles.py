@@ -38,10 +38,13 @@ struct twiddle{{
 // twiddle_re[N][K] and twiddle_im[N][K] contain real and imaginary components of a twiddle factor K out of N.
 
 // We only have twiddles up to size 64 here. 64 is likely the largest size we will be able to handle within one workitem on current GPUs
-static constexpr T re[{size}][{size}] = {{ {real} }};
+//clang-format off
 
-static constexpr T im[{size}][{size}] = {{ {imag} }};
+static constexpr T re[{size}][{size}] = {{ {real_forward} }};
 
+static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
+
+//clang-format on
 }};
 }}
 
@@ -56,7 +59,7 @@ def generate(max_size):
         tmp_imag = []
         for i in range(size):
             # make sure zeros are exact to let compiler do further optimizations
-            if i==0:
+            if i == 0:
                 tmp_real.append(1.0)
                 tmp_imag.append(0.0)
             elif 2*i == size:
@@ -76,18 +79,24 @@ def generate(max_size):
         # pad with zeros to max_size
         tmp_real += [0] * (max_size - size + 1)
         tmp_imag += [0] * (max_size - size + 1)
+
         res_real.append(tmp_real)
         res_imag.append(tmp_imag)
+    
+    return [res_real, res_imag]
 
-    return res_real, res_imag
 
-def write(fn, real, imag, size):
-    with open(fn,"w") as fil:
-        realstr = ",\n".join("{" + ", ".join(str(j) for j in i) + "}" for i in real)
-        imagstr = ",\n".join("{" + ", ".join(str(j) for j in i) + "}" for i in imag)
-        content = template.format(size=size+1, real=realstr, imag=imagstr)
+def write(path, size):
+    real, imag  = generate(size)
+    with open(path, "w") as fil:
+        realstr = ",\n".join("{" + ", ".join(str(j)
+                                                     for j in i) + "}" for i in real)
+        imagstr = ",\n".join("{" + ", ".join(str(j)
+                                                     for j in i) + "}" for i in imag)
+        
+        content = template.format(size=size+1, real_forward=realstr, imag_forward=imagstr)
         fil.write(content)
 
+
 if __name__ == "__main__":
-    real, imag = generate(MAX_SIZE)
-    write(DST, real, imag, MAX_SIZE)
+    write(DST, MAX_SIZE)

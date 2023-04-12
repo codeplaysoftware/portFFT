@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_UNIT_TEST_UTILS_HPP
 #define SYCL_FFT_UNIT_TEST_UTILS_HPP
 
+#include "enums.hpp"
 #include <complex>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -29,6 +30,7 @@
 #include <sycl/sycl.hpp>
 
 using namespace std::complex_literals;
+using namespace sycl_fft;
 
 #define CHECK_QUEUE(queue) \
   if (!queue.first) GTEST_SKIP() << queue.second;
@@ -40,24 +42,6 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
   for (size_t i = 0; i < array1.size(); i++) {
     EXPECT_NEAR(array1[i].real(), array2[i].real(), tol) << "i=" << i;
     EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol) << "i=" << i;
-  }
-}
-
-template <typename TypeIn, typename TypeOut>
-void reference_forward_dft(std::vector<TypeIn>& in, std::vector<TypeOut>& out,
-                           size_t length, size_t offset = 0) {
-  long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
-
-  size_t N = length;
-  for (size_t k = 0; k < N; k++) {
-    std::complex<long double> out_temp = 0;
-    for (size_t n = 0; n < N; n++) {
-      auto multiplier = std::complex<long double>{std::cos(n * k * TWOPI / N),
-                                                  -std::sin(n * k * TWOPI / N)};
-      out_temp +=
-          static_cast<std::complex<long double>>(in[offset + n]) * multiplier;
-    }
-    out[offset + k] = static_cast<TypeOut>(out_temp);
   }
 }
 
