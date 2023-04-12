@@ -23,12 +23,42 @@
 
 #include <sycl/sycl.hpp>
 
+#ifndef SYCL_FFT_N_LOCAL_BANKS
+#define SYCL_FFT_N_LOCAL_BANKS 32
+#endif
+
 namespace sycl_fft{
+
+namespace detail{
+
+/**
+ * If Pad is true ransforms an index into local memory to skip one element for every 
+ * SYCL_FFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing 
+ * elements with a stride that is multiple of (or has any common divisor greater than 1 with) 
+ * the number of local banks. Does nothing if Pad is false.
+ * 
+ * Can also be used to transform size of a local allocation to account for padding indices in it this way.
+ * 
+ * @tparam Pad whether to do padding
+ * @param local_idx index to transform
+ * @return transformed local_idx
+ */
+template<bool Pad = true>
+inline std::size_t pad_local(std::size_t local_idx){
+  if constexpr(Pad){
+      local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
+  }
+  return local_idx;
+}
+
+}
 
 /**
  * Copies data from global memory to local memory. Depending on how parameters
  * are set, this can work on work group or subgroup level.
  *
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow 
+ * strided reads without bank conflicts
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -42,13 +72,14 @@ namespace sycl_fft{
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <typename T_glob_ptr, typename T_loc_ptr>
+template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
 inline void global2local(T_glob_ptr global, T_loc_ptr local,
                          std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t global_offset = 0,
                          std::size_t local_offset = 0) {
   for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
-    local[local_offset + i] = global[global_offset + i];
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
+    local[local_idx] = global[global_offset + i];
   }
 }
 
@@ -56,6 +87,8 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
  * Copies data from local memory to global memory. Depending of how parameters
  * are set, this can work on work group or subgroup level.
  *
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow 
+ * strided reads without bank conflicts
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
@@ -69,14 +102,15 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local,
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <typename T_loc_ptr, typename T_glob_ptr>
+template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
 inline void local2global(T_loc_ptr local, T_glob_ptr global,
                          std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t local_offset = 0,
                          std::size_t global_offset = 0) {
-  // we can use exactly the same code for transfers in the other direction
-  global2local(local, global, total_num_elems, local_size, local_id,
-               local_offset, global_offset);
+  for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
+    global[global_offset + i] = local[local_idx];
+  }
 }
 
 /**
@@ -84,6 +118,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
  * of consecutive values from local memory.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
@@ -95,12 +130,13 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global,
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
 inline void local2private(T_loc_ptr local, T_priv_ptr priv,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    priv[i] = local[local_offset + local_id * stride + i];
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
+    priv[i] = local[local_idx];
   }
 }
 
@@ -120,7 +156,7 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv,
  * less than subgroup size)
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
 inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
                                      std::size_t local_id,
                                      std::size_t workers_in_sg,
@@ -135,6 +171,7 @@ inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
  * chunk of consecutive values to local memory.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -146,12 +183,13 @@ inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
+template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
 inline void private2local(T_priv_ptr priv, T_loc_ptr local,
                           std::size_t local_id, std::size_t stride,
                           std::size_t local_offset = 0) {
   for (std::size_t i = 0; i < num_elems_per_wi; i++) {
-    local[local_offset + local_id * stride + i] = priv[i];
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
+    local[local_idx] = priv[i];
   }
 }
 
