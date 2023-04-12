@@ -26,7 +26,7 @@
 
 /**
  * @brief populates device ptr with random values using the curand host api
- * 
+ *
  * @tparam T Type of device pointer, must be either float, double or int
  * @param dev_ptr Device Pointer
  * @param N Batch times the number of elements in each FFT
@@ -57,4 +57,4 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
   curandDestroyGenerator(generator);
 }
 
-#endif //SYCL_FFT_BENCH_CUFFT_UTILS_HPP
+#endif  // SYCL_FFT_BENCH_CUFFT_UTILS_HPP

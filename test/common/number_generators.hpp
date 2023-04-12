@@ -49,4 +49,4 @@ void populate_with_random(std::vector<std::complex<type>>& in, type lowerLimit =
   }
 }
 
-#endif //SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
+#endif  // SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
