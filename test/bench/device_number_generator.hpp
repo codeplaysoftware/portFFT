@@ -21,17 +21,17 @@
 #ifndef SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
 #define SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
 
-#include <sycl/sycl.hpp>
 #include <complex>
+#include <sycl/sycl.hpp>
 
 template <typename T>
 class memFillKernel;
 
 /**
  * @brief Kernel for populating device pointer with values
- * 
+ *
  * @tparam T Type of the input pointer
- * @param input The Device pointer 
+ * @param input The Device pointer
  * @param queue sycl::queue associated with the device
  * @param num_elements Batch times the number of elements in each FFT
  */
@@ -40,16 +40,15 @@ void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
   constexpr int group_dim = 32;
   auto global_range = static_cast<int>(ceil(static_cast<float>(num_elements) / group_dim) * group_dim);
   queue.submit([&](sycl::handler& h) {
-    h.parallel_for<memFillKernel<T>>(sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)),
-                                     [=](sycl::nd_item<1> itm) {
-                                       auto idx = itm.get_global_id(0);
-                                       if (idx < num_elements) {
-                                         input[idx] = static_cast<T>(std::complex<float>(itm.get_local_id(0), itm.get_local_id(0) + 1));
-                                       }
-                                     });
+    h.parallel_for<memFillKernel<T>>(
+        sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)), [=](sycl::nd_item<1> itm) {
+          auto idx = itm.get_global_id(0);
+          if (idx < num_elements) {
+            input[idx] = static_cast<T>(std::complex<float>(itm.get_local_id(0), itm.get_local_id(0) + 1));
+          }
+        });
   });
   queue.wait();
 }
 
-
-#endif // SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
+#endif  // SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP

@@ -320,4 +320,4 @@ void register_benchmarks(int argc, char** argv) {
   }
 }
 
-#endif //SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
+#endif  // SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
