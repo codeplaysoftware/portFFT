@@ -41,18 +41,23 @@ include(GoogleTest)
 foreach(UNIT_TEST_FILE ${UNIT_TESTS})
     get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
     set(TEST_TARGET "test_${FILE_NAME}")
-    add_executable(
-        ${TEST_TARGET}
-        ${UNIT_TEST_FILE}
-    )
-    add_sycl_to_target(TARGET ${TEST_TARGET} SOURCES ${UNIT_TEST_FILE})
-    target_link_libraries(
-        ${TEST_TARGET}
-        PRIVATE
-        sycl_fft
-        GTest::gtest_main
-        Threads::Threads
-    )
-    target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
-    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
+    string(FIND "${TEST_TARGET}" "double" HAS_DOUBLE_IN_NAME)
+    if(SYCLFFT_ENABLE_DOUBLE_BUILDS OR HAS_DOUBLE_IN_NAME EQUAL -1)
+        add_executable(
+            ${TEST_TARGET}
+            ${UNIT_TEST_FILE}
+        )
+        add_sycl_to_target(TARGET ${TEST_TARGET} SOURCES ${UNIT_TEST_FILE})
+        target_link_libraries(
+            ${TEST_TARGET}
+            PRIVATE
+            sycl_fft
+            GTest::gtest_main
+            Threads::Threads
+        )
+        target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+        gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
+    else()
+        message(STATUS "Skipping compilation of SYCL-FFT test with doubles: ${TEST_TARGET}")
+    endif()
 endforeach()

@@ -47,22 +47,27 @@ set(SYCL_FFT_BENCHMARKS
 foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
     get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
     set(BENCHMARK_TARGET "${FILE_NAME}")
-    add_executable(
-        ${BENCHMARK_TARGET}
-        ${BENCHMARK_FILE}
-    )
-    add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
-    if(${SYCLFFT_VERIFY_BENCHMARK})
-        target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+    string(FIND "${BENCHMARK_TARGET}" "double" HAS_DOUBLE_IN_NAME)
+    if(SYCLFFT_ENABLE_DOUBLE_BUILDS OR HAS_DOUBLE_IN_NAME EQUAL -1)
+        add_executable(
+            ${BENCHMARK_TARGET}
+            ${BENCHMARK_FILE}
+        )
+        add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
+        if(${SYCLFFT_VERIFY_BENCHMARK})
+            target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+        endif()
+        target_link_libraries(
+            ${BENCHMARK_TARGET}
+            PRIVATE
+            sycl_fft
+            benchmark::benchmark
+            Threads::Threads
+        )
+        target_include_directories(${BENCHMARK_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+    else()
+        message(STATUS "Skipping compilation of SYCLFFT benchmark with doubles: ${BENCHMARK_TARGET}")
     endif()
-    target_link_libraries(
-        ${BENCHMARK_TARGET}
-        PRIVATE
-        sycl_fft
-        benchmark::benchmark
-        Threads::Threads
-    )
-    target_include_directories(${BENCHMARK_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
 endforeach()
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
