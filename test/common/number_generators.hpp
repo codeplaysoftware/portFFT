@@ -27,9 +27,9 @@
 using engine = std::ranlux48_base;
 
 template <typename type>
-std::enable_if_t<std::is_floating_point_v<type>> populate_with_random(
-    std::vector<type>& in, type lowerLimit = type(-1.0),
-    type higherLimit = type(1.0)) {
+std::enable_if_t<std::is_floating_point_v<type>> populate_with_random(std::vector<type>& in,
+                                                                      type lowerLimit = type(-1.0),
+                                                                      type higherLimit = type(1.0)) {
   engine algo(0);
   std::uniform_real_distribution<type> distribution(lowerLimit, higherLimit);
 
@@ -39,8 +39,7 @@ std::enable_if_t<std::is_floating_point_v<type>> populate_with_random(
 }
 
 template <typename type>
-void populate_with_random(std::vector<std::complex<type>>& in,
-                          type lowerLimit = type(-1.0),
+void populate_with_random(std::vector<std::complex<type>>& in, type lowerLimit = type(-1.0),
                           type higherLimit = type(1.0)) {
   engine algo(0);
   std::uniform_real_distribution<type> distribution(lowerLimit, higherLimit);
@@ -50,4 +49,4 @@ void populate_with_random(std::vector<std::complex<type>>& in,
   }
 }
 
-#endif //SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
+#endif  // SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP

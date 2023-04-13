@@ -27,8 +27,8 @@
 #include <vector>
 
 /**
- * @brief Compares two arrays 
- * 
+ * @brief Compares two arrays
+ *
  * @tparam type Type of the two arrays
  * @param array1 pointer of type to the first array
  * @param array2 pointer of type to the second array
@@ -45,4 +45,4 @@ bool compare_arrays(type* array1, type* array2, size_t num_elements, double absT
   return correct;
 }
 
-#endif //SYCLFFT_BENCH_BENCH_UTILS_HPP
+#endif  // SYCLFFT_BENCH_BENCH_UTILS_HPP

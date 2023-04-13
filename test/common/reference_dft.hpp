@@ -21,13 +21,14 @@
 #ifndef SYCL_FFT_COMMON_REFERENCE_DFT_HPP
 #define SYCL_FFT_COMMON_REFERENCE_DFT_HPP
 
-#include <cstddef>
 #include <complex>
+#include <cstddef>
+
 #include "enums.hpp"
 
 /**
  * @brief Multidimensional Refernce DFT implementation
- * 
+ *
  * @tparam FFT direction, takes sycl::direction::FORWARD/BACKWARD
  * @tparam TypeIn Type of the input
  * @tparam TypeOut Type of the output
@@ -52,10 +53,11 @@ void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t off
               double theta = -1 * TWOPI *
                              ((ix * ox / static_cast<double>(dims[0])) + (iy * oy / static_cast<double>(dims[1])) +
                               (iz * oz / static_cast<double>(dims[2])));
-              if constexpr(dir == sycl_fft::direction::BACKWARD){
+              if constexpr (dir == sycl_fft::direction::BACKWARD) {
                 theta = -theta;
               }
-              auto element = static_cast<long double>(scaling_factor) * 
+              auto element =
+                  static_cast<long double>(scaling_factor) *
                   static_cast<std::complex<long double>>(in[offset + ix * dims[1] * dims[2] + iy * dims[2] + iz]);
               auto multiplier = std::complex<long double>(std::cos(theta), std::sin(theta));
               out_temp += element * multiplier;
@@ -68,4 +70,4 @@ void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t off
   }
 }
 
-#endif //SYCL_FFT_COMMON_REFERENCE_DFT_HPP
+#endif  // SYCL_FFT_COMMON_REFERENCE_DFT_HPP

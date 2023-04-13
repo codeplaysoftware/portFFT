@@ -51,20 +51,18 @@ TEST(transfers, unpadded) {
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<complex_type, 1> loc1(N * sg_size, h);
     sycl::local_accessor<complex_type, 1> loc2(N * sg_size, h);
-    h.parallel_for<test_transfers_kernel_unpadded>(
-        sycl::nd_range<1>({sg_size}, {sg_size}),
-        [=](sycl::nd_item<1> it) {
-          size_t local_id = it.get_sub_group().get_local_linear_id();
+    h.parallel_for<test_transfers_kernel_unpadded>(sycl::nd_range<1>({sg_size}, {sg_size}), [=](sycl::nd_item<1> it) {
+      size_t local_id = it.get_sub_group().get_local_linear_id();
 
-          complex_type priv[N];
+      complex_type priv[N];
 
-          sycl_fft::global2local<false>(a_dev, loc1, N * sg_size, sg_size, local_id);
-          group_barrier(it.get_group());
-          sycl_fft::local2private<N, false>(loc1, priv, local_id, N);
-          sycl_fft::private2local<N, false>(priv, loc2, local_id, N);
-          group_barrier(it.get_group());
-          sycl_fft::local2global<false>(loc2, b_dev, N * sg_size, sg_size, local_id);
-        });
+      sycl_fft::global2local<false>(a_dev, loc1, N * sg_size, sg_size, local_id);
+      group_barrier(it.get_group());
+      sycl_fft::local2private<N, false>(loc1, priv, local_id, N);
+      sycl_fft::private2local<N, false>(priv, loc2, local_id, N);
+      group_barrier(it.get_group());
+      sycl_fft::local2global<false>(loc2, b_dev, N * sg_size, sg_size, local_id);
+    });
   });
 
   q.wait();
@@ -94,20 +92,18 @@ TEST(transfers, padded) {
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<complex_type, 1> loc1(sycl_fft::detail::pad_local(N * sg_size), h);
     sycl::local_accessor<complex_type, 1> loc2(sycl_fft::detail::pad_local(N * sg_size), h);
-    h.parallel_for<test_transfers_kernel_padded>(
-        sycl::nd_range<1>({sg_size}, {sg_size}),
-        [=](sycl::nd_item<1> it) {
-          size_t local_id = it.get_sub_group().get_local_linear_id();
+    h.parallel_for<test_transfers_kernel_padded>(sycl::nd_range<1>({sg_size}, {sg_size}), [=](sycl::nd_item<1> it) {
+      size_t local_id = it.get_sub_group().get_local_linear_id();
 
-          complex_type priv[N];
+      complex_type priv[N];
 
-          sycl_fft::global2local<true>(a_dev, loc1, N * sg_size, sg_size, local_id);
-          group_barrier(it.get_group());
-          sycl_fft::local2private<N, true>(loc1, priv, local_id, N);
-          sycl_fft::private2local<N, true>(priv, loc2, local_id, N);
-          group_barrier(it.get_group());
-          sycl_fft::local2global<true>(loc2, b_dev, N * sg_size, sg_size, local_id);
-        });
+      sycl_fft::global2local<true>(a_dev, loc1, N * sg_size, sg_size, local_id);
+      group_barrier(it.get_group());
+      sycl_fft::local2private<N, true>(loc1, priv, local_id, N);
+      sycl_fft::private2local<N, true>(priv, loc2, local_id, N);
+      group_barrier(it.get_group());
+      sycl_fft::local2global<true>(loc2, b_dev, N * sg_size, sg_size, local_id);
+    });
   });
 
   q.wait();

@@ -28,12 +28,12 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
+#include <benchmark/benchmark.h>
+
 #include "bench_utils.hpp"
-#include "reference_dft.hpp"
 #include "cufft_utils.hpp"
 #include "enums.hpp"
-
-#include <benchmark/benchmark.h>
+#include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
 
 template <cufftType T>
@@ -57,14 +57,17 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   std::size_t num_elements = batch * fft_size;
   std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
   std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
-  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_output.data(), dev_output,
+             num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input,
+             num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
   for (std::size_t i = 0; i < batch; i++) {
     reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
-                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths, i * fft_size);
+                                                reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                lengths, i * fft_size);
   }
   int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
@@ -73,8 +76,7 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   }
 }
 
-template <typename Backward, typename DeviceForward, typename DeviceBackward,
-          cufftType plan>
+template <typename Backward, typename DeviceForward, typename DeviceBackward, cufftType plan>
 struct forward_type_info_impl {
   using backward_type = Backward;
   using device_forward_type = DeviceForward;
@@ -85,21 +87,16 @@ struct forward_type_info_impl {
 template <typename T>
 struct forward_type_info;
 template <>
-struct forward_type_info<float>
-    : forward_type_info_impl<std::complex<float>, cufftReal, cufftComplex,
-                             CUFFT_R2C> {};
+struct forward_type_info<float> : forward_type_info_impl<std::complex<float>, cufftReal, cufftComplex, CUFFT_R2C> {};
 template <>
 struct forward_type_info<std::complex<float>>
-    : forward_type_info_impl<std::complex<float>, cufftComplex, cufftComplex,
-                             CUFFT_C2C> {};
+    : forward_type_info_impl<std::complex<float>, cufftComplex, cufftComplex, CUFFT_C2C> {};
 template <>
 struct forward_type_info<double>
-    : forward_type_info_impl<std::complex<double>, cufftDoubleReal,
-                             cufftDoubleComplex, CUFFT_D2Z> {};
+    : forward_type_info_impl<std::complex<double>, cufftDoubleReal, cufftDoubleComplex, CUFFT_D2Z> {};
 template <>
 struct forward_type_info<std::complex<double>>
-    : forward_type_info_impl<std::complex<double>, cufftDoubleComplex,
-                             cufftDoubleComplex, CUFFT_Z2Z> {};
+    : forward_type_info_impl<std::complex<double>, cufftDoubleComplex, cufftDoubleComplex, CUFFT_Z2Z> {};
 
 template <typename T>
 struct cuda_freer {
@@ -117,8 +114,7 @@ struct cufftHandle_holder {
   benchmark::State& test_state;
   std::optional<cufftHandle> handle;
 
-  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h)
-      : test_state(s), handle(h) {}
+  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h) : test_state(s), handle(h) {}
   ~cufftHandle_holder() {
     if (handle) {
       if (cufftDestroy(handle.value()) != CUFFT_SUCCESS) {
@@ -134,32 +130,25 @@ struct cufft_state {
 
   benchmark::State& test_state;
   cufftHandle_holder plan;
-  std::unique_ptr<typename type_info::device_forward_type,
-                  cuda_freer<typename type_info::device_forward_type>>
-      in;
-  std::unique_ptr<typename type_info::device_backward_type,
-                  cuda_freer<typename type_info::device_backward_type>>
-      out;
+  std::unique_ptr<typename type_info::device_forward_type, cuda_freer<typename type_info::device_forward_type>> in;
+  std::unique_ptr<typename type_info::device_backward_type, cuda_freer<typename type_info::device_backward_type>> out;
 
   cufft_state(benchmark::State& state, std::vector<int>& lengths, int batch)
       : test_state(state),
         plan(state, {}),
         in(nullptr, cuda_freer<typename type_info::device_forward_type>{state}),
-        out(nullptr,
-            cuda_freer<typename type_info::device_backward_type>{state}) {
+        out(nullptr, cuda_freer<typename type_info::device_backward_type>{state}) {
     if (lengths.empty()) {
       test_state.SkipWithError("invalid configuration");
     }
-    int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1,
-                                   std::multiplies<int>());
+    int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
     // nullptr inembed and onembed is equivalent to giving the lengths for both
     int *inembed = nullptr, *onembed = nullptr;
     int istride = 1, ostride = 1;
     int idist = fft_size, odist = fft_size;
     cufftHandle plan_tmp;
-    auto res = cufftPlanMany(&plan_tmp, lengths.size(), lengths.data(), inembed,
-                             istride, idist, onembed, ostride, odist,
-                             type_info::plan_type, batch);
+    auto res = cufftPlanMany(&plan_tmp, lengths.size(), lengths.data(), inembed, istride, idist, onembed, ostride,
+                             odist, type_info::plan_type, batch);
     if (res == CUFFT_SUCCESS) {
       plan.handle = plan_tmp;
     } else {
@@ -175,23 +164,20 @@ struct cufft_state {
     }
 
     typename type_info::device_backward_type* out_tmp;
-    if (cudaMalloc(&out_tmp, sizeof(typename type_info::backward_type) *
-                                 elements) == cudaSuccess) {
+    if (cudaMalloc(&out_tmp, sizeof(typename type_info::backward_type) * elements) == cudaSuccess) {
       out.reset(out_tmp);
     } else {
       test_state.SkipWithError("out allocation failed");
     }
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-    populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
-                         elements);
-#endif //SYCLFFT_VERIFY_BENCHMARK
+    populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()), elements);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
   }
 };
 
 template <typename fwd_type_info>
-inline cufftResult cufft_exec(
-    cufftHandle plan, typename fwd_type_info::device_forward_type* in,
-    typename fwd_type_info::device_backward_type* out) noexcept {
+inline cufftResult cufft_exec(cufftHandle plan, typename fwd_type_info::device_forward_type* in,
+                              typename fwd_type_info::device_backward_type* out) noexcept {
   // choose exec function
   if constexpr (fwd_type_info::plan_type == CUFFT_C2C) {
     return cufftExecC2C(plan, in, out, CUFFT_FORWARD);
@@ -205,8 +191,7 @@ inline cufftResult cufft_exec(
 }
 
 template <typename forward_type>
-static void cufft_oop_real_time(benchmark::State& state,
-                                std::vector<int> lengths, int batch) noexcept {
+static void cufft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
 
@@ -216,8 +201,7 @@ static void cufft_oop_real_time(benchmark::State& state,
   auto out = cu_state.out.get();
 
   // warmup
-  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) !=
-      CUFFT_SUCCESS) {
+  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
   }
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
@@ -227,7 +211,7 @@ static void cufft_oop_real_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   using info = typename decltype(cu_state)::type_info;
   verify_dft<info::plan_type>(in, out, lengths, batch);
-#endif //SYCLFFT_VERIFY_BENCHMARK
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   // benchmark
   for (auto _ : state) {
@@ -237,9 +221,7 @@ static void cufft_oop_real_time(benchmark::State& state,
 }
 
 template <typename forward_type>
-static void cufft_oop_device_time(benchmark::State& state,
-                                  std::vector<int> lengths,
-                                  int batch) noexcept {
+static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
 
@@ -249,8 +231,7 @@ static void cufft_oop_device_time(benchmark::State& state,
   auto out = cu_state.out.get();
 
   // warmup
-  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) !=
-      CUFFT_SUCCESS) {
+  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
   }
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
@@ -260,25 +241,22 @@ static void cufft_oop_device_time(benchmark::State& state,
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   using info = typename decltype(cu_state)::type_info;
   verify_dft<info::plan_type>(in, out, lengths, batch);
-#endif //SYCLFFT_VERIFY_BENCHMARK
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   cudaEvent_t before;
   cudaEvent_t after;
 
-  if (cudaEventCreate(&before) != cudaSuccess ||
-      cudaEventCreate(&after) != cudaSuccess) {
+  if (cudaEventCreate(&before) != cudaSuccess || cudaEventCreate(&after) != cudaSuccess) {
     state.SkipWithError("event creation failed");
   }
 
   // benchmark
   for (auto _ : state) {
     auto before_res = cudaEventRecord(before);
-    auto exec_res =
-        cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
+    auto exec_res = cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
     auto after_res = cudaEventRecord(after);
     auto sync_res = cudaEventSynchronize(after);
-    if (before_res != cudaSuccess || exec_res != CUFFT_SUCCESS ||
-        after_res != cudaSuccess || sync_res != cudaSuccess) {
+    if (before_res != cudaSuccess || exec_res != CUFFT_SUCCESS || after_res != cudaSuccess || sync_res != cudaSuccess) {
       state.SkipWithError("benchmark run failed");
     }
     float ms;
@@ -288,8 +266,7 @@ static void cufft_oop_device_time(benchmark::State& state,
     state.SetIterationTime(ms / 1000.0);
   }
 
-  if (cudaEventDestroy(before) != cudaSuccess ||
-      cudaEventDestroy(after) != cudaSuccess) {
+  if (cudaEventDestroy(before) != cudaSuccess || cudaEventDestroy(after) != cudaSuccess) {
     state.SkipWithError("event destroy failed");
   }
 }

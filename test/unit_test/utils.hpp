@@ -36,8 +36,7 @@ using namespace sycl_fft;
   if (!queue.first) GTEST_SKIP() << queue.second;
 
 template <typename type>
-void compare_arrays(std::vector<type> array1, std::vector<type> array2,
-                    double tol) {
+void compare_arrays(std::vector<type> array1, std::vector<type> array2, double tol) {
   ASSERT_EQ(array1.size(), array2.size());
   for (size_t i = 0; i < array1.size(); i++) {
     EXPECT_NEAR(array1[i].real(), array2[i].real(), tol) << "i=" << i;
@@ -46,8 +45,7 @@ void compare_arrays(std::vector<type> array1, std::vector<type> array2,
 }
 
 template <typename deviceSelector>
-std::pair<std::optional<sycl::queue>, std::string> get_queue(
-    deviceSelector selector) {
+std::pair<std::optional<sycl::queue>, std::string> get_queue(deviceSelector selector) {
   try {
     sycl::queue queue(selector);
     return std::make_pair(queue, "");
