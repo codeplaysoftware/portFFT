@@ -27,10 +27,6 @@
 #include <common/workitem.hpp>
 #include <enums.hpp>
 
-#ifndef SYCLFFT_TARGET_SUBGROUP_SIZE
-#define SYCLFFT_TARGET_SUBGROUP_SIZE 32
-#endif
-
 namespace sycl_fft {
 
 namespace detail {
@@ -67,7 +63,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
-  std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+  std::size_t subgroup_size = SYCL_FFT_TARGET_SUBGROUP_SIZE;
   std::size_t global_size = it.get_global_range(0);
 
   bool is_input_contiguous = input_distance == N_reals;
@@ -143,7 +139,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
   T priv[N_reals_per_wi];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
-  std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+  std::size_t subgroup_size = SYCL_FFT_TARGET_SUBGROUP_SIZE;
   std::size_t subgroup_id = sg.get_group_id();
   std::size_t n_sgs_in_wg = it.get_local_range(0) / subgroup_size;
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;

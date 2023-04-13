@@ -57,7 +57,7 @@ target_include_directories(sycl_fft INTERFACE
     ${SYCLFFT_SRC_DIR}
 )
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_SUBGROUP_SIZE=${SYCLFFT_TARGET_SUBGROUP_SIZE})
+target_compile_definitions(sycl_fft INTERFACE SYCL_FFT_TARGET_SUBGROUP_SIZE=${SYCLFFT_TARGET_SUBGROUP_SIZE})
 
 include(CMakePackageConfigHelpers)
 set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
