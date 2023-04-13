@@ -31,8 +31,8 @@
 #include <cstdint>
 #include <functional>
 #include <numeric>
-#include <vector>
 #include <optional>
+#include <vector>
 
 namespace sycl_fft {
 
@@ -87,8 +87,7 @@ class committed_descriptor {
     assert(params.lengths.size() == 1);
     // query the kernels associated with the queue, and get the sub_group info
 
-    auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-        queue.get_context());
+    auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context());
     in_bundle.set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
     exec_bundle = sycl::build(in_bundle);
 
@@ -266,8 +265,8 @@ class committed_descriptor {
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it, sycl::kernel_handler kh) {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, input_distance, output_distance,
-                                    it, twiddles_local, scale_factor);
+            detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
+                                    n_transforms, input_distance, output_distance, it, twiddles_local, scale_factor);
           });
     });
   }
@@ -318,8 +317,9 @@ class committed_descriptor {
       cgh.use_kernel_bundle(exec_bundle.value());
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it, sycl::kernel_handler kh) {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
-                                    input_distance, output_distance, it, twiddles_local, scale_factor);
+            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
+                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, input_distance,
+                                    output_distance, it, twiddles_local, scale_factor);
           });
     });
   }
