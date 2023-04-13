@@ -35,7 +35,9 @@ To compile AOT for a specific device, mention the target device as
 -DSYCLFFT_DEVICE_TRIPLE=<T>[T1,..,Tn]
 ```
 
-The list of available targets can be found on [DPC++ compiler documentation page]
+The list of available targets can be found on [DPC++ compiler documentation page].
+Some AOT targets do not support double precision. 
+To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
 
 Run the tests from the build folder with:
 
