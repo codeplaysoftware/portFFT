@@ -91,20 +91,24 @@ class committed_descriptor {
         get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
     usm_kernel_bwd_subgroup_size =
         get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
-    if(buffer_kernel_fwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) + " of the fwd buffer kernel doe not match required size of " +
+    if (buffer_kernel_fwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) +
+                               " of the fwd buffer kernel doe not match required size of " +
                                std::to_string(SYCL_FFT_TARGET_SUBGROUP_SIZE));
     }
-    if(usm_kernel_fwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) + " of the fwd usm kernel doe not match required size of " +
+    if (usm_kernel_fwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) +
+                               " of the fwd usm kernel doe not match required size of " +
                                std::to_string(SYCL_FFT_TARGET_SUBGROUP_SIZE));
     }
-    if(buffer_kernel_bwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) + " of the bwd buffer kernel doe not match required size of " +
+    if (buffer_kernel_bwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) +
+                               " of the bwd buffer kernel doe not match required size of " +
                                std::to_string(SYCL_FFT_TARGET_SUBGROUP_SIZE));
     }
-    if(usm_kernel_bwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) + " of the bwd usm kernel doe not match required size of " +
+    if (usm_kernel_bwd_subgroup_size != SYCL_FFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) +
+                               " of the bwd usm kernel doe not match required size of " +
                                std::to_string(SYCL_FFT_TARGET_SUBGROUP_SIZE));
     }
     // get some properties we will use for tunning
@@ -271,8 +275,8 @@ class committed_descriptor {
       cgh.depends_on(dependencies);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it) 
-            [[sycl::reqd_sub_group_size(SYCL_FFT_TARGET_SUBGROUP_SIZE)]] {
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it) [[sycl::reqd_sub_group_size(SYCL_FFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(in_scalar, out_scalar, loc, fft_size, n_transforms, input_distance, output_distance,
                                     it, twiddles_local, scale_factor);
           });
@@ -323,8 +327,8 @@ class committed_descriptor {
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it)
-            [[sycl::reqd_sub_group_size(SYCL_FFT_TARGET_SUBGROUP_SIZE)]] {
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it) [[sycl::reqd_sub_group_size(SYCL_FFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, fft_size, n_transforms,
                                     input_distance, output_distance, it, twiddles_local, scale_factor);
           });
