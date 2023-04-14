@@ -76,13 +76,13 @@ class committed_descriptor {
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
-   * 
-   * @return sycl::kernel_bundle<sycl::bundle_state::executable> 
+   *
+   * @return sycl::kernel_bundle<sycl::bundle_state::executable>
    */
-  sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const(){
-    // This function is called from constructor initializer list and it accesses other data members of the class. These are already 
-    // initialized by the time this is called only if they are declared in the class definition before the member that 
-    // is initialized by this function.
+  sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const() {
+    // This function is called from constructor initializer list and it accesses other data members of the class. These
+    // are already initialized by the time this is called only if they are declared in the class definition before the
+    // member that is initialized by this function.
     auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context());
     in_bundle.set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
     return sycl::build(in_bundle);
@@ -95,7 +95,11 @@ class committed_descriptor {
    * @param queue queue to use qhen enqueueing device work
    */
   committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
-      : params{params}, queue(queue), dev(queue.get_device()), ctx(queue.get_context()), exec_bundle(build_w_spec_const()) {
+      : params{params},
+        queue(queue),
+        dev(queue.get_device()),
+        ctx(queue.get_context()),
+        exec_bundle(build_w_spec_const()) {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
 
