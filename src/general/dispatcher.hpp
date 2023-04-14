@@ -46,10 +46,6 @@ namespace detail {
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
@@ -104,10 +100,6 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
@@ -184,10 +176,6 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
  * values
  * @param fft_size size of each transform
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
@@ -280,10 +268,6 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
@@ -375,10 +359,6 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
  * values
  * @param fft_size size of each transform
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
