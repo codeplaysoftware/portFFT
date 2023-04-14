@@ -70,7 +70,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
     global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
-                        N_reals * (i - subgroup_local_id));
+                       N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
@@ -83,7 +83,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
     }
     sycl::group_barrier(sg);
     local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
-                        N_reals * (i - subgroup_local_id));
+                       N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
 }
@@ -114,8 +114,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
 inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                          std::size_t n_transforms,
-                          sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
@@ -145,8 +144,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_kernel)), n_ffts_per_sg);
 
     global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
-                        n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
-
+                       n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
     if (working) {
@@ -195,14 +193,13 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
  */
 template <direction dir, typename T_in, typename T_out, typename T>
 void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
-                         std::size_t n_transforms, 
-                         sycl::nd_item<1> it, T scaling_factor) {
+                         std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                              \
-  case N:                                                                                                           \
-    if constexpr (fits_in_wi<T>(N)) {                                                                               \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
+  case N:                                                                          \
+    if constexpr (fits_in_wi<T>(N)) {                                              \
       workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                                                               \
+    }                                                                              \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
@@ -293,15 +290,13 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                         std::size_t n_transforms,
-                         sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                         std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
-#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                     \
-  case N:                                                                                                     \
-    if constexpr (fits_in_wi<T>(N)) {                                                                         \
-      subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, it, \
-                            twiddles, scaling_factor);                                                        \
-    }                                                                                                         \
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                               \
+  case N:                                                                                               \
+    if constexpr (fits_in_wi<T>(N)) {                                                                   \
+      subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, it, twiddles, scaling_factor); \
+    }                                                                                                   \
     break;
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
@@ -390,19 +385,16 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
-                std::size_t n_transforms, sycl::nd_item<1> it,
-                T_twiddles twiddles, T scaling_factor) {
+                std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms,  it,
-                             scaling_factor);
+    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms,
-                               it, twiddles, scaling_factor);
+      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms, it, twiddles, scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented
