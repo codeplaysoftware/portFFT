@@ -46,17 +46,12 @@ namespace detail {
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int N, typename T_in, typename T_out, typename T>
 inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t n_transforms,
-                          std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it,
-                          T scaling_factor) {
+                          sycl::nd_item<1> it, T scaling_factor) {
   constexpr int N_reals = 2 * N;
 
   T priv[N_reals];
@@ -66,22 +61,12 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
   std::size_t subgroup_size = sg.get_local_linear_range();
   std::size_t global_size = it.get_global_range(0);
 
-  bool is_input_contiguous = input_distance == N_reals;
-  bool is_output_contiguous = output_distance == N_reals;
-
   for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i += global_size) {
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    if (is_input_contiguous) {
-      global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
-                         input_distance * (i - subgroup_local_id));
-    } else {
-      for (int j = 0; j < n_working; j++) {
-        global2local<true>(input, loc, N_reals, subgroup_size, subgroup_local_id,
-                           input_distance * (i - subgroup_local_id + j), j * N_reals);
-      }
-    }
+    global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
+                       N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
@@ -93,15 +78,8 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
       private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals);
     }
     sycl::group_barrier(sg);
-    if (is_output_contiguous) {
-      local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
-                         output_distance * (i - subgroup_local_id));
-    } else {
-      for (int j = 0; j < n_working; j++) {
-        local2global<true>(loc, output, N_reals, subgroup_size, subgroup_local_id, j * N_reals,
-                           output_distance * (i - subgroup_local_id + j));
-      }
-    }
+    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
+                       N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
 }
@@ -122,18 +100,13 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
 inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                          std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
-                          sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
@@ -149,8 +122,6 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
   int max_wis_working = n_ffts_per_sg * factor_sg;
   int n_reals_per_fft = factor_sg * N_reals_per_wi;
   int n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
-  bool is_input_contiguous = input_distance == n_reals_per_fft;
-  bool is_output_contiguous = output_distance == n_reals_per_fft;
   int id_of_fft_in_sg = subgroup_local_id / factor_sg;
   std::size_t id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
   std::size_t n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
@@ -164,16 +135,8 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_kernel)), n_ffts_per_sg);
 
-    if (is_input_contiguous) {
-      global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
-                         input_distance * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
-    } else {
-      for (int j = 0; j < n_ffts_worked_on_by_sg; j++) {
-        global2local<true>(input, loc, n_reals_per_fft, subgroup_size, subgroup_local_id,
-                           input_distance * (i - id_of_fft_in_sg + j),
-                           subgroup_id * n_reals_per_sg + j * n_reals_per_fft);
-      }
-    }
+    global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
+                       n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
     if (working) {
@@ -190,16 +153,9 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
     }
     sycl::group_barrier(sg);
 
-    if (is_output_contiguous) {
-      local2global<false>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
-                          subgroup_id * n_reals_per_sg, output_distance * (i - id_of_fft_in_sg));
-    } else {
-      for (int j = 0; j < n_ffts_worked_on_by_sg; j++) {
-        local2global<false>(loc, output, n_reals_per_fft, subgroup_size, subgroup_local_id,
-                            subgroup_id * n_reals_per_sg + j * n_reals_per_fft,
-                            output_distance * (i - id_of_fft_in_sg + j));
-      }
-    }
+    local2global<false>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
+                        subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
+
     sycl::group_barrier(sg);
   }
 }
@@ -220,23 +176,18 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
  * values
  * @param fft_size size of each transform
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
 void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
-                         std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
-                         sycl::nd_item<1> it, T scaling_factor) {
+                         std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                              \
-  case N:                                                                                                           \
-    if constexpr (fits_in_wi<T>(N)) {                                                                               \
-      workitem_impl<dir, N>(input, output, loc, n_transforms, input_distance, output_distance, it, scaling_factor); \
-    }                                                                                                               \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
+  case N:                                                                          \
+    if constexpr (fits_in_wi<T>(N)) {                                              \
+      workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
+    }                                                                              \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
@@ -317,25 +268,19 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
  * values
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                         std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance,
-                         sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                         std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
-#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                     \
-  case N:                                                                                                     \
-    if constexpr (fits_in_wi<T>(N)) {                                                                         \
-      subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, input_distance, output_distance, it, \
-                            twiddles, scaling_factor);                                                        \
-    }                                                                                                         \
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                               \
+  case N:                                                                                               \
+    if constexpr (fits_in_wi<T>(N)) {                                                                   \
+      subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, it, twiddles, scaling_factor); \
+    }                                                                                                   \
     break;
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
@@ -414,29 +359,22 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
  * values
  * @param fft_size size of each transform
  * @param n_transforms number of FFT transforms to do in one call
- * @param input_distance Distance between data for two FFT transforms within
- * input data
- * @param output_distance Distance between data for two FFT transforms within
- * output data
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
-                std::size_t n_transforms, std::size_t input_distance, std::size_t output_distance, sycl::nd_item<1> it,
-                T_twiddles twiddles, T scaling_factor) {
+                std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, input_distance, output_distance, it,
-                             scaling_factor);
+    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms, input_distance, output_distance,
-                               it, twiddles, scaling_factor);
+      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, n_transforms, it, twiddles, scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented

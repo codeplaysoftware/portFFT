@@ -279,7 +279,7 @@ class committed_descriptor {
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it, sycl::kernel_handler kh) {
             detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
-                                    n_transforms, input_distance, output_distance, it, twiddles_local, scale_factor);
+                                    n_transforms, it, twiddles_local, scale_factor);
           });
     });
   }
@@ -331,8 +331,8 @@ class committed_descriptor {
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it, sycl::kernel_handler kh) {
             detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, input_distance,
-                                    output_distance, it, twiddles_local, scale_factor);
+                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it, 
+                                    twiddles_local, scale_factor);
           });
     });
   }
