@@ -24,7 +24,9 @@
 #include "enums.hpp"
 
 #include <complex>
+sdf {{
 
+  // Break formatting
 namespace sycl_fft {
 
 template <typename T>
