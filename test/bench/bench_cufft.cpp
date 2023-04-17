@@ -64,9 +64,15 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
-  size_t elements_to_compare = num_elements;
+  std::size_t elements_to_compare = num_elements;
   if (plan_type == CUFFT_R2C) {
-    elements_to_compare = num_elements / 2 + 1;
+    elements_to_compare = batch;
+    for (int i = 0; i < lengths.size(); i++)
+      if (i == lengths.size() - 1) {
+        elements_to_compare *= (lengths.at(i) / 2 + 1);
+      } else {
+        elements_to_compare *= lengths.at(i);
+      }
   }
   for (std::size_t i = 0; i < batch; i++) {
     [&]() {
