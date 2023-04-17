@@ -26,10 +26,10 @@
 
 include_guard()
 
-# Try to find a DPC++ release 
+# Try to find a DPC++ release
 # (reqrs source /opt/intel/oneapi/compilers/2023.0.0/env/vars.sh)
-find_package(IntelDPCPP QUIET)
-if(IntelDPCPP_FOUND)
+find_package(IntelSYCL QUIET)
+if(IntelSYCL_FOUND)
     function(add_sycl_to_target)
     set(options)
     set(one_value_args TARGET)
@@ -39,19 +39,20 @@ if(IntelDPCPP_FOUND)
       "${multi_value_args}"
       ${ARGN}
     )
-    set(COMPILE_FLAGS "-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
-    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})   
+    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
+    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     endfunction()
 endif()
 
 # Try to find DPC++ (nightly or manually set compiler path)
-if(NOT IntelDPCPP_FOUND)
+if(NOT IntelSYCL_FOUND)
     find_package(DPCPP QUIET)
 endif()
 
-if(NOT IntelDPCPP_FOUND AND NOT DPCPP_FOUND)
+if(NOT IntelSYCL_FOUND AND NOT DPCPP_FOUND)
   # Display warnings
+  find_package(IntelSYCL)
   find_package(DPCPP)
   message(FATAL_ERROR "No SYCL implementation found")
 endif()
