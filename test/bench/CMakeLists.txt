@@ -38,13 +38,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googlebenchmark)
 
-set(SYCL_FFT_BENCHMARKS
+set(SYCLFFT_BENCHMARKS
     bench_float.cpp
     bench_manual_float.cpp
-    bench_manual_double.cpp
 )
+if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
+    list(APPEND SYCLFFT_BENCHMARKS
+        bench_manual_double.cpp
+    )
+endif()
 
-foreach(BENCHMARK_FILE ${SYCL_FFT_BENCHMARKS})
+foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
     get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
     set(BENCHMARK_TARGET "${FILE_NAME}")
     add_executable(

@@ -35,10 +35,18 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-file(GLOB UNIT_TESTS ${PROJECT_SOURCE_DIR}/test/unit_test/*.cpp)
+set(SYCLFFT_UNIT_TESTS
+    fft_float.cpp
+    transfers.cpp
+)
+if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
+    list(APPEND SYCLFFT_UNIT_TESTS
+        fft_double.cpp
+    )
+endif()
 
 include(GoogleTest)
-foreach(UNIT_TEST_FILE ${UNIT_TESTS})
+foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
     get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
     set(TEST_TARGET "test_${FILE_NAME}")
     add_executable(
