@@ -49,7 +49,6 @@ include(GoogleTest)
 foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
     get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
     set(TEST_TARGET "test_${FILE_NAME}")
-    string(FIND "${TEST_TARGET}" "double" HAS_DOUBLE_IN_NAME)
     add_executable(
         ${TEST_TARGET}
         ${UNIT_TEST_FILE}
