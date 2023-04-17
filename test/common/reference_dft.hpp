@@ -64,7 +64,7 @@ void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t off
             }
           }
         }
-        out[offset + ox * dims[1] * dims[2] + oy * dims[2] + oz] = out_temp;
+        out[offset + ox * dims[1] * dims[2] + oy * dims[2] + oz] = static_cast<TypeOut>(out_temp);
       }
     }
   }

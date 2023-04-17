@@ -58,19 +58,33 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
   std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
   cudaMemcpy(host_output.data(), dev_output,
-             num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input,
              num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input,
+             num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
-  for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
-                                                reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                                lengths, i * fft_size);
+  size_t elements_to_compare = num_elements;
+  if (plan_type == CUFFT_R2C) {
+    elements_to_compare = num_elements / 2 + 1;
   }
-  int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                               reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
+  for (std::size_t i = 0; i < batch; i++) {
+    [&]() {
+      using input_type = typename std::remove_pointer<decltype(dev_input)>::type;
+      if constexpr (std::is_same_v<cufftComplex, input_type> || std::is_same_v<cufftDoubleComplex, input_type>) {
+        reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
+                                                    reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                    lengths, i * fft_size);
+      } else {
+        reference_dft<sycl_fft::direction::FORWARD>(host_input.data(),
+                                                    reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                    lengths, i * fft_size);
+      }
+    }();
+  }
+  int correct =
+      compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                     reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), elements_to_compare, 1e-2);
   if (!correct) {
     throw std::runtime_error("Verification Failed");
   }
