@@ -1,0 +1,16 @@
+name: clang-format 11 check
+on:
+  pull_request:
+    types: [opened, synchronize]
+jobs:
+  formatting-check:
+    name: Formatting check
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v3
+      - name: Is-clang-formatted hook
+        run:  ./hooks/is-clang-formatted.sh
+      - name: Show diff
+        if:   always()
+        run:  git diff
