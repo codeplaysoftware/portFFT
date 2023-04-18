@@ -84,8 +84,16 @@ if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
     find_package(HIP REQUIRED)
     find_package(rocfft REQUIRED)
 
+    if(SYCLFFT_ROCM_ROOT STREQUAL "")
+        # attempt to read ROCm root from HIP_DIR variable from the HIP package
+        get_filename_component(TEMP ${HIP_DIR} DIRECTORY)
+        get_filename_component(TEMP ${TEMP} DIRECTORY)
+        get_filename_component(SYCLFFT_ROCM_ROOT ${TEMP} DIRECTORY)
+        message(STATUS "using " ${SYCLFFT_ROCM_ROOT} " as the root of ROCm")
+    endif()
+
     if (NOT EXISTS ${SYCLFFT_ROCM_ROOT})
-        message(SEND_ERROR "unable to find SYCLFFT_ROCM_ROOT (${SYCLFFT_ROCM_ROOT})")
+        message(SEND_ERROR "SYCLFFT_ROCM_ROOT not found (path: ${SYCLFFT_ROCM_ROOT})")
     endif()
 
     # hip::host expects to link with libclang_rt.builtins-x86_64

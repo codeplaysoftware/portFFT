@@ -41,7 +41,7 @@ option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using 
 option(SYCLFFT_ENABLE_CUFFT_BENCHMARKS "Whether to also build the cuFFT benchmark for comparison" OFF)
 option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
 option(SYCLFFT_ENABLE_ROCFFT_BENCHMARKS "Whether to also build the rocFFT benchmark for comparison" OFF)
-set(SYCLFFT_ROCM_ROOT "/opt/rocm-5.4.3" CACHE PATH "The root of your rocm install e.g. /opt/rocm-5.4.3")
+set(SYCLFFT_ROCM_ROOT "" CACHE PATH "The root of your rocm install e.g. /opt/rocm-5.4.3")
 option(SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS "Whether to also build the closed-source Intel OneMKL benchmark for comparison" OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_TARGET_SUBGROUP_SIZE 32 CACHE STRING "Size of the subgroup on the target device")
