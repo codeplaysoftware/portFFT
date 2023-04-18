@@ -38,10 +38,10 @@ void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl
   std::vector<T> host_result(N * batch);
   for (std::size_t i = 0; i < batch; i++) {
     reference_dft<dir>(input, host_result.data(), {static_cast<int>(N)}, i * N, scaling_factor);
-  }
-  bool correct = compare_arrays(device_data, host_result.data(), batch * N, 1e-5);
-  if (!correct) {
-    throw std::runtime_error("Verification Failed");
+    bool correct = compare_arrays(device_data + i * N, host_result.data() + i * N, {static_cast<int>(N)}, 1e-5);
+    if (!correct) {
+      throw std::runtime_error("Verification Failed");
+    }
   }
 }
 

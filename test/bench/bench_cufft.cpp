@@ -54,6 +54,18 @@ struct scalar_data_type<CUFFT_Z2Z> {
 template <cufftType plan_type, typename TypeIn, typename TypeOut>
 void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths, std::size_t batch) {
   std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  std::size_t symm_fft_size = fft_size;
+  if constexpr (plan_type == CUFFT_R2C) {
+    int temp = 1;
+    for (int i = 0; i < lengths.size(); i++) {
+      if (i == lengths.size() - 1)
+        temp = temp * (lengths.at(i) / 2 + 1);
+      else
+        temp = temp * lengths.at(i);
+    }
+    symm_fft_size = temp;
+  }
+
   std::size_t num_elements = batch * fft_size;
   std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
   std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
@@ -64,35 +76,22 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
-  std::size_t elements_to_compare = num_elements;
-  if (plan_type == CUFFT_R2C) {
-    elements_to_compare = batch;
-    for (int i = 0; i < lengths.size(); i++)
-      if (i == lengths.size() - 1) {
-        elements_to_compare *= (lengths.at(i) / 2 + 1);
-      } else {
-        elements_to_compare *= lengths.at(i);
-      }
-  }
   for (std::size_t i = 0; i < batch; i++) {
-    [&]() {
-      using input_type = typename std::remove_pointer<decltype(dev_input)>::type;
-      if constexpr (std::is_same_v<cufftComplex, input_type> || std::is_same_v<cufftDoubleComplex, input_type>) {
-        reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
-                                                    reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                                    lengths, i * fft_size);
-      } else {
-        reference_dft<sycl_fft::direction::FORWARD>(host_input.data(),
-                                                    reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                                    lengths, i * fft_size);
-      }
-    }();
-  }
-  int correct =
-      compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                     reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), elements_to_compare, 1e-2);
-  if (!correct) {
-    throw std::runtime_error("Verification Failed");
+    using input_type = typename std::remove_pointer<decltype(dev_input)>::type;
+    if constexpr (std::is_same_v<cufftComplex, input_type> || std::is_same_v<cufftDoubleComplex, input_type>) {
+      reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
+                                                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                  lengths, i * fft_size);
+    } else {
+      reference_dft<sycl_fft::direction::FORWARD>(
+          host_input.data(), reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths, i * fft_size);
+    }
+    int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data() + i * fft_size),
+                                 reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * symm_fft_size),
+                                 lengths, 1e-2, plan_type == CUFFT_R2C);
+    if (!correct) {
+      throw std::runtime_error("Verification Failed");
+    }
   }
 }
 
