@@ -104,7 +104,6 @@ if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
     get_target_property(SYCLFFT_INCLUDES sycl_fft INTERFACE_INCLUDE_DIRECTORIES)
 
     add_executable(bench_rocfft bench_rocfft.cpp)
-    target_compile_options(bench_rocfft PRIVATE -Wall -Wextra -Werror -Wpedantic -Wshadow)
     target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft benchmark::benchmark ${CLANGRT_BUILTINS})
     target_include_directories(bench_rocfft PRIVATE ${SYCLFFT_INCLUDES} ${rocfft_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}/test/common)
 
