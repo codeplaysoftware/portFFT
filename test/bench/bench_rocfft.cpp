@@ -52,14 +52,23 @@ template <typename forward_type>
 using is_double =
     std::bool_constant<std::is_same_v<forward_type, double> || std::is_same_v<forward_type, std::complex<double>>>;
 
+template <typename forward_type>
+std::size_t get_backward_row_size(const std::vector<std::size_t>& lengths) {
+  if constexpr (is_real<forward_type>::value) {
+    return lengths.back() / 2 + 1;
+  } else {
+    return lengths.back();
+  }
+}
+
+std::size_t get_num_rows(const std::vector<std::size_t>& lengths) {
+  return std::reduce(lengths.begin(), lengths.end() - 1, 1, std::multiplies<>());
+}
+
 // the number of elements in the backwards domain of a single transform
 template <typename forward_type>
 std::size_t get_backward_elements(const std::vector<std::size_t>& lengths) {
-  if constexpr (is_real<forward_type>::value) {
-    return std::reduce(lengths.begin(), lengths.end() - 1, (lengths.back() / 2 + 1), std::multiplies<>());
-  } else {
-    return std::reduce(lengths.begin(), lengths.end(), 1, std::multiplies<>());
-  }
+  return get_num_rows(lengths) * get_backward_row_size<forward_type>(lengths);
 }
 
 template <typename forward_type>
@@ -67,6 +76,9 @@ void verify_dft(forward_type* forward_copy, void* dev_bwd, const std::vector<siz
                 std::size_t number_of_transforms) {
   using bwd_type = typename backward_type<forward_type>::type;
   std::size_t fwd_per_transform = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<std::size_t>());
+  std::size_t fwd_row_size = lengths.back();
+  std::size_t bwd_row_size = get_backward_row_size<forward_type>(lengths);
+  std::size_t rows = get_num_rows(lengths);
   std::size_t bwd_per_transform = get_backward_elements<forward_type>(lengths);
   std::size_t bwd_elements = number_of_transforms * bwd_per_transform;
 
@@ -79,14 +91,20 @@ void verify_dft(forward_type* forward_copy, void* dev_bwd, const std::vector<siz
   std::copy(lengths.begin(), lengths.end(), int_lengths.begin());
 
   auto reference_buffer = std::make_unique<bwd_type[]>(fwd_per_transform);
+  constexpr double comparison_tolerance = 1e-2;
   for (std::size_t i = 0; i < number_of_transforms; ++i) {
+    // generate reference for a single transform
     reference_dft<sycl_fft::direction::FORWARD>(forward_copy + i * fwd_per_transform, reference_buffer.get(),
                                                 int_lengths);
-    constexpr double comparison_tolerance = 1e-2;
-    if (!compare_arrays(reference_buffer.get(), host_bwd.get() + i * bwd_per_transform, bwd_per_transform,
-                        comparison_tolerance)) {
-      std::cout << "error in transform " << i << std::endl;
-      throw std::runtime_error("Verification Failed");
+
+    // compare
+    for (std::size_t r = 0; r < rows; ++r) {
+      if (!compare_arrays(reference_buffer.get() + r * fwd_row_size,
+                          host_bwd.get() + i * bwd_per_transform + r * bwd_row_size, bwd_row_size,
+                          comparison_tolerance)) {
+        std::cout << "error in transform " << i << ", in row " << r << std::endl;
+        throw std::runtime_error("Verification Failed");
+      }
     }
   }
 }
