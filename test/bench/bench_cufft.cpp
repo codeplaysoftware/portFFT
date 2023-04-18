@@ -56,23 +56,14 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
   std::size_t symm_fft_size = fft_size;
   if constexpr (plan_type == CUFFT_R2C) {
-    int temp = 1;
-    for (int i = 0; i < lengths.size(); i++) {
-      if (i == lengths.size() - 1)
-        temp = temp * (lengths.at(i) / 2 + 1);
-      else
-        temp = temp * lengths.at(i);
-    }
-    symm_fft_size = temp;
+    symm_fft_size = std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
   }
 
   std::size_t num_elements = batch * fft_size;
-  std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
-  std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
-  cudaMemcpy(host_output.data(), dev_output,
-             num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input,
-             num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
+  std::vector<TypeIn> host_input(num_elements);
+  std::vector<TypeOut> host_output(num_elements);
+  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(TypeIn), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(TypeOut), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
