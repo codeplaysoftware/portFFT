@@ -98,6 +98,8 @@ Run the benchmark with:
 
 The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`.
 
+The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
+
 Run the benchmark with:
 
 ```shell
