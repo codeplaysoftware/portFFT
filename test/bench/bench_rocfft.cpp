@@ -32,21 +32,21 @@
 #include <benchmark/benchmark.h>
 
 #include "bench_utils.hpp"
+#include "ops_estimate.hpp"
 #include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
 #include "rocfft_utils.hpp"
 
-template <typename floating_type>
-using is_forward_type =
-    std::bool_constant<std::is_same_v<floating_type, float> || std::is_same_v<floating_type, std::complex<float>> ||
-                       std::is_same_v<floating_type, double> || std::is_same_v<floating_type, std::complex<double>>>;
-
-template <typename forward_type>
-using backward_type = std::conditional<std::is_same_v<forward_type, float> || std::is_same_v<forward_type, double>,
-                                       std::complex<forward_type>, forward_type>;
-
 template <typename forward_type>
 using is_real = std::bool_constant<std::is_same_v<forward_type, float> || std::is_same_v<forward_type, double>>;
+
+template <typename forward_type>
+using is_forward_type =
+    std::bool_constant<is_real<forward_type>::value || std::is_same_v<forward_type, std::complex<float>> ||
+                       std::is_same_v<forward_type, std::complex<double>>>;
+
+template <typename forward_type>
+using backward_type = std::conditional<is_real<forward_type>::value, std::complex<forward_type>, forward_type>;
 
 template <typename forward_type>
 using is_double =
@@ -183,10 +183,12 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
+  const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto N = std::accumulate(roc_lengths.begin(), roc_lengths.end(), batch, std::multiplies<std::size_t>());
+  const auto N = fft_size * batch;
   auto fwd_copy = std::make_unique<forward_type[]>(N);
   HIP_CHECK(hipMemcpy(fwd_copy.get(), in, N * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
@@ -200,8 +202,15 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
 
   // benchmark
   for (auto _ : state) {
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
     std::ignore = rocfft_execute(plan, &in, &out, info);
     std::ignore = hipStreamSynchronize(nullptr);
+    auto end = clock::now();
+
+    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 }
 
@@ -215,10 +224,12 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
+  const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto N = std::accumulate(roc_lengths.begin(), roc_lengths.end(), batch, std::multiplies<std::size_t>());
+  const auto N = fft_size * batch;
   auto fwd_copy = std::make_unique<forward_type[]>(N);
   HIP_CHECK(hipMemcpy(fwd_copy.get(), in, N * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
@@ -248,7 +259,9 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
     }
     float ms;
     HIP_CHECK(hipEventElapsedTime(&ms, before, after));
-    state.SetIterationTime(ms / 1000.0);
+    double seconds = ms / 1000.0;
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 
   HIP_CHECK(hipEventDestroy(before));
@@ -276,13 +289,13 @@ void rocfft_oop_device_time_float(Args&&... args) {
   rocfft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                                      \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime()
+#define BENCH_COMPLEX_FLOAT(...)                                                       \
+  BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                               \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
+#define BENCH_SINGLE_FLOAT(...)                                                \
+  BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 
