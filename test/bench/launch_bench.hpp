@@ -33,12 +33,12 @@
 #include "reference_dft.hpp"
 
 template <sycl_fft::direction dir, typename T>
-void verify_dft(T* device_data, T* input, std::size_t batch, std::size_t N, sycl_fft::placement Placement,
+void verify_dft(T* host_input, T* host_output, std::size_t batch, std::size_t N, sycl_fft::placement Placement,
                 double scaling_factor = 1.0) {
   std::vector<T> host_result(N * batch);
   for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<dir>(input, host_result.data(), {static_cast<int>(N)}, i * N, scaling_factor);
-    bool correct = compare_arrays(device_data + i * N, host_result.data() + i * N, {static_cast<int>(N)}, 1e-5);
+    reference_dft<dir>(host_input, host_result.data(), {static_cast<int>(N)}, i * N, scaling_factor);
+    bool correct = compare_arrays(host_output + i * N, host_result.data() + i * N, {static_cast<int>(N)}, 1e-5);
     if (!correct) {
       throw std::runtime_error("Verification Failed");
     }

@@ -68,8 +68,7 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
   for (std::size_t i = 0; i < batch; i++) {
-    using input_type = typename std::remove_pointer<decltype(dev_input)>::type;
-    if constexpr (std::is_same_v<cufftComplex, input_type> || std::is_same_v<cufftDoubleComplex, input_type>) {
+    if constexpr (std::is_same_v<cufftComplex, TypeIn> || std::is_same_v<cufftDoubleComplex, TypeIn>) {
       reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
                                                   reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                                   lengths, i * fft_size);
