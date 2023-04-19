@@ -18,6 +18,7 @@
  *
  **************************************************************************/
 
+#include <chrono>
 #include <complex>
 #include <memory>
 #include <numeric>
@@ -33,6 +34,7 @@
 #include "bench_utils.hpp"
 #include "cufft_utils.hpp"
 #include "enums.hpp"
+#include "ops_estimate.hpp"
 #include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
 
@@ -202,6 +204,10 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   auto in = cu_state.in.get();
   auto out = cu_state.out.get();
 
+  // ops estimate for flops
+  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
@@ -217,8 +223,15 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
 
   // benchmark
   for (auto _ : state) {
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
     cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
     cudaStreamSynchronize(nullptr);
+    auto end = clock::now();
+
+    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 }
 
@@ -231,6 +244,10 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   auto plan = cu_state.plan.handle.value();
   auto in = cu_state.in.get();
   auto out = cu_state.out.get();
+
+  // ops estimate for flops
+  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -265,7 +282,9 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
     if (cudaEventElapsedTime(&ms, before, after) != cudaSuccess) {
       state.SkipWithError("cudaEventElapsedTime failed");
     }
-    state.SetIterationTime(ms / 1000.0);
+    double seconds = ms / 1000.0;
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 
   if (cudaEventDestroy(before) != cudaSuccess || cudaEventDestroy(after) != cudaSuccess) {
@@ -294,13 +313,13 @@ void cufft_oop_device_time_float(Args&&... args) {
   cufft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                                     \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime()
+#define BENCH_COMPLEX_FLOAT(...)                                                      \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                              \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
+#define BENCH_SINGLE_FLOAT(...)                                               \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 
