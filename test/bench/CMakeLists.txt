@@ -84,46 +84,18 @@ if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
     find_package(HIP REQUIRED)
     find_package(rocfft REQUIRED)
 
-    if(SYCLFFT_ROCM_ROOT STREQUAL "")
-        # attempt to read ROCm root from HIP_DIR variable from the HIP package
-        get_filename_component(TEMP ${HIP_DIR} DIRECTORY)
-        get_filename_component(TEMP ${TEMP} DIRECTORY)
-        get_filename_component(SYCLFFT_ROCM_ROOT ${TEMP} DIRECTORY)
-        message(STATUS "using " ${SYCLFFT_ROCM_ROOT} " as the root of ROCm")
-    endif()
-
-    if (NOT EXISTS ${SYCLFFT_ROCM_ROOT})
-        message(SEND_ERROR "SYCLFFT_ROCM_ROOT not found (path: ${SYCLFFT_ROCM_ROOT})")
-    endif()
-
-    # hip::host expects to link with libclang_rt.builtins-x86_64
-    # it can be found in the rocm install
-    file(GLOB HIP_CLANGRT_LIB_SEARCH_PATHS "${SYCLFFT_ROCM_ROOT}/llvm/lib/clang/*/lib/*")
-    find_library(CLANGRT_BUILTINS
-      NAMES
-        clang_rt.builtins
-        clang_rt.builtins-x86_64
-      PATHS
-        ${HIP_CLANGRT_LIB_SEARCH_PATHS}
-      NO_DEFAULT_PATH
-    )
-
     # get target include directories from sycl-fft for the direction enum
     get_target_property(SYCLFFT_INCLUDES sycl_fft INTERFACE_INCLUDE_DIRECTORIES)
 
     add_executable(bench_rocfft bench_rocfft.cpp)
-    target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft benchmark::benchmark ${CLANGRT_BUILTINS})
-    target_include_directories(bench_rocfft PRIVATE ${SYCLFFT_INCLUDES} ${rocfft_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}/test/common)
-
-    # prevent issue where __float128 is not supported
-    set_target_properties(bench_rocfft PROPERTIES CXX_EXTENSIONS OFF)
+    target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft benchmark::benchmark)
+    target_include_directories(bench_rocfft PRIVATE ${SYCLFFT_INCLUDES} ${PROJECT_SOURCE_DIR}/test/common)
 
     if(${SYCLFFT_VERIFY_BENCHMARK})
         find_package(rocrand REQUIRED)
 
         target_compile_definitions(bench_rocfft PRIVATE SYCLFFT_VERIFY_BENCHMARK)
         target_link_libraries(bench_rocfft PRIVATE roc::rocrand)
-        target_include_directories(bench_rocfft PRIVATE ${rocrand_INCLUDE_DIR})
     endif()
 endif()
 
