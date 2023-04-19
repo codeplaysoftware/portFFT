@@ -61,13 +61,48 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 ## Third party benchmarks
 
-One can build third party benchmarks with the following CMake flags and command line:
+### Open-source oneMKL
 
-| FFT library | CMake argument | Command line |
-| ----------- |--------------- | ------------ |
-| [open-source oneMKL] | `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT` | `./test/bench/bench_open_onemkl` |
-| [close-source oneMKL] | `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON` | `./test/bench/bench_closed_onemkl` |
-| [cuFFT] | `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON` | `./test/bench/bench_cufft` |
+The benchmark can be enabled with `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT`.
+
+The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
+
+Run the benchmark with:
+```shell
+./test/bench/bench_open_onemkl
+```
+
+### Closed-source oneMKL
+
+The benchmark can be enabled with `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON`.
+
+The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
+
+Run the benchmark with:
+
+```shell
+./test/bench/bench_closed_onemkl
+```
+
+### cuFFT
+
+The benchmark can be enabled with `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON`.
+
+Run the benchmark with:
+
+```shell
+./test/bench/bench_cufft
+```
+
+### rocFFT
+
+The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`.
+
+Run the benchmark with:
+
+```shell
+./test/bench/bench_rocfft
+```
 
 ## Troubleshooting
 
