@@ -70,13 +70,33 @@ foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
 endforeach()
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
+    find_package(CUDAToolkit REQUIRED)
+
     add_executable(bench_cufft bench_cufft.cpp)
     if(${SYCLFFT_VERIFY_BENCHMARK})
         target_compile_definitions(bench_cufft PRIVATE SYCLFFT_VERIFY_BENCHMARK)
     endif()
-    find_package(CUDAToolkit REQUIRED)
     target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark CUDA::curand sycl_fft)
     target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+endif()
+
+if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
+    find_package(HIP REQUIRED)
+    find_package(rocfft REQUIRED)
+
+    # get target include directories from sycl-fft for the direction enum
+    get_target_property(SYCLFFT_INCLUDES sycl_fft INTERFACE_INCLUDE_DIRECTORIES)
+
+    add_executable(bench_rocfft bench_rocfft.cpp)
+    target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft benchmark::benchmark)
+    target_include_directories(bench_rocfft PRIVATE ${SYCLFFT_INCLUDES} ${PROJECT_SOURCE_DIR}/test/common)
+
+    if(${SYCLFFT_VERIFY_BENCHMARK})
+        find_package(rocrand REQUIRED)
+
+        target_compile_definitions(bench_rocfft PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+        target_link_libraries(bench_rocfft PRIVATE roc::rocrand)
+    endif()
 endif()
 
 if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS})

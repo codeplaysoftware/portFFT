@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <iostream>
 #include <vector>
 
@@ -38,11 +39,14 @@
  */
 template <typename type>
 bool compare_arrays(type* array1, type* array2, size_t num_elements, double absTol) {
-  bool correct = true;
-  for (size_t i = 0; i < num_elements; i++) {
-    correct = correct && (std::abs(array1[i] - array2[i]) <= absTol);
+  for (size_t i = 0; i < num_elements; ++i) {
+    bool correct = std::abs(array1[i] - array2[i]) <= absTol;
+    if (!correct) {
+      std::cout << "error at index " << i << '\n' << array1[i] << " vs " << array2[i] << '\n';
+      return false;
+    }
   }
-  return correct;
+  return true;
 }
 
 #endif  // SYCLFFT_BENCH_BENCH_UTILS_HPP
