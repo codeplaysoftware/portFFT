@@ -69,7 +69,6 @@ if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
   add_subdirectory(cufft)
 endif()
 
-
 if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
   add_subdirectory(rocfft)
 endif()
