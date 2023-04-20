@@ -96,7 +96,7 @@ Run the benchmark with:
 
 ### rocFFT
 
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`.
+The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`. ROCm 5.4.3 or greater is required.
 
 The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
 
