@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <iostream>
 #include <vector>
 
@@ -60,7 +61,7 @@ bool compare_arrays(type* reference_output, type* device_output, std::vector<int
           correct && (std::abs(reference_output[reference_output_idx] - device_output[device_output_idx]) < absTol);
     }
   }
-  return correct;
+  return true;
 }
 
 #endif  // SYCLFFT_BENCH_BENCH_UTILS_HPP
