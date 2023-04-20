@@ -1,9 +1,13 @@
 #!/bin/bash
+#
+# (C) Codeplay Software Ltd
+#     SYCL-FFT source code formatting script
+#
+#     NB: SYCL-FFT uses clang-format 11.
+#
 
 set -euo pipefail
 IFS=$'\n\t'
 
-VERSION=${VERSION:-""}
-
 git ls-files | grep -E "*\.h$|*\.hpp$|*\.cc$|*\.cpp$" | \
-  xargs --max-procs=`nproc` --max-args=1 clang-format$VERSION -style=file -i
+  xargs --max-procs=`nproc` --max-args=1 clang-format-11 -style=file -i

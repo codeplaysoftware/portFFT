@@ -48,6 +48,9 @@ class usm_kernel;
 template <typename Scalar, domain Domain>
 struct descriptor;
 
+// specialization constants
+constexpr static sycl::specialization_id<int> fft_size_spec_const;
+
 /**
  * A commited descriptor that contains everything that is needed to run FFT.
  *
@@ -63,6 +66,7 @@ class committed_descriptor {
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
+  sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   std::size_t n_compute_units;
   std::size_t buffer_kernel_fwd_subgroup_size;
   std::size_t usm_kernel_fwd_subgroup_size;
@@ -71,18 +75,35 @@ class committed_descriptor {
   Scalar* twiddles_forward;
 
   /**
+   * Builds the kernel bundle with appropriate values of specialization constants.
+   *
+   * @return sycl::kernel_bundle<sycl::bundle_state::executable>
+   */
+  sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const() {
+    // This function is called from constructor initializer list and it accesses other data members of the class. These
+    // are already initialized by the time this is called only if they are declared in the class definition before the
+    // member that is initialized by this function.
+    auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context());
+    in_bundle.set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
+    return sycl::build(in_bundle);
+  }
+
+  /**
    * Constructor.
    *
    * @param params descriptor this is created from
    * @param queue queue to use qhen enqueueing device work
    */
   committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
-      : params{params}, queue(queue), dev(queue.get_device()), ctx(queue.get_context()) {
+      : params{params},
+        queue(queue),
+        dev(queue.get_device()),
+        ctx(queue.get_context()),
+        exec_bundle(build_w_spec_const()) {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
-    // query the kernels associated with the queue, and get the sub_group info
-    auto exec_bundle = sycl::get_kernel_bundle<sycl::bundle_state::executable>(queue.get_context());
 
+    // query the kernels associated with the queue, and get the sub_group info
     buffer_kernel_fwd_subgroup_size =
         get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain, direction::FORWARD>>(dev, exec_bundle);
     usm_kernel_fwd_subgroup_size =
@@ -91,6 +112,26 @@ class committed_descriptor {
         get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
     usm_kernel_bwd_subgroup_size =
         get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
+    if (buffer_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) +
+                               " of the fwd buffer kernel doe not match required size of " +
+                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
+    }
+    if (usm_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) +
+                               " of the fwd usm kernel doe not match required size of " +
+                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
+    }
+    if (buffer_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) +
+                               " of the bwd buffer kernel doe not match required size of " +
+                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
+    }
+    if (usm_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
+      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) +
+                               " of the bwd usm kernel doe not match required size of " +
+                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
+    }
     // get some properties we will use for tunning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_fwd_subgroup_size);
@@ -253,11 +294,13 @@ class committed_descriptor {
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
+      cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it) {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, fft_size, n_transforms, it, twiddles_local,
-                                    scale_factor);
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+            detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
+                                    n_transforms, it, twiddles_local, scale_factor);
           });
     });
   }
@@ -305,9 +348,12 @@ class committed_descriptor {
       auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+      cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=](sycl::nd_item<1> it) {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, fft_size, n_transforms, it,
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
+                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
                                     twiddles_local, scale_factor);
           });
     });
