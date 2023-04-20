@@ -46,45 +46,20 @@
 template <typename type>
 bool compare_arrays(type* reference_output, type* device_output, std::vector<int> dimensions, double absTol,
                     bool utilize_symm = false) {
-  std::function<void(int, std::vector<int>)> nested_loop;
-  std::vector<int> symm_dimensions = dimensions;
-  if (utilize_symm) {
-    symm_dimensions.at(symm_dimensions.size() - 1) = symm_dimensions.back() / 2 + 1;
-  }
   bool correct = true;
-
-  nested_loop = [&](int recursion_level, std::vector<int>&& iter_values) -> void {
-    if (recursion_level != dimensions.size()) {
-      for (int i = 0; i < dimensions.at(recursion_level - 1); i++) {
-        iter_values[recursion_level - 1] = i;
-        nested_loop(recursion_level + 1, iter_values);
-      }
-    } else {
-      int nested_offset = 0;
-      int symmetric_nested_offset = 0;
-      for (int i = 0; i < iter_values.size(); i++) {
-        symmetric_nested_offset +=
-            iter_values.at(i) *
-            std::accumulate(symm_dimensions.begin() + i + 1, symm_dimensions.end(), 1, std::multiplies<int>());
-        nested_offset += iter_values.at(i) *
-                         std::accumulate(dimensions.begin() + i + 1, dimensions.end(), 1, std::multiplies<int>());
-      }
-      int symm_value = dimensions.at(recursion_level - 1) / 2 + 1;
-      for (int i = 0; i < dimensions.at(recursion_level - 1); i++) {
-        if (utilize_symm) {
-          if (i == symm_value) {
-            break;
-          }
-        }
-        correct =
-            correct &&
-            (std::abs(reference_output[nested_offset + i] - device_output[symmetric_nested_offset + i]) <= absTol);
-      }
+  int symm_col = dimensions.back();
+  if (utilize_symm) {
+    symm_col = symm_col / 2 + 1;
+  }
+  int dims_squashed = std::accumulate(dimensions.begin(), dimensions.end() - 1, 1, std::multiplies<int>());
+  for (int i = 0; i < dims_squashed; i++) {
+    for (int j = 0; j < symm_col; j++) {
+      int reference_output_idx = i * dimensions.back() + j;
+      int device_output_idx = i * symm_col + j;
+      correct =
+          correct && (std::abs(reference_output[reference_output_idx] - device_output[device_output_idx]) < absTol);
     }
-  };
-
-  std::vector<int> iter_values(dimensions.size() - 1);
-  nested_loop(1, iter_values);
+  }
   return correct;
 }
 

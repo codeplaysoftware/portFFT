@@ -62,8 +62,8 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   std::size_t num_elements = batch * fft_size;
   std::vector<TypeIn> host_input(num_elements);
   std::vector<TypeOut> host_output(num_elements);
-  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(TypeIn), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(TypeOut), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(TypeOut), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(TypeIn), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
   std::vector<TypeOut> result_vector(num_elements);
