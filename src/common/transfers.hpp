@@ -75,10 +75,39 @@ inline std::size_t pad_local(std::size_t local_idx) {
 template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
 inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t global_offset = 0, std::size_t local_offset = 0) {
-  for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
+  constexpr int vec = 4; //TODO tune
+  int stride = local_size*vec;
+  std::size_t rounded_down_num_elems = total_num_elems / stride * stride;
+  std::size_t i;
+  for (i = local_id * vec; i < rounded_down_num_elems; i += stride) {
+    for(int j=0;j<vec;j++){
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
+      local[local_idx] = global[global_offset + i + j];
+    }
+  }
+  int vec2 = (total_num_elems - rounded_down_num_elems) / local_size;
+  if(vec2){
+    for(int j=0;j<vec2;j++){
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * vec2 + j);
+      local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * vec2 + j];
+    }
+  }
+  std::size_t my_last_idx = rounded_down_num_elems + vec2 * local_size + local_id;
+  if(my_last_idx < total_num_elems){
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
+      local[local_idx] = global[global_offset + my_last_idx];
+  }
+
+  //TODO further optimize this loop
+  /*for (i = rounded_down_num_elems + local_id; i < total_num_elems; i += local_size) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
     local[local_idx] = global[global_offset + i];
-  }
+  }*/
+
+  /*for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
+    local[local_idx] = global[global_offset + i];
+  }*/
 }
 
 /**
