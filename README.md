@@ -61,18 +61,19 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 ## Third party benchmarks
 
-### Open-source oneMKL
+### [Open-source oneMKL]
 
 The benchmark can be enabled with `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT`.
 
 The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
 
 Run the benchmark with:
+
 ```shell
 ./test/bench/bench_open_onemkl
 ```
 
-### Closed-source oneMKL
+### [Closed-source oneMKL]
 
 The benchmark can be enabled with `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON`.
 
@@ -84,7 +85,7 @@ Run the benchmark with:
 ./test/bench/bench_closed_onemkl
 ```
 
-### cuFFT
+### [cuFFT]
 
 The benchmark can be enabled with `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON`.
 
@@ -94,7 +95,7 @@ Run the benchmark with:
 ./test/bench/bench_cufft
 ```
 
-### rocFFT
+### [rocFFT]
 
 The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`. ROCm 5.4.3 or greater is required.
 
@@ -128,5 +129,6 @@ contact.
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
 [open-source oneMKL]: https://github.com/oneapi-src/oneMKL
-[close-source oneMKL]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html
+[closed-source oneMKL]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html
 [cuFFT]: https://docs.nvidia.com/cuda/cufft/
+[rocFFT]: https://github.com/ROCmSoftwarePlatform/rocFFT
