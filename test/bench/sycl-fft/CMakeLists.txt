@@ -23,36 +23,19 @@
 # *
 # **************************************************************************/
 
-
-include_guard()
-
-# Try to find a DPC++ release
-# (reqrs source /opt/intel/oneapi/compilers/2023.1.0/env/vars.sh)
-find_package(IntelSYCL QUIET)
-if(IntelSYCL_FOUND)
-    function(add_sycl_to_target)
-    set(options)
-    set(one_value_args TARGET)
-    cmake_parse_arguments(ARG
-      "${options}"
-      "${one_value_args}"
-      "${multi_value_args}"
-      ${ARGN}
+set(SYCLFFT_BENCHMARKS
+    bench_float.cpp
+    bench_manual_float.cpp
+)
+if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
+    list(APPEND SYCLFFT_BENCHMARKS
+        bench_manual_double.cpp
     )
-    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
-    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    endfunction()
 endif()
 
-# Try to find DPC++ (nightly or manually set compiler path)
-if(NOT IntelSYCL_FOUND)
-    find_package(DPCPP QUIET)
-endif()
-
-if(NOT IntelSYCL_FOUND AND NOT DPCPP_FOUND)
-  # Display warnings
-  find_package(IntelSYCL)
-  find_package(DPCPP)
-  message(FATAL_ERROR "No SYCL implementation found")
-endif()
+foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
+    get_filename_component(BENCHMARK_TARGET ${BENCHMARK_FILE} NAME_WE)
+    add_benchmark(${BENCHMARK_TARGET} ${BENCHMARK_FILE})
+    add_sycl_to_target(TARGET ${BENCHMARK_TARGET})
+    target_link_libraries(${BENCHMARK_TARGET} PRIVATE sycl_fft)
+endforeach()

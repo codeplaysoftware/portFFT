@@ -53,7 +53,7 @@ foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
         ${TEST_TARGET}
         ${UNIT_TEST_FILE}
     )
-    add_sycl_to_target(TARGET ${TEST_TARGET} SOURCES ${UNIT_TEST_FILE})
+    add_sycl_to_target(TARGET ${TEST_TARGET})
     target_link_libraries(
         ${TEST_TARGET}
         PRIVATE
