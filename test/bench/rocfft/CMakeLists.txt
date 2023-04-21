@@ -23,36 +23,14 @@
 # *
 # **************************************************************************/
 
+add_benchmark(bench_rocfft bench_rocfft.cpp)
 
-include_guard()
+find_package(HIP REQUIRED)
+find_package(rocfft REQUIRED)
 
-# Try to find a DPC++ release
-# (reqrs source /opt/intel/oneapi/compilers/2023.1.0/env/vars.sh)
-find_package(IntelSYCL QUIET)
-if(IntelSYCL_FOUND)
-    function(add_sycl_to_target)
-    set(options)
-    set(one_value_args TARGET)
-    cmake_parse_arguments(ARG
-      "${options}"
-      "${one_value_args}"
-      "${multi_value_args}"
-      ${ARGN}
-    )
-    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
-    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    endfunction()
-endif()
+target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft)
 
-# Try to find DPC++ (nightly or manually set compiler path)
-if(NOT IntelSYCL_FOUND)
-    find_package(DPCPP QUIET)
-endif()
-
-if(NOT IntelSYCL_FOUND AND NOT DPCPP_FOUND)
-  # Display warnings
-  find_package(IntelSYCL)
-  find_package(DPCPP)
-  message(FATAL_ERROR "No SYCL implementation found")
+if(${SYCLFFT_VERIFY_BENCHMARK})
+    find_package(rocrand REQUIRED)
+    target_link_libraries(bench_rocfft PRIVATE roc::rocrand)
 endif()

@@ -14,11 +14,8 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Benchmark of OneMKL for comparison with SYCL-FFT.
- *
- *  Building with closed-source MKL:
- *  Set path to MKL_ROOT and set
- *  SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON.
+ *  Common benchmark for close-source and open-source oneMKL libraries.
+ *  The oneMKL headers must be included before this header.
  *
  **************************************************************************/
 
@@ -26,12 +23,9 @@
 #include <type_traits>
 #include <vector>
 
-// Intel's closed-source OneMKL library header.
-#include <oneapi/mkl/dfti.hpp>
-#include <oneapi/mkl/exceptions.hpp>
-
 #include <benchmark/benchmark.h>
 
+#include "bench_utils.hpp"
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
 #include "reference_dft_set.hpp"
@@ -40,7 +34,14 @@
 template <oneapi::mkl::dft::precision prec>
 using get_float_t = std::conditional_t<prec == oneapi::mkl::dft::precision::SINGLE, float, double>;
 
-/// Copy an input vector to an output vector, with element-wise casts.
+/**
+ * @brief Copy an input vector to an output vector, with element-wise casts.
+ *
+ * @tparam TOut output type
+ * @tparam TIn input type
+ * @param in_vec vector to cast
+ * @return std::vector<TOut> the casted vector
+ */
 template <typename TOut, typename TIn>
 std::vector<TOut> cast_vector_elements(const std::vector<TIn>& in_vec) {
   std::vector<TOut> out_vec(in_vec.size());
@@ -66,7 +67,7 @@ struct onemkl_state {
       : desc(lengths), sycl_queue(sycl_queue), lengths{lengths}, number_of_transforms{number_of_transforms} {
     using config_param_t = oneapi::mkl::dft::config_param;
     // For now, out-of-place only.
-    desc.set_value(config_param_t::PLACEMENT, DFTI_NOT_INPLACE);
+    set_out_of_place();
     desc.set_value(config_param_t::NUMBER_OF_TRANSFORMS, number_of_transforms);
     num_elements = get_total_length() * number_of_transforms;
     // Allocate memory.
@@ -79,7 +80,9 @@ struct onemkl_state {
     sycl::free(out_dev, sycl_queue);
   }
 
-  inline sycl::event compute() { return compute_forward(desc, in_dev, out_dev); }
+  // Backend specific methods
+  void set_out_of_place();
+  inline sycl::event compute();
 
   /// The count of elements for each FFT. Product of lengths.
   inline std::size_t get_total_length() {
@@ -182,7 +185,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
       e.wait();
       start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
       end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-    } catch (sycl::runtime_error& e) {
+    } catch (sycl::exception& e) {
       // e may not have profiling info, so this benchmark is useless
       auto errorMessage = std::string("Exception thrown ") + e.what();
       state.SkipWithError(errorMessage.c_str());
