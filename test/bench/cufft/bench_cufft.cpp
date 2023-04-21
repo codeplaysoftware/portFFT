@@ -68,18 +68,18 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(TypeIn), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
-  std::vector<TypeOut> result_vector(num_elements);
+  std::vector<TypeOut> result_vector(fft_size);
   for (std::size_t i = 0; i < batch; i++) {
     if constexpr (std::is_same_v<cufftComplex, TypeIn> || std::is_same_v<cufftDoubleComplex, TypeIn>) {
       reference_dft<sycl_fft::direction::FORWARD>(
           reinterpret_cast<std::complex<scalar_type>*>(host_input.data()) + i * fft_size,
-          reinterpret_cast<std::complex<scalar_type>*>(result_vector.data() + i * fft_size), lengths);
+          reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths);
     } else {
       reference_dft<sycl_fft::direction::FORWARD>(
           host_input.data() + i * fft_size,
           reinterpret_cast<std::complex<scalar_type>*>(result_vector.data() + i * fft_size), lengths, i * fft_size);
     }
-    int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data() + i * fft_size),
+    int correct = compare_result(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                  reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * symm_fft_size),
                                  lengths, 1e-2, plan_type == CUFFT_R2C);
     if (!correct) {

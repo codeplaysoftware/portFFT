@@ -98,9 +98,8 @@ void verify_dft(forward_type* forward_copy, void* dev_bwd, const std::vector<siz
                                                 int_lengths);
 
     // compare
-    if (!compare_arrays(reference_buffer.get(), host_bwd.get() + i * bwd_per_transform, lengths, comparison_tolerance,
+    if (!compare_result(reference_buffer.get(), host_bwd.get() + i * bwd_per_transform, lengths, comparison_tolerance,
                         is_real<forward_type>::value)) {
-      std::cout << "error in transform " << i << ", in row " << r << std::endl;
       throw std::runtime_error("Verification Failed");
     }
   }

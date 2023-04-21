@@ -37,15 +37,15 @@
  * @brief Compares two arrays
  *
  * @tparam type Type of the two arrays
- * @param array1 pointer of type to the first array
- * @param array2 pointer of type to the second array
+ * @param array1 pointer of type to the reference output
+ * @param array2 pointer of type to the device output
  * @param dimensions Dimensions of the reference output
  * @param absTol absolute tolerance value during to pass the comparision
  * @param utilize_symm Whether or not device output exploit symmetric nature of transform
  * @return true if the arrays are equal within the given tolerance
  */
 template <typename type>
-bool compare_arrays(type* reference_output, type* device_output, std::vector<int> dimensions, double absTol,
+bool compare_result(type* reference_output, type* device_output, std::vector<int> dimensions, double absTol,
                     bool utilize_symm = false) {
   bool correct = true;
   int symm_col = dimensions.back();
