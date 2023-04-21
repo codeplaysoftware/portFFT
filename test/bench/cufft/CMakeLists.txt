@@ -26,4 +26,4 @@
 add_benchmark(bench_cufft bench_cufft.cpp)
 
 find_package(CUDAToolkit REQUIRED)
-target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft)
+target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft CUDA::curand)
