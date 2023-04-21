@@ -71,13 +71,13 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths
   std::vector<TypeOut> result_vector(fft_size);
   for (std::size_t i = 0; i < batch; i++) {
     if constexpr (std::is_same_v<cufftComplex, TypeIn> || std::is_same_v<cufftDoubleComplex, TypeIn>) {
-      reference_dft<sycl_fft::direction::FORWARD>(
-          reinterpret_cast<std::complex<scalar_type>*>(host_input.data()) + i * fft_size,
-          reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths);
+      reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
+                                                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                  lengths);
     } else {
-      reference_dft<sycl_fft::direction::FORWARD>(
-          host_input.data() + i * fft_size,
-          reinterpret_cast<std::complex<scalar_type>*>(result_vector.data() + i * fft_size), lengths, i * fft_size);
+      reference_dft<sycl_fft::direction::FORWARD>(host_input.data() + i * fft_size,
+                                                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                  lengths);
     }
     int correct = compare_result(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
                                  reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * symm_fft_size),
