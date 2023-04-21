@@ -38,7 +38,7 @@
  * @param offset memory offset for in and out pointers
  */
 template <sycl_fft::direction dir, typename TypeIn, typename TypeOut>
-void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, double scaling_factor = 1.0) {
+void reference_dft(TypeIn* in, TypeOut* out, const std::vector<int>& length, double scaling_factor = 1.0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
   std::copy(length.begin(), length.end(), dims.begin());
