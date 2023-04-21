@@ -45,9 +45,8 @@
  * @return true if the arrays are equal within the given tolerance
  */
 template <typename type>
-bool compare_result(type* reference_output, type* device_output, std::vector<int> dimensions, double absTol,
+bool compare_result(type* reference_output, type* device_output, const std::vector<int>& dimensions, double absTol,
                     bool utilize_symm = false) {
-  bool correct = true;
   int symm_col = dimensions.back();
   if (utilize_symm) {
     symm_col = symm_col / 2 + 1;
@@ -57,8 +56,9 @@ bool compare_result(type* reference_output, type* device_output, std::vector<int
     for (int j = 0; j < symm_col; j++) {
       int reference_output_idx = i * dimensions.back() + j;
       int device_output_idx = i * symm_col + j;
-      correct =
-          correct && (std::abs(reference_output[reference_output_idx] - device_output[device_output_idx]) < absTol);
+      if (!(std::abs(reference_output[reference_output_idx] - device_output[device_output_idx]) < absTol)) {
+        return false;
+      }
     }
   }
   return true;
