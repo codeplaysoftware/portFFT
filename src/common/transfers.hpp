@@ -22,6 +22,7 @@
 #define SYCL_FFT_COMMON_TRANSFERS_HPP
 
 #include <sycl/sycl.hpp>
+#include <common/helpers.hpp>
 
 #ifndef SYCL_FFT_N_LOCAL_BANKS
 #define SYCL_FFT_N_LOCAL_BANKS 32
@@ -75,7 +76,9 @@ inline std::size_t pad_local(std::size_t local_idx) {
 template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
 inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems, std::size_t local_size,
                          std::size_t local_id, std::size_t global_offset = 0, std::size_t local_offset = 0) {
-  constexpr int vec = 4; //TODO tune
+  using T = detail::remove_ptr<T_loc_ptr>;
+  constexpr int vec_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
+  constexpr int vec = 4;//vec_raw < 1 ? 1 : vec_raw;
   int stride = local_size*vec;
   std::size_t rounded_down_num_elems = total_num_elems / stride * stride;
   std::size_t i;
