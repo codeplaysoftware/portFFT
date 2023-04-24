@@ -38,51 +38,41 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googlebenchmark)
 
-set(SYCLFFT_BENCHMARKS
-    bench_float.cpp
-    bench_manual_float.cpp
-)
-if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
-    list(APPEND SYCLFFT_BENCHMARKS
-        bench_manual_double.cpp
-    )
-endif()
+# Common function to add a benchmark
+set(BENCHMARK_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+function(add_benchmark target source_file)
+  add_executable(${target} ${source_file})
+  target_link_libraries(${target} PRIVATE
+      benchmark::benchmark
+      Threads::Threads
+  )
 
-foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
-    get_filename_component(FILE_NAME ${BENCHMARK_FILE} NAME_WE)
-    set(BENCHMARK_TARGET "${FILE_NAME}")
-    add_executable(
-        ${BENCHMARK_TARGET}
-        ${BENCHMARK_FILE}
-    )
-    add_sycl_to_target(TARGET ${BENCHMARK_TARGET} SOURCES ${BENCHMARK_FILE})
-    if(${SYCLFFT_VERIFY_BENCHMARK})
-        target_compile_definitions(${BENCHMARK_TARGET} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
-    endif()
-    target_link_libraries(
-        ${BENCHMARK_TARGET}
-        PRIVATE
-        sycl_fft
-        benchmark::benchmark
-        Threads::Threads
-    )
-    target_include_directories(${BENCHMARK_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
-endforeach()
+  # get target include directories from sycl-fft for the direction enum
+  get_target_property(SYCLFFT_INCLUDES sycl_fft INTERFACE_INCLUDE_DIRECTORIES)
+
+  target_include_directories(${target} PRIVATE
+      ${PROJECT_SOURCE_DIR}/test/common
+      ${PROJECT_SOURCE_DIR}/test/bench/utils
+      ${SYCLFFT_INCLUDES}
+  )
+  if(${SYCLFFT_VERIFY_BENCHMARK})
+      target_compile_definitions(${target} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+  endif()
+  set_target_properties(${target} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY ${BENCHMARK_BIN_DIR}
+  )
+endfunction()
+
+add_subdirectory(sycl-fft)
 
 if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
-    add_executable(bench_cufft bench_cufft.cpp)
-    if(${SYCLFFT_VERIFY_BENCHMARK})
-        target_compile_definitions(bench_cufft PRIVATE SYCLFFT_VERIFY_BENCHMARK)
-    endif()
-    find_package(CUDAToolkit REQUIRED)
-    target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft benchmark::benchmark CUDA::curand sycl_fft)
-    target_include_directories(bench_cufft PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+  add_subdirectory(cufft)
 endif()
 
-if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS})
-    add_executable(bench_onemkl bench_onemkl.cpp)
-    find_package(MKL CONFIG REQUIRED)
-    target_compile_options(bench_onemkl PRIVATE ${MKL_COPT})
-    target_link_libraries(bench_onemkl PRIVATE MKL::MKL ${MKL_LINK_SYCL} benchmark::benchmark)
-    target_include_directories(bench_onemkl PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
+if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
+  add_subdirectory(rocfft)
+endif()
+
+if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS} OR SYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND)
+    add_subdirectory(onemkl)
 endif()

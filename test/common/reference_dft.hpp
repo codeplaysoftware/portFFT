@@ -38,7 +38,7 @@
  * @param offset memory offset for in and out pointers
  */
 template <sycl_fft::direction dir, typename TypeIn, typename TypeOut>
-void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t offset = 0, double scaling_factor = 1.0) {
+void reference_dft(TypeIn* in, TypeOut* out, const std::vector<int>& length, double scaling_factor = 1.0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
   std::copy(length.begin(), length.end(), dims.begin());
@@ -56,15 +56,14 @@ void reference_dft(TypeIn* in, TypeOut* out, std::vector<int> length, size_t off
               if constexpr (dir == sycl_fft::direction::BACKWARD) {
                 theta = -theta;
               }
-              auto element =
-                  static_cast<long double>(scaling_factor) *
-                  static_cast<std::complex<long double>>(in[offset + ix * dims[1] * dims[2] + iy * dims[2] + iz]);
+              auto element = static_cast<long double>(scaling_factor) *
+                             static_cast<std::complex<long double>>(in[ix * dims[1] * dims[2] + iy * dims[2] + iz]);
               auto multiplier = std::complex<long double>(std::cos(theta), std::sin(theta));
               out_temp += element * multiplier;
             }
           }
         }
-        out[offset + ox * dims[1] * dims[2] + oy * dims[2] + oz] = out_temp;
+        out[ox * dims[1] * dims[2] + oy * dims[2] + oz] = static_cast<TypeOut>(out_temp);
       }
     }
   }

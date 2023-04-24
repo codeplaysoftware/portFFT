@@ -18,6 +18,7 @@
  *
  **************************************************************************/
 
+#include <chrono>
 #include <complex>
 #include <memory>
 #include <numeric>
@@ -33,6 +34,7 @@
 #include "bench_utils.hpp"
 #include "cufft_utils.hpp"
 #include "enums.hpp"
+#include "ops_estimate.hpp"
 #include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
 
@@ -54,25 +56,35 @@ struct scalar_data_type<CUFFT_Z2Z> {
 template <cufftType plan_type, typename TypeIn, typename TypeOut>
 void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths, std::size_t batch) {
   std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  std::size_t symm_fft_size = fft_size;
+  if constexpr (plan_type == CUFFT_R2C) {
+    symm_fft_size = std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
+  }
+
   std::size_t num_elements = batch * fft_size;
-  std::vector<typename std::remove_pointer<decltype(dev_input)>::type> host_input(num_elements);
-  std::vector<typename std::remove_pointer<decltype(dev_output)>::type> host_output(num_elements);
-  cudaMemcpy(host_output.data(), dev_output,
-             num_elements * sizeof(typename std::remove_pointer<decltype(dev_input)>::type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(host_input.data(), dev_input,
-             num_elements * sizeof(typename std::remove_pointer<decltype(dev_output)>::type), cudaMemcpyDeviceToHost);
+  std::vector<TypeIn> host_input(num_elements);
+  std::vector<TypeOut> host_output(num_elements);
+  cudaMemcpy(host_output.data(), dev_output, num_elements * sizeof(TypeOut), cudaMemcpyDeviceToHost);
+  cudaMemcpy(host_input.data(), dev_input, num_elements * sizeof(TypeIn), cudaMemcpyDeviceToHost);
 
   using scalar_type = typename scalar_data_type<plan_type>::type;
-  std::vector<TypeOut> result_vector(num_elements);
+  std::vector<TypeOut> result_vector(fft_size);
   for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<sycl_fft::direction::FORWARD>(reinterpret_cast<std::complex<scalar_type>*>(host_input.data()),
-                                                reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                                lengths, i * fft_size);
-  }
-  int correct = compare_arrays(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                               reinterpret_cast<std::complex<scalar_type>*>(host_output.data()), num_elements, 1e-2);
-  if (!correct) {
-    throw std::runtime_error("Verification Failed");
+    if constexpr (std::is_same_v<cufftComplex, TypeIn> || std::is_same_v<cufftDoubleComplex, TypeIn>) {
+      reference_dft<sycl_fft::direction::FORWARD>(
+          reinterpret_cast<std::complex<scalar_type>*>(host_input.data() + i * fft_size),
+          reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()), lengths);
+    } else {
+      reference_dft<sycl_fft::direction::FORWARD>(host_input.data() + i * fft_size,
+                                                  reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                                  lengths);
+    }
+    int correct = compare_result(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
+                                 reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * symm_fft_size),
+                                 lengths, 1e-2, plan_type == CUFFT_R2C);
+    if (!correct) {
+      throw std::runtime_error("Verification Failed");
+    }
   }
 }
 
@@ -157,6 +169,7 @@ struct cufft_state {
 
     const auto elements = static_cast<std::size_t>(fft_size * batch);
     typename type_info::device_forward_type* in_tmp;
+    // TODO overallocing in the REAL-COMPLEX case
     if (cudaMalloc(&in_tmp, sizeof(forward_type) * elements) == cudaSuccess) {
       in.reset(in_tmp);
     } else {
@@ -200,6 +213,10 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   auto in = cu_state.in.get();
   auto out = cu_state.out.get();
 
+  // ops estimate for flops
+  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
@@ -215,8 +232,15 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
 
   // benchmark
   for (auto _ : state) {
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
     cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
     cudaStreamSynchronize(nullptr);
+    auto end = clock::now();
+
+    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 }
 
@@ -229,6 +253,10 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   auto plan = cu_state.plan.handle.value();
   auto in = cu_state.in.get();
   auto out = cu_state.out.get();
+
+  // ops estimate for flops
+  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -263,7 +291,9 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
     if (cudaEventElapsedTime(&ms, before, after) != cudaSuccess) {
       state.SkipWithError("cudaEventElapsedTime failed");
     }
-    state.SetIterationTime(ms / 1000.0);
+    double seconds = ms / 1000.0;
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
   }
 
   if (cudaEventDestroy(before) != cudaSuccess || cudaEventDestroy(after) != cudaSuccess) {
@@ -292,18 +322,13 @@ void cufft_oop_device_time_float(Args&&... args) {
   cufft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-template <typename T>
-std::vector<T> vec(std::initializer_list<T> init) {
-  return {init};
-};
+#define BENCH_COMPLEX_FLOAT(...)                                                      \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_COMPLEX_FLOAT(...)                                     \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime()
-
-#define BENCH_SINGLE_FLOAT(...)                              \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime()
+#define BENCH_SINGLE_FLOAT(...)                                               \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 

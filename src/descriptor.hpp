@@ -297,8 +297,9 @@ class committed_descriptor {
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+          sycl::nd_range<1>{{global_size}, {subgroup_size}},
+          [=](sycl::nd_item<1> it,
+              sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
                                     n_transforms, it, twiddles_local, scale_factor);
           });
@@ -350,12 +351,13 @@ class committed_descriptor {
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
-          });
+          sycl::nd_range<1>{{global_size}, {subgroup_size}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
+              [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+                detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
+                                        kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                        twiddles_local, scale_factor);
+              });
     });
   }
 };
