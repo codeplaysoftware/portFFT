@@ -78,7 +78,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
                          std::size_t local_id, std::size_t global_offset = 0, std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int vec_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
-  constexpr int vec = 4;//vec_raw < 1 ? 1 : vec_raw;
+  constexpr int vec = vec_raw < 1 ? 1 : vec_raw;
   int stride = local_size*vec;
   std::size_t rounded_down_num_elems = total_num_elems / stride * stride;
   std::size_t i;
@@ -100,17 +100,6 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
       local[local_idx] = global[global_offset + my_last_idx];
   }
-
-  //TODO further optimize this loop
-  /*for (i = rounded_down_num_elems + local_id; i < total_num_elems; i += local_size) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
-    local[local_idx] = global[global_offset + i];
-  }*/
-
-  /*for (std::size_t i = local_id; i < total_num_elems; i += local_size) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + i);
-    local[local_idx] = global[global_offset + i];
-  }*/
 }
 
 /**
