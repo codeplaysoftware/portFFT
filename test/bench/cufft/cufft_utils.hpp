@@ -38,17 +38,17 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
     throw std::runtime_error("Failed to Create Random Number Generator");
   }
 
-  if (curandSetPseudoRandomGeneratorSeed(generator, 5678) != CURAND_STATUS_SUCCESS) {
+  if (curandSetPseudoRandomGeneratorSeed(generator, 1234) != CURAND_STATUS_SUCCESS) {
     throw std::runtime_error("Failed to Set Random Seed");
   }
 
   if ([&]() {
         if constexpr (std::is_same_v<T, float>) {
-          return curandGenerateNormal(generator, dev_ptr, 2 * N, 0, 2);
+          return curandGenerateNormal(generator, dev_ptr, N, 5, 2);
         }
 
         else {
-          return curandGenerateNormalDouble(generator, dev_ptr, 2 * N, 0, 2);
+          return curandGenerateNormalDouble(generator, dev_ptr, N, 5, 2);
         }
       }() != CURAND_STATUS_SUCCESS) {
     throw std::runtime_error("Failed to populate device pointer with random values");
