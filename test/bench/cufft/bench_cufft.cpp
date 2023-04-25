@@ -216,6 +216,9 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   // ops estimate for flops
   const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+  const auto mem_transactions =
+      global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
+                              typename forward_type_info<forward_type>::device_backward_type>(fft_size, batch);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -241,6 +244,7 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
     double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
+    state.counters["bandwidth"] = mem_transactions / seconds;
   }
 }
 
@@ -257,6 +261,9 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   // ops estimate for flops
   const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+  const auto mem_transactions =
+      global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
+                              typename forward_type_info<forward_type>::device_backward_type>(fft_size, batch);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -294,6 +301,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
+    state.counters["bandwidth"] = mem_transactions / seconds;
   }
 
   if (cudaEventDestroy(before) != cudaSuccess || cudaEventDestroy(after) != cudaSuccess) {

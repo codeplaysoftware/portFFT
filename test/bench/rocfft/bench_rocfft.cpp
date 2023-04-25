@@ -181,6 +181,8 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
   void* out = roc_state.bwd;
   const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+  const auto mem_transactions =
+      global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(fft_size, batch);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
@@ -207,6 +209,7 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
     double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
+    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
   }
 }
 
@@ -222,6 +225,8 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
   void* out = roc_state.bwd;
   const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+  const auto mem_transactions =
+      global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(fft_size, batch);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
@@ -258,6 +263,7 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
+    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
   }
 
   HIP_CHECK(hipEventDestroy(before));

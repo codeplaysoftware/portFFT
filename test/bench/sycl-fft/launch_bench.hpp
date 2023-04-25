@@ -52,6 +52,7 @@ void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, do
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
+  std::size_t mem_transactions = global_mem_transactions<complex_type, complex_type>(N, N_transforms);
 
   sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
@@ -95,6 +96,7 @@ void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, do
     }
     double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.counters["flops"] = ops / elapsed_seconds;
+    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
@@ -108,6 +110,7 @@ void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, 
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
+  std::size_t mem_transactions = global_mem_transactions<complex_type, complex_type>(N, N_transforms);
 
   sycl::queue q({sycl::property::queue::enable_profiling()});
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
@@ -144,6 +147,7 @@ void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, 
     int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
     double elapsed_seconds = (end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
+    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
