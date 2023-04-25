@@ -93,7 +93,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   if (last_chunk_size) {
     for (int j = 0; j < last_chunk_size; j++) {
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * vec2 + j);
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
       local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j];
     }
   }
