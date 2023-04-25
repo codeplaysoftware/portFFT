@@ -83,6 +83,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
+<<<<<<< Updated upstream
   void* global_void = static_cast<void*>(const_cast<T*>(&global[global_offset]));
   std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
   std::align(alignof(T_vec), 1, global_void, space);
@@ -90,6 +91,14 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   // load the first few unaligned elements
   std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
+=======
+  const T* global_ptr = &global[global_offset];
+  const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+  std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
+
+  // load the first few unaligned elements
+  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+>>>>>>> Stashed changes
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     local[local_idx] = global[global_offset + local_id];
   }
@@ -98,8 +107,8 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
 
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
-    const T_vec* global_vec = reinterpret_cast<const T_vec*>(&global[global_offset + i]);
-    T_vec loaded = *global_vec;
+    T_vec loaded;
+    loaded.load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
     for (int j = 0; j < chunk_size; j++) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       local[local_idx] = loaded[j];
@@ -149,6 +158,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
+<<<<<<< Updated upstream
   void* global_void = static_cast<void*>(&global[global_offset]);
   std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
   std::align(alignof(T_vec), 1, global_void, space);
@@ -156,6 +166,14 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   // store the first few unaligned elements
   std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
+=======
+  const T* global_ptr = &global[global_offset];
+  const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+  std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
+
+  // store the first few unaligned elements
+  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+>>>>>>> Stashed changes
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     global[global_offset + local_id] = local[local_idx];
   }
@@ -170,7 +188,8 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       to_store[j] = local[local_idx];
     }
-    *global_vec = to_store;
+    to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
+    //*global_vec = to_store;
   }
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
