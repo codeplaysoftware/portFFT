@@ -209,7 +209,7 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
     double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
+    state.counters["bandwidth"] = mem_transactions / seconds;
   }
 }
 
@@ -263,7 +263,7 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
+    state.counters["bandwidth"] = mem_transactions / seconds;
   }
 
   HIP_CHECK(hipEventDestroy(before));
