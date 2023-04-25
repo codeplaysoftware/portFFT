@@ -84,12 +84,12 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   void* global_void = static_cast<void*>(const_cast<T*>(&global[global_offset]));
-  std::size_t space = total_num_elems * sizeof(T); // on input total space, on output aligned space
+  std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
   std::align(alignof(T_vec), 1, global_void, space);
 
   // load the first few unaligned elements
   std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
-  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     local[local_idx] = global[global_offset + local_id];
   }
@@ -108,7 +108,8 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
+    std::size_t local_idx =
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
     local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j];
   }
   // Less than group size elements remain. Each workitem loads at most one.
@@ -149,12 +150,12 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   void* global_void = static_cast<void*>(&global[global_offset]);
-  std::size_t space = total_num_elems * sizeof(T); // on input total space, on output aligned space
+  std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
   std::align(alignof(T_vec), 1, global_void, space);
 
   // store the first few unaligned elements
   std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
-  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     global[global_offset + local_id] = local[local_idx];
   }
@@ -174,7 +175,8 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
+    std::size_t local_idx =
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
     global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j] = local[local_idx];
   }
   // Less than group size elements remain. Each workitem stores at most one.
