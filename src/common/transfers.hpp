@@ -105,7 +105,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
       local[local_idx] = loaded[j];
     }
   }
-  // We can not load `vec`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
+  // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
@@ -171,7 +171,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
     }
     *global_vec = to_store;
   }
-  // We can not store `vec`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
+  // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
