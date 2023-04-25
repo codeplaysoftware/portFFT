@@ -32,7 +32,7 @@ struct test_params {
 };
 
 void operator<<(std::ostream& stream, const test_params& params) {
-  stream << "Batch = " << params.batch << ", Length = " << params.length << '\n';
+  stream << "Batch = " << params.batch << ", Length = " << params.length;
 }
 
 class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
