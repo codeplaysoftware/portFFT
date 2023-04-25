@@ -31,7 +31,6 @@ struct remove_multi_ptr {
   using type = T;
 };
 
-
 template <typename T, int Dimms>
 struct remove_multi_ptr<sycl::local_accessor<T, Dimms>> {
   using type = T;

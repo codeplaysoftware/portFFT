@@ -21,8 +21,8 @@
 #ifndef SYCL_FFT_COMMON_TRANSFERS_HPP
 #define SYCL_FFT_COMMON_TRANSFERS_HPP
 
-#include <sycl/sycl.hpp>
 #include <common/helpers.hpp>
+#include <sycl/sycl.hpp>
 
 #ifndef SYCL_FFT_N_LOCAL_BANKS
 #define SYCL_FFT_N_LOCAL_BANKS 32
@@ -79,29 +79,29 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  int stride = local_size*chunk_size;
+  int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
   std::size_t i;
   for (i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
-    for(int j=0;j<chunk_size;j++){
+    for (int j = 0; j < chunk_size; j++) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       local[local_idx] = global[global_offset + i + j];
     }
   }
   // We can not load `vec`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
-  if(last_chunk_size){
-    for(int j=0;j<last_chunk_size;j++){
+  if (last_chunk_size) {
+    for (int j = 0; j < last_chunk_size; j++) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * vec2 + j);
       local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j];
     }
   }
   // Less than group size elements remain. Each workitem loads at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
-  if(my_last_idx < total_num_elems){
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
-      local[local_idx] = global[global_offset + my_last_idx];
+  if (my_last_idx < total_num_elems) {
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
+    local[local_idx] = global[global_offset + my_last_idx];
   }
 }
 
