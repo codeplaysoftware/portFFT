@@ -29,32 +29,30 @@ constexpr int N = 8;
 constexpr int wg_size = 64;
 using ftype = double;
 
-using complex_type = std::complex<ftype>;
-
 class test_transfers_kernel_padded;
 class test_transfers_kernel_unpadded;
 
 TEST(transfers, unpadded) {
-  std::vector<complex_type> a, b;
+  std::vector<ftype> a, b;
   a.resize(N * wg_size);
   b.resize(N * wg_size);
 
   populate_with_random(a, ftype(-1.0), ftype(1.0));
 
   sycl::queue q;
-  complex_type* a_dev = sycl::malloc_device<complex_type>(N * wg_size, q);
-  complex_type* b_dev = sycl::malloc_device<complex_type>(N * wg_size, q);
+  ftype* a_dev = sycl::malloc_device<ftype>(N * wg_size, q);
+  ftype* b_dev = sycl::malloc_device<ftype>(N * wg_size, q);
   q.copy(a.data(), a_dev, N * wg_size);
   q.copy(b.data(), b_dev, N * wg_size);
   q.wait();
 
   q.submit([&](sycl::handler& h) {
-    sycl::local_accessor<complex_type, 1> loc1(N * wg_size, h);
-    sycl::local_accessor<complex_type, 1> loc2(N * wg_size, h);
+    sycl::local_accessor<ftype, 1> loc1(N * wg_size, h);
+    sycl::local_accessor<ftype, 1> loc2(N * wg_size, h);
     h.parallel_for<test_transfers_kernel_unpadded>(sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
       size_t local_id = it.get_group().get_local_linear_id();
 
-      complex_type priv[N];
+      ftype priv[N];
 
       sycl_fft::global2local<false>(a_dev, loc1, N * wg_size, wg_size, local_id);
       group_barrier(it.get_group());
@@ -76,26 +74,26 @@ TEST(transfers, unpadded) {
 }
 
 TEST(transfers, padded) {
-  std::vector<complex_type> a, b;
+  std::vector<ftype> a, b;
   a.resize(N * wg_size);
   b.resize(N * wg_size);
 
   populate_with_random(a, ftype(-1.0), ftype(1.0));
 
   sycl::queue q;
-  complex_type* a_dev = sycl::malloc_device<complex_type>(N * wg_size, q);
-  complex_type* b_dev = sycl::malloc_device<complex_type>(N * wg_size, q);
+  ftype* a_dev = sycl::malloc_device<ftype>(N * wg_size, q);
+  ftype* b_dev = sycl::malloc_device<ftype>(N * wg_size, q);
   q.copy(a.data(), a_dev, N * wg_size);
   q.copy(b.data(), b_dev, N * wg_size);
   q.wait();
 
   q.submit([&](sycl::handler& h) {
-    sycl::local_accessor<complex_type, 1> loc1(sycl_fft::detail::pad_local(N * wg_size), h);
-    sycl::local_accessor<complex_type, 1> loc2(sycl_fft::detail::pad_local(N * wg_size), h);
+    sycl::local_accessor<ftype, 1> loc1(sycl_fft::detail::pad_local(N * wg_size), h);
+    sycl::local_accessor<ftype, 1> loc2(sycl_fft::detail::pad_local(N * wg_size), h);
     h.parallel_for<test_transfers_kernel_padded>(sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
       size_t local_id = it.get_group().get_local_linear_id();
 
-      complex_type priv[N];
+      ftype priv[N];
 
       sycl_fft::global2local<true>(a_dev, loc1, N * wg_size, wg_size, local_id);
       group_barrier(it.get_group());
