@@ -114,22 +114,22 @@ class committed_descriptor {
         get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
     if (buffer_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) +
-                               " of the fwd buffer kernel doe not match required size of " +
+                               " of the fwd buffer kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (usm_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) +
-                               " of the fwd usm kernel doe not match required size of " +
+                               " of the fwd usm kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (buffer_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) +
-                               " of the bwd buffer kernel doe not match required size of " +
+                               " of the bwd buffer kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (usm_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) +
-                               " of the bwd usm kernel doe not match required size of " +
+                               " of the bwd usm kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     // get some properties we will use for tunning

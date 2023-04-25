@@ -12,6 +12,8 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ## Getting Started
 
+### Building with CMake
+
 Clone SYCL-FFT and run the following commands from the cloned repository.
 
 Build using DPC++ 2023.1.0 as:
@@ -29,21 +31,28 @@ cmake -Bbuild -DCMAKE_CXX_COMPILER=/path/to/dpcpp/bin/clang++ -DCMAKE_C_COMPILER
 cmake --build build
 ```
 
-To compile AOT for a specific device, mention the target device as 
+To compile AOT for a specific device, specify the target device with:
 
-```
+```shell
 -DSYCLFFT_DEVICE_TRIPLE=<T>[T1,..,Tn]
 ```
 
 The list of available targets can be found on [DPC++ compiler documentation page].
-Some AOT targets do not support double precision. 
+Some AOT targets do not support double precision.
 To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
+
+SYCL-FFT currently requires to set the subgroup size at compile time. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_TARGET_SUBGROUP_SIZE=<size>`.
+If you run into the exception with the message `Subgroup size <N1> of the [..] kernel does not match required size of <N2>` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to `N1`.
+
+### Tests
 
 Run the tests from the build folder with:
 
 ```shell
 ctest
 ```
+
+### SYCL-FFT benchmarks
 
 Run pre-defined benchmarks from the build folder with:
 
