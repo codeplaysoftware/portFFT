@@ -45,7 +45,11 @@ inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
  */
 template <typename TypeIn, typename TypeOut>
 inline size_t global_mem_transactions(int fft_size, int batches) {
-  return batches * fft_size * (sizeof(TypeIn) + sizeof(TypeOut));
+  if constexpr (std::is_same_v<TypeIn, TypeOut>) {
+    return batches * fft_size * (sizeof(TypeIn) + sizeof(TypeOut));
+  } else {
+    return (batches * fft_size * sizeof(TypeIn)) + (batches * (fft_size / 2 + 1) * sizeof(TypeOut));
+  }
 }
 
 #endif  // SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
