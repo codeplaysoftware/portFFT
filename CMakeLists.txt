@@ -99,4 +99,8 @@ export(EXPORT sycl_fft
   FILE sycl_fft-config.cmake
 )
 
+if(${SYCLFFT_BUILD_TESTS})
+  enable_testing()
+endif()
+
 add_subdirectory(test)

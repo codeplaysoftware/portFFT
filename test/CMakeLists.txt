@@ -29,7 +29,6 @@ if(${SYCLFFT_BUILD_TESTS} OR ${SYCLFFT_BUILD_BENCHMARKS})
 endif()
 
 if(${SYCLFFT_BUILD_TESTS})
-  enable_testing()
   add_subdirectory(unit_test)
 endif()
 
