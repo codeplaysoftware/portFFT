@@ -114,22 +114,22 @@ class committed_descriptor {
         get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
     if (buffer_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) +
-                               " of the fwd buffer kernel doe not match required size of " +
+                               " of the fwd buffer kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (usm_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) +
-                               " of the fwd usm kernel doe not match required size of " +
+                               " of the fwd usm kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (buffer_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) +
-                               " of the bwd buffer kernel doe not match required size of " +
+                               " of the bwd buffer kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     if (usm_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
       throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) +
-                               " of the bwd usm kernel doe not match required size of " +
+                               " of the bwd usm kernel does not match required size of " +
                                std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
     }
     // get some properties we will use for tunning
@@ -297,9 +297,8 @@ class committed_descriptor {
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}},
-          [=](sycl::nd_item<1> it,
-              sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
                                     n_transforms, it, twiddles_local, scale_factor);
           });
@@ -351,13 +350,12 @@ class committed_descriptor {
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
-              [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-                detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
-                                        kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                        twiddles_local, scale_factor);
-              });
+          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
+                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                    twiddles_local, scale_factor);
+          });
     });
   }
 };

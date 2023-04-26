@@ -31,6 +31,11 @@ struct remove_multi_ptr {
   using type = T;
 };
 
+template <typename T, int Dimms>
+struct remove_multi_ptr<sycl::local_accessor<T, Dimms>> {
+  using type = T;
+};
+
 #ifdef SYCL_IMPLEMENTATION_ONEAPI
 // OneAPI Adds decorate address space during version 6.1, so this will
 // not work in all cases.

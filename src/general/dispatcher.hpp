@@ -449,7 +449,7 @@ int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
 template <typename T>
 std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std::size_t subgroup_size,
                             size_t n_compute_units) {
-  std::size_t maximum_n_sgs = 8 * n_compute_units * 8;
+  std::size_t maximum_n_sgs = 8 * n_compute_units * 64;
   std::size_t n_sgs_we_can_utilize;
   if (fits_in_wi<T>(fft_size)) {
     n_sgs_we_can_utilize = (n_transforms + subgroup_size - 1) / subgroup_size;

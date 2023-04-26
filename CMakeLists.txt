@@ -44,6 +44,7 @@ option(SYCLFFT_ENABLE_ROCFFT_BENCHMARKS "Whether to also build the rocFFT benchm
 option(SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS "Whether to also build the closed-source Intel OneMKL benchmark for comparison" OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_TARGET_SUBGROUP_SIZE 32 CACHE STRING "Size of the subgroup on the target device")
+set(SYCLFFT_TARGET_WG_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 
 set(SYCLFFT_INCLUDE_DIR
@@ -60,6 +61,7 @@ target_include_directories(sycl_fft INTERFACE
 )
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_SUBGROUP_SIZE=${SYCLFFT_TARGET_SUBGROUP_SIZE})
+target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_WG_LOAD=${SYCLFFT_TARGET_WG_LOAD})
 
 include(CMakePackageConfigHelpers)
 set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
@@ -96,5 +98,9 @@ export(EXPORT sycl_fft
   NAMESPACE sycl_fft::
   FILE sycl_fft-config.cmake
 )
+
+if(${SYCLFFT_BUILD_TESTS})
+  enable_testing()
+endif()
 
 add_subdirectory(test)
