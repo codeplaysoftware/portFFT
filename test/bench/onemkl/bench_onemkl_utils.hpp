@@ -117,7 +117,8 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
   std::size_t N = fft_state.get_total_length();
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
-  std::size_t mem_transactions = global_mem_transactions<complex_type, complex_type>(N, fft_state.number_of_transforms);
+  std::size_t bytes_transfered =
+      global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
   std::vector<complex_type> host_data(fft_state.num_elements);
   populate_with_random(host_data);
 
@@ -143,7 +144,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
     auto end = clock::now();
     double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
+    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
 }
@@ -165,7 +166,8 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
   std::size_t N = fft_state.get_total_length();
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
-  std::size_t mem_transactions = global_mem_transactions<complex_type, complex_type>(N, fft_state.number_of_transforms);
+  std::size_t bytes_transfered =
+      global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
   std::vector<complex_type> host_data(fft_state.num_elements);
   populate_with_random(host_data);
 
@@ -196,7 +198,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
     }
     double elapsed_seconds = (end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["bandwidth"] = mem_transactions / elapsed_seconds;
+    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
 }
