@@ -83,22 +83,12 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-<<<<<<< Updated upstream
-  void* global_void = static_cast<void*>(const_cast<T*>(&global[global_offset]));
-  std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
-  std::align(alignof(T_vec), 1, global_void, space);
-
-  // load the first few unaligned elements
-  std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
-  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
-=======
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
 
   // load the first few unaligned elements
   if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
->>>>>>> Stashed changes
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     local[local_idx] = global[global_offset + local_id];
   }
@@ -158,22 +148,12 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-<<<<<<< Updated upstream
-  void* global_void = static_cast<void*>(&global[global_offset]);
-  std::size_t space = total_num_elems * sizeof(T);  // on input total space, on output aligned space
-  std::align(alignof(T_vec), 1, global_void, space);
-
-  // store the first few unaligned elements
-  std::size_t unaligned_elements = (total_num_elems * sizeof(T) - space) / sizeof(T);
-  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
-=======
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
 
   // store the first few unaligned elements
   if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
->>>>>>> Stashed changes
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     global[global_offset + local_id] = local[local_idx];
   }
