@@ -169,7 +169,6 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
       to_store[j] = local[local_idx];
     }
     to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    //*global_vec = to_store;
   }
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
