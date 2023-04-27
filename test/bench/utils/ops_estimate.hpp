@@ -35,4 +35,18 @@ inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
   return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
 }
 
+/**
+ * Calculates the number of Memory transactions in bytes.
+ * Assumes load from global memory only once.
+ * @tparam TypeIn Input Type
+ * @tparam TypeOut Output Type
+ * @param fft_size size of the FFT Problem
+ * @param batches Number of batches computed.
+ * @return size_t Number of memory transactions in bytes.
+ */
+template <typename TypeIn, typename TypeOut>
+inline size_t global_mem_transactions(int batches, int num_in, int num_out) {
+  return batches * (sizeof(TypeIn) * num_in + sizeof(TypeOut) * num_out);
+}
+
 #endif  // SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
