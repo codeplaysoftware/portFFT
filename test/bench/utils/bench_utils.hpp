@@ -21,17 +21,14 @@
 #ifndef SYCLFFT_BENCH_BENCH_UTILS_HPP
 #define SYCLFFT_BENCH_BENCH_UTILS_HPP
 
-#include <algorithm>
 #include <cmath>
-#include <complex>
-#include <iostream>
+#include <functional>
+#include <numeric>
+#include <stdexcept>
 #include <vector>
 
-#include <cmath>
-#include <cstdarg>
-#include <functional>
-#include <iostream>
-#include <vector>
+#include "enums.hpp"
+#include "reference_dft.hpp"
 
 /**
  * @brief Compares two arrays
@@ -62,6 +59,29 @@ bool compare_result(type* reference_output, type* device_output, const std::vect
     }
   }
   return true;
+}
+
+/**
+ * @brief Compute the reference DFT and compare it with the provided output
+ *
+ * @tparam dir DFT direction
+ * @tparam T Data type (domain and precision)
+ * @param host_input Input used
+ * @param host_output Computed output
+ * @param batch Batch size
+ * @param N DFT size
+ * @param scaling_factor DFT scaling_factor
+ */
+template <sycl_fft::direction dir, typename T>
+void verify_dft(T* host_input, T* host_output, std::size_t batch, std::size_t N, double scaling_factor = 1.0) {
+  std::vector<T> host_result(N);
+  for (std::size_t i = 0; i < batch; i++) {
+    reference_dft<dir>(host_input + i * N, host_result.data(), {static_cast<int>(N)}, scaling_factor);
+    bool correct = compare_result(host_output + i * N, host_result.data(), {static_cast<int>(N)}, 1e-5);
+    if (!correct) {
+      throw std::runtime_error("Verification Failed");
+    }
+  }
 }
 
 #endif  // SYCLFFT_BENCH_BENCH_UTILS_HPP

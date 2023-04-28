@@ -26,6 +26,7 @@
 #include <benchmark/benchmark.h>
 
 #include "bench_utils.hpp"
+#include "device_number_generator.hpp"
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
 #include "reference_dft_set.hpp"
@@ -73,6 +74,10 @@ struct onemkl_state {
     // Allocate memory.
     in_dev = sycl::malloc_device<complex_t>(num_elements, sycl_queue);
     out_dev = sycl::malloc_device<complex_t>(num_elements, sycl_queue);
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+    memFill(in_dev, sycl_queue, num_elements);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
   }
 
   ~onemkl_state() {
@@ -119,10 +124,11 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
   std::size_t bytes_transfered =
       global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
-  std::vector<complex_type> host_data(fft_state.num_elements);
-  populate_with_random(host_data);
 
-  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_input(fft_state.num_elements);
+  q.copy(fft_state.in_dev, host_input.data(), fft_state.num_elements).wait_and_throw();
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   try {
     fft_state.desc.commit(q);
@@ -134,6 +140,12 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
     state.SkipWithError("Exception thrown: commit or warm-up failed.");
     return;
   }
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_output(fft_state.num_elements);
+  q.copy(fft_state.out_dev, host_output.data(), fft_state.num_elements).wait_and_throw();
+  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), fft_state.number_of_transforms, N);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
@@ -168,10 +180,11 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
   double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
   std::size_t bytes_transfered =
       global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
-  std::vector<complex_type> host_data(fft_state.num_elements);
-  populate_with_random(host_data);
 
-  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_input(fft_state.num_elements);
+  q.copy(fft_state.in_dev, host_input.data(), fft_state.num_elements).wait_and_throw();
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   try {
     fft_state.desc.commit(q);
@@ -182,6 +195,12 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
     state.SkipWithError("Exception thrown: commit or warm-up failed.");
     return;
   }
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_output(fft_state.num_elements);
+  q.copy(fft_state.out_dev, host_output.data(), fft_state.num_elements).wait_and_throw();
+  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), fft_state.number_of_transforms, N);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     int64_t start{0}, end{0};
