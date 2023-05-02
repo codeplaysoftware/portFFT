@@ -24,13 +24,10 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
-#include <iostream>
-#include <vector>
-
-#include <cmath>
 #include <cstdarg>
 #include <functional>
 #include <iostream>
+#include <numeric>
 #include <vector>
 
 /**
