@@ -53,13 +53,23 @@ struct scalar_data_type<CUFFT_Z2Z> {
   using type = double;
 };
 
-template <cufftType plan_type, typename TypeIn, typename TypeOut>
-void verify_dft(TypeIn* dev_input, TypeOut* dev_output, std::vector<int> lengths, std::size_t batch) {
-  std::size_t fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
-  std::size_t symm_fft_size = fft_size;
-  if constexpr (plan_type == CUFFT_R2C) {
-    symm_fft_size = std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
+inline int get_forward_fft_size(const std::vector<int>& lengths) {
+  return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+}
+
+template <cufftType plan_type>
+inline int get_symmetric_fft_size(const std::vector<int>& lengths) {
+  if constexpr (plan_type == CUFFT_R2C || plan_type == CUFFT_D2Z) {
+    return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
+  } else {
+    return get_forward_fft_size(lengths);
   }
+}
+
+template <cufftType plan_type, typename TypeIn, typename TypeOut>
+void verify_dft(TypeIn* dev_input, TypeOut* dev_output, const std::vector<int>& lengths, std::size_t batch) {
+  std::size_t fft_size = get_forward_fft_size(lengths);
+  std::size_t symm_fft_size = get_symmetric_fft_size<plan_type>(lengths);
 
   std::size_t num_elements = batch * fft_size;
   std::vector<TypeIn> host_input(num_elements);
@@ -153,7 +163,7 @@ struct cufft_state {
     if (lengths.empty()) {
       test_state.SkipWithError("invalid configuration");
     }
-    int fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+    int fft_size = get_forward_fft_size(lengths);
     // nullptr inembed and onembed is equivalent to giving the lengths for both
     int *inembed = nullptr, *onembed = nullptr;
     int istride = 1, ostride = 1;
@@ -214,15 +224,13 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   auto out = cu_state.out.get();
 
   // ops estimate for flops
-  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  int out_size = fft_size;
-  if constexpr (info::plan_type == CUFFT_R2C || info::plan_type == CUFFT_D2Z) {
-    out_size = out_size / 2 + 1;
-  }
-  const auto bytes_transfered = global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
-                                                        typename forward_type_info<forward_type>::device_backward_type>(
-      batch, fft_size, out_size);
+  using forward_info = typename forward_type_info<forward_type>;
+  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const auto bytes_transfered =
+      global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
+          batch, fft_size, out_size);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -252,6 +260,56 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   }
 }
 
+template <std::size_t runs, typename forward_type>
+static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+  // setup state
+  cufft_state<forward_type> cu_state(state, lengths, batch);
+
+  // remove all the extra guff stored in the state
+  auto plan = cu_state.plan.handle.value();
+  auto in = cu_state.in.get();
+  auto out = cu_state.out.get();
+
+  // ops estimate for flops
+  const auto fft_size = get_forward_fft_size(lengths);
+  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
+  using forward_info = typename forward_type_info<forward_type>;
+  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const auto bytes_transfered =
+      global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
+          batch, fft_size, out_size);
+
+  // warmup
+  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
+    state.SkipWithError("warmup exec failed");
+  }
+  if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
+    state.SkipWithError("warmup synchronize failed");
+  }
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  using info = typename decltype(cu_state)::type_info;
+  verify_dft<info::plan_type>(in, out, lengths, batch);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
+
+  // benchmark
+  for (auto _ : state) {
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
+    for (std::size_t r = 0; r != runs; r += 1) {
+      cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
+    }
+    cudaStreamSynchronize(nullptr);
+    auto end = clock::now();
+
+    double seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
+    state.SetIterationTime(seconds);
+    state.counters["flops"] = ops_est / seconds;
+    state.counters["throughput"] = bytes_transfered / seconds;
+  }
+}
+
 template <typename forward_type>
 static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   // setup state
@@ -263,15 +321,13 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   auto out = cu_state.out.get();
 
   // ops estimate for flops
-  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
+  const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  int out_size = fft_size;
-  if constexpr (info::plan_type == CUFFT_R2C || info::plan_type == CUFFT_D2Z) {
-    out_size = out_size / 2 + 1;
-  }
-  const auto bytes_transfered = global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
-                                                        typename forward_type_info<forward_type>::device_backward_type>(
-      batch, fft_size, out_size);
+  using forward_info = typename forward_type_info<forward_type>;
+  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const auto bytes_transfered =
+      global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
+          batch, fft_size, out_size);
 
   // warmup
   if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -329,6 +385,16 @@ void cufft_oop_real_time_float(Args&&... args) {
 }
 
 template <typename... Args>
+void cufft_oop_average_host_time_complex_float(Args&&... args) {
+  cufft_oop_average_host_time<runs_to_average, std::complex<float>>(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+void cufft_oop_average_host_time_float(Args&&... args) {
+  cufft_oop_average_host_time<runs_to_average, float>(std::forward<Args>(args)...);
+}
+
+template <typename... Args>
 void cufft_oop_device_time_complex_float(Args&&... args) {
   cufft_oop_device_time<std::complex<float>>(std::forward<Args>(args)...);
 }
@@ -338,12 +404,14 @@ void cufft_oop_device_time_float(Args&&... args) {
   cufft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                                                      \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_COMPLEX_FLOAT(...)                                                              \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime();         \
+  BENCHMARK_CAPTURE(cufft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                                               \
-  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_SINGLE_FLOAT(...)                                                       \
+  BENCHMARK_CAPTURE(cufft_oop_real_time_float, __VA_ARGS__)->UseManualTime();         \
+  BENCHMARK_CAPTURE(cufft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);

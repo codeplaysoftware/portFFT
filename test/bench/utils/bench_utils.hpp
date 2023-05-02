@@ -31,6 +31,11 @@
 #include <vector>
 
 /**
+ * @brief number of runs to do when doing an average of many host runs.
+ */
+static constexpr std::size_t runs_to_average = 10;
+
+/**
  * @brief Compares two arrays
  *
  * @tparam type Type of the two arrays

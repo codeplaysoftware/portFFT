@@ -302,8 +302,6 @@ void device_time_float(Args&&... args) {
       std::forward<Args>(args)...);
 }
 
-constexpr std::size_t runs_to_average = 10;
-
 template <typename... Args>
 void average_host_time_complex_float(Args&&... args) {
   bench_dft_average_host_time<runs_to_average, oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
