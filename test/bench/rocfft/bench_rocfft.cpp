@@ -256,7 +256,7 @@ void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> leng
     std::ignore = hipStreamSynchronize(nullptr);
     auto end = clock::now();
 
-    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count()/static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
     state.counters["throughput"] = bytes_transfered / seconds;
@@ -355,10 +355,12 @@ void rocfft_oop_device_time_float(Args&&... args) {
 
 #define BENCH_COMPLEX_FLOAT(...)                                                       \
   BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
 #define BENCH_SINGLE_FLOAT(...)                                                \
   BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
