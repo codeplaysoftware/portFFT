@@ -169,52 +169,6 @@ struct rocfft_state {
   }
 };
 
-template <typename forward_type>
-void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) {
-  std::vector<std::size_t> roc_lengths(lengths.size());
-  std::copy(lengths.begin(), lengths.end(), roc_lengths.begin());
-  rocfft_state<forward_type> roc_state(state, roc_lengths, batch);
-
-  rocfft_plan plan = roc_state.plan;
-  rocfft_execution_info info = roc_state.info;
-  void* in = roc_state.fwd;
-  void* out = roc_state.bwd;
-
-  const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
-  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = get_backward_elements<forward_type>(roc_lengths);
-  const auto bytes_transfered =
-      global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto N = fft_size * batch;
-  auto fwd_copy = std::make_unique<forward_type[]>(N);
-  HIP_CHECK(hipMemcpy(fwd_copy.get(), in, N * sizeof(forward_type), hipMemcpyDeviceToHost));
-#endif
-
-  ROCFFT_CHECK(rocfft_execute(plan, &in, &out, info));
-  HIP_CHECK(hipStreamSynchronize(nullptr));
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  verify_dft<forward_type>(fwd_copy.get(), out, roc_lengths, batch);
-#endif
-
-  // benchmark
-  for (auto _ : state) {
-    using clock = std::chrono::high_resolution_clock;
-    auto start = clock::now();
-    std::ignore = rocfft_execute(plan, &in, &out, info);
-    std::ignore = hipStreamSynchronize(nullptr);
-    auto end = clock::now();
-
-    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
-    state.SetIterationTime(seconds);
-    state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
-  }
-}
-
 template <std::size_t runs, typename forward_type>
 void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) {
   std::vector<std::size_t> roc_lengths(lengths.size());
@@ -250,14 +204,15 @@ void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> leng
   for (auto _ : state) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    #pragma unroll
+#pragma unroll
     for (std::size_t r = 0; r != runs; r += 1) {
       std::ignore = rocfft_execute(plan, &in, &out, info);
     }
     std::ignore = hipStreamSynchronize(nullptr);
     auto end = clock::now();
 
-    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count()/static_cast<double>(runs);
+    double seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
     state.counters["throughput"] = bytes_transfered / seconds;
@@ -326,12 +281,12 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
 // Helper functions for GBench
 template <typename... Args>
 void rocfft_oop_real_time_complex_float(Args&&... args) {
-  rocfft_oop_real_time<std::complex<float>>(std::forward<Args>(args)...);
+  rocfft_oop_average_host_time<1, std::complex<float>>(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void rocfft_oop_real_time_float(Args&&... args) {
-  rocfft_oop_real_time<float>(std::forward<Args>(args)...);
+  rocfft_oop_average_host_time<1, float>(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
@@ -354,13 +309,13 @@ void rocfft_oop_device_time_float(Args&&... args) {
   rocfft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                                                       \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_COMPLEX_FLOAT(...)                                                               \
+  BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime();         \
   BENCHMARK_CAPTURE(rocfft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                                                \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_SINGLE_FLOAT(...)                                                        \
+  BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__)->UseManualTime();         \
   BENCHMARK_CAPTURE(rocfft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 

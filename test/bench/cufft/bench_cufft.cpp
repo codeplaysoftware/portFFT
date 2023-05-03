@@ -213,53 +213,6 @@ inline cufftResult cufft_exec(cufftHandle plan, typename fwd_type_info::device_f
   }
 }
 
-template <typename forward_type>
-static void cufft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
-  // setup state
-  cufft_state<forward_type> cu_state(state, lengths, batch);
-
-  // remove all the extra guff stored in the state
-  auto plan = cu_state.plan.handle.value();
-  auto in = cu_state.in.get();
-  auto out = cu_state.out.get();
-
-  // ops estimate for flops
-  const auto fft_size = get_forward_fft_size(lengths);
-  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  using forward_info = forward_type_info<forward_type>;
-  const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
-  const auto bytes_transfered =
-      global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
-          batch, fft_size, out_size);
-
-  // warmup
-  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
-    state.SkipWithError("warmup exec failed");
-  }
-  if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
-    state.SkipWithError("warmup synchronize failed");
-  }
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  using info = typename decltype(cu_state)::type_info;
-  verify_dft<info::plan_type>(in, out, lengths, batch);
-#endif  // SYCLFFT_VERIFY_BENCHMARK
-
-  // benchmark
-  for (auto _ : state) {
-    using clock = std::chrono::high_resolution_clock;
-    auto start = clock::now();
-    cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
-    cudaStreamSynchronize(nullptr);
-    auto end = clock::now();
-
-    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
-    state.SetIterationTime(seconds);
-    state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
-  }
-}
-
 template <std::size_t runs, typename forward_type>
 static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   // setup state
@@ -296,7 +249,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
   for (auto _ : state) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    #pragma unroll
+#pragma unroll
     for (std::size_t r = 0; r != runs; r += 1) {
       cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
     }
@@ -377,12 +330,12 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 // Helper functions for GBench
 template <typename... Args>
 void cufft_oop_real_time_complex_float(Args&&... args) {
-  cufft_oop_real_time<std::complex<float>>(std::forward<Args>(args)...);
+  cufft_oop_average_host_time<1, std::complex<float>>(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
 void cufft_oop_real_time_float(Args&&... args) {
-  cufft_oop_real_time<float>(std::forward<Args>(args)...);
+  cufft_oop_average_host_time<1, float>(std::forward<Args>(args)...);
 }
 
 template <typename... Args>
