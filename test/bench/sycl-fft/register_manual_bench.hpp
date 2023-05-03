@@ -241,14 +241,16 @@ void register_benchmark(const std::string_view& desc_str) {
   if (domain == domain::COMPLEX) {
     descriptor<ftype, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::COMPLEX>, desc)
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_average_host_time<1, ftype, domain::COMPLEX>,
+                                 desc)
         ->UseManualTime();
     benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::COMPLEX>, desc)
         ->UseManualTime();
   } else if (domain == domain::REAL) {
     descriptor<ftype, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::REAL>, desc)
+    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_average_host_time<1, ftype, domain::REAL>,
+                                 desc)
         ->UseManualTime();
     benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::REAL>, desc)
         ->UseManualTime();
