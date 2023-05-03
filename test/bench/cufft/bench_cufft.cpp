@@ -226,7 +226,7 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   // ops estimate for flops
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  using forward_info = typename forward_type_info<forward_type>;
+  using forward_info = forward_type_info<forward_type>;
   const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
@@ -273,7 +273,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
   // ops estimate for flops
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  using forward_info = typename forward_type_info<forward_type>;
+  using forward_info = forward_type_info<forward_type>;
   const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
@@ -323,7 +323,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   // ops estimate for flops
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  using forward_info = typename forward_type_info<forward_type>;
+  using forward_info = forward_type_info<forward_type>;
   const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(

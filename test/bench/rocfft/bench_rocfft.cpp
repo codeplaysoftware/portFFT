@@ -182,7 +182,7 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
 
   const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = get_backward_elements(roc_lengths);
+  auto out_size = get_backward_elements<forward_type>(roc_lengths);
   const auto bytes_transfered =
       global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
 
@@ -228,7 +228,7 @@ void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> leng
 
   const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = get_backward_elements(roc_lengths);
+  auto out_size = get_backward_elements<forward_type>(roc_lengths);
   const auto bytes_transfered =
       global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
 
@@ -276,7 +276,7 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
 
   const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = get_backward_elements(roc_lengths);
+  auto out_size = get_backward_elements<forward_type>(roc_lengths);
   const auto bytes_transfered =
       global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
 
