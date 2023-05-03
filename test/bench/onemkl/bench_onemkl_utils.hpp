@@ -154,6 +154,69 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
   }
 }
 
+/*** Benchmark average host time over many DFT runs to amortize error.
+ * @tparam runs The number of DFT runs to average
+ * @tparam prec The DFT precision.
+ * @tparam domain The DFT domain.
+ * @param state Google benchmark state.
+ * @param lengths The lengths defining and N-dimensional DFT.
+ * @param number_of_transforms The DFT batch size.
+ */
+template <std::size_t runs, oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
+void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
+  using float_type = get_float_t<prec>;
+  using complex_type = std::complex<float_type>;
+  sycl::queue q;
+  auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
+  onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
+  std::size_t N = fft_state.get_total_length();
+  double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
+  std::size_t bytes_transfered =
+      global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<complex_type> host_data(fft_state.num_elements);
+  populate_with_random(host_data);
+
+  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
+#endif
+
+  std::vector<sycl::event> dependencies;
+  dependencies.reserve(1);
+
+  try {
+    fft_state.desc.commit(q);
+    q.wait_and_throw();
+    // warmup
+    fft_state.compute(dependencies).wait_and_throw();
+  } catch (...) {
+    // Can't run this benchmark!
+    state.SkipWithError("Exception thrown: commit or warm-up failed.");
+    return;
+  }
+
+  for (auto _ : state) {
+    dependencies.clear();
+    // we need to manually measure time, so as to have it available here for the
+    // calculation of flops
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
+    static_assert(runs >= 1);
+    dependencies.emplace_back(fft_state.compute(dependencies));
+    #pragma unroll
+    for (std::size_t r = 1; r != runs; r += 1) {
+      dependencies[0] = fft_state.compute(dependencies);
+    }
+    dependencies[0].wait();
+    auto end = clock::now();
+    double elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
+    state.counters["flops"] = ops / elapsed_seconds;
+    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+    state.SetIterationTime(elapsed_seconds);
+  }
+}
+
 /*** Benchmark a DFT using device rather than host time.
  * @tparam prec The DFT precision.
  * @tparam domain The DFT domain.
@@ -210,68 +273,6 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
       start = end;
     }
     double elapsed_seconds = (end - start) / 1e9;
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
-    state.SetIterationTime(elapsed_seconds);
-  }
-}
-
-/*** Benchmark average host time over many DFT runs to amortize error.
- * @tparam runs The number of DFT runs to average
- * @tparam prec The DFT precision.
- * @tparam domain The DFT domain.
- * @param state Google benchmark state.
- * @param lengths The lengths defining and N-dimensional DFT.
- * @param number_of_transforms The DFT batch size.
- */
-template <std::size_t runs, oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
-  using float_type = get_float_t<prec>;
-  using complex_type = std::complex<float_type>;
-  sycl::queue q;
-  auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
-  onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
-  std::size_t N = fft_state.get_total_length();
-  double ops = cooley_tukey_ops_estimate(N, fft_state.number_of_transforms);
-  std::size_t bytes_transfered =
-      global_mem_transactions<complex_type, complex_type>(fft_state.number_of_transforms, N, N);
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<complex_type> host_data(fft_state.num_elements);
-  populate_with_random(host_data);
-
-  q.copy(host_data.data(), fft_state.in_dev, fft_state.num_elements).wait_and_throw();
-#endif
-
-  std::vector<sycl::event> dependencies;
-  dependencies.reserve(1);
-
-  try {
-    fft_state.desc.commit(q);
-    q.wait_and_throw();
-    // warmup
-    fft_state.compute(dependencies).wait_and_throw();
-  } catch (...) {
-    // Can't run this benchmark!
-    state.SkipWithError("Exception thrown: commit or warm-up failed.");
-    return;
-  }
-
-  for (auto _ : state) {
-    dependencies.clear();
-    // we need to manually measure time, so as to have it available here for the
-    // calculation of flops
-    using clock = std::chrono::high_resolution_clock;
-    auto start = clock::now();
-    static_assert(runs >= 1);
-    dependencies.emplace_back(fft_state.compute(dependencies));
-    for (std::size_t r = 1; r != runs; r += 1) {
-      dependencies[0] = fft_state.compute(dependencies);
-    }
-    dependencies[0].wait();
-    auto end = clock::now();
-    double elapsed_seconds =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
     state.counters["throughput"] = bytes_transfered / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);

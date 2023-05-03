@@ -296,6 +296,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
   for (auto _ : state) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
+    #pragma unroll
     for (std::size_t r = 0; r != runs; r += 1) {
       cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
     }
