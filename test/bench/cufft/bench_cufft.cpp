@@ -58,7 +58,7 @@ inline int get_forward_fft_size(const std::vector<int>& lengths) {
 }
 
 template <cufftType plan_type>
-inline int get_symmetric_fft_size(const std::vector<int>& lengths) {
+inline int get_backward_fft_size(const std::vector<int>& lengths) {
   if constexpr (plan_type == CUFFT_R2C || plan_type == CUFFT_D2Z) {
     return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
   } else {
@@ -69,7 +69,7 @@ inline int get_symmetric_fft_size(const std::vector<int>& lengths) {
 template <cufftType plan_type, typename TypeIn, typename TypeOut>
 void verify_dft(TypeIn* dev_input, TypeOut* dev_output, const std::vector<int>& lengths, std::size_t batch) {
   std::size_t fft_size = get_forward_fft_size(lengths);
-  std::size_t symm_fft_size = get_symmetric_fft_size<plan_type>(lengths);
+  std::size_t bwd_fft_size = get_backward_fft_size<plan_type>(lengths);
 
   std::size_t num_elements = batch * fft_size;
   std::vector<TypeIn> host_input(num_elements);
@@ -90,7 +90,7 @@ void verify_dft(TypeIn* dev_input, TypeOut* dev_output, const std::vector<int>& 
                                                   lengths);
     }
     int correct = compare_result(reinterpret_cast<std::complex<scalar_type>*>(result_vector.data()),
-                                 reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * symm_fft_size),
+                                 reinterpret_cast<std::complex<scalar_type>*>(host_output.data() + i * bwd_fft_size),
                                  lengths, 1e-2, plan_type == CUFFT_R2C);
     if (!correct) {
       throw std::runtime_error("Verification Failed");
@@ -227,7 +227,7 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
   using forward_info = typename forward_type_info<forward_type>;
-  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
           batch, fft_size, out_size);
@@ -274,7 +274,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
   using forward_info = typename forward_type_info<forward_type>;
-  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
           batch, fft_size, out_size);
@@ -324,7 +324,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   const auto fft_size = get_forward_fft_size(lengths);
   const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
   using forward_info = typename forward_type_info<forward_type>;
-  const int out_size = get_symmetric_fft_size<forward_info::plan_type>(lengths);
+  const int out_size = get_backward_fft_size<forward_info::plan_type>(lengths);
   const auto bytes_transfered =
       global_mem_transactions<typename forward_info::device_forward_type, typename forward_info::device_backward_type>(
           batch, fft_size, out_size);
