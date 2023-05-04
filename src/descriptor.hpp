@@ -59,10 +59,14 @@ casts the memory (USM or buffers) from complex to scalars and launches the kerne
 Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations 
 are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` from `dispatcher.hpp`. The kernel calls 
 `dispatcher`. From here on, each function has only one templated overload that handles both directions of transforms and 
-buffer and USM memory. `dispatcher` determines which implementation to use for the particular FFT size and calls one of 
+buffer and USM memory. 
+
+`dispatcher` determines which implementation to use for the particular FFT size and calls one of 
 the dispatcher fucntions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of 
 subgroup, it also factors the FFT size into one factor that fits into individual workitem and one that can be done across
-workitems in a subgroup.
+workitems in a subgroup. `dispatcher` and all other device fucntions make no assumptions on the size of a work group or the 
+number of workgroups in a kernel. These numbers can be tuned for each device. TODO: currently we always test one subgroup per workgroup, so more 
+may or may not actually work correctly.
 
 Both dispatcher functions are there to make the size of the FFT that is handled by the individual workitems compile time
 constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or `subgroup_impl` 
