@@ -62,9 +62,9 @@ are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` f
 buffer and USM memory.
 
 `dispatcher` determines which implementation to use for the particular FFT size and calls one of
-the dispatcher fucntions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of
+the dispatcher functions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of
 subgroup, it also factors the FFT size into one factor that fits into individual workitem and one that can be done
-across workitems in a subgroup. `dispatcher` and all other device fucntions make no assumptions on the size of a work
+across workitems in a subgroup. `dispatcher` and all other device functions make no assumptions on the size of a work
 group or the number of workgroups in a kernel. These numbers can be tuned for each device. TODO: currently we always
 test one subgroup per workgroup, so more may or may not actually work correctly.
 

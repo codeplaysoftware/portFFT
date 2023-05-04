@@ -43,13 +43,13 @@ one DFT, so at most `subgroup_size / N` DFTs can be performed by one subgroup at
 `subgroup_size`, extra workitems perform dummy computations. However, they must also call `sg_dft`, as it uses group
 functions.
 
-On input each of `N` workitems holds `M` consecutive complex input values. On output, each of the workitems holds
-complex values that are strided with stride `N` and the values of consecutive eworkitems are consecutive.
+On input, each of the `N` workitems hold `M` consecutive complex input values. On output, each of the workitems holds
+complex values that are strided with stride `N` and consecutive workitems have consecutive values.
 
 `cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
 
 `cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of
-the computation. If the size of the subgroup is large enough compared to FFT size a subgroup can calculate multiple DFTs
+the computation. If the size of the subgroup is large enough compared to FFT size, a subgroup can calculate multiple DFTs
 at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
 `cross_sg_cooley_tukey_dft` (for composite sizes) or `cross_sg_naive_dft` (for prime sizes).
 
