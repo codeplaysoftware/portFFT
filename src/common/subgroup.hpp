@@ -31,6 +31,24 @@
 namespace sycl_fft {
 namespace detail {
 
+/*
+`sg_dft` calculates a DFT by a subgroup on values that are already loaded into private memory of the workitems in the subgroup.
+It needs twiddle factors precalculated by `sg_calc_twiddles`. It handles the first factor by cross subgroup DFT calling 
+`cross_sg_dispatcher` and the second one by workitem implementation - calling `wi_dft`. It does twiddle multiplication inbetween,
+but does not transpose. Transposition is supposed to be done when storing the values back to the local memory.
+
+`cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
+
+`cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of the computation.
+If the size of the subgroup is large enough compared to FFT size a subgroup can calculate multiple DFTs at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`).
+It calls either `cross_sg_cooley_tukey_dft` (for composite sizes) or `cross_sg_naive_dft` (for prime sizes).
+
+`cross_sg_cooley_tukey_dft` calculates DFT of a composite size across workitems. It calls `cross_sg_dft` for each of the factors and does 
+transposition and twiddle multiplication inbetween.
+
+`cross_sg_naive_dft` calculates DFT across workitems using naive DFT algorithm.
+*/
+
 // forward declaration
 template <direction dir, int N, int stride, typename T>
 inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
