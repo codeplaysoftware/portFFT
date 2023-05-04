@@ -38,8 +38,8 @@ namespace detail {
 `wi_dft` calculates a DFT by a workitem on values that are already loaded into its private memory.
 It calls either `cooley_tukey_dft` (for composite sizes) or `naive_dft` (for prime sizes).
 
-`cooley_tukey_dft` calculates DFT of a composite size by one workitem. It calls `wi_dft` for each of the factors and does 
-twiddle multiplication inbetween. Transposition is handled by calling `wi_dft` with different strides.
+`cooley_tukey_dft` calculates DFT of a composite size by one workitem. It calls `wi_dft` for each of the factors and
+does twiddle multiplication inbetween. Transposition is handled by calling `wi_dft` with different strides.
 
 `naive_dft` calculates DFT by one workitem using naive DFT algorithm.
 */

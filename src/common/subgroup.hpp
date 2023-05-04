@@ -32,26 +32,29 @@ namespace sycl_fft {
 namespace detail {
 
 /*
-`sg_dft` calculates a DFT by a subgroup on values that are already loaded into private memory of the workitems in the subgroup.
-It needs twiddle factors precalculated by `sg_calc_twiddles`. It handles the first factor by cross subgroup DFT calling 
-`cross_sg_dispatcher` and the second one by workitem implementation - calling `wi_dft`. It does twiddle multiplication inbetween,
-but does not transpose. Transposition is supposed to be done when storing the values back to the local memory. 
+`sg_dft` calculates a DFT by a subgroup on values that are already loaded into private memory of the workitems in the
+subgroup. It needs twiddle factors precalculated by `sg_calc_twiddles`. It handles the first factor by cross subgroup
+DFT calling `cross_sg_dispatcher` and the second one by workitem implementation - calling `wi_dft`. It does twiddle
+multiplication inbetween, but does not transpose. Transposition is supposed to be done when storing the values back to
+the local memory.
 
-The size of the DFT performed by this function is `N * M` - for the arguments `N` and `M`. `N` workitems work jointly on one DFT, so at most 
-`subgroup_size / N` DFTs can be performed by one subgroup at a time. If `N` does not evenly divide `subgroup_size`, extra workitems
-perform dummy computations. However, they must also call `sg_dft`, as it uses group functions.
+The size of the DFT performed by this function is `N * M` - for the arguments `N` and `M`. `N` workitems work jointly on
+one DFT, so at most `subgroup_size / N` DFTs can be performed by one subgroup at a time. If `N` does not evenly divide
+`subgroup_size`, extra workitems perform dummy computations. However, they must also call `sg_dft`, as it uses group
+functions.
 
-On input each of `N` workitems holds `M` consecutive complex input values. On output, each of the workitems holds complex values that are strided with
-stride `N` and the values of consecutive eworkitems are consecutive.
+On input each of `N` workitems holds `M` consecutive complex input values. On output, each of the workitems holds
+complex values that are strided with stride `N` and the values of consecutive eworkitems are consecutive.
 
 `cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
 
-`cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of the computation.
-If the size of the subgroup is large enough compared to FFT size a subgroup can calculate multiple DFTs at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`).
-It calls either `cross_sg_cooley_tukey_dft` (for composite sizes) or `cross_sg_naive_dft` (for prime sizes).
+`cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of
+the computation. If the size of the subgroup is large enough compared to FFT size a subgroup can calculate multiple DFTs
+at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
+`cross_sg_cooley_tukey_dft` (for composite sizes) or `cross_sg_naive_dft` (for prime sizes).
 
-`cross_sg_cooley_tukey_dft` calculates DFT of a composite size across workitems. It calls `cross_sg_dft` for each of the factors and does 
-transposition and twiddle multiplication inbetween.
+`cross_sg_cooley_tukey_dft` calculates DFT of a composite size across workitems. It calls `cross_sg_dft` for each of the
+factors and does transposition and twiddle multiplication inbetween.
 
 `cross_sg_naive_dft` calculates DFT across workitems using naive DFT algorithm.
 */

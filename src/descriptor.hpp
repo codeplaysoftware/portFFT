@@ -53,31 +53,32 @@ constexpr static sycl::specialization_id<int> fft_size_spec_const;
 
 /*
 Compute functions in the `committed_descriptor` call `dispatch_compute`. There are two overloads of `dispatch_compute`,
-one for buffer interfaces and one for USM. `dispatch_compute` handles diferences between forward and backward computations,
-casts the memory (USM or buffers) from complex to scalars and launches the kernel. 
+one for buffer interfaces and one for USM. `dispatch_compute` handles diferences between forward and backward
+computations, casts the memory (USM or buffers) from complex to scalars and launches the kernel.
 
-Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations 
-are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` from `dispatcher.hpp`. The kernel calls 
-`dispatcher`. From here on, each function has only one templated overload that handles both directions of transforms and 
-buffer and USM memory. 
+Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations
+are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` from `dispatcher.hpp`. The kernel calls
+`dispatcher`. From here on, each function has only one templated overload that handles both directions of transforms and
+buffer and USM memory.
 
-`dispatcher` determines which implementation to use for the particular FFT size and calls one of 
-the dispatcher fucntions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of 
-subgroup, it also factors the FFT size into one factor that fits into individual workitem and one that can be done across
-workitems in a subgroup. `dispatcher` and all other device fucntions make no assumptions on the size of a work group or the 
-number of workgroups in a kernel. These numbers can be tuned for each device. TODO: currently we always test one subgroup per workgroup, so more 
-may or may not actually work correctly.
+`dispatcher` determines which implementation to use for the particular FFT size and calls one of
+the dispatcher fucntions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of
+subgroup, it also factors the FFT size into one factor that fits into individual workitem and one that can be done
+across workitems in a subgroup. `dispatcher` and all other device fucntions make no assumptions on the size of a work
+group or the number of workgroups in a kernel. These numbers can be tuned for each device. TODO: currently we always
+test one subgroup per workgroup, so more may or may not actually work correctly.
 
 Both dispatcher functions are there to make the size of the FFT that is handled by the individual workitems compile time
-constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or `subgroup_impl` 
-respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only the calls that are 
-determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI macro) are actually 
-instantiated.
+constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or
+`subgroup_impl` respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only the
+calls that are determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI macro)
+are actually instantiated.
 
-The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in local memory
-then from there into private one. This is done in these two steps to avoid non-coalesced global memory accesses. 
-`workitem_impl` loads one problem per workitem and `subgroup_impl` loads one problem per subgroup. After doing computations
-by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going trough local memory agin.
+The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in
+local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
+accesses. `workitem_impl` loads one problem per workitem and `subgroup_impl` loads one problem per subgroup. After doing
+computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going trough local
+memory agin.
 
 The computational parts of the implementations are futher documented in files with their implementaitons `workitem.hpp`
 and `subgroup.hpp`.
