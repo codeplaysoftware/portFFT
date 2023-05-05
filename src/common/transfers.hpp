@@ -81,7 +81,6 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
-  std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
@@ -94,6 +93,8 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
+  std::size_t aligned_elements = total_num_elems - unaligned_elements;
+  std::size_t rounded_down_num_elems = (aligned_elements / stride) * stride;
 
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
@@ -105,7 +106,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
     }
   }
   // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
-  int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
+  int last_chunk_size = (aligned_elements - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
         detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
@@ -113,7 +114,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   }
   // Less than group size elements remain. Each workitem loads at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
-  if (my_last_idx < total_num_elems) {
+  if (my_last_idx < aligned_elements) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     local[local_idx] = global[global_offset + my_last_idx];
   }
@@ -146,7 +147,6 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
-  std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
@@ -159,6 +159,8 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
+  std::size_t aligned_elements = total_num_elems - unaligned_elements;
+  std::size_t rounded_down_num_elems = (aligned_elements / stride) * stride;
 
   // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
@@ -171,7 +173,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
     to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
   }
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
-  int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
+  int last_chunk_size = (aligned_elements - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
         detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
@@ -179,7 +181,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   }
   // Less than group size elements remain. Each workitem stores at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
-  if (my_last_idx < total_num_elems) {
+  if (my_last_idx < aligned_elements) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     global[global_offset + my_last_idx] = local[local_idx];
   }
