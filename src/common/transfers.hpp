@@ -28,6 +28,9 @@
 #define SYCL_FFT_N_LOCAL_BANKS 32
 #endif
 
+static_assert(SYCLFFT_TARGET_WG_LOAD & (SYCLFFT_TARGET_WG_LOAD - 1) == 0, 
+              "SYCLFFT_TARGET_WG_LOAD should be a power of 2!");
+
 namespace sycl_fft {
 
 namespace detail {
