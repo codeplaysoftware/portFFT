@@ -230,7 +230,7 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
 
   const double ops = cooley_tukey_ops_estimate(fft_state.fwd_per_transform, fft_state.number_of_transforms);
   const std::size_t bytes_transfered = global_mem_transactions<forward_t, backward_t>(
-      fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_tranform);
+      fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);

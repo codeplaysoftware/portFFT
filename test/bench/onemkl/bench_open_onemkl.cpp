@@ -35,5 +35,5 @@ void onemkl_state<prec, domain>::set_out_of_place() {
 
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
 sycl::event onemkl_state<prec, domain>::compute() {
-  return oneapi::mkl::dft::compute_forward<descriptor_t, complex_t, complex_t>(desc, in_dev, out_dev);
+  return oneapi::mkl::dft::compute_forward<descriptor_t, forward_t, backward_t>(desc, in_dev, out_dev);
 }

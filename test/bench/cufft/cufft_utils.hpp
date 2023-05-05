@@ -44,11 +44,11 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
 
   if ([&]() {
         if constexpr (std::is_same_v<T, float>) {
-          return curandGenerateNormal(generator, dev_ptr, N, 5, 2);
+          return curandGenerateNormal(generator, dev_ptr, N, 0.f, 2.f);
         }
 
         else {
-          return curandGenerateNormalDouble(generator, dev_ptr, N, 5, 2);
+          return curandGenerateNormalDouble(generator, dev_ptr, N, 0.0, 2.f);
         }
       }() != CURAND_STATUS_SUCCESS) {
     throw std::runtime_error("Failed to populate device pointer with random values");

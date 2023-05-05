@@ -23,6 +23,8 @@
 
 #include <cmath>
 #include <functional>
+#include <iostream>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <vector>
@@ -69,9 +71,9 @@ void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::v
       for (std::size_t e = 0; e != bwd_row_elems; ++e) {
         const auto diff = std::abs(ref_row_start[e] - actual_row_start[e]);
         if (diff > comparison_tolerance) {
-          std::cout << "transform " << t << ", row " << r << ", element " << e << " does not match\nref "
+          std::cerr << "transform " << t << ", row " << r << ", element " << e << " does not match\nref "
                     << ref_row_start[e] << " vs " << actual_row_start[e] << "\ndiff " << diff << ", tolerance "
-                    << comparison_tolerance << "\n";
+                    << comparison_tolerance << std::endl;
           throw std::runtime_error("Verification Failed");
         }
       }

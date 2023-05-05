@@ -27,6 +27,7 @@ add_benchmark(bench_cufft bench_cufft.cpp)
 
 find_package(CUDAToolkit REQUIRED)
 target_link_libraries(bench_cufft PRIVATE CUDA::cudart CUDA::cufft)
+target_compile_options(bench_cufft PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(${SYCLFFT_VERIFY_BENCHMARK})
     target_link_libraries(bench_cufft PRIVATE CUDA::curand)
