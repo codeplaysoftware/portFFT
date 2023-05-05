@@ -53,7 +53,7 @@ constexpr static sycl::specialization_id<int> fft_size_spec_const;
 
 /*
 Compute functions in the `committed_descriptor` call `dispatch_compute`. There are two overloads of `dispatch_compute`,
-one for buffer interfaces and one for USM. `dispatch_compute` handles diferences between forward and backward
+one for buffer interfaces and one for USM. `dispatch_compute` handles differences between forward and backward
 computations, casts the memory (USM or buffers) from complex to scalars and launches the kernel.
 
 Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations
@@ -77,15 +77,15 @@ are actually instantiated.
 The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in
 local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
 accesses. `workitem_impl` loads one problem per workitem and `subgroup_impl` loads one problem per subgroup. After doing
-computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going trough local
-memory agin.
+computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going through local
+memory again.
 
-The computational parts of the implementations are futher documented in files with their implementaitons `workitem.hpp`
+The computational parts of the implementations are further documented in files with their implementations `workitem.hpp`
 and `subgroup.hpp`.
 */
 
 /**
- * A commited descriptor that contains everything that is needed to run FFT.
+ * A committed descriptor that contains everything that is needed to run FFT.
  *
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
