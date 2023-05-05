@@ -30,56 +30,51 @@
 #include "enums.hpp"
 #include "reference_dft.hpp"
 
-/**
- * @brief Compares two arrays
- *
- * @tparam type Type of the two arrays
- * @param array1 pointer of type to the reference output
- * @param array2 pointer of type to the device output
- * @param dimensions Dimensions of the reference output
- * @param absTol absolute tolerance value during to pass the comparision
- * @param utilize_symm Whether or not device output exploit symmetric nature of transform
- * @return true if the arrays are equal within the given tolerance
- */
-template <typename type>
-bool compare_result(type* reference_output, type* device_output, const std::vector<int>& dimensions, double absTol,
-                    bool utilize_symm = false) {
-  int symm_col = dimensions.back();
-  if (utilize_symm) {
-    symm_col = symm_col / 2 + 1;
-  }
-  int dims_squashed = std::accumulate(dimensions.begin(), dimensions.end() - 1, 1, std::multiplies<int>());
-  for (int i = 0; i < dims_squashed; i++) {
-    for (int j = 0; j < symm_col; j++) {
-      int reference_output_idx = i * dimensions.back() + j;
-      int device_output_idx = i * symm_col + j;
-      if (!(std::abs(reference_output[reference_output_idx] - device_output[device_output_idx]) < absTol)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-/**
+/*
  * @brief Compute the reference DFT and compare it with the provided output
  *
- * @tparam dir DFT direction
- * @tparam T Data type (domain and precision)
- * @param host_input Input used
- * @param host_output Computed output
- * @param batch Batch size
- * @param N DFT size
- * @param scaling_factor DFT scaling_factor
+ * @tparam forward_type data type for forward domain
+ * @tparam backward_type data type for backward domain
+ * @param forward_copy the input that was used
+ * @param backward_copy the output that was produced
+ * @param length the dimensions of the DFT
+ * @param number_of_transforms batch size
+ * @param forward_scale scaling applied to the output (backward domain)
  */
-template <sycl_fft::direction dir, typename T>
-void verify_dft(T* host_input, T* host_output, std::size_t batch, std::size_t N, double scaling_factor = 1.0) {
-  std::vector<T> host_result(N);
-  for (std::size_t i = 0; i < batch; i++) {
-    reference_dft<dir>(host_input + i * N, host_result.data(), {static_cast<int>(N)}, scaling_factor);
-    bool correct = compare_result(host_output + i * N, host_result.data(), {static_cast<int>(N)}, 1e-5);
-    if (!correct) {
-      throw std::runtime_error("Verification Failed");
+template <typename forward_type, typename backward_type>
+void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::vector<int> lengths,
+                std::size_t number_of_transforms, double forward_scale) {
+  std::size_t fwd_row_elems = lengths.back();
+  std::size_t bwd_row_elems = lengths.back();
+  if constexpr (!std::is_same<forward_type, backward_type>::value) {
+    bwd_row_elems = bwd_row_elems / 2 + 1;
+  }
+  std::size_t rows = std::accumulate(lengths.begin(), lengths.end() - 1, 1, std::multiplies<std::size_t>());
+  std::size_t fwd_per_transform = rows * fwd_row_elems;
+  std::size_t bwd_per_transform = rows * bwd_row_elems;
+
+  auto reference_buffer = std::make_unique<backward_type[]>(fwd_per_transform);
+  constexpr double comparison_tolerance = 1e-2;
+  for (std::size_t t = 0; t < number_of_transforms; ++t) {
+    const auto fwd_start = forward_copy + t * fwd_per_transform;
+
+    // generate reference for a single transform
+    reference_dft<sycl_fft::direction::FORWARD>(fwd_start, reference_buffer.get(), lengths, forward_scale);
+
+    const auto bwd_start = backward_copy + t * bwd_per_transform;
+    // compare
+    for (std::size_t r = 0; r != rows; ++r) {
+      auto ref_row_start = reference_buffer.get() + r * fwd_row_elems;
+      auto actual_row_start = bwd_start + r * bwd_row_elems;
+      for (std::size_t e = 0; e != bwd_row_elems; ++e) {
+        const auto diff = std::abs(ref_row_start[e] - actual_row_start[e]);
+        if (diff > comparison_tolerance) {
+          std::cout << "transform " << t << ", row " << r << ", element " << e << " does not match\nref "
+                    << ref_row_start[e] << " vs " << actual_row_start[e] << "\ndiff " << diff << ", tolerance "
+                    << comparison_tolerance << "\n";
+          throw std::runtime_error("Verification Failed");
+        }
+      }
     }
   }
 }

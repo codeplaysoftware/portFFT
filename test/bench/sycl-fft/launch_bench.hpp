@@ -62,8 +62,8 @@ void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, do
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), N_transforms, N,
-                                           desc.forward_scale);
+  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
+             desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
@@ -122,8 +122,8 @@ void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft<sycl_fft::direction::FORWARD>(host_input.data(), host_output.data(), N_transforms, N,
-                                           desc.forward_scale);
+  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
+             desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {

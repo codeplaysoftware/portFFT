@@ -37,16 +37,22 @@ class memFillKernel;
  */
 template <typename T>
 void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
-  constexpr int group_dim = 32;
-  auto global_range = static_cast<int>(ceil(static_cast<float>(num_elements) / group_dim) * group_dim);
+  constexpr std::size_t group_dim = 32;
+  auto global_range = static_cast<std::size_t>(ceil(static_cast<float>(num_elements) / group_dim) * group_dim);
   queue.submit([&](sycl::handler& h) {
-    h.parallel_for<memFillKernel<T>>(
-        sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)), [=](sycl::nd_item<1> itm) {
-          auto idx = itm.get_global_id(0);
-          if (idx < num_elements) {
-            input[idx] = static_cast<T>(std::complex<float>(itm.get_local_id(0), itm.get_local_id(0) + 1));
-          }
-        });
+    h.parallel_for<memFillKernel<T>>(sycl::nd_range<1>(sycl::range<1>(global_range), sycl::range<1>(group_dim)),
+                                     [=](sycl::nd_item<1> itm) {
+                                       auto idx = itm.get_global_id(0);
+                                       if (idx < num_elements) {
+                                         const auto id = static_cast<float>(itm.get_local_linear_id());
+                                         const auto divisor = static_cast<float>(group_dim);
+                                         if constexpr (std::is_floating_point_v<T>) {
+                                           input[idx] = static_cast<T>(id / divisor);
+                                         } else {
+                                           input[idx] = T{id / divisor, id + 1 / divisor};
+                                         }
+                                       }
+                                     });
   });
   queue.wait();
 }
