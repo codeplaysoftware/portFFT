@@ -77,8 +77,8 @@ are actually instantiated.
 The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in
 local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
 accesses. `workitem_impl` loads one problem per workitem and `subgroup_impl` loads one problem per subgroup. After doing
-computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going through local
-memory again.
+computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going through
+local memory again.
 
 The computational parts of the implementations are further documented in files with their implementations `workitem.hpp`
 and `subgroup.hpp`.

@@ -49,8 +49,8 @@ complex values that are strided with stride `N` and consecutive workitems have c
 `cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
 
 `cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of
-the computation. If the size of the subgroup is large enough compared to FFT size, a subgroup can calculate multiple DFTs
-at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
+the computation. If the size of the subgroup is large enough compared to FFT size, a subgroup can calculate multiple
+DFTs at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
 `cross_sg_cooley_tukey_dft` (for composite sizes) or `cross_sg_naive_dft` (for prime sizes).
 
 `cross_sg_cooley_tukey_dft` calculates DFT of a composite size across workitems. It calls `cross_sg_dft` for each of the
