@@ -53,20 +53,20 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
   desc.number_of_transforms = params.batch;
-  auto commited_descriptor = desc.commit(queue);
+  auto committed_descriptor = desc.commit(queue);
 
   auto fft_event = [&]() {
     if constexpr (test_type == placement::OUT_OF_PLACE) {
       if constexpr (dir == direction::FORWARD) {
-        return commited_descriptor.compute_forward(device_input, device_output, {copy_event});
+        return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
       } else {
-        return commited_descriptor.compute_backward(device_input, device_output, {copy_event});
+        return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
       }
     } else {
       if constexpr (dir == direction::FORWARD) {
-        return commited_descriptor.compute_forward(device_input, {copy_event});
+        return committed_descriptor.compute_forward(device_input, {copy_event});
       } else {
-        return commited_descriptor.compute_backward(device_input, {copy_event});
+        return committed_descriptor.compute_backward(device_input, {copy_event});
       }
     }
   }();
@@ -106,7 +106,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
     descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
     desc.number_of_transforms = params.batch;
-    auto commited_descriptor = desc.commit(queue);
+    auto committed_descriptor = desc.commit(queue);
     double scaling_factor = dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
     for (std::size_t i = 0; i < params.batch; i++) {
       const auto offset = i * params.length;
@@ -116,15 +116,15 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
     if constexpr (test_type == placement::OUT_OF_PLACE) {
       if constexpr (dir == direction::FORWARD) {
-        commited_descriptor.compute_forward(input_buffer, output_buffer);
+        committed_descriptor.compute_forward(input_buffer, output_buffer);
       } else {
-        commited_descriptor.compute_backward(input_buffer, output_buffer);
+        committed_descriptor.compute_backward(input_buffer, output_buffer);
       }
     } else {
       if constexpr (dir == direction::FORWARD) {
-        commited_descriptor.compute_forward(input_buffer);
+        committed_descriptor.compute_forward(input_buffer);
       } else {
-        commited_descriptor.compute_backward(input_buffer);
+        committed_descriptor.compute_backward(input_buffer);
       }
     }
     queue.wait();
