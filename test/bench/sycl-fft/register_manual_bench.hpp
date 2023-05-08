@@ -31,6 +31,7 @@
 #include <utility>
 
 #include "launch_bench.hpp"
+#include "sycl_utils.hpp"
 
 static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},    {"lengths", "n"},   {"batch", "b"},  {"fwd_strides", "fs"}, {"bwd_strides", "bs"},
@@ -210,7 +211,7 @@ void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<ftype, domain>& de
 }
 
 template <typename ftype>
-void register_benchmark(const std::string_view& desc_str) {
+void register_manual_benchmark(sycl::queue q, sycl::queue profiling_q, const std::string_view& desc_str) {
   using namespace sycl_fft;
   arg_map_t arg_map = get_arg_map(desc_str);
 
@@ -234,26 +235,16 @@ void register_benchmark(const std::string_view& desc_str) {
   }
 
   std::string_view ftype_str = typeid(ftype).name();
-  std::string host_bench_name;
-  std::string device_bench_name;
-  host_bench_name.append("average_host_time,").append(ftype_str).append(":").append(desc_str);
-  device_bench_name.append("device_time,").append(ftype_str).append(":").append(desc_str);
+  std::string suffix;
+  suffix.append(ftype_str).append(":").append(desc_str);
   if (domain == domain::COMPLEX) {
     descriptor<ftype, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(host_bench_name.c_str(), bench_dft_average_host_time<ftype, domain::COMPLEX>, desc,
-                                 runs_to_average)
-        ->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.c_str(), bench_dft_device_time<ftype, domain::COMPLEX>, desc)
-        ->UseManualTime();
+    register_host_device_benchmark(suffix, q, profiling_q, desc);
   } else if (domain == domain::REAL) {
     descriptor<ftype, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(host_bench_name.c_str(), bench_dft_average_host_time<ftype, domain::REAL>, desc,
-                                 runs_to_average)
-        ->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.c_str(), bench_dft_device_time<ftype, domain::REAL>, desc)
-        ->UseManualTime();
+    register_host_device_benchmark(suffix, q, profiling_q, desc);
   } else {
     throw bench_error{"Unexpected domain: ", static_cast<int>(domain)};
   }
@@ -311,15 +302,25 @@ void print_help(const std::string_view& name) {
 }
 
 template <typename ftype>
-void register_benchmarks(int argc, char** argv) {
+int main_manual_bench(int argc, char** argv) {
+  benchmark::Initialize(&argc, argv);
+
+  sycl::queue q;
+  sycl::queue profiling_q({sycl::property::queue::enable_profiling()});
+  print_device(q);
+
   for (int i = 1; i < argc; ++i) {
     std::string_view arg = argv[i];
     if (arg == "-h" || arg == "--help") {
       print_help(argv[0]);
-      return;
+      return 0;
     }
-    register_benchmark<ftype>(arg);
+    register_manual_benchmark<ftype>(q, profiling_q, arg);
   }
+
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
 }
 
 #endif  // SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP

@@ -30,12 +30,12 @@
 
 // Define backend specific methods
 
-template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void onemkl_state<prec, domain>::set_out_of_place() {
+template <typename forward_type>
+void onemkl_state<forward_type>::set_out_of_place() {
   desc.set_value(oneapi::mkl::dft::config_param::PLACEMENT, DFTI_NOT_INPLACE);
 }
 
-template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-sycl::event onemkl_state<prec, domain>::compute(const std::vector<sycl::event>& deps) {
+template <typename forward_type>
+sycl::event onemkl_state<forward_type>::compute(const std::vector<sycl::event>& deps) {
   return compute_forward(desc, in_dev, out_dev, deps);
 }
