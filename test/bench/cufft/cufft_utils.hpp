@@ -48,7 +48,7 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
         }
 
         else {
-          return curandGenerateNormalDouble(generator, dev_ptr, N, 0.0, 2.f);
+          return curandGenerateNormalDouble(generator, dev_ptr, N, 0.0, 2.0);
         }
       }() != CURAND_STATUS_SUCCESS) {
     throw std::runtime_error("Failed to populate device pointer with random values");

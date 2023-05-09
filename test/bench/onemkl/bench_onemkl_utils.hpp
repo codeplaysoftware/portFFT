@@ -85,8 +85,8 @@ struct onemkl_state {
         sycl_queue(sycl_queue),
         lengths{lengths},
         number_of_transforms{number_of_transforms},
-        fwd_per_transform(get_fwd_per_transform()),
-        bwd_per_transform(get_bwd_per_transform()) {
+        fwd_per_transform(get_fwd_per_transform(lengths)),
+        bwd_per_transform(get_bwd_per_transform<get_forward_t<domain, get_float_t<prec>>>(lengths)) {
     using config_param_t = oneapi::mkl::dft::config_param;
     // For now, out-of-place only.
     set_out_of_place();
@@ -110,7 +110,7 @@ struct onemkl_state {
     if constexpr (domain == oneapi::mkl::dft::domain::REAL) {
       // strides must be adjusted to account for the conjugate symmetry
       for (std::size_t i = 1; i < lengths.size(); ++i) {
-        strides[i] = strides[i] / lengths.back() * (lengths.back() / 2 + 1);
+        strides[i] = (strides[i] / lengths.back()) * (lengths.back() / 2 + 1);
       }
     }
 
@@ -130,7 +130,6 @@ struct onemkl_state {
   ~onemkl_state() {
     sycl::free(in_dev, sycl_queue);
     sycl::free(out_dev, sycl_queue);
-    sycl_queue.wait_and_throw();
   }
 
   // Backend specific methods
@@ -139,20 +138,6 @@ struct onemkl_state {
  private:
   // Backend specific methods
   void set_out_of_place();
-
-  /// The count of elements for each FFT. Product of lengths.
-  inline std::size_t get_fwd_per_transform() const {
-    return std::accumulate(lengths.cbegin(), lengths.cend(), 1, std::multiplies<std::int64_t>());
-  }
-
-  inline std::size_t get_bwd_per_transform() const {
-    if constexpr (domain == oneapi::mkl::dft::domain::REAL) {
-      return std::accumulate(lengths.cbegin(), lengths.cend() - 1, lengths.back() / 2 + 1,
-                             std::multiplies<std::int64_t>());
-    } else {
-      return get_fwd_per_transform();
-    }
-  }
 };
 
 /*** Benchmark a DFT on the host.

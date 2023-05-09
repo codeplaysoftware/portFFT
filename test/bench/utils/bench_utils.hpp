@@ -32,6 +32,22 @@
 #include "enums.hpp"
 #include "reference_dft.hpp"
 
+template <typename integer>
+inline integer get_fwd_per_transform(std::vector<integer> lengths) {
+  return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<integer>());
+}
+
+template <typename forward_type, typename integer>
+inline integer get_bwd_per_transform(std::vector<integer> lengths) {
+  if constexpr (std::is_same<forward_type, float>::value || std::is_same<forward_type, double>::value) {
+    return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<integer>());
+  } else {
+    static_assert(std::is_same<forward_type, std::complex<float>>::value ||
+                  std::is_same<forward_type, std::complex<double>>::value);
+    return get_fwd_per_transform<integer>(lengths);
+  }
+}
+
 /*
  * @brief Compute the reference DFT and compare it with the provided output
  *
@@ -71,6 +87,7 @@ void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::v
       for (std::size_t e = 0; e != bwd_row_elems; ++e) {
         const auto diff = std::abs(ref_row_start[e] - actual_row_start[e]);
         if (diff > comparison_tolerance) {
+          // std::endl is used intentionally to flush the error message before google test exits the test.
           std::cerr << "transform " << t << ", row " << r << ", element " << e << " does not match\nref "
                     << ref_row_start[e] << " vs " << actual_row_start[e] << "\ndiff " << diff << ", tolerance "
                     << comparison_tolerance << std::endl;

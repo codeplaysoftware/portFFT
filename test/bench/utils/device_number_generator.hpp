@@ -49,7 +49,7 @@ void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
                                          if constexpr (std::is_floating_point_v<T>) {
                                            input[idx] = static_cast<T>(id / divisor);
                                          } else {
-                                           input[idx] = T{id / divisor, id + 1 / divisor};
+                                           input[idx] = T{id / divisor, (id + 1) / divisor};
                                          }
                                        }
                                      });

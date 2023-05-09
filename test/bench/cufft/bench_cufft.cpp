@@ -21,7 +21,6 @@
 #include <chrono>
 #include <complex>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <type_traits>
 #include <vector>
@@ -35,21 +34,7 @@
 #include "cufft_utils.hpp"
 #include "enums.hpp"
 #include "ops_estimate.hpp"
-#include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
-
-int get_fwd_per_transform(std::vector<int> lengths) {
-  return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
-}
-
-template <typename forward_type>
-int get_bwd_per_transform(std::vector<int> lengths) {
-  if constexpr (std::is_same<forward_type, float>::value || std::is_same<forward_type, double>::value) {
-    return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<int>());
-  } else {
-    return get_fwd_per_transform(lengths);
-  }
-}
 
 template <cufftType T>
 struct scalar_data_type {
@@ -88,6 +73,16 @@ template <>
 struct forward_type_info<std::complex<double>>
     : forward_type_info_impl<std::complex<double>, cufftDoubleComplex, cufftDoubleComplex, CUFFT_Z2Z> {};
 
+template <typename forward_type, typename custate>
+void cufft_verify(custate cu_state, const std::vector<int>& lengths, const int batch) {
+  auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
+  auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
+  cudaMemcpy(fwd_copy.get(), in, cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(bwd_copy.get(), out, cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
+             cudaMemcpyDeviceToHost);
+  verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
+}
+
 template <typename T>
 struct cuda_freer {
   benchmark::State& test_state;
@@ -125,7 +120,7 @@ struct cufft_state {
   int fwd_per_transform;
   int bwd_per_transform;
 
-  cufft_state(benchmark::State& state, std::vector<int>& lengths, int batch)
+  cufft_state(benchmark::State& state, const std::vector<int>& lengths, const int batch)
       : test_state(state),
         plan(state, {}),
         in(nullptr, cuda_freer<typename type_info::device_forward_type>{state}),
@@ -190,6 +185,7 @@ template <typename forward_type>
 static void cufft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
+  using info = typename decltype(cu_state)::type_info;
 
   // remove all the extra guff stored in the state
   auto plan = cu_state.plan.handle.value();
@@ -198,12 +194,12 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
-                                                        typename forward_type_info<forward_type>::device_backward_type>(
+  const auto bytes_transfered = global_mem_transactions<typename info::type_info::device_forward_type,
+                                                        typename info::type_info::device_backward_type>(
       batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
-  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
+  if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
   }
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
@@ -211,13 +207,7 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  using info = typename decltype(cu_state)::type_info;
-  auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
-  auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
-  cudaMemcpy(fwd_copy.get(), in, cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(bwd_copy.get(), out, cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
-             cudaMemcpyDeviceToHost);
-  verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
+  cufft_verify(cu_state, lengths, batch);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   // benchmark
@@ -247,18 +237,13 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   auto out = cu_state.out.get();
 
   // ops estimate for flops
-  const auto fft_size = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<int>());
-  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  int out_size = fft_size;
-  if constexpr (info::plan_type == CUFFT_R2C || info::plan_type == CUFFT_D2Z) {
-    out_size = out_size / 2 + 1;
-  }
-  const auto bytes_transfered = global_mem_transactions<typename forward_type_info<forward_type>::device_forward_type,
-                                                        typename forward_type_info<forward_type>::device_backward_type>(
-      batch, fft_size, out_size);
+  const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
+  const auto bytes_transfered = global_mem_transactions<typename info::type_info::device_forward_type,
+                                                        typename info::type_info::device_backward_type>(
+      batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
-  if (cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out) != CUFFT_SUCCESS) {
+  if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
     state.SkipWithError("warmup exec failed");
   }
   if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
@@ -266,12 +251,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
-  auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
-  cudaMemcpy(fwd_copy.get(), in, cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(bwd_copy.get(), out, cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
-             cudaMemcpyDeviceToHost);
-  verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
+  cufft_verify<forward_type>(cu_state, lengths, batch);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   cudaEvent_t before;

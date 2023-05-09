@@ -29,7 +29,6 @@ find_package(HIP REQUIRED)
 find_package(rocfft REQUIRED)
 
 target_link_libraries(bench_rocfft PRIVATE hip::host roc::rocfft)
-target_compile_options(bench_rocfft PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 if(${SYCLFFT_VERIFY_BENCHMARK})
     find_package(rocrand REQUIRED)
