@@ -74,11 +74,13 @@ struct forward_type_info<std::complex<double>>
     : forward_type_info_impl<std::complex<double>, cufftDoubleComplex, cufftDoubleComplex, CUFFT_Z2Z> {};
 
 template <typename forward_type, typename custate>
-void cufft_verify(custate cu_state, const std::vector<int>& lengths, const int batch) {
+void cufft_verify(const custate& cu_state, const std::vector<int>& lengths, const int batch) {
+  using info = typename custate::type_info;
+
   auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
   auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
-  cudaMemcpy(fwd_copy.get(), in, cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(bwd_copy.get(), out, cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
+  cudaMemcpy(fwd_copy.get(), cu_state.in.get(), cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
+  cudaMemcpy(bwd_copy.get(), cu_state.out.get(), cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
              cudaMemcpyDeviceToHost);
   verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
 }
@@ -120,7 +122,7 @@ struct cufft_state {
   int fwd_per_transform;
   int bwd_per_transform;
 
-  cufft_state(benchmark::State& state, const std::vector<int>& lengths, const int batch)
+  cufft_state(benchmark::State& state, std::vector<int> lengths, const int batch)
       : test_state(state),
         plan(state, {}),
         in(nullptr, cuda_freer<typename type_info::device_forward_type>{state}),
@@ -194,8 +196,8 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<typename info::type_info::device_forward_type,
-                                                        typename info::type_info::device_backward_type>(
+  const auto bytes_transfered = global_mem_transactions<typename info::device_forward_type,
+                                                        typename info::device_backward_type>(
       batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
@@ -207,14 +209,14 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  cufft_verify(cu_state, lengths, batch);
+  cufft_verify<forward_type>(cu_state, lengths, batch);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   // benchmark
   for (auto _ : state) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
+    cufft_exec<info>(plan, in, out);
     cudaStreamSynchronize(nullptr);
     auto end = clock::now();
 
@@ -238,8 +240,8 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<typename info::type_info::device_forward_type,
-                                                        typename info::type_info::device_backward_type>(
+  const auto bytes_transfered = global_mem_transactions<typename info::device_forward_type,
+                                                        typename info::device_backward_type>(
       batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
@@ -264,7 +266,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
   // benchmark
   for (auto _ : state) {
     auto before_res = cudaEventRecord(before);
-    auto exec_res = cufft_exec<typename decltype(cu_state)::type_info>(plan, in, out);
+    auto exec_res = cufft_exec<info>(plan, in, out);
     auto after_res = cudaEventRecord(after);
     auto sync_res = cudaEventSynchronize(after);
     if (before_res != cudaSuccess || exec_res != CUFFT_SUCCESS || after_res != cudaSuccess || sync_res != cudaSuccess) {
