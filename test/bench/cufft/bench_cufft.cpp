@@ -79,9 +79,10 @@ void cufft_verify(const custate& cu_state, const std::vector<int>& lengths, cons
 
   auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
   auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
-  cudaMemcpy(fwd_copy.get(), cu_state.in.get(), cu_state.fwd_per_transform * batch * sizeof(forward_type), cudaMemcpyDeviceToHost);
-  cudaMemcpy(bwd_copy.get(), cu_state.out.get(), cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
+  cudaMemcpy(fwd_copy.get(), cu_state.in.get(), cu_state.fwd_per_transform * batch * sizeof(forward_type),
              cudaMemcpyDeviceToHost);
+  cudaMemcpy(bwd_copy.get(), cu_state.out.get(),
+             cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type), cudaMemcpyDeviceToHost);
   verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
 }
 
@@ -196,9 +197,9 @@ static void cufft_oop_real_time(benchmark::State& state, std::vector<int> length
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<typename info::device_forward_type,
-                                                        typename info::device_backward_type>(
-      batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
+  const auto bytes_transfered =
+      global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
+          batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
   if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
@@ -240,9 +241,9 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<typename info::device_forward_type,
-                                                        typename info::device_backward_type>(
-      batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
+  const auto bytes_transfered =
+      global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
+          batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
   if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
