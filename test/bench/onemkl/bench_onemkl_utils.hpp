@@ -149,7 +149,7 @@ struct onemkl_state {
  */
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
 void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
-  sycl::queue q{sycl::gpu_selector_v};
+  sycl::queue q{};
   auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
 
@@ -206,7 +206,7 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
 void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
   // Get key information out of the descriptor.
-  sycl::queue q(sycl::gpu_selector_v, {sycl::property::queue::enable_profiling()});
+  sycl::queue q({sycl::property::queue::enable_profiling()});
   const auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
 
