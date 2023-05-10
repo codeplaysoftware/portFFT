@@ -127,13 +127,13 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
-  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transforms, batch);
-  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transforms,
+  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
+  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
                                                                                   roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto fwd_elements = roc_state.fwd_per_transforms * batch;
+  const auto fwd_elements = roc_state.fwd_per_transform * batch;
   auto fwd_copy = std::make_unique<forward_type[]>(fwd_elements);
   HIP_CHECK(hipMemcpy(fwd_copy.get(), in, fwd_elements * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
@@ -174,13 +174,13 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
-  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transforms, batch);
-  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transforms,
+  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
+  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
                                                                                   roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto fwd_elements = roc_state.fwd_per_transforms * batch;
+  const auto fwd_elements = roc_state.fwd_per_transform * batch;
   auto fwd_copy = std::make_unique<forward_type[]>(fwd_elements);
   HIP_CHECK(hipMemcpy(fwd_copy.get(), in, fwd_elements * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
