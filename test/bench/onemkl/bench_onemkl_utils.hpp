@@ -95,7 +95,7 @@ struct onemkl_state {
     desc.set_value(config_param_t::BWD_DISTANCE, bwd_per_transform);
 
     // strides
-    std::array<std::int64_t, 4> strides{0,0,0,0};
+    std::array<std::int64_t, 4> strides{0, 0, 0, 0};
 
     // work backwards to generate the strides, since for n>0 stride[n+1] = strides[n]/lengths[n]
     std::size_t idx = lengths.size();
