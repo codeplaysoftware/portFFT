@@ -70,7 +70,7 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 ## Supported configurations
 
-SYCL-FFT is still in early developments. The supported configurations are:
+SYCL-FFT is still in early development. The supported configurations are:
 
 * complex to complex transforms
 * single and double precisions
