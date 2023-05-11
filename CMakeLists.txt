@@ -37,11 +37,12 @@ list(APPEND CMAKE_MODULE_PATH
 
 option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
+option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
 option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(SYCLFFT_ENABLE_CUFFT_BENCHMARKS "Whether to also build the cuFFT benchmark for comparison" OFF)
-option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
 option(SYCLFFT_ENABLE_ROCFFT_BENCHMARKS "Whether to also build the rocFFT benchmark for comparison" OFF)
 option(SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS "Whether to also build the closed-source Intel OneMKL benchmark for comparison" OFF)
+set(SYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND CACHE STRING "Build the open-source Intel OneMKL benchmark for comparison. Must be set to one of `MKLCPU`, `MKLGPU` or `CUFFT`.")
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_TARGET_SUBGROUP_SIZE 32 CACHE STRING "Size of the subgroup on the target device")
 set(SYCLFFT_TARGET_WG_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
