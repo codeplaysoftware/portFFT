@@ -18,9 +18,7 @@
  *
  **************************************************************************/
 
-#include <functional>
 #include <iostream>
-#include <numeric>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -33,7 +31,6 @@
 
 #include "bench_utils.hpp"
 #include "ops_estimate.hpp"
-#include "reference_dft.hpp"
 #include "reference_dft_set.hpp"
 #include "rocfft_utils.hpp"
 
@@ -53,59 +50,6 @@ using is_double =
     std::bool_constant<std::is_same_v<forward_type, double> || std::is_same_v<forward_type, std::complex<double>>>;
 
 template <typename forward_type>
-std::size_t get_backward_row_size(const std::vector<std::size_t>& lengths) {
-  if constexpr (is_real<forward_type>::value) {
-    return lengths.back() / 2 + 1;
-  } else {
-    return lengths.back();
-  }
-}
-
-std::size_t get_num_rows(const std::vector<std::size_t>& lengths) {
-  return std::reduce(lengths.begin(), lengths.end() - 1, 1, std::multiplies<>());
-}
-
-// the number of elements in the backwards domain of a single transform
-template <typename forward_type>
-std::size_t get_backward_elements(const std::vector<std::size_t>& lengths) {
-  return get_num_rows(lengths) * get_backward_row_size<forward_type>(lengths);
-}
-
-template <typename forward_type>
-void verify_dft(forward_type* forward_copy, void* dev_bwd, const std::vector<size_t>& lengths,
-                std::size_t number_of_transforms) {
-  using bwd_type = typename backward_type<forward_type>::type;
-  std::size_t fwd_per_transform = std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<std::size_t>());
-  std::size_t fwd_row_size = lengths.back();
-  std::size_t bwd_row_size = get_backward_row_size<forward_type>(lengths);
-  std::size_t rows = get_num_rows(lengths);
-  std::size_t bwd_per_transform = get_backward_elements<forward_type>(lengths);
-  std::size_t bwd_elements = number_of_transforms * bwd_per_transform;
-
-  auto host_bwd = std::make_unique<bwd_type[]>(bwd_elements);
-  HIP_CHECK(hipMemcpy(host_bwd.get(), dev_bwd, bwd_elements * sizeof(bwd_type), hipMemcpyDeviceToHost));
-
-  HIP_CHECK(hipStreamSynchronize(nullptr));
-
-  std::vector<int> int_lengths(lengths.size());
-  std::copy(lengths.begin(), lengths.end(), int_lengths.begin());
-
-  auto reference_buffer = std::make_unique<bwd_type[]>(fwd_per_transform);
-  constexpr double comparison_tolerance = 1e-2;
-  for (std::size_t i = 0; i < number_of_transforms; ++i) {
-    // generate reference for a single transform
-    reference_dft<sycl_fft::direction::FORWARD>(forward_copy + i * fwd_per_transform, reference_buffer.get(),
-                                                int_lengths);
-
-    // compare
-    if (!compare_result(reference_buffer.get(), host_bwd.get() + i * bwd_per_transform, lengths, comparison_tolerance,
-                        is_real<forward_type>::value)) {
-      throw std::runtime_error("Verification Failed");
-    }
-  }
-}
-
-template <typename forward_type>
 struct rocfft_state {
   static_assert(is_forward_type<forward_type>::value, "unexpected forward type");
   benchmark::State& state;
@@ -115,9 +59,13 @@ struct rocfft_state {
   void* bwd = nullptr;
   void* work_buf = nullptr;
   std::size_t work_buf_size = 0;
+  std::size_t fwd_per_transform;
+  std::size_t bwd_per_transform;
 
   rocfft_state(benchmark::State& state, const std::vector<std::size_t>& lengths, std::size_t number_of_transforms)
-      : state(state) {
+      : state(state),
+        fwd_per_transform(get_fwd_per_transform(lengths)),
+        bwd_per_transform(get_bwd_per_transform<forward_type>(lengths)) {
     // setup rocfft
     ROCFFT_CHECK(rocfft_setup());
 
@@ -140,10 +88,8 @@ struct rocfft_state {
     }
 
     // data buffers
-    const std::size_t forward_elements =
-        std::reduce(lengths.begin(), lengths.end(), number_of_transforms, std::multiplies<>());
-
-    const std::size_t backward_elements = number_of_transforms * get_backward_elements<forward_type>(lengths);
+    const std::size_t forward_elements = fwd_per_transform * number_of_transforms;
+    const std::size_t backward_elements = bwd_per_transform * number_of_transforms;
 
     HIP_CHECK(hipMalloc(&fwd, forward_elements * sizeof(forward_type)));
     HIP_CHECK(hipMalloc(&bwd, backward_elements * sizeof(typename backward_type<forward_type>::type)));
@@ -171,6 +117,8 @@ struct rocfft_state {
 
 template <typename forward_type>
 void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+  using backward_t = typename backward_type<forward_type>::type;
+
   std::vector<std::size_t> roc_lengths(lengths.size());
   std::copy(lengths.begin(), lengths.end(), roc_lengths.begin());
   rocfft_state<forward_type> roc_state(state, roc_lengths, batch);
@@ -179,27 +127,25 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
-  const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
-  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = fft_size;
-  if constexpr (is_real<forward_type>::value) {
-    out_size = out_size / 2 + 1;
-  }
-  const auto bytes_transfered =
-      global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
+  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
+  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
+                                                                                  roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto N = fft_size * batch;
-  auto fwd_copy = std::make_unique<forward_type[]>(N);
-  HIP_CHECK(hipMemcpy(fwd_copy.get(), in, N * sizeof(forward_type), hipMemcpyDeviceToHost));
+  const auto fwd_elements = roc_state.fwd_per_transform * batch;
+  auto fwd_copy = std::make_unique<forward_type[]>(fwd_elements);
+  HIP_CHECK(hipMemcpy(fwd_copy.get(), in, fwd_elements * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
 
   ROCFFT_CHECK(rocfft_execute(plan, &in, &out, info));
   HIP_CHECK(hipStreamSynchronize(nullptr));
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  verify_dft<forward_type>(fwd_copy.get(), out, roc_lengths, batch);
+  const auto bwd_elements = roc_state.bwd_per_transform * batch;
+  auto bwd_copy = std::make_unique<backward_t[]>(bwd_elements);
+  HIP_CHECK(hipMemcpy(bwd_copy.get(), out, bwd_elements * sizeof(backward_t), hipMemcpyDeviceToHost));
+  verify_dft<forward_type, backward_t>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
 #endif
 
   // benchmark
@@ -219,6 +165,7 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
 
 template <typename forward_type>
 static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+  using backward_t = typename backward_type<forward_type>::type;
   std::vector<std::size_t> roc_lengths(lengths.size());
   std::copy(lengths.begin(), lengths.end(), roc_lengths.begin());
   rocfft_state<forward_type> roc_state(state, roc_lengths, batch);
@@ -227,27 +174,25 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
   rocfft_execution_info info = roc_state.info;
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
-  const auto fft_size = std::accumulate(roc_lengths.begin(), roc_lengths.end(), 1, std::multiplies<std::size_t>());
-  const auto ops_est = cooley_tukey_ops_estimate(fft_size, batch);
-  auto out_size = fft_size;
-  if constexpr (is_real<forward_type>::value) {
-    out_size = out_size / 2 + 1;
-  }
-  const auto bytes_transfered =
-      global_mem_transactions<forward_type, typename backward_type<forward_type>::type>(batch, fft_size, out_size);
+  const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
+  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
+                                                                                  roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
-  const auto N = fft_size * batch;
-  auto fwd_copy = std::make_unique<forward_type[]>(N);
-  HIP_CHECK(hipMemcpy(fwd_copy.get(), in, N * sizeof(forward_type), hipMemcpyDeviceToHost));
+  const auto fwd_elements = roc_state.fwd_per_transform * batch;
+  auto fwd_copy = std::make_unique<forward_type[]>(fwd_elements);
+  HIP_CHECK(hipMemcpy(fwd_copy.get(), in, fwd_elements * sizeof(forward_type), hipMemcpyDeviceToHost));
 #endif
 
   ROCFFT_CHECK(rocfft_execute(plan, &in, &out, info));
   HIP_CHECK(hipStreamSynchronize(nullptr));
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  verify_dft<forward_type>(fwd_copy.get(), out, roc_lengths, batch);
+  const auto bwd_elements = roc_state.bwd_per_transform * batch;
+  auto bwd_copy = std::make_unique<backward_t[]>(bwd_elements);
+  HIP_CHECK(hipMemcpy(bwd_copy.get(), out, bwd_elements * sizeof(backward_t), hipMemcpyDeviceToHost));
+  verify_dft<forward_type, backward_t>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
 #endif
 
   hipEvent_t before;
