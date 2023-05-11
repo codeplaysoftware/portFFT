@@ -77,6 +77,8 @@ SYCL-FFT is still in early development. The supported configurations are:
 * forward and backward directions
 * in-place and out-of-place transforms
 * USM and buffer containers
+* batched transforms
+* 1D transforms only
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
