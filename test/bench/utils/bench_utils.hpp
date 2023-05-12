@@ -32,6 +32,11 @@
 #include "enums.hpp"
 #include "reference_dft.hpp"
 
+/**
+ * @brief number of runs to do when doing an average of many host runs.
+ */
+static constexpr std::size_t runs_to_average = 10;
+
 template <typename integer>
 inline integer get_fwd_per_transform(std::vector<integer> lengths) {
   return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<integer>());

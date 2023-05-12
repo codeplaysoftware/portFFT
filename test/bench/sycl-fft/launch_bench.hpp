@@ -32,7 +32,7 @@
 #include "ops_estimate.hpp"
 
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
+void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc, std::size_t runs) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
@@ -65,22 +65,35 @@ void bench_dft_real_time(benchmark::State& state, sycl_fft::descriptor<ftype, do
   verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
              desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
+  std::vector<sycl::event> dependencies;
+  dependencies.reserve(1);
 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
+    dependencies.clear();
+
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
     if (desc.placement == sycl_fft::placement::IN_PLACE) {
       start = std::chrono::high_resolution_clock::now();
-      committed.compute_forward(in_dev).wait();
+      dependencies.emplace_back(committed.compute_forward(in_dev));
+      for (std::size_t r = 1; r != runs; r += 1) {
+        dependencies[0] = committed.compute_forward(in_dev, dependencies);
+      }
+      dependencies[0].wait();
       end = std::chrono::high_resolution_clock::now();
     } else {
       start = std::chrono::high_resolution_clock::now();
-      committed.compute_forward(in_dev, out_dev).wait();
+      dependencies.emplace_back(committed.compute_forward(in_dev, out_dev));
+      for (std::size_t r = 1; r != runs; r += 1) {
+        dependencies[0] = committed.compute_forward(in_dev, out_dev, dependencies);
+      }
+      dependencies[0].wait();
       end = std::chrono::high_resolution_clock::now();
     }
-    double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    double elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
     state.counters["throughput"] = bytes_transfered / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
@@ -149,11 +162,11 @@ sycl_fft::descriptor<ftype, domain> create_descriptor(benchmark::State& state) {
 }
 
 template <typename T>
-void bench_dft_real_time(benchmark::State& state) {
+void bench_dft_average_host_time(benchmark::State& state) {
   using ftype = typename sycl_fft::get_real<T>::type;
   constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
   auto desc = create_descriptor<ftype, domain>(state);
-  bench_dft_real_time<ftype, domain>(state, desc);
+  bench_dft_average_host_time<ftype, domain>(state, desc, runs_to_average);
 }
 
 template <typename T>
