@@ -229,7 +229,7 @@ int factorize_sg(int N, int sg_size) {
  * @param sg subgroup
  */
 template <direction dir, typename T>
-__attribute__((noinline)) void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
+__attribute__((always_inline)) void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
   switch (fft_size) {
     // TODO instantiating only the sizes up to subgroup size speeds up the
     // compilation
