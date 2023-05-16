@@ -104,8 +104,8 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_im
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+template <direction dir, int factor_wi, int factor_sg, typename T_in, typename T_out, typename T, typename T_twiddles>
+__attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
                           std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
@@ -145,7 +145,7 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_im
     if (working) {
       local2private<N_reals_per_wi, true>(loc, priv, subgroup_local_id, N_reals_per_wi, subgroup_id * n_reals_per_sg);
     }
-    sg_dft<dir, factor_wi>(factor_sg, priv, sg, loc_twiddles);
+    sg_dft<dir, factor_wi, factor_sg>(priv, sg, loc_twiddles);
     unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline))  __attribute__((flatten)) {
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
@@ -183,7 +183,7 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_im
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
-__attribute__((always_inline))  __attribute__((flatten)) inline void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+__attribute__((noinline))  __attribute__((flatten)) inline void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
                          std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
@@ -253,6 +253,95 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_di
 }
 
 /**
+ * Selects the appropriate template instantiation of the cross-subgroup
+ * implementation for particular DFT size.
+ *
+ * @tparam dir direction of the FFT
+ * @tparam T type of the scalar to work on
+ * @param fft_size size of the DFT problem
+ * @param[in,out] real real component of the input/output complex value for one
+ * workitem
+ * @param[in,out] imag imaginary component of the input/output complex value for
+ * one workitem
+ * @param sg subgroup
+ */
+template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
+__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+                         std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+  switch (factor_sg) {
+#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M) \
+  case M:                                    \
+      subgroup_impl<dir, factor_wi, M>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
+    break;
+    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(3)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(5)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(6)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(7)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(9)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(10)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(11)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(12)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(13)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(14)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(15)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(16)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(17)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(18)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(19)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(20)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(21)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(22)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(23)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(24)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(25)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(26)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(27)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(28)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(29)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(30)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(31)*/
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(32)
+    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(33)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(34)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(35)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(36)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(37)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(38)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(39)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(40)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(41)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(42)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(43)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(44)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(45)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(46)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(47)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(48)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(49)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(50)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(51)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(52)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(53)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(54)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(55)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(56)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(57)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(58)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(59)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(60)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(61)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(62)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(63)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)*/
+#undef SYCL_FFT_CROSS_SG_DISPATCHER_IMPL
+  }
+}
+
+/**
  * Selects appropriate template instantiation of subgroup implementation for
  * given factor_wi.
  *
@@ -276,13 +365,13 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_di
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+__attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
 #define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                               \
   case N:                                                                                               \
     if constexpr (fits_in_wi<T>(N)) {                                                                   \
-      subgroup_impl<dir, N>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
+      cross_sg_dispatcher<dir, N>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     }                                                                                                   \
     break;
     /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
@@ -460,6 +549,7 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std:
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
     std::size_t n_ffts_per_sg = subgroup_size / factor_sg;
     n_sgs_we_can_utilize = divideCeil(n_transforms, n_ffts_per_sg);
+    maximum_n_sgs /= 4;
   }
   return subgroup_size * std::min(maximum_n_sgs, n_sgs_we_can_utilize);
 }

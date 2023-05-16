@@ -215,100 +215,10 @@ int factorize_sg(int N, int sg_size) {
   return 1;
 }
 
-/**
- * Selects the appropriate template instantiation of the cross-subgroup
- * implementation for particular DFT size.
- *
- * @tparam dir direction of the FFT
- * @tparam T type of the scalar to work on
- * @param fft_size size of the DFT problem
- * @param[in,out] real real component of the input/output complex value for one
- * workitem
- * @param[in,out] imag imaginary component of the input/output complex value for
- * one workitem
- * @param sg subgroup
- */
-template <direction dir, typename T>
-__attribute__((always_inline)) void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
-  switch (fft_size) {
-    // TODO instantiating only the sizes up to subgroup size speeds up the
-    // compilation
-#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(N) \
-  case N:                                    \
-    cross_sg_dft<dir, N, 1>(real, imag, sg); \
-    break;
-    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(3)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(5)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(6)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(7)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(9)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(10)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(11)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(12)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(13)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(14)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(15)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(16)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(17)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(18)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(19)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(20)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(21)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(22)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(23)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(24)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(25)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(26)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(27)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(28)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(29)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(30)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(31)*/
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(32)
-    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(33)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(34)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(35)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(36)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(37)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(38)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(39)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(40)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(41)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(42)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(43)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(44)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(45)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(46)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(47)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(48)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(49)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(50)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(51)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(52)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(53)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(54)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(55)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(56)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(57)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(58)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(59)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(60)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(61)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(62)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(63)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)*/
-#undef SYCL_FFT_CROSS_SG_DISPATCHER_IMPL
-  }
-}
-
 };  // namespace detail
 
-template <direction dir, int M, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((noinline)) inline void cross_sg_impl(int N, T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
+template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
+__attribute__((always_inline)) inline void cross_sg_impl(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
    using T = detail::remove_ptr<T_ptr>;
   int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
@@ -316,7 +226,7 @@ __attribute__((noinline)) inline void cross_sg_impl(int N, T_ptr inout, sycl::su
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    detail::cross_sg_dispatcher<dir>(N, real, imag, sg);
+    detail::cross_sg_dft<dir, N, 1>(real, imag, sg);
 
     T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
     T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
@@ -340,9 +250,9 @@ __attribute__((noinline)) inline void cross_sg_impl(int N, T_ptr inout, sycl::su
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  */
-template <direction dir, int M, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void sg_dft(int N, T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
-  cross_sg_impl<dir, M>(N, inout, sg, sg_twiddles);
+template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
+__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
+  cross_sg_impl<dir, M, N>(inout, sg, sg_twiddles);
   wi_dft<dir, M, 1, 1>(inout, inout);
 }
 
