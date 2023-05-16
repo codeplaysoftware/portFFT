@@ -50,7 +50,7 @@ namespace detail {
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int N, typename T_in, typename T_out, typename T>
-inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t n_transforms,
+__attribute__((always_inline))  __attribute__((flatten)) inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t n_transforms,
                           sycl::nd_item<1> it, T scaling_factor) {
   constexpr int N_reals = 2 * N;
 
@@ -71,7 +71,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
     if (working) {
       local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
       wi_dft<dir, N, 1, 1>(priv, priv);
-      unrolled_loop<0, N_reals, 2>([&](const int i) {
+      unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline))  __attribute__((flatten)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
@@ -105,7 +105,7 @@ inline void workitem_impl(T_in input, T_out output, const sycl::local_accessor<T
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
-inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
+__attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
                           std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
@@ -143,17 +143,17 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
       local2private<N_reals_per_wi, true>(loc, priv, subgroup_local_id, N_reals_per_wi, subgroup_id * n_reals_per_sg);
     }
     sg_dft<dir, factor_wi>(factor_sg, priv, sg, twiddles);
-    unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) {
+    unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline))  __attribute__((flatten)) {
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
     });
     if (working) {
-      private2local_transposed<N_reals_per_wi>(priv, loc, id_of_wi_in_fft, factor_sg,
+      private2local_transposed<N_reals_per_wi, true>(priv, loc, id_of_wi_in_fft, factor_sg,
                                                subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
     }
     sycl::group_barrier(sg);
 
-    local2global<false>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
+    local2global<true>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
                         subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
     sycl::group_barrier(sg);
@@ -180,7 +180,7 @@ inline void subgroup_impl(int factor_sg, T_in input, T_out output, const sycl::l
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
-void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+__attribute__((always_inline))  __attribute__((flatten)) inline void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
                          std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
@@ -189,7 +189,7 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
       workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
     }                                                                              \
     break;
-    SYCL_FFT_WI_DISPATCHER_IMPL(1)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
     SYCL_FFT_WI_DISPATCHER_IMPL(3)
     SYCL_FFT_WI_DISPATCHER_IMPL(4)
@@ -203,9 +203,9 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
     SYCL_FFT_WI_DISPATCHER_IMPL(12)
     SYCL_FFT_WI_DISPATCHER_IMPL(13)
     SYCL_FFT_WI_DISPATCHER_IMPL(14)
-    SYCL_FFT_WI_DISPATCHER_IMPL(15)
+    SYCL_FFT_WI_DISPATCHER_IMPL(15)*/
     SYCL_FFT_WI_DISPATCHER_IMPL(16)
-    SYCL_FFT_WI_DISPATCHER_IMPL(17)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(17)
     SYCL_FFT_WI_DISPATCHER_IMPL(18)
     SYCL_FFT_WI_DISPATCHER_IMPL(19)
     SYCL_FFT_WI_DISPATCHER_IMPL(20)
@@ -244,7 +244,7 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
     SYCL_FFT_WI_DISPATCHER_IMPL(53)
     SYCL_FFT_WI_DISPATCHER_IMPL(54)
     SYCL_FFT_WI_DISPATCHER_IMPL(55)
-    SYCL_FFT_WI_DISPATCHER_IMPL(56)
+    SYCL_FFT_WI_DISPATCHER_IMPL(56)*/
 #undef SYCL_FFT_WI_DISPATCHER_IMPL
   }
 }
@@ -273,7 +273,7 @@ void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T,
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
+__attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
 #define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                               \
@@ -282,15 +282,15 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
       subgroup_impl<dir, N>(factor_sg, input, output, loc, n_transforms, it, twiddles, scaling_factor); \
     }                                                                                                   \
     break;
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(3)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(5)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(6)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(7)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(7)*/
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(8)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(9)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(9)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(10)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(11)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(12)
@@ -337,7 +337,7 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(53)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(54)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(55)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(56)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(56)*/
 #undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
   }
 }
@@ -364,12 +364,12 @@ void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+__attribute__((always_inline))  __attribute__((flatten)) inline void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
                 std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    //workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
