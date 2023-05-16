@@ -80,31 +80,47 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  */
 template <direction dir, int N, int stride, typename T>
 __attribute__((always_inline))  __attribute__((flatten)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
-  int local_id = sg.get_local_linear_id();
-  int idx_out = (local_id / stride) % N;
-  int fft_start = local_id - idx_out * stride;
+  if constexpr(N == 2 && (stride & (stride - 1)) == 0){
+    int local_id = sg.get_local_linear_id();
+    int idx_out = (local_id / stride) % 2;
+    int fft_start = local_id - idx_out * stride;
 
-  T res_real = 0;
-  T res_imag = 0;
+    T multi_re = (idx_out & 1) ? -1.0 : 1.0;
+    T res_real = real * multi_re;
+    T res_imag = imag * multi_re;
 
-  unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline))  __attribute__((flatten)) {
-    const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
-    const T multi_im = [&]() __attribute__((always_inline))  __attribute__((flatten)) {
-      if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
-      return -twiddle<T>::im[N][idx_in * idx_out % N];
-    }();
-    int source_wi_id = fft_start + idx_in * stride;
+    res_real += sycl::permute_group_by_xor(sg, real, stride);
+    res_imag += sycl::permute_group_by_xor(sg, imag, stride);
 
-    T cur_real = sycl::select_from_group(sg, real, source_wi_id);
-    T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+    real = res_real;
+    imag = res_imag;
+  } else{
+    int local_id = sg.get_local_linear_id();
+    int idx_out = (local_id / stride) % N;
+    int fft_start = local_id - idx_out * stride;
 
-    // multiply cur and multi
-    res_real += cur_real * multi_re - cur_imag * multi_im;
-    res_imag += cur_real * multi_im + cur_imag * multi_re;
-  });
+    T res_real = 0;
+    T res_imag = 0;
 
-  real = res_real;
-  imag = res_imag;
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline))  __attribute__((flatten)) {
+      const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
+      const T multi_im = [&]() __attribute__((always_inline))  __attribute__((flatten)) {
+        if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
+        return -twiddle<T>::im[N][idx_in * idx_out % N];
+      }();
+      int source_wi_id = fft_start + idx_in * stride;
+
+      T cur_real = sycl::select_from_group(sg, real, source_wi_id);
+      T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+
+      // multiply cur and multi
+      res_real += cur_real * multi_re - cur_imag * multi_im;
+      res_imag += cur_real * multi_im + cur_imag * multi_re;
+    });
+
+    real = res_real;
+    imag = res_imag;
+  }
 }
 
 /**

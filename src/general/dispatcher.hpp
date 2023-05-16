@@ -183,7 +183,7 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void subgroup_im
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
-__attribute__((noinline))  __attribute__((flatten)) inline void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
+__attribute__((always_inline))  __attribute__((flatten)) inline void workitem_dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size,
                          std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
@@ -266,7 +266,7 @@ __attribute__((noinline))  __attribute__((flatten)) inline void workitem_dispatc
  * @param sg subgroup
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+__attribute__((noinline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_sg) {
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M) \
