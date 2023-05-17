@@ -192,15 +192,15 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_di
       workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
     }                                                                              \
     break;
-    /*SYCL_FFT_WI_DISPATCHER_IMPL(1)
+    SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
-    SYCL_FFT_WI_DISPATCHER_IMPL(3)
+    //SYCL_FFT_WI_DISPATCHER_IMPL(3)
     SYCL_FFT_WI_DISPATCHER_IMPL(4)
-    SYCL_FFT_WI_DISPATCHER_IMPL(5)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(5)
     SYCL_FFT_WI_DISPATCHER_IMPL(6)
-    SYCL_FFT_WI_DISPATCHER_IMPL(7)
+    SYCL_FFT_WI_DISPATCHER_IMPL(7)*/
     SYCL_FFT_WI_DISPATCHER_IMPL(8)
-    SYCL_FFT_WI_DISPATCHER_IMPL(9)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(9)
     SYCL_FFT_WI_DISPATCHER_IMPL(10)
     SYCL_FFT_WI_DISPATCHER_IMPL(11)
     SYCL_FFT_WI_DISPATCHER_IMPL(12)
@@ -222,9 +222,9 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_di
     SYCL_FFT_WI_DISPATCHER_IMPL(28)
     SYCL_FFT_WI_DISPATCHER_IMPL(29)
     SYCL_FFT_WI_DISPATCHER_IMPL(30)
-    SYCL_FFT_WI_DISPATCHER_IMPL(31)
+    SYCL_FFT_WI_DISPATCHER_IMPL(31)*/
     SYCL_FFT_WI_DISPATCHER_IMPL(32)
-    SYCL_FFT_WI_DISPATCHER_IMPL(33)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(33)
     SYCL_FFT_WI_DISPATCHER_IMPL(34)
     SYCL_FFT_WI_DISPATCHER_IMPL(35)
     SYCL_FFT_WI_DISPATCHER_IMPL(36)
@@ -266,30 +266,33 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void workitem_di
  * @param sg subgroup
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((noinline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
                          std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (factor_sg) {
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M) \
   case M:                                    \
+    if constexpr(M <= SYCLFFT_TARGET_SUBGROUP_SIZE && !fits_in_wi<T>(M * factor_wi)){ \
       subgroup_impl<dir, factor_wi, M>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
+    } \
     break;
-    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
+    // cross-sg size 1 cases are supported by workitem implementation
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(3)
+    //SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(3)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(5)
+    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(5)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(6)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(7)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(7)*/
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(9)
+    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(9)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(10)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(11)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(12)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(13)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(14)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(15)
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(15)*/
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(16)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(17)
+    /*SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(17)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(18)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(19)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(20)
@@ -335,8 +338,8 @@ __attribute__((noinline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(60)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(61)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(62)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(63)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)*/
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(63)*/
+    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)
 #undef SYCL_FFT_CROSS_SG_DISPATCHER_IMPL
   }
 }
@@ -374,11 +377,11 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
       cross_sg_dispatcher<dir, N>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     }                                                                                                   \
     break;
-    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(3)
+    //SYCL_FFT_SG_WI_DISPATCHER_IMPL(3)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(5)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(5)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(6)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(7)*/
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(8)
@@ -388,9 +391,9 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(12)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(13)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(14)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(15)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(15)*/
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(17)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(18)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(19)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(20)
@@ -404,9 +407,9 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(28)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(29)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(30)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(31)
+    SYCL_FFT_SG_WI_DISPATCHER_IMPL(31)*/
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(32)
-    SYCL_FFT_SG_WI_DISPATCHER_IMPL(33)
+    /*SYCL_FFT_SG_WI_DISPATCHER_IMPL(33)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(34)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(35)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(36)
