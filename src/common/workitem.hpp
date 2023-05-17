@@ -57,14 +57,14 @@ strides.
  * @param out pointer to output
  */
 template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline))  __attribute__((flatten)) inline void naive_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) __attribute__((flatten)) inline void naive_dft(T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
   T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline))  __attribute__((flatten)) {
+  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) __attribute__((flatten)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline))  __attribute__((flatten)) {
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) __attribute__((flatten)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -100,13 +100,13 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void naive_dft(T
  * @param out pointer to output
  */
 template <direction dir, int N, int M, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline))  __attribute__((flatten)) inline void cooley_tukey_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) __attribute__((flatten)) inline void cooley_tukey_dft(T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   T tmp_buffer[2 * N * M];
 
-  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline))  __attribute__((flatten)) {
+  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
     wi_dft<dir, N, M * stride_in, 1>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N);
-    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline))  __attribute__((flatten)) {
+    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) __attribute__((flatten)) {
       auto re_multiplier = twiddle<T>::re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][i * j];
@@ -118,7 +118,7 @@ __attribute__((always_inline))  __attribute__((flatten)) inline void cooley_tuke
       tmp_buffer[2 * i * N + 2 * j + 0] = tmp_val;
     });
   });
-  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline))  __attribute__((flatten)) {
+  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
     wi_dft<dir, M, N, N * stride_out>(tmp_buffer + 2 * i, out + 2 * i * stride_out);
   });
 }
@@ -204,7 +204,7 @@ struct fits_in_wi_device_struct {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar>
-__attribute__((always_inline))  __attribute__((flatten)) inline bool fits_in_wi_device(int fft_size) {
+__attribute__((always_inline)) __attribute__((flatten)) inline bool fits_in_wi_device(int fft_size) {
   // 56 is the maximal size we support in workitem implementation and also
   // the size of the array above that is used if this if is not taken
   if (fft_size > 56) {
@@ -227,7 +227,7 @@ __attribute__((always_inline))  __attribute__((flatten)) inline bool fits_in_wi_
  * @param out pointer to output
  */
 template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline))  __attribute__((flatten)) inline void wi_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) __attribute__((flatten)) inline void wi_dft(T_ptr in, T_ptr out) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (N == 2) {
     using T = detail::remove_ptr<T_ptr>;
