@@ -63,6 +63,8 @@ target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLF
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_SUBGROUP_SIZE=${SYCLFFT_TARGET_SUBGROUP_SIZE})
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_WG_LOAD=${SYCLFFT_TARGET_WG_LOAD})
 
+target_compile_options(sycl_fft INTERFACE -fgpu-inline-threshold=1000000)
+
 include(CMakePackageConfigHelpers)
 set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
 write_basic_package_version_file(${version_file}
