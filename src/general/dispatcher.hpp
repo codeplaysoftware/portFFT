@@ -91,7 +91,8 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void workitem_imp
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam N size of each transform
+ * @tparam factor_wi factor of the FFT size. How many elements per FFT are processed by one workitem
+ * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -100,7 +101,9 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void workitem_imp
  * @tparam T_twiddles pointer containing the twiddles
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*N*subgroup_size
+ * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*subgroup_size
+ * values
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param n_transforms number of FT transforms to do in one call
  * @param it sycl::nd_item<1> for the kernel launch
@@ -172,6 +175,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void subgroup_imp
  * given size of DFT.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -258,17 +262,27 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void workitem_dis
 }
 
 /**
- * Selects the appropriate template instantiation of the cross-subgroup
- * implementation for particular DFT size.
+ * Selects appropriate template instantiation of subgroup implementation for
+ * given factor_sg.
  *
- * @tparam dir direction of the FFT
- * @tparam T type of the scalar to work on
- * @param fft_size size of the DFT problem
- * @param[in,out] real real component of the input/output complex value for one
- * workitem
- * @param[in,out] imag imaginary component of the input/output complex value for
- * one workitem
- * @param sg subgroup
+ * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam N size of each transform
+ * @tparam T_in type of the accessor or pointer to global memory containing
+ * input data
+ * @tparam T_out type of the accessor or pointer to global memory for output
+ * data
+ * @tparam T type of the scalar used for computations
+ * @tparam T_twiddles pointer containing the twiddles
+ * @param input accessor or pointer to global memory containing input data
+ * @param output accessor or pointer to global memory for output data
+ * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*subgroup_size
+ * values
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
+ * values
+ * @param n_transforms number of FT transforms to do in one call
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles pointer containing twiddles
+ * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output,
@@ -364,11 +378,13 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in inpu
  * @tparam T type of the scalar used for computations
  * @tparam T_twiddles type of the accessor or pointer to global memory
  * containing twiddle factors
- * @param factor_wi factor that is worked on by workitems individually
- * @param factor_sg factor that is worked on jointly by subgroup
+ * @param factor_wi factor of the FFT size. How many elements per FFT are processed by one workitem
+ * @param factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
+ * values
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param n_transforms number of FFT transforms to do in one call
  * @param it sycl::nd_item<1> for the kernel launch
@@ -463,6 +479,8 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*N*subgroup_size
+ * values if the subgroup implementation is used
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param fft_size size of each transform
  * @param n_transforms number of FFT transforms to do in one call

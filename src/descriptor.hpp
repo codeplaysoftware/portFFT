@@ -69,7 +69,8 @@ group or the number of workgroups in a kernel. These numbers can be tuned for ea
 test one subgroup per workgroup, so more may or may not actually work correctly.
 
 Both dispatcher functions are there to make the size of the FFT that is handled by the individual workitems compile time
-constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or
+constant. `subgroup_dispatcher` also calls `cross_sg_dispatcher` that makes the cross-subgroup factor of FFT size compile time constant.
+They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or
 `subgroup_impl` respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only the
 calls that are determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI macro)
 are actually instantiated.

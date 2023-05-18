@@ -46,8 +46,6 @@ functions.
 On input, each of the `N` workitems hold `M` consecutive complex input values. On output, each of the workitems holds
 complex values that are strided with stride `N` and consecutive workitems have consecutive values.
 
-`cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
-
 `cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of
 the computation. If the size of the subgroup is large enough compared to FFT size, a subgroup can calculate multiple
 DFTs at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
@@ -239,8 +237,22 @@ int factorize_sg(int N, int sg_size) {
 
 };  // namespace detail
 
+/**
+ * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The
+ * end result needs to be transposed when storing it to the local memory!
+ *
+ * @tparam dir direction of the FFT
+ * @tparam M number of elements per workitem
+ * @tparam N number of workitems in a subgroup that work on one FFT
+ * @tparam T_prt type of the pointer to the data
+ * @tparam T_twiddles_ptr type of the accessor or pointer with twiddle factors
+ * @param inout pointer to private memory where the input/output data is
+ * @param sg subgroup
+ * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
+ * commit
+ */
 template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void cross_sg_impl(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
   using T = detail::remove_ptr<T_ptr>;
   int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
@@ -257,24 +269,7 @@ __attribute__((always_inline)) inline void cross_sg_impl(T_ptr inout, sycl::sub_
     imag = real * twiddle_imag + imag * twiddle_real;
     real = tmp_real;
   });
-}
 
-/**
- * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The
- * end result needs to be transposed when storing it to the local memory!
- *
- * @tparam dir direction of the FFT
- * @tparam M number of elements per workitem
- * @tparam T_prt type of the pointer to the data
- * @param N number of workitems in a subgroup that work on one FFT
- * @param inout pointer to private memory where the input/output data is
- * @param sg subgroup
- * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
- * commit
- */
-template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
-  cross_sg_impl<dir, M, N>(inout, sg, sg_twiddles);
   wi_dft<dir, M, 1, 1>(inout, inout);
 }
 
