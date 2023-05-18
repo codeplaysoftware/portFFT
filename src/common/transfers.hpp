@@ -48,7 +48,7 @@ namespace detail {
  * @return transformed local_idx
  */
 template <bool Pad = true>
-__attribute__((always_inline)) __attribute__((flatten)) inline std::size_t pad_local(std::size_t local_idx) {
+__attribute__((always_inline))  inline std::size_t pad_local(std::size_t local_idx) {
   if constexpr (Pad) {
     local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
   }
@@ -77,7 +77,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline std::size_t pad_l
  * @param local_offset offset to the local pointer
  */
 template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void global2local(
+__attribute__((always_inline))  inline void global2local(
     T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems, std::size_t local_size, std::size_t local_id,
     std::size_t global_offset = 0, std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
@@ -103,7 +103,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void global2local
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) __attribute__((flatten)) {
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline))  {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       local[local_idx] = loaded[j];
     });
@@ -143,7 +143,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void global2local
  * @param global_offset offset to the global pointer
  */
 template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void local2global(
+__attribute__((always_inline))  inline void local2global(
     T_loc_ptr local, T_glob_ptr global, std::size_t total_num_elems, std::size_t local_size, std::size_t local_id,
     std::size_t local_offset = 0, std::size_t global_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
@@ -170,7 +170,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void local2global
     T_vec* global_vec = reinterpret_cast<T_vec*>(&global[global_offset + i]);
     T_vec to_store;
     // for (int j = 0; j < chunk_size; j++) {
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) __attribute__((flatten)) {
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline))  {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       to_store[j] = local[local_idx];
     });
@@ -209,11 +209,11 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void local2global
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void local2private(T_loc_ptr local, T_priv_ptr priv,
+__attribute__((always_inline))  inline void local2private(T_loc_ptr local, T_priv_ptr priv,
                                                                                   std::size_t local_id,
                                                                                   std::size_t stride,
                                                                                   std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline))  {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     priv[i] = local[local_idx];
   });
@@ -236,9 +236,9 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void local2privat
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void local2private_transposed(
+__attribute__((always_inline))  inline void local2private_transposed(
     T_loc_ptr local, T_priv_ptr priv, std::size_t local_id, std::size_t workers_in_sg, std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline))  {
     priv[i] = local[local_offset + local_id + i * workers_in_sg];
   });
 }
@@ -261,11 +261,11 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void local2privat
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void private2local(T_priv_ptr priv, T_loc_ptr local,
+__attribute__((always_inline))  inline void private2local(T_priv_ptr priv, T_loc_ptr local,
                                                                                   std::size_t local_id,
                                                                                   std::size_t stride,
                                                                                   std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline))  {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     local[local_idx] = priv[i];
   });
@@ -288,7 +288,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void private2loca
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) __attribute__((flatten)) inline void private2local_transposed(
+__attribute__((always_inline))  inline void private2local_transposed(
     T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, std::size_t workers_in_group,
     std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
@@ -298,11 +298,11 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void private2loca
   T_vec* priv_vec = reinterpret_cast<T_vec*>(&priv[0]);
   T_vec* local_vec = reinterpret_cast<T_vec*>(&local[local_offset]);
 
-  /*detail::unrolled_loop<0, num_vec_per_wi, 1>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
+  /*detail::unrolled_loop<0, num_vec_per_wi, 1>([&](int i) __attribute__((always_inline))  {
     local_vec[i * workers_in_group + local_id] = priv_vec[i];
   });*/
 
-  detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) __attribute__((flatten)) {
+  detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline))  {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * 2 + i * workers_in_group);
     if (local_idx % 2 == 0) {
       local_vec[local_idx / 2] = priv_vec[i / 2];

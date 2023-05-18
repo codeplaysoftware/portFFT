@@ -50,7 +50,7 @@ namespace detail {
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int N, typename T_in, typename T_out, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void workitem_impl(T_in input, T_out output,
+__attribute__((always_inline)) inline void workitem_impl(T_in input, T_out output,
                                                                                   const sycl::local_accessor<T, 1>& loc,
                                                                                   std::size_t n_transforms,
                                                                                   sycl::nd_item<1> it,
@@ -74,7 +74,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void workitem_imp
     if (working) {
       local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
       wi_dft<dir, N, 1, 1>(priv, priv);
-      unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) __attribute__((flatten)) {
+      unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
@@ -111,7 +111,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void workitem_imp
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int factor_wi, int factor_sg, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) __attribute__((flatten)) inline void subgroup_impl(
+__attribute__((always_inline)) inline void subgroup_impl(
     T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
     std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
@@ -153,7 +153,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void subgroup_imp
       local2private<N_reals_per_wi, true>(loc, priv, subgroup_local_id, N_reals_per_wi, subgroup_id * n_reals_per_sg);
     }
     sg_dft<dir, factor_wi, factor_sg>(priv, sg, loc_twiddles);
-    unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) __attribute__((flatten)) {
+    unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) {
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
     });
@@ -191,7 +191,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void subgroup_imp
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void workitem_dispatcher(
+__attribute__((always_inline)) inline void workitem_dispatcher(
     T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size, std::size_t n_transforms,
     sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
@@ -489,7 +489,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) __attribute__((flatten)) inline void dispatcher(
+__attribute__((always_inline)) inline void dispatcher(
     T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
     std::size_t fft_size, std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done

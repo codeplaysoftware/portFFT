@@ -77,7 +77,7 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_naive_dft(T& real, T& imag,
+__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag,
                                                                                        sycl::sub_group& sg) {
   if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
     int local_id = sg.get_local_linear_id();
@@ -101,9 +101,9 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_nai
     T res_real = 0;
     T res_imag = 0;
 
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) __attribute__((flatten)) {
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
-      const T multi_im = [&]() __attribute__((always_inline)) __attribute__((flatten)) {
+      const T multi_im = [&]() __attribute__((always_inline)) {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
         return -twiddle<T>::im[N][idx_in * idx_out % N];
       }
@@ -138,7 +138,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_nai
  * @param sg subgroup
  */
 template <int N, int M, int stride, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_transpose(T& real, T& imag,
+__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag,
                                                                                        sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
@@ -167,7 +167,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_tra
  * @param sg subgroup
  */
 template <direction dir, int N, int M, int stride, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag,
+__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag,
                                                                                               sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
@@ -180,7 +180,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_coo
   cross_sg_transpose<N, M, stride>(real, imag, sg);
   // twiddle
   const T multi_re = twiddle<T>::re[N * M][k * n];
-  const T multi_im = [&]() __attribute__((always_inline)) __attribute__((flatten)) {
+  const T multi_im = [&]() __attribute__((always_inline)) {
     if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
     return -twiddle<T>::im[N * M][k * n];
   }
@@ -208,7 +208,7 @@ __attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_coo
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-__attribute__((always_inline)) __attribute__((flatten)) inline void cross_sg_dft(T& real, T& imag,
+__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag,
                                                                                  sycl::sub_group& sg) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
@@ -256,7 +256,7 @@ __attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& 
   using T = detail::remove_ptr<T_ptr>;
   int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
-  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) __attribute__((flatten)) {
+  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
