@@ -27,7 +27,7 @@
 
 constexpr int N = 8;
 constexpr int wg_size = 64;
-using ftype = double;
+using ftype = float;
 
 class test_transfers_kernel_padded;
 class test_transfers_kernel_unpadded;

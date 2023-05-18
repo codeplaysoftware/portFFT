@@ -77,8 +77,7 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag,
-                                                                                       sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
   if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
     int local_id = sg.get_local_linear_id();
     int idx_out = (local_id / stride) % 2;
@@ -138,8 +137,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag,
  * @param sg subgroup
  */
 template <int N, int M, int stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag,
-                                                                                       sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -167,8 +165,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag,
  * @param sg subgroup
  */
 template <direction dir, int N, int M, int stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag,
-                                                                                              sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -208,8 +205,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag,
-                                                                                 sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);

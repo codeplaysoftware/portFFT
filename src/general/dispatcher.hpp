@@ -51,10 +51,9 @@ namespace detail {
  */
 template <direction dir, int N, typename T_in, typename T_out, typename T>
 __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out output,
-                                                                                  const sycl::local_accessor<T, 1>& loc,
-                                                                                  std::size_t n_transforms,
-                                                                                  sycl::nd_item<1> it,
-                                                                                  T scaling_factor) {
+                                                         const sycl::local_accessor<T, 1>& loc,
+                                                         std::size_t n_transforms, sycl::nd_item<1> it,
+                                                         T scaling_factor) {
   constexpr int N_reals = 2 * N;
 
   T priv[N_reals];
@@ -111,9 +110,11 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, int factor_wi, int factor_sg, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void subgroup_impl(
-    T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
-    std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+__attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out output,
+                                                         const sycl::local_accessor<T, 1>& loc,
+                                                         const sycl::local_accessor<T, 1>& loc_twiddles,
+                                                         std::size_t n_transforms, sycl::nd_item<1> it,
+                                                         T_twiddles twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
@@ -191,9 +192,10 @@ __attribute__((always_inline)) inline void subgroup_impl(
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T>
-__attribute__((always_inline)) inline void workitem_dispatcher(
-    T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size, std::size_t n_transforms,
-    sycl::nd_item<1> it, T scaling_factor) {
+__attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out output,
+                                                               const sycl::local_accessor<T, 1>& loc,
+                                                               std::size_t fft_size, std::size_t n_transforms,
+                                                               sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
   case N:                                                                          \
@@ -489,9 +491,10 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void dispatcher(
-    T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
-    std::size_t fft_size, std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+__attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
+                                                      const sycl::local_accessor<T, 1>& loc_twiddles,
+                                                      std::size_t fft_size, std::size_t n_transforms,
+                                                      sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
