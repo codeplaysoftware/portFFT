@@ -68,6 +68,25 @@ Run manual benchmarks from the build folder with for instance:
 
 Use the `--help` flag to print help message on the configuration syntax.
 
+## Supported configurations
+
+SYCL-FFT is still in early development. The supported configurations are:
+
+* complex to complex transforms
+* single and double precisions
+* forward and backward directions
+* in-place and out-of-place transforms
+* USM and buffer containers
+* batched transforms
+* 1D transforms only
+
+The supported sizes depend on the CMake flags used which can be constrained by the device used.
+`SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
+For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes up to this maximum are supported.
+FFT sizes that are a multiple of a workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
+
+Any batch size is supported as long as the FFT fits in global memory.
+
 ## Third party benchmarks
 
 ### [Open-source oneMKL]
