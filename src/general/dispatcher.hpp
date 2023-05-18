@@ -281,7 +281,7 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
  * values
  * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
- * @param n_transforms number of FT transforms to do in one call
+ * @param n_transforms number of FFT transforms to do in one call
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result

@@ -169,7 +169,6 @@ __attribute__((always_inline)) inline void local2global(T_loc_ptr local, T_glob_
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
     T_vec* global_vec = reinterpret_cast<T_vec*>(&global[global_offset + i]);
     T_vec to_store;
-    // for (int j = 0; j < chunk_size; j++) {
     detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       to_store[j] = local[local_idx];
@@ -289,23 +288,19 @@ __attribute__((always_inline)) inline void private2local_transposed(T_priv_ptr p
                                                                     std::size_t local_id, std::size_t workers_in_group,
                                                                     std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
-  constexpr int vec_size = 2;  // this is NOT adjustable
+  constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
   using T_vec = sycl::vec<T, vec_size>;
   constexpr std::size_t num_vec_per_wi = num_elems_per_wi / vec_size;
-  T_vec* priv_vec = reinterpret_cast<T_vec*>(&priv[0]);
+  T_vec* priv_vec = reinterpret_cast<T_vec*>(priv);
   T_vec* local_vec = reinterpret_cast<T_vec*>(&local[local_offset]);
-
-  /*detail::unrolled_loop<0, num_vec_per_wi, 1>([&](int i) __attribute__((always_inline))  {
-    local_vec[i * workers_in_group + local_id] = priv_vec[i];
-  });*/
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * 2 + i * workers_in_group);
-    if (local_idx % 2 == 0) {
+    if (local_idx % 2 == 0) { // if the local address is aligned, we can use vector store
       local_vec[local_idx / 2] = priv_vec[i / 2];
     } else {
       local[local_idx] = priv[i];
-      local[local_idx + 1] = priv[i + 1];  // TODO do we need another padding calculation?
+      local[local_idx + 1] = priv[i + 1];
     }
   });
 }
