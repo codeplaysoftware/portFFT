@@ -30,7 +30,7 @@
   {                                                                      \
     auto status = expr;                                                  \
     if (status != ROCRAND_STATUS_SUCCESS) {                              \
-      std::cerr << "failed with status: " << status << '\n';             \
+      std::cerr << "failed with status: " << status << std::endl;        \
       throw std::runtime_error("rocRAND expression (" #expr ") failed"); \
     }                                                                    \
   }
@@ -39,7 +39,7 @@
   {                                                                     \
     auto status = expr;                                                 \
     if (status != rocfft_status_success) {                              \
-      std::cerr << "failed with status: " << status << '\n';            \
+      std::cerr << "failed with status: " << status << std::endl;       \
       throw std::runtime_error("rocFFT expression (" #expr ") failed"); \
     }                                                                   \
   }
@@ -48,6 +48,7 @@
   {                                                                \
     auto status = expr;                                            \
     if (status != rocfft_status_success) {                         \
+      std::cerr << "failed with status: " << status << std::endl;  \
       state.SkipWithError("rocFFT expression (" #expr ") failed"); \
     }                                                              \
   }
@@ -56,16 +57,18 @@
   {                                                                  \
     auto status = expr;                                              \
     if (status != hipSuccess) {                                      \
+      std::cerr << "failed with status: " << status << std::endl;    \
       throw std::runtime_error("HIP expression (" #expr ") failed"); \
     }                                                                \
   }
 
-#define HIP_CHECK_NO_THROW(expr)                                \
-  {                                                             \
-    auto status = expr;                                         \
-    if (status != hipSuccess) {                                 \
-      state.SkipWithError("HIP expression (" #expr ") failed"); \
-    }                                                           \
+#define HIP_CHECK_NO_THROW(expr)                                  \
+  {                                                               \
+    auto status = expr;                                           \
+    if (status != hipSuccess) {                                   \
+      std::cerr << "failed with status: " << status << std::endl; \
+      state.SkipWithError("HIP expression (" #expr ") failed");   \
+    }                                                             \
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK

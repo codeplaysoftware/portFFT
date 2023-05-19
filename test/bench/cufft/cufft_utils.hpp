@@ -31,7 +31,7 @@
   {                                                                     \
     auto status = expr;                                                 \
     if (status != CURAND_STATUS_SUCCESS) {                              \
-      std::cerr << "failed with status: " << status << '\n';            \
+      std::cerr << "failed with status: " << status << std::endl;       \
       throw std::runtime_error("cuRAND expression (" #expr ") failed"); \
     }                                                                   \
   }
@@ -40,7 +40,7 @@
   {                                                                    \
     auto status = expr;                                                \
     if (status != CUFFT_SUCCESS) {                                     \
-      std::cerr << "failed with status: " << status << '\n';           \
+      std::cerr << "failed with status: " << status << std::endl;       \
       throw std::runtime_error("cuFFT expression (" #expr ") failed"); \
     }                                                                  \
   }
@@ -49,6 +49,7 @@
   {                                                               \
     auto status = expr;                                           \
     if (status != CUFFT_SUCCESS) {                                \
+      std::cerr << "failed with status: " << status << std::endl;       \
       state.SkipWithError("cuFFT expression (" #expr ") failed"); \
     }                                                             \
   }
@@ -57,16 +58,18 @@
   {                                                                   \
     auto status = expr;                                               \
     if (status != cudaSuccess) {                                      \
+      std::cerr << "failed with status: " << status << std::endl;       \
       throw std::runtime_error("CUDA expression (" #expr ") failed"); \
     }                                                                 \
   }
 
-#define CUDA_CHECK_NO_THROW(expr)                                \
-  {                                                              \
-    auto status = expr;                                          \
-    if (status != cudaSuccess) {                                 \
-      state.SkipWithError("CUDA expression (" #expr ") failed"); \
-    }                                                            \
+#define CUDA_CHECK_NO_THROW(expr)                                 \
+  {                                                               \
+    auto status = expr;                                           \
+    if (status != cudaSuccess) {                                  \
+      std::cerr << "failed with status: " << status << std::endl; \
+      state.SkipWithError("CUDA expression (" #expr ") failed");  \
+    }                                                             \
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
