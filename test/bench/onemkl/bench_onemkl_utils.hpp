@@ -151,72 +151,76 @@ struct onemkl_state {
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
 void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms,
                                  std::size_t runs) {
-  try {
-    sycl::queue q{};
-    auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
-    onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
+  sycl::queue q{};
+  auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
+  onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
 
-    using forward_t = typename decltype(fft_state)::forward_t;
-    using backward_t = typename decltype(fft_state)::backward_t;
+  using forward_t = typename decltype(fft_state)::forward_t;
+  using backward_t = typename decltype(fft_state)::backward_t;
 
-    double ops = cooley_tukey_ops_estimate(fft_state.fwd_per_transform, fft_state.number_of_transforms);
-    std::size_t bytes_transfered = global_mem_transactions<forward_t, backward_t>(
-        fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_transform);
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-    std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
-    q.copy<forward_t>(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
-#endif  // SYCLFFT_VERIFY_BENCHMARK
-
-    std::vector<sycl::event> dependencies;
-    dependencies.reserve(1);
-
-    fft_state.desc.commit(q);
-    q.wait_and_throw();
-    // warmup
-    fft_state.compute().wait_and_throw();
+  double ops = cooley_tukey_ops_estimate(fft_state.fwd_per_transform, fft_state.number_of_transforms);
+  std::size_t bytes_transfered = global_mem_transactions<forward_t, backward_t>(
+      fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-    std::vector<backward_t> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
-    q.copy<backward_t>(fft_state.out_dev, host_output.data(), host_output.size()).wait_and_throw();
-    verify_dft<forward_t, backward_t>(host_input.data(), host_output.data(), lengths, number_of_transforms, 1.0);
+  std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
+  q.copy<forward_t>(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
-    for (auto _ : state) {
-      // we need to manually measure time, so as to have it available here for the
-      // calculation of flops
+  std::vector<sycl::event> dependencies;
+  dependencies.reserve(1);
 
-      dependencies.clear();
-      using clock = std::chrono::high_resolution_clock;
-      auto start = clock::now();
-      dependencies.emplace_back(fft_state.compute());
-      for (std::size_t r = 1; r != runs; r += 1) {
-        dependencies[0] = fft_state.compute(dependencies);
-      }
-      dependencies[0].wait();
-      auto end = clock::now();
-      double elapsed_seconds =
-          std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
-      state.counters["flops"] = ops / elapsed_seconds;
-      state.counters["throughput"] = bytes_transfered / elapsed_seconds;
-      state.SetIterationTime(elapsed_seconds);
+  fft_state.desc.commit(q);
+  q.wait_and_throw();
+  // warmup
+  fft_state.compute().wait_and_throw();
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+  std::vector<backward_t> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
+  q.copy<backward_t>(fft_state.out_dev, host_output.data(), host_output.size()).wait_and_throw();
+  verify_dft<forward_t, backward_t>(host_input.data(), host_output.data(), lengths, number_of_transforms, 1.0);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
+
+  for (auto _ : state) {
+    // we need to manually measure time, so as to have it available here for the
+    // calculation of flops
+
+    dependencies.clear();
+    using clock = std::chrono::high_resolution_clock;
+    auto start = clock::now();
+    dependencies.emplace_back(fft_state.compute());
+    for (std::size_t r = 1; r != runs; r += 1) {
+      dependencies[0] = fft_state.compute(dependencies);
     }
-  } catch (std::exception& e) {
-    handle_exception(state, e);
+    dependencies[0].wait();
+    auto end = clock::now();
+    double elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
+    state.counters["flops"] = ops / elapsed_seconds;
+    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+    state.SetIterationTime(elapsed_seconds);
   }
 }
 
 // Helper functions for GBench
 template <typename... Args>
-void average_host_time_complex_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
-      std::forward<Args>(args)..., runs_to_average);
+void average_host_time_complex_float(benchmark::State& state, Args&&... args) {
+  try {
+    bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
+        state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename... Args>
-void average_host_time_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
-      std::forward<Args>(args)..., runs_to_average);
+void average_host_time_float(benchmark::State& state, Args&&... args) {
+  try {
+    bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
+        state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 #define BENCH_COMPLEX_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_complex_float, __VA_ARGS__)->UseManualTime();

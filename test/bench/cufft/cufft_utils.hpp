@@ -25,7 +25,7 @@
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
 #include <curand.h>
-#endif // SYCLFFT_VERIFY_BENCHMARK
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
 #define CURAND_CHECK(expr)                                              \
   {                                                                     \
