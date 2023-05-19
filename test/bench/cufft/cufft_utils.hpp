@@ -40,7 +40,7 @@
   {                                                                    \
     auto status = expr;                                                \
     if (status != CUFFT_SUCCESS) {                                     \
-      std::cerr << "failed with status: " << status << std::endl;       \
+      std::cerr << "failed with status: " << status << std::endl;      \
       throw std::runtime_error("cuFFT expression (" #expr ") failed"); \
     }                                                                  \
   }
@@ -49,7 +49,7 @@
   {                                                               \
     auto status = expr;                                           \
     if (status != CUFFT_SUCCESS) {                                \
-      std::cerr << "failed with status: " << status << std::endl;       \
+      std::cerr << "failed with status: " << status << std::endl; \
       state.SkipWithError("cuFFT expression (" #expr ") failed"); \
     }                                                             \
   }
@@ -58,7 +58,7 @@
   {                                                                   \
     auto status = expr;                                               \
     if (status != cudaSuccess) {                                      \
-      std::cerr << "failed with status: " << status << std::endl;       \
+      std::cerr << "failed with status: " << status << std::endl;     \
       throw std::runtime_error("CUDA expression (" #expr ") failed"); \
     }                                                                 \
   }
