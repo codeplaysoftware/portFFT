@@ -22,7 +22,9 @@
 #define SYCL_FFT_BENCH_ROCFFT_UTILS_HPP
 
 #include <hip/hip_runtime_api.h>
+#ifdef SYCLFFT_VERIFY_BENCHMARK
 #include <rocrand.h>
+#endif // SYCLFFT_VERIFY_BENCHMARK
 
 #define ROCRAND_CHECK(expr)                                              \
   {                                                                      \
@@ -66,6 +68,8 @@
     }                                                           \
   }
 
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
 /**
  * @brief populates device ptr with random values using the rocrand host api
  *
@@ -90,5 +94,6 @@ void roc_populate_with_random(T* dev_ptr, std::size_t N) {
   HIP_CHECK(hipStreamSynchronize(nullptr));
   ROCRAND_CHECK(rocrand_destroy_generator(generator));
 }
+#endif // SYCLFFT_VERIFY_BENCHMARK
 
 #endif  // SYCL_FFT_BENCH_ROCFFT_UTILS_HPP

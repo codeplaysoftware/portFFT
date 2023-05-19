@@ -22,7 +22,10 @@
 #define SYCL_FFT_BENCH_CUFFT_UTILS_HPP
 
 #include <cuda.h>
+
+#ifdef SYCLFFT_VERIFY_BENCHMARK
 #include <curand.h>
+#endif // SYCLFFT_VERIFY_BENCHMARK
 
 #define CURAND_CHECK(expr)                                              \
   {                                                                     \
@@ -66,6 +69,7 @@
     }                                                            \
   }
 
+#ifdef SYCLFFT_VERIFY_BENCHMARK
 /**
  * @brief populates device ptr with random values using the curand host api
  *
@@ -88,5 +92,6 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
   CUDA_CHECK(cudaDeviceSynchronize());
   CURAND_CHECK(curandDestroyGenerator(generator));
 }
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
 #endif  // SYCL_FFT_BENCH_CUFFT_UTILS_HPP
