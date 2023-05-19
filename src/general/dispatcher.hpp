@@ -141,8 +141,8 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t rounded_up_n_ffts =
       roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
-  // TODO local range
   global2local<false>(twiddles, loc_twiddles, N_reals_per_wi * factor_sg, workgroup_size, workgroup_local_id);
+  sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
