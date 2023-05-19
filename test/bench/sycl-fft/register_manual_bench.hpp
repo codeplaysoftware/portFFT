@@ -234,23 +234,25 @@ void register_benchmark(const std::string_view& desc_str) {
   }
 
   std::string_view ftype_str = typeid(ftype).name();
-  std::stringstream real_bench_name;
-  std::stringstream device_bench_name;
-  real_bench_name << "real_time," << ftype_str << ":" << desc_str;
-  device_bench_name << "device_time," << ftype_str << ":" << desc_str;
+  std::string host_bench_name;
+  std::string device_bench_name;
+  host_bench_name.append("average_host_time,").append(ftype_str).append(":").append(desc_str);
+  device_bench_name.append("device_time,").append(ftype_str).append(":").append(desc_str);
   if (domain == domain::COMPLEX) {
     descriptor<ftype, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::COMPLEX>, desc)
+    benchmark::RegisterBenchmark(host_bench_name.c_str(), bench_dft_average_host_time<ftype, domain::COMPLEX>, desc,
+                                 runs_to_average)
         ->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::COMPLEX>, desc)
+    benchmark::RegisterBenchmark(device_bench_name.c_str(), bench_dft_device_time<ftype, domain::COMPLEX>, desc)
         ->UseManualTime();
   } else if (domain == domain::REAL) {
     descriptor<ftype, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
-    benchmark::RegisterBenchmark(real_bench_name.str().c_str(), bench_dft_real_time<ftype, domain::REAL>, desc)
+    benchmark::RegisterBenchmark(host_bench_name.c_str(), bench_dft_average_host_time<ftype, domain::REAL>, desc,
+                                 runs_to_average)
         ->UseManualTime();
-    benchmark::RegisterBenchmark(device_bench_name.str().c_str(), bench_dft_device_time<ftype, domain::REAL>, desc)
+    benchmark::RegisterBenchmark(device_bench_name.c_str(), bench_dft_device_time<ftype, domain::REAL>, desc)
         ->UseManualTime();
   } else {
     throw bench_error{"Unexpected domain: ", static_cast<int>(domain)};

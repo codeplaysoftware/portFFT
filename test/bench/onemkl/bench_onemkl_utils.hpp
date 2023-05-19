@@ -133,7 +133,7 @@ struct onemkl_state {
   }
 
   // Backend specific methods
-  inline sycl::event compute();
+  inline sycl::event compute(const std::vector<sycl::event>& deps = {});
 
  private:
   // Backend specific methods
@@ -146,9 +146,11 @@ struct onemkl_state {
  * @param state Google benchmark state.
  * @param lengths The lengths defining and N-dimensional DFT.
  * @param number_of_transforms The DFT batch size.
+ * @param runs The number of runs to average for the result.
  */
 template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
+void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms,
+                                 std::size_t runs) {
   sycl::queue q{};
   auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
   onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
@@ -164,6 +166,9 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
   std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
   q.copy<forward_t>(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
+
+  std::vector<sycl::event> dependencies;
+  dependencies.reserve(1);
 
   try {
     fft_state.desc.commit(q);
@@ -185,73 +190,18 @@ void bench_dft_real_time(benchmark::State& state, std::vector<int> lengths, int 
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
+
+    dependencies.clear();
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    fft_state.compute().wait();
-    auto end = clock::now();
-    double elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
-    state.SetIterationTime(elapsed_seconds);
-  }
-}
-
-/*** Benchmark a DFT using device rather than host time.
- * @tparam prec The DFT precision.
- * @tparam domain The DFT domain.
- * @param state Google benchmark state.
- * @param lengths The lengths defining and N-dimensional DFT.
- * @param number_of_transforms The DFT batch size.
- */
-template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms) {
-  // Get key information out of the descriptor.
-  sycl::queue q({sycl::property::queue::enable_profiling()});
-  const auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
-  onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
-
-  using forward_t = typename decltype(fft_state)::forward_t;
-  using backward_t = typename decltype(fft_state)::backward_t;
-
-  const double ops = cooley_tukey_ops_estimate(fft_state.fwd_per_transform, fft_state.number_of_transforms);
-  const std::size_t bytes_transfered = global_mem_transactions<forward_t, backward_t>(
-      fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_transform);
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
-  q.copy(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
-#endif  // SYCLFFT_VERIFY_BENCHMARK
-
-  try {
-    fft_state.desc.commit(q);
-    q.wait_and_throw();
-    // warmup
-    fft_state.compute().wait_and_throw();
-  } catch (...) {
-    state.SkipWithError("Exception thrown: commit or warm-up failed.");
-    return;
-  }
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<backward_t> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
-  q.copy(fft_state.out_dev, host_output.data(), host_output.size()).wait_and_throw();
-  verify_dft(host_input.data(), host_output.data(), lengths, number_of_transforms, 1.0);
-#endif  // SYCLFFT_VERIFY_BENCHMARK
-
-  for (auto _ : state) {
-    int64_t start{0}, end{0};
-    try {
-      sycl::event e = fft_state.compute();
-      e.wait();
-      start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
-      end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-    } catch (sycl::exception& e) {
-      // e may not have profiling info, so this benchmark is useless
-      auto errorMessage = std::string("Exception thrown ") + e.what();
-      state.SkipWithError(errorMessage.c_str());
-      return;
+    dependencies.emplace_back(fft_state.compute());
+    for (std::size_t r = 1; r != runs; r += 1) {
+      dependencies[0] = fft_state.compute(dependencies);
     }
-    double elapsed_seconds = (end - start) / 1e9;
+    dependencies[0].wait();
+    auto end = clock::now();
+    double elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
     state.counters["throughput"] = bytes_transfered / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
@@ -260,35 +210,20 @@ void bench_dft_device_time(benchmark::State& state, std::vector<int> lengths, in
 
 // Helper functions for GBench
 template <typename... Args>
-void real_time_complex_float(Args&&... args) {
-  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
-      std::forward<Args>(args)...);
+void average_host_time_complex_float(Args&&... args) {
+  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
+      std::forward<Args>(args)..., runs_to_average);
 }
 
 template <typename... Args>
-void real_time_float(Args&&... args) {
-  bench_dft_real_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(std::forward<Args>(args)...);
+void average_host_time_float(Args&&... args) {
+  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
+      std::forward<Args>(args)..., runs_to_average);
 }
 
-template <typename... Args>
-void device_time_complex_float(Args&&... args) {
-  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
-      std::forward<Args>(args)...);
-}
+#define BENCH_COMPLEX_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-template <typename... Args>
-void device_time_float(Args&&... args) {
-  bench_dft_device_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
-      std::forward<Args>(args)...);
-}
-
-#define BENCH_COMPLEX_FLOAT(...)                                            \
-  BENCHMARK_CAPTURE(real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(device_time_complex_float, __VA_ARGS__)->UseManualTime();
-
-#define BENCH_SINGLE_FLOAT(...)                                     \
-  BENCHMARK_CAPTURE(real_time_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(device_time_float, __VA_ARGS__)->UseManualTime();
+#define BENCH_SINGLE_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
 

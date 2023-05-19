@@ -116,7 +116,7 @@ struct rocfft_state {
 };
 
 template <typename forward_type>
-void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch, std::size_t runs) {
   using backward_t = typename backward_type<forward_type>::type;
 
   std::vector<std::size_t> roc_lengths(lengths.size());
@@ -152,11 +152,14 @@ void rocfft_oop_real_time(benchmark::State& state, std::vector<int> lengths, int
   for (auto _ : state) {
     using clock = std::chrono::high_resolution_clock;
     auto start = clock::now();
-    std::ignore = rocfft_execute(plan, &in, &out, info);
+    for (std::size_t r = 0; r != runs; r += 1) {
+      std::ignore = rocfft_execute(plan, &in, &out, info);
+    }
     std::ignore = hipStreamSynchronize(nullptr);
     auto end = clock::now();
 
-    double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count();
+    double seconds =
+        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
     state.counters["throughput"] = bytes_transfered / seconds;
@@ -225,13 +228,13 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
 
 // Helper functions for GBench
 template <typename... Args>
-void rocfft_oop_real_time_complex_float(Args&&... args) {
-  rocfft_oop_real_time<std::complex<float>>(std::forward<Args>(args)...);
+void rocfft_oop_average_host_time_complex_float(Args&&... args) {
+  rocfft_oop_average_host_time<std::complex<float>>(std::forward<Args>(args)..., runs_to_average);
 }
 
 template <typename... Args>
-void rocfft_oop_real_time_float(Args&&... args) {
-  rocfft_oop_real_time<float>(std::forward<Args>(args)...);
+void rocfft_oop_average_host_time_float(Args&&... args) {
+  rocfft_oop_average_host_time<float>(std::forward<Args>(args)..., runs_to_average);
 }
 
 template <typename... Args>
@@ -244,12 +247,12 @@ void rocfft_oop_device_time_float(Args&&... args) {
   rocfft_oop_device_time<float>(std::forward<Args>(args)...);
 }
 
-#define BENCH_COMPLEX_FLOAT(...)                                                       \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_complex_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_COMPLEX_FLOAT(...)                                                               \
+  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
 
-#define BENCH_SINGLE_FLOAT(...)                                                \
-  BENCHMARK_CAPTURE(rocfft_oop_real_time_float, __VA_ARGS__)->UseManualTime(); \
+#define BENCH_SINGLE_FLOAT(...)                                                        \
+  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
   BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
 
 INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
