@@ -33,124 +33,132 @@
 
 template <typename ftype, sycl_fft::domain domain>
 void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc, std::size_t runs) {
-  using complex_type = std::complex<ftype>;
-  std::size_t N = desc.get_total_length();
-  std::size_t N_transforms = desc.number_of_transforms;
-  std::size_t num_elements = N * N_transforms;
-  double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
+  try {
+    using complex_type = std::complex<ftype>;
+    std::size_t N = desc.get_total_length();
+    std::size_t N_transforms = desc.number_of_transforms;
+    std::size_t num_elements = N * N_transforms;
+    double ops = cooley_tukey_ops_estimate(N, N_transforms);
+    std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  sycl::queue q;
-  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
-  complex_type* out_dev =
-      desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+    sycl::queue q;
+    complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+    complex_type* out_dev =
+        desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
-  auto committed = desc.commit(q);
-  q.wait();
-
-#ifdef SYCLFFT_VERIFY_BENCHMARK
-  memFill(in_dev, q, num_elements);
-  std::vector<complex_type> host_input(num_elements);
-  q.copy(in_dev, host_input.data(), num_elements).wait();
-#endif  // SYCLFFT_VERIFY_BENCHMARK
-
-  // warmup
-  auto event = desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                               : committed.compute_forward(in_dev, out_dev);
-  event.wait();
+    auto committed = desc.commit(q);
+    q.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
-             desc.forward_scale);
+    memFill(in_dev, q, num_elements);
+    std::vector<complex_type> host_input(num_elements);
+    q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
-  std::vector<sycl::event> dependencies;
-  dependencies.reserve(1);
 
-  for (auto _ : state) {
-    // we need to manually measure time, so as to have it available here for the
-    // calculation of flops
-    dependencies.clear();
+    // warmup
+    auto event = desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                                 : committed.compute_forward(in_dev, out_dev);
+    event.wait();
 
-    std::chrono::time_point<std::chrono::high_resolution_clock> start;
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    if (desc.placement == sycl_fft::placement::IN_PLACE) {
-      start = std::chrono::high_resolution_clock::now();
-      dependencies.emplace_back(committed.compute_forward(in_dev));
-      for (std::size_t r = 1; r != runs; r += 1) {
-        dependencies[0] = committed.compute_forward(in_dev, dependencies);
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+    std::vector<complex_type> host_output(num_elements);
+    q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
+    verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
+               desc.forward_scale);
+#endif  // SYCLFFT_VERIFY_BENCHMARK
+    std::vector<sycl::event> dependencies;
+    dependencies.reserve(1);
+
+    for (auto _ : state) {
+      // we need to manually measure time, so as to have it available here for the
+      // calculation of flops
+      dependencies.clear();
+
+      std::chrono::time_point<std::chrono::high_resolution_clock> start;
+      std::chrono::time_point<std::chrono::high_resolution_clock> end;
+      if (desc.placement == sycl_fft::placement::IN_PLACE) {
+        start = std::chrono::high_resolution_clock::now();
+        dependencies.emplace_back(committed.compute_forward(in_dev));
+        for (std::size_t r = 1; r != runs; r += 1) {
+          dependencies[0] = committed.compute_forward(in_dev, dependencies);
+        }
+        dependencies[0].wait();
+        end = std::chrono::high_resolution_clock::now();
+      } else {
+        start = std::chrono::high_resolution_clock::now();
+        dependencies.emplace_back(committed.compute_forward(in_dev, out_dev));
+        for (std::size_t r = 1; r != runs; r += 1) {
+          dependencies[0] = committed.compute_forward(in_dev, out_dev, dependencies);
+        }
+        dependencies[0].wait();
+        end = std::chrono::high_resolution_clock::now();
       }
-      dependencies[0].wait();
-      end = std::chrono::high_resolution_clock::now();
-    } else {
-      start = std::chrono::high_resolution_clock::now();
-      dependencies.emplace_back(committed.compute_forward(in_dev, out_dev));
-      for (std::size_t r = 1; r != runs; r += 1) {
-        dependencies[0] = committed.compute_forward(in_dev, out_dev, dependencies);
-      }
-      dependencies[0].wait();
-      end = std::chrono::high_resolution_clock::now();
+      double elapsed_seconds =
+          std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
+      state.counters["flops"] = ops / elapsed_seconds;
+      state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+      state.SetIterationTime(elapsed_seconds);
     }
-    double elapsed_seconds =
-        std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
-    state.SetIterationTime(elapsed_seconds);
+    sycl::free(in_dev, q);
+    sycl::free(out_dev, q);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
   }
-  sycl::free(in_dev, q);
-  sycl::free(out_dev, q);
 }
 
 template <typename ftype, sycl_fft::domain domain>
 void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
-  using complex_type = std::complex<ftype>;
-  std::size_t N = desc.get_total_length();
-  std::size_t N_transforms = desc.number_of_transforms;
-  std::size_t num_elements = N * N_transforms;
-  double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
+  try {
+    using complex_type = std::complex<ftype>;
+    std::size_t N = desc.get_total_length();
+    std::size_t N_transforms = desc.number_of_transforms;
+    std::size_t num_elements = N * N_transforms;
+    double ops = cooley_tukey_ops_estimate(N, N_transforms);
+    std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  sycl::queue q({sycl::property::queue::enable_profiling()});
-  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
-  complex_type* out_dev =
-      desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+    sycl::queue q({sycl::property::queue::enable_profiling()});
+    complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+    complex_type* out_dev =
+        desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
-  auto committed = desc.commit(q);
+    auto committed = desc.commit(q);
 
-  q.wait();
+    q.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  memFill(in_dev, q, num_elements);
-  std::vector<complex_type> host_input(num_elements);
-  q.copy(in_dev, host_input.data(), num_elements).wait();
+    memFill(in_dev, q, num_elements);
+    std::vector<complex_type> host_input(num_elements);
+    q.copy(in_dev, host_input.data(), num_elements).wait();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
-  auto compute = [&]() {
-    return desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                           : committed.compute_forward(in_dev, out_dev);
-  };
-  // warmup
-  compute().wait();
+    auto compute = [&]() {
+      return desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                             : committed.compute_forward(in_dev, out_dev);
+    };
+    // warmup
+    compute().wait();
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
-             desc.forward_scale);
+    std::vector<complex_type> host_output(num_elements);
+    q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
+    verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
+               desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
-  for (auto _ : state) {
-    sycl::event e = compute();
-    e.wait();
-    int64_t start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
-    int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-    double elapsed_seconds = (end - start) / 1e9;
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
-    state.SetIterationTime(elapsed_seconds);
+    for (auto _ : state) {
+      sycl::event e = compute();
+      e.wait();
+      int64_t start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
+      int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
+      double elapsed_seconds = (end - start) / 1e9;
+      state.counters["flops"] = ops / elapsed_seconds;
+      state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+      state.SetIterationTime(elapsed_seconds);
+    }
+    sycl::free(in_dev, q);
+    sycl::free(out_dev, q);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
   }
-  sycl::free(in_dev, q);
-  sycl::free(out_dev, q);
 }
 
 template <typename ftype, sycl_fft::domain domain>

@@ -53,6 +53,12 @@ inline integer get_bwd_per_transform(std::vector<integer> lengths) {
   }
 }
 
+inline void handle_exception(benchmark::State& state, std::exception& e) {
+  std::string msg{"Exception thrown: "};
+  msg += e.what();
+  state.SkipWithError(msg.c_str());
+}
+
 /*
  * @brief Compute the reference DFT and compare it with the provided output
  *
