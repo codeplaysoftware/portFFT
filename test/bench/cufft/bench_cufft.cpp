@@ -89,17 +89,17 @@ void cufft_verify(const custate& cu_state, const std::vector<int>& lengths, cons
 
 template <typename T>
 struct cuda_freer {
-  benchmark::State& test_state;
+  benchmark::State& state;
 
-  cuda_freer(benchmark::State& s) : test_state(s) {}
+  cuda_freer(benchmark::State& s) : state(s) {}
   void operator()(T* cu_ptr) { CUDA_CHECK_NO_THROW(cudaFree(cu_ptr)); }
 };
 
 struct cufftHandle_holder {
-  benchmark::State& test_state;
+  benchmark::State& state;
   std::optional<cufftHandle> handle;
 
-  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h) : test_state(s), handle(h) {}
+  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h) : state(s), handle(h) {}
   ~cufftHandle_holder() {
     if (handle) {
       CUFFT_CHECK_NO_THROW(cufftDestroy(handle.value()));
@@ -171,7 +171,7 @@ inline cufftResult cufft_exec(cufftHandle plan, typename fwd_type_info::device_f
 
 template <typename forward_type>
 static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch,
-                                        std::size_t runs) noexcept {
+                                        std::size_t runs) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
@@ -214,7 +214,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
 }
 
 template <typename forward_type>
-static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
