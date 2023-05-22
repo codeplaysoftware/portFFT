@@ -126,7 +126,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t subgroup_id = sg.get_group_id();
-  std::size_t n_sgs_in_wg = workgroup_size / subgroup_size;
+  constexpr std::size_t n_sgs_in_wg = SYCLFFT_SGS_IN_WG;
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
