@@ -34,13 +34,13 @@
     }                                                                                                         \
   }
 
-#define ROCFFT_CHECK_NO_THROW(expr)                                                                      \
-  {                                                                                                      \
-    auto status = expr;                                                                                  \
-    if (status != rocfft_status_success) {                                                               \
-      std::string msg = "rocFFT expression (" #expr ") failed with status " + std::to_string(status); \ 
-      state.SkipWithError(msg.c_str()); \
-    }                                                                                                    \
+#define ROCFFT_CHECK_NO_THROW(expr)                                                                   \
+  {                                                                                                   \
+    auto status = expr;                                                                               \
+    if (status != rocfft_status_success) {                                                            \
+      std::string msg = "rocFFT expression (" #expr ") failed with status " + std::to_string(status); \
+      state.SkipWithError(msg.c_str());                                                               \
+    }                                                                                                 \
   }
 
 #define HIP_CHECK(expr)                                                                                    \
@@ -55,7 +55,7 @@
   {                                                                                                \
     auto status = expr;                                                                            \
     if (status != hipSuccess) {                                                                    \
-      std::string msg = "HIP expression (" #expr ") failed with status " + std::to_string(status); \ 
+      std::string msg = "HIP expression (" #expr ") failed with status " + std::to_string(status); \
       state.SkipWithError(msg.c_str());                                                            \
     }                                                                                              \
   }
