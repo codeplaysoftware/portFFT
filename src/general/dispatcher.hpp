@@ -440,8 +440,8 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std:
     // This is a temporary solution until we have tunning
     maximum_n_sgs /= 4;
   }
-  return subgroup_size * detail::roundUpToMultiple<std::size_t>(
-                             std::min(maximum_n_sgs, n_sgs_we_can_utilize), SYCLFFT_SGS_IN_WG);
+  return subgroup_size *
+         detail::roundUpToMultiple<std::size_t>(std::min(maximum_n_sgs, n_sgs_we_can_utilize), SYCLFFT_SGS_IN_WG);
 }
 }  // namespace detail
 }  // namespace sycl_fft
