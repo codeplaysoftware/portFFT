@@ -27,52 +27,47 @@
 #include <curand.h>
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
-#define CURAND_CHECK(expr)                                              \
-  {                                                                     \
-    auto status = expr;                                                 \
-    if (status != CURAND_STATUS_SUCCESS) {                              \
-      std::cerr << "failed with status: " << status << std::endl;       \
-      throw std::runtime_error("cuRAND expression (" #expr ") failed"); \
-    }                                                                   \
+#define CUFFT_CHECK(expr)                                                                                    \
+  {                                                                                                          \
+    auto status = expr;                                                                                      \
+    if (status != CUFFT_SUCCESS) {                                                                           \
+      throw std::runtime_error("cuFFT expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                        \
   }
 
-#define CUFFT_CHECK(expr)                                              \
-  {                                                                    \
-    auto status = expr;                                                \
-    if (status != CUFFT_SUCCESS) {                                     \
-      std::cerr << "failed with status: " << status << std::endl;      \
-      throw std::runtime_error("cuFFT expression (" #expr ") failed"); \
-    }                                                                  \
+#define CUFFT_CHECK_NO_THROW(expr)                                                                      \
+  {                                                                                                     \
+    auto status = expr;                                                                                 \
+    if (status != CUFFT_SUCCESS) {                                                                      \
+      state.SkipWithError("cuFFT expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                   \
   }
 
-#define CUFFT_CHECK_NO_THROW(expr)                                \
-  {                                                               \
-    auto status = expr;                                           \
-    if (status != CUFFT_SUCCESS) {                                \
-      std::cerr << "failed with status: " << status << std::endl; \
-      state.SkipWithError("cuFFT expression (" #expr ") failed"); \
-    }                                                             \
+#define CUDA_CHECK(expr)                                                                                    \
+  {                                                                                                         \
+    auto status = expr;                                                                                     \
+    if (status != cudaSuccess) {                                                                            \
+      throw std::runtime_error("CUDA expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                       \
   }
 
-#define CUDA_CHECK(expr)                                              \
-  {                                                                   \
-    auto status = expr;                                               \
-    if (status != cudaSuccess) {                                      \
-      std::cerr << "failed with status: " << status << std::endl;     \
-      throw std::runtime_error("CUDA expression (" #expr ") failed"); \
-    }                                                                 \
-  }
-
-#define CUDA_CHECK_NO_THROW(expr)                                 \
-  {                                                               \
-    auto status = expr;                                           \
-    if (status != cudaSuccess) {                                  \
-      std::cerr << "failed with status: " << status << std::endl; \
-      state.SkipWithError("CUDA expression (" #expr ") failed");  \
-    }                                                             \
+#define CUDA_CHECK_NO_THROW(expr)                                                                      \
+  {                                                                                                    \
+    auto status = expr;                                                                                \
+    if (status != cudaSuccess) {                                                                       \
+      state.SkipWithError("CUDA expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                  \
   }
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
+#define CURAND_CHECK(expr)                                                                                   \
+  {                                                                                                          \
+    auto status = expr;                                                                                      \
+    if (status != CURAND_STATUS_SUCCESS) {                                                                   \
+      throw std::runtime_error("cuRAND expression (" #expr ") failed with status" + std::to_string(status)); \
+    }                                                                                                        \
+  }
+
 /**
  * @brief populates device ptr with random values using the curand host api
  *
@@ -95,6 +90,8 @@ void populate_with_random(T* dev_ptr, std::size_t N) {
   CUDA_CHECK(cudaDeviceSynchronize());
   CURAND_CHECK(curandDestroyGenerator(generator));
 }
+
+#undef CURAND_CHECK
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
 #endif  // SYCL_FFT_BENCH_CUFFT_UTILS_HPP

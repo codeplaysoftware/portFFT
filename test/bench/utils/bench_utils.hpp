@@ -53,6 +53,9 @@ inline integer get_bwd_per_transform(std::vector<integer> lengths) {
   }
 }
 
+// Handle an exception by passing the message onto `SkipWithError`.
+// It is expected that this will be placed so the benchmark ends after this is called,
+// allowing the test to exit gracefully with an error message before moving onto the next test.
 inline void handle_exception(benchmark::State& state, std::exception& e) {
   std::string msg{"Exception thrown: "};
   msg += e.what();

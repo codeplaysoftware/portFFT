@@ -125,9 +125,6 @@ struct cufft_state {
         out(nullptr, cuda_freer<typename type_info::device_backward_type>{state}),
         fwd_per_transform(get_fwd_per_transform(lengths)),
         bwd_per_transform(get_bwd_per_transform<forward_type>(lengths)) {
-    if (lengths.empty()) {
-      test_state.SkipWithError("invalid configuration");
-    }
     // nullptr inembed and onembed is equivalent to giving the lengths for both
     int *inembed = nullptr, *onembed = nullptr;
     int istride = 1;
