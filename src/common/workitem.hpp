@@ -57,7 +57,7 @@ strides.
  * @param out pointer to output
  */
 template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
   T tmp[2 * N];
@@ -100,7 +100,7 @@ inline __attribute__((always_inline)) void naive_dft(T_ptr in, T_ptr out) {
  * @param out pointer to output
  */
 template <direction dir, int N, int M, int stride_in, int stride_out, typename T_ptr>
-inline __attribute__((always_inline)) void cooley_tukey_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   T tmp_buffer[2 * N * M];
 
@@ -204,7 +204,7 @@ struct fits_in_wi_device_struct {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar>
-bool fits_in_wi_device(int fft_size) {
+__attribute__((always_inline)) inline bool fits_in_wi_device(int fft_size) {
   // 56 is the maximal size we support in workitem implementation and also
   // the size of the array above that is used if this if is not taken
   if (fft_size > 56) {
@@ -227,7 +227,7 @@ bool fits_in_wi_device(int fft_size) {
  * @param out pointer to output
  */
 template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-inline __attribute__((always_inline)) void wi_dft(T_ptr in, T_ptr out) {
+__attribute__((always_inline)) inline void wi_dft(T_ptr in, T_ptr out) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (N == 2) {
     using T = detail::remove_ptr<T_ptr>;

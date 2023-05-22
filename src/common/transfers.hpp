@@ -48,7 +48,7 @@ namespace detail {
  * @return transformed local_idx
  */
 template <bool Pad = true>
-inline std::size_t pad_local(std::size_t local_idx) {
+__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx) {
   if constexpr (Pad) {
     local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
   }
@@ -77,13 +77,15 @@ inline std::size_t pad_local(std::size_t local_idx) {
  * @param local_offset offset to the local pointer
  */
 template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
-inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems, std::size_t local_size,
-                         std::size_t local_id, std::size_t global_offset = 0, std::size_t local_offset = 0) {
+__attribute__((always_inline)) inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems,
+                                                        std::size_t local_size, std::size_t local_id,
+                                                        std::size_t global_offset = 0, std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
+  std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
@@ -96,20 +98,18 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
-  std::size_t aligned_elements = total_num_elems - unaligned_elements;
-  std::size_t rounded_down_num_elems = (aligned_elements / stride) * stride;
 
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    for (int j = 0; j < chunk_size; j++) {
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       local[local_idx] = loaded[j];
-    }
+    });
   }
   // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
-  int last_chunk_size = (aligned_elements - rounded_down_num_elems) / local_size;
+  int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
         detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
@@ -117,7 +117,7 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
   }
   // Less than group size elements remain. Each workitem loads at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
-  if (my_last_idx < aligned_elements) {
+  if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     local[local_idx] = global[global_offset + my_last_idx];
   }
@@ -143,13 +143,15 @@ inline void global2local(T_glob_ptr global, T_loc_ptr local, std::size_t total_n
  * @param global_offset offset to the global pointer
  */
 template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
-inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_num_elems, std::size_t local_size,
-                         std::size_t local_id, std::size_t local_offset = 0, std::size_t global_offset = 0) {
+__attribute__((always_inline)) inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_num_elems,
+                                                        std::size_t local_size, std::size_t local_id,
+                                                        std::size_t local_offset = 0, std::size_t global_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
+  std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
@@ -162,21 +164,19 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
-  std::size_t aligned_elements = total_num_elems - unaligned_elements;
-  std::size_t rounded_down_num_elems = (aligned_elements / stride) * stride;
 
   // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
   for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
     T_vec* global_vec = reinterpret_cast<T_vec*>(&global[global_offset + i]);
     T_vec to_store;
-    for (int j = 0; j < chunk_size; j++) {
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       to_store[j] = local[local_idx];
-    }
+    });
     to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
   }
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
-  int last_chunk_size = (aligned_elements - rounded_down_num_elems) / local_size;
+  int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
         detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
@@ -184,7 +184,7 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
   }
   // Less than group size elements remain. Each workitem stores at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
-  if (my_last_idx < aligned_elements) {
+  if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     global[global_offset + my_last_idx] = local[local_idx];
   }
@@ -208,12 +208,12 @@ inline void local2global(T_loc_ptr local, T_glob_ptr global, std::size_t total_n
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
-inline void local2private(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id, std::size_t stride,
-                          std::size_t local_offset = 0) {
-  for (std::size_t i = 0; i < num_elems_per_wi; i++) {
+__attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id,
+                                                         std::size_t stride, std::size_t local_offset = 0) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     priv[i] = local[local_idx];
-  }
+  });
 }
 
 /**
@@ -233,11 +233,12 @@ inline void local2private(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
-inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id, std::size_t workers_in_sg,
-                                     std::size_t local_offset = 0) {
-  for (std::size_t i = 0; i < num_elems_per_wi; i++) {
+__attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
+                                                                    std::size_t local_id, std::size_t workers_in_sg,
+                                                                    std::size_t local_offset = 0) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
     priv[i] = local[local_offset + local_id + i * workers_in_sg];
-  }
+  });
 }
 
 /**
@@ -258,12 +259,12 @@ inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv, std::size
  * @param local_offset offset to the local pointer
  */
 template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
-inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id, std::size_t stride,
-                          std::size_t local_offset = 0) {
-  for (std::size_t i = 0; i < num_elems_per_wi; i++) {
+__attribute__((always_inline)) inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id,
+                                                         std::size_t stride, std::size_t local_offset = 0) {
+  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     local[local_idx] = priv[i];
-  }
+  });
 }
 
 /**
@@ -282,13 +283,26 @@ inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id
  * less than the group size)
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, typename T_priv_ptr, typename T_loc_ptr>
-inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id,
-                                     std::size_t workers_in_group, std::size_t local_offset = 0) {
-  for (std::size_t i = 0; i < num_elems_per_wi; i += 2) {
-    local[local_offset + local_id * 2 + i * workers_in_group] = priv[i];
-    local[local_offset + local_id * 2 + i * workers_in_group + 1] = priv[i + 1];
-  }
+template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
+__attribute__((always_inline)) inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local,
+                                                                    std::size_t local_id, std::size_t workers_in_group,
+                                                                    std::size_t local_offset = 0) {
+  using T = detail::remove_ptr<T_loc_ptr>;
+  constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
+  using T_vec = sycl::vec<T, vec_size>;
+  constexpr std::size_t num_vec_per_wi = num_elems_per_wi / vec_size;
+  T_vec* priv_vec = reinterpret_cast<T_vec*>(priv);
+  T_vec* local_vec = reinterpret_cast<T_vec*>(&local[local_offset]);
+
+  detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
+    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * 2 + i * workers_in_group);
+    if (local_idx % 2 == 0) { // if the local address is aligned, we can use vector store
+      local_vec[local_idx / 2] = priv_vec[i / 2];
+    } else {
+      local[local_idx] = priv[i];
+      local[local_idx + 1] = priv[i + 1];
+    }
+  });
 }
 };  // namespace sycl_fft
 

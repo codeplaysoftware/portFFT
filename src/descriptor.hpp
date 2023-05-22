@@ -69,10 +69,11 @@ group or the number of workgroups in a kernel. These numbers can be tuned for ea
 test one subgroup per workgroup, so more may or may not actually work correctly.
 
 Both dispatcher functions are there to make the size of the FFT that is handled by the individual workitems compile time
-constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl` or
-`subgroup_impl` respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only the
-calls that are determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI macro)
-are actually instantiated.
+constant. `subgroup_dispatcher` also calls `cross_sg_dispatcher` that makes the cross-subgroup factor of FFT size
+compile time constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl`
+or `subgroup_impl` respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only
+the calls that are determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI
+macro) are actually instantiated.
 
 The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in
 local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
@@ -329,11 +330,13 @@ class committed_descriptor {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, kh.get_specialization_constant<fft_size_spec_const>(),
-                                    n_transforms, it, twiddles_local, scale_factor);
+            detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
+                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                    twiddles_local, scale_factor);
           });
     });
   }
@@ -381,11 +384,12 @@ class committed_descriptor {
       auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc,
+            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
                                     kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
                                     twiddles_local, scale_factor);
           });

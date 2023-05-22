@@ -46,8 +46,6 @@ functions.
 On input, each of the `N` workitems hold `M` consecutive complex input values. On output, each of the workitems holds
 complex values that are strided with stride `N` and consecutive workitems have consecutive values.
 
-`cross_sg_dispatcher` selects the appropriate size for calling `cross_sg_dft` - making that size compile time constant.
-
 `cross_sg_dft` calculates DFT across workitems, with each workitem contributing one complex value as input and output of
 the computation. If the size of the subgroup is large enough compared to FFT size, a subgroup can calculate multiple
 DFTs at once (the same holds true for `cross_sg_cooley_tukey_dft` and `cross_sg_naive_dft`). It calls either
@@ -79,32 +77,49 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
-  int local_id = sg.get_local_linear_id();
-  int idx_out = (local_id / stride) % N;
-  int fft_start = local_id - idx_out * stride;
+__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
+  if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
+    int local_id = sg.get_local_linear_id();
+    int idx_out = (local_id / stride) % 2;
+    int fft_start = local_id - idx_out * stride;
 
-  T res_real = 0;
-  T res_imag = 0;
+    T multi_re = (idx_out & 1) ? -1.0 : 1.0;
+    T res_real = real * multi_re;
+    T res_imag = imag * multi_re;
 
-  unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
-    const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
-    const T multi_im = [&]() {
-      if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
-      return -twiddle<T>::im[N][idx_in * idx_out % N];
-    }();
-    int source_wi_id = fft_start + idx_in * stride;
+    res_real += sycl::permute_group_by_xor(sg, real, stride);
+    res_imag += sycl::permute_group_by_xor(sg, imag, stride);
 
-    T cur_real = sycl::select_from_group(sg, real, source_wi_id);
-    T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+    real = res_real;
+    imag = res_imag;
+  } else {
+    int local_id = sg.get_local_linear_id();
+    int idx_out = (local_id / stride) % N;
+    int fft_start = local_id - idx_out * stride;
 
-    // multiply cur and multi
-    res_real += cur_real * multi_re - cur_imag * multi_im;
-    res_imag += cur_real * multi_im + cur_imag * multi_re;
-  });
+    T res_real = 0;
+    T res_imag = 0;
 
-  real = res_real;
-  imag = res_imag;
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+      const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
+      const T multi_im = [&]() __attribute__((always_inline)) {
+        if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
+        return -twiddle<T>::im[N][idx_in * idx_out % N];
+      }
+      ();
+      int source_wi_id = fft_start + idx_in * stride;
+
+      T cur_real = sycl::select_from_group(sg, real, source_wi_id);
+      T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+
+      // multiply cur and multi
+      res_real += cur_real * multi_re - cur_imag * multi_im;
+      res_imag += cur_real * multi_im + cur_imag * multi_re;
+    });
+
+    real = res_real;
+    imag = res_imag;
+  }
 }
 
 /**
@@ -122,7 +137,7 @@ void __attribute__((always_inline)) cross_sg_naive_dft(T& real, T& imag, sycl::s
  * @param sg subgroup
  */
 template <int N, int M, int stride, typename T>
-void __attribute__((always_inline)) cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -150,7 +165,7 @@ void __attribute__((always_inline)) cross_sg_transpose(T& real, T& imag, sycl::s
  * @param sg subgroup
  */
 template <direction dir, int N, int M, int stride, typename T>
-void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = sg.get_local_linear_id();
   int index_in_outer_dft = (local_id / stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -162,10 +177,11 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
   cross_sg_transpose<N, M, stride>(real, imag, sg);
   // twiddle
   const T multi_re = twiddle<T>::re[N * M][k * n];
-  const T multi_im = [&]() {
+  const T multi_im = [&]() __attribute__((always_inline)) {
     if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
     return -twiddle<T>::im[N * M][k * n];
-  }();
+  }
+  ();
   T tmp_real = real * multi_re - imag * multi_im;
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;
@@ -189,7 +205,7 @@ void __attribute__((always_inline)) cross_sg_cooley_tukey_dft(T& real, T& imag, 
  * @param sg subgroup
  */
 template <direction dir, int N, int stride, typename T>
-inline void __attribute__((always_inline)) cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);
@@ -215,96 +231,6 @@ int factorize_sg(int N, int sg_size) {
   return 1;
 }
 
-/**
- * Selects the appropriate template instantiation of the cross-subgroup
- * implementation for particular DFT size.
- *
- * @tparam dir direction of the FFT
- * @tparam T type of the scalar to work on
- * @param fft_size size of the DFT problem
- * @param[in,out] real real component of the input/output complex value for one
- * workitem
- * @param[in,out] imag imaginary component of the input/output complex value for
- * one workitem
- * @param sg subgroup
- */
-template <direction dir, typename T>
-void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
-  switch (fft_size) {
-    // TODO instantiating only the sizes up to subgroup size speeds up the
-    // compilation
-#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(N) \
-  case N:                                    \
-    cross_sg_dft<dir, N, 1>(real, imag, sg); \
-    break;
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(1)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(3)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(5)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(6)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(7)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(9)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(10)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(11)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(12)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(13)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(14)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(15)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(16)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(17)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(18)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(19)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(20)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(21)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(22)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(23)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(24)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(25)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(26)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(27)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(28)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(29)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(30)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(31)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(32)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(33)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(34)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(35)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(36)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(37)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(38)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(39)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(40)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(41)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(42)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(43)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(44)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(45)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(46)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(47)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(48)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(49)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(50)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(51)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(52)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(53)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(54)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(55)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(56)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(57)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(58)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(59)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(60)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(61)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(62)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(63)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)
-#undef SYCL_FFT_CROSS_SG_DISPATCHER_IMPL
-  }
-}
-
 };  // namespace detail
 
 /**
@@ -313,15 +239,16 @@ void cross_sg_dispatcher(int fft_size, T& real, T& imag, sycl::sub_group& sg) {
  *
  * @tparam dir direction of the FFT
  * @tparam M number of elements per workitem
+ * @tparam N number of workitems in a subgroup that work on one FFT
  * @tparam T_prt type of the pointer to the data
- * @param N number of workitems in a subgroup that work on one FFT
+ * @tparam T_twiddles_ptr type of the accessor or pointer with twiddle factors
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  */
-template <direction dir, int M, typename T_ptr, typename T_twiddles_ptr>
-void sg_dft(int N, T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
+template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
+__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
   using T = detail::remove_ptr<T_ptr>;
   int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
@@ -329,8 +256,7 @@ void sg_dft(int N, T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles)
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    // TODO the function call should happen outside of the loop
-    detail::cross_sg_dispatcher<dir>(N, real, imag, sg);
+    detail::cross_sg_dft<dir, N, 1>(real, imag, sg);
 
     T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
     T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];

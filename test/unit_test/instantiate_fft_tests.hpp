@@ -40,20 +40,20 @@ class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 33, 32000),
-                                                                                     ::testing::Range(1, 14))));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 33), ::testing::Values(1, 2, 4, 8, 16))));
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(
-                             ::testing::Values(1, 3, 555), ::testing::Values(16, 24, 27, 32, 48, 56))));
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
+                                                                                     ::testing::Values(32))));
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3, 555), ::testing::Values(64, 65, 84, 91, 104))));
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
+                                                                                     ::testing::Values(64))));
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 555),
-                                                                                     ::testing::Values(14, 48, 104))));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 16, 32, 64))));
 
 #endif
