@@ -26,7 +26,6 @@
 if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS})
     add_benchmark(bench_closed_onemkl bench_closed_onemkl.cpp)
     add_sycl_to_target(TARGET bench_closed_onemkl)
-    set(DPCPP_COMPILER 1)
     find_package(MKL CONFIG REQUIRED)
     target_compile_options(bench_closed_onemkl PRIVATE ${MKL_COPT})
     target_link_libraries(bench_closed_onemkl PRIVATE MKL::MKL ${MKL_LINK_SYCL})
