@@ -174,31 +174,143 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
 }
 
 /**
- * Selects appropriate template instantiation of workitem implementations for
- * given size of DFT.
+ * @brief Entire workgroup calculates an entire FFT problem.
+ * Each workgroup handles batch_size / num_workgroups (ceil it)
+ * Load the First batch using global2local.
+ * After that overlap compute and memcpy by issuing a async DMA. Utilize entire local memory.
+ * Async DMA does not bypasses the L1->register step, thus we can use vector load/stores
+ * Extra Scratch space comes from local memory addresses of the FFT being computed
+ * Begin the 4 step algorithm. Given FFT_SIZE = N * M
+ *     Calculate M sized N DFTs
+ *     Twiddle multiplication (fuse this with step 1 before writing back to local)
+ *     Calculate N sized M DFTs
+ *     Transpose and write back to global
+ * Given the maximum  available shared memory encountered will be 228KB -> Length of 29184
+ * That still factorizes to 152, 192. Thus one subgroup can handle multiple batches
+ * Both N (M) FFTs will execute in parallel as subgroups execute concurrently (optimize launch params and requested
+ * subgroup size for this) Each subgroup to handle more than one sub_fft at once (preferably as many as possible) Work
+ * on consecutive batches.
  *
- * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
- * @tparam T_in type of the accessor or pointer to global memory containing
- * input data
- * @tparam T_out type of the accessor or pointer to global memory for output
- * data
- * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data
- * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*N*subgroup_size
- * values
- * @param fft_size size of each transform
- * @param n_transforms number of FFT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
- * @param scaling_factor Scaling factor applied to the result
+ * @tparam dir Direction of the FFT
+ * @tparam fft_size size of the fft_problem'
+ * @tparam N First Factor
+ * @tparam M Second Factor
+ * @tparam loc_size local memory size in bytes
+ * @tparam T_in
+ * @tparam T_out
+ * @tparam T
+ * @tparam T_twiddles
  */
-template <direction dir, typename T_in, typename T_out, typename T>
-__attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out output,
-                                                               const sycl::local_accessor<T, 1>& loc,
-                                                               std::size_t fft_size, std::size_t n_transforms,
-                                                               sycl::nd_item<1> it, T scaling_factor) {
-  switch (fft_size) {
+template <direction dir, int fft_size, int N, int M, int loc_size, typename T_in, typename T_out, typename T,
+          typename T_twiddles>
+__attribute__((always_inline)) inline void workgroup_impl(
+    T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+    std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T_twiddles wg_twiddles, T scaling_factor) {
+  std::size_t num_workgroups = it.get_group_range(0);
+  std::size_t subgroup_size = it.get_sub_group().get_local_linear_range();
+  std::size_t n_batches_per_wg = (n_transforms + num_workgroups - 1) / num_workgroups;
+  std::size_t batch_start_offset = it.get_group(0) * n_batches_per_wg * fft_size;
+  std::size_t batch_start_addr = input + batch_start_offset;
+  std::size_t batches_that_fit_in_smem = loc_size / (2 * sizeof(T));
+  std::size_t elements_to_load_per_wi = (fft_size / it.get_local_range(0)) / (SYCLFFT_TARGET_WG_LOAD / sizeof(T));
+  std::size_t workitem_local_id = it.get_local_id(0);
+  constexpr int factor_sg = detail::factorize_sg(M, subgroup_size);  // can this be a jit time constant ?
+  // from here its just subgroup implementation
+  constexpr int factor_wi = M / factor_sg;
+  int n_ffts_per_sg = subgroup_size / factor_sg;
+  int N_reals_per_wi = 2 * factor_wi;
+  int max_wis_working = n_ffts_per_sg * factor_sg;
+  int num_sgs = it.get_group_range(0) / subgroup_size;
+  int num_batches_per_sg = (N + num_sgs - 1) / num_sgs;
+  int sg_id = it.get_sub_group().get_group_id();
+  int id_of_wi_in_fft = it.get_sub_group().get_local_linear_id() % factor_sg;
+  sycl::sub_group sg = it.get_sub_group();
+  T priv[2 * factor_wi];
+  // load the first batch.
+  global2local<true>(input, loc, 2 * fft_size, it.get_local_range(0), it.get_local_id(0), batch_start_offset);
+  it.barrier();
+
+  // TODO: change them to unrolled Loops
+  for (int i = 0; i < n_batches_per_wg; i += batches_that_fit_in_smem) {
+    for (int j = 0; j < batches_that_fit_in_smem; j++) {
+      // async dispatch next fft load.
+      // make use of 128 bit ld/st instructions. Since this DMA does not bypasses L1->register step,
+      // it will not increase register pressure.
+      using T_vec = sycl::vec<T, SYCLFFT_TARGET_WG_LOAD / sizeof(T)>;
+      std::size_t offset = j * fft_size + it.get_local_id(0) * elements_to_load_per_wi;
+      sycl::device_event copy_dma =
+          it.async_work_group_copy(reinterpret_cast<T_vec>(batch_start_addr + 2 * offset),
+                                   reinterpret_cast<T_vec>(loc + 2 * offset), elements_to_load_per_wi);
+      // load n_ffts_per_sg in wis.
+      for (int k = 0; k < n_ffts_per_sg; k++) {
+        local2private<2 * factor_wi, true>(
+            priv, loc, it.get_sub_group().get_local_linear_id(), 2 * factor_wi,
+            k * M + it.get_sub_group().get_group_id() * 2 * factor_sg * factor_wi * n_ffts_per_sg);
+        // do sg dft
+        sg_dft<dir, factor_wi, factor_sg>(priv, it.get_sub_group(), loc_twiddles);
+        // multiply twiddles
+        unrolled_loop<0, 2 * factor_wi, 2>([&](const int i) __attribute__((always_inline)) {
+          T twiddle_real = wg_twiddles[n_batches_per_wg * sg.get_group_id() + sg.get_local_linear_id()];
+          T twiddle_imag = wg_twiddles[n_batches_per_wg * sg.get_group_id() + sg.get_local_linear_id()];
+          if constexpr (dir == direction::BACKWARD) {
+            twiddle_imag = -twiddle_imag;
+          }
+          T tmp_real = priv[i] * twiddle_real - priv[i + 1] * twiddle_imag;
+          priv[i + 1] = priv[i] * twiddle_imag + priv[i + 1] * twiddle_real;
+          priv[i] = tmp_real;
+        });
+        // write back intermediate result to local memory
+        private2local<2 * factor_wi, true>(
+            priv, loc, sg.get_local_linear_id(), 2 * factor_wi,
+            k * M + it.get_sub_group().get_group_id() * 2 * factor_sg * factor_wi * n_ffts_per_sg);
+        it.barrier();  // wait for all subgroups to finish
+        // calculate M sized N DFTs
+        for (int k = 0; k < n_ffts_per_sg; k++) {
+          local2private<2 * factor_wi, true>(
+              priv, loc, it.get_sub_group().get_local_linear_id(), 2 * factor_wi,
+              k * N + it.get_sub_group().get_group_id() * 2 * factor_sg * factor_wi * n_ffts_per_sg);
+          // do sg dft
+          sg_dft<dir, factor_wi, factor_sg>(priv, it.get_sub_group(), loc_twiddles);
+          // write back in a transposed manner
+          private2local_transposed<2 * factor_wi, true>(
+              priv, loc, sg.get_local_linear_id(), subgroup_size,
+              k * N + it.get_sub_group().get_group_id() * 2 * factor_sg * factor_wi * n_ffts_per_sg);
+        }
+        it.barrier();
+      }
+      copy_dma.wait();
+    }
+    // write back all batches that were in the local memory
+    local2global<true>(loc, output, 2 * fft_size * batches_that_fit_in_smem, it.get_local_range(),
+                       it.get_local_linear_id(), 0, batch_start_offset + 2 * i * batches_that_fit_in_smem * fft_size);
+  }
+}
+
+  /**
+   * Selects appropriate template instantiation of workitem implementations for
+   * given size of DFT.
+   *
+   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
+   * @tparam T_in type of the accessor or pointer to global memory containing
+   * input data
+   * @tparam T_out type of the accessor or pointer to global memory for output
+   * data
+   * @tparam T type of the scalar used for computations
+   * @param input accessor or pointer to global memory containing input data
+   * @param output accessor or pointer to global memory for output data
+   * @param loc local accessor. Must have enough space for 2*N*subgroup_size
+   * values
+   * @param fft_size size of each transform
+   * @param n_transforms number of FFT transforms to do in one call
+   * @param it sycl::nd_item<1> for the kernel launch
+   * @param scaling_factor Scaling factor applied to the result
+   */
+  template <direction dir, typename T_in, typename T_out, typename T>
+  __attribute__((always_inline)) inline void workitem_dispatcher(
+      T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, std::size_t fft_size, std::size_t n_transforms,
+      sycl::nd_item<1> it, T scaling_factor) {
+    switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
   case N:                                                                          \
     if constexpr (fits_in_wi<T>(N)) {                                              \
