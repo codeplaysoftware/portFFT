@@ -62,25 +62,27 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
   std::size_t global_id = it.get_global_id(0);
   std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t global_size = it.get_global_range(0);
+  std::size_t subgroup_id = sg.get_group_id();
+  std::size_t local_offset = N_reals * subgroup_size * subgroup_id;
 
   for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i += global_size) {
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
     global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
-                       N_reals * (i - subgroup_local_id));
+                       N_reals * (i - subgroup_local_id), local_offset);
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
+      local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals, local_offset);
       wi_dft<dir, N, 1, 1>(priv, priv);
       unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
-      private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals);
+      private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
-    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
+    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, local_offset,
                        N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
@@ -124,7 +126,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t subgroup_id = sg.get_group_id();
-  std::size_t n_sgs_in_wg = it.get_local_range(0) / subgroup_size;
+  constexpr std::size_t n_sgs_in_wg = SYCLFFT_SGS_IN_WG;
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
@@ -405,11 +407,11 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
 template <typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
-    return detail::pad_local(2 * fft_size * subgroup_size);
+    return detail::pad_local(2 * fft_size * subgroup_size) * SYCLFFT_SGS_IN_WG;
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
     int n_ffts_per_sg = subgroup_size / factor_sg;
-    return detail::pad_local(2 * fft_size * n_ffts_per_sg);
+    return detail::pad_local(2 * fft_size * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
   }
 }
 
@@ -438,7 +440,8 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std:
     // This is a temporary solution until we have tunning
     maximum_n_sgs /= 4;
   }
-  return subgroup_size * std::min(maximum_n_sgs, n_sgs_we_can_utilize);
+  return subgroup_size *
+         detail::roundUpToMultiple<std::size_t>(std::min(maximum_n_sgs, n_sgs_we_can_utilize), SYCLFFT_SGS_IN_WG);
 }
 }  // namespace detail
 }  // namespace sycl_fft
