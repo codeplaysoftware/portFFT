@@ -34,11 +34,11 @@ constexpr ftype sentinel_b = -888;
 constexpr ftype sentinel_loc1 = -777;
 constexpr ftype sentinel_loc2 = -666;
 
-template<bool Pad>
+template <bool Pad>
 class test_transfers_kernel;
 
-template<bool Pad>
-void test(){
+template <bool Pad>
+void test() {
   std::vector<ftype> a, b;
   a.resize(N * wg_size);
   b.resize(N * wg_size);
@@ -46,33 +46,33 @@ void test(){
   populate_with_random(a, ftype(-1.0), ftype(1.0));
 
   sycl::queue q;
-  ftype* sentinels_loc1_dev = sycl::malloc_device<ftype>(2*N_sentinel_values, q);
-  ftype* sentinels_loc2_dev = sycl::malloc_device<ftype>(2*N_sentinel_values, q);
+  ftype* sentinels_loc1_dev = sycl::malloc_device<ftype>(2 * N_sentinel_values, q);
+  ftype* sentinels_loc2_dev = sycl::malloc_device<ftype>(2 * N_sentinel_values, q);
 
-  ftype* a_dev = sycl::malloc_device<ftype>(N * wg_size + 2*N_sentinel_values, q);
-  ftype* b_dev = sycl::malloc_device<ftype>(N * wg_size + 2*N_sentinel_values, q);
+  ftype* a_dev = sycl::malloc_device<ftype>(N * wg_size + 2 * N_sentinel_values, q);
+  ftype* b_dev = sycl::malloc_device<ftype>(N * wg_size + 2 * N_sentinel_values, q);
   ftype* a_dev_work = a_dev + N_sentinel_values;
   ftype* b_dev_work = b_dev + N_sentinel_values;
 
   q.fill(a_dev, sentinel_a, N_sentinel_values);
   q.fill(a_dev + N * wg_size + N_sentinel_values, sentinel_a, N_sentinel_values);
   q.copy(a.data(), a_dev_work, N * wg_size);
-  q.fill(b_dev, sentinel_b, N * wg_size + 2*N_sentinel_values);
+  q.fill(b_dev, sentinel_b, N * wg_size + 2 * N_sentinel_values);
   q.wait();
 
   size_t padded_local_size = sycl_fft::detail::pad_local<Pad>(N * wg_size);
 
   q.submit([&](sycl::handler& h) {
-    sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2*N_sentinel_values, h);
-    sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2*N_sentinel_values, h);
+    sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
+    sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2 * N_sentinel_values, h);
     h.parallel_for<test_transfers_kernel<Pad>>(sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
       size_t local_id = it.get_group().get_local_linear_id();
 
       ftype priv[N];
       ftype* loc1_work = &loc1[N_sentinel_values];
       ftype* loc2_work = &loc2[N_sentinel_values];
-      if(local_id==0){
-        for(int i=0;i<padded_local_size + 2*N_sentinel_values;i++){
+      if (local_id == 0) {
+        for (int i = 0; i < padded_local_size + 2 * N_sentinel_values; i++) {
           loc1[i] = sentinel_loc1;
           loc2[i] = sentinel_loc2;
         }
@@ -85,12 +85,12 @@ void test(){
       group_barrier(it.get_group());
       sycl_fft::local2global<Pad>(loc2_work, b_dev_work, N * wg_size, wg_size, local_id);
       group_barrier(it.get_group());
-      if(local_id==0){
-        for(int i=0;i<N_sentinel_values;i++){
+      if (local_id == 0) {
+        for (int i = 0; i < N_sentinel_values; i++) {
           sentinels_loc1_dev[i] = loc1[i];
           sentinels_loc2_dev[i] = loc2[i];
         }
-        for(int i=0;i<N_sentinel_values;i++){
+        for (int i = 0; i < N_sentinel_values; i++) {
           sentinels_loc1_dev[N_sentinel_values + i] = loc1[padded_local_size + N_sentinel_values + i];
           sentinels_loc2_dev[N_sentinel_values + i] = loc2[padded_local_size + N_sentinel_values + i];
         }
@@ -102,21 +102,21 @@ void test(){
 
   std::vector<ftype> b_sentinels_start(N_sentinel_values);
   std::vector<ftype> b_sentinels_end(N_sentinel_values);
-  std::vector<ftype> loc1_sentinels(N_sentinel_values*2);
-  std::vector<ftype> loc2_sentinels(N_sentinel_values*2);
-  q.copy(sentinels_loc1_dev, loc1_sentinels.data(), N_sentinel_values*2);
-  q.copy(sentinels_loc2_dev, loc2_sentinels.data(), N_sentinel_values*2);
+  std::vector<ftype> loc1_sentinels(N_sentinel_values * 2);
+  std::vector<ftype> loc2_sentinels(N_sentinel_values * 2);
+  q.copy(sentinels_loc1_dev, loc1_sentinels.data(), N_sentinel_values * 2);
+  q.copy(sentinels_loc2_dev, loc2_sentinels.data(), N_sentinel_values * 2);
   q.copy(b_dev, b_sentinels_start.data(), N_sentinel_values);
   q.copy(b_dev + N * wg_size + N_sentinel_values, b_sentinels_end.data(), N_sentinel_values);
   q.copy(b_dev_work, b.data(), N * wg_size);
   q.wait();
 
   compare_arrays(a, b, 0.0);
-  for(int i=0;i<N_sentinel_values;i++){
+  for (int i = 0; i < N_sentinel_values; i++) {
     EXPECT_EQ(b_sentinels_start[i], sentinel_b);
     EXPECT_EQ(b_sentinels_end[i], sentinel_b);
   }
-  for(int i=0;i<N_sentinel_values*2;i++){
+  for (int i = 0; i < N_sentinel_values * 2; i++) {
     EXPECT_EQ(loc1_sentinels[i], sentinel_loc1);
     EXPECT_EQ(loc2_sentinels[i], sentinel_loc2);
   }
@@ -126,10 +126,6 @@ void test(){
   sycl::free(sentinels_loc2_dev, q);
 }
 
-TEST(transfers, unpadded) {
-  test<false>();
-}
+TEST(transfers, unpadded) { test<false>(); }
 
-TEST(transfers, padded) {
-  test<true>();
-}
+TEST(transfers, padded) { test<true>(); }
