@@ -243,10 +243,9 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int num_batches_per_sg_N = (N + num_sgs - 1) / num_sgs;
   int num_batches_per_sg_M = (M + num_sgs - 1) / num_sgs;
 
-  for (int i = 0; i < n_batches_per_wg; i++) {
-    // TODO: Change this to cp.async.shared.global.128B using sycl::vec<T, 128 / sizeof(T)>
-    global2local<true>(input, loc, batches_that_fit_in_smem * fft_size, it.get_local_range(0), it.get_local_id(0),
-                       batch_start_offset);
+  for (int i = 0; i < n_batches_per_wg; i += batches_that_fit_in_smem) {
+    // TODO: Change this to cp.async.ca.shared.global.128B using sycl::vec<T, 128 / sizeof(T)>
+    global2local<true>(input, loc, fft_size, it.get_local_range(0), it.get_local_id(0), batch_start_offset);
     sycl::group_barrier(it.get_group());
     wg_dft<dir, N, fact_sg1, fact_wi1, fact_sg2, fact_wi2, fft_size>(
         priv, loc, loc_twiddles, it, num_batches_per_sg_N, num_batches_per_sg_M, n_reals_per_sg_M, n_reals_per_sg_N,
@@ -407,16 +406,14 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
                                                                 std::size_t n_transforms, sycl::nd_item<1> it,
                                                                 T_twiddles twiddles, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                    \
-  case N:                                                                                                 \
-    \            
-    {                                                                                                     \
-      constexpr int fact1 = detail::factorize(N);                                                         \
-      constexpr int fact2 = N / fact1;                                                                    \
-      workgroup_impl<dir, N, fact1, fact2>(input, output, loc, loc_size, loc, n_transforms, it, twiddles, \
-                                           scaling_factor);                                               \
-      break;                                                                                              \
-    }
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                  \
+  case N: {                                                                                             \
+    constexpr int fact1 = detail::factorize(N);                                                         \
+    constexpr int fact2 = N / fact1;                                                                    \
+    workgroup_impl<dir, N, fact1, fact2>(input, output, loc, loc_size, loc, n_transforms, it, twiddles, \
+                                         scaling_factor);                                               \
+    break;                                                                                              \
+  }
     SYCL_FFT_WG_DISPATCHER_IMPL(1)
     SYCL_FFT_WG_DISPATCHER_IMPL(2)
     SYCL_FFT_WG_DISPATCHER_IMPL(4)
@@ -568,8 +565,29 @@ int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
     return detail::pad_local(2 * fft_size * subgroup_size);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
-    int n_ffts_per_sg = subgroup_size / factor_sg;
-    return detail::pad_local(2 * fft_size * n_ffts_per_sg);
+    if (fits_in_wi<T>(fft_size / factor_sg)) {
+      int n_ffts_per_sg = subgroup_size / factor_sg;
+      return detail::pad_local(2 * fft_size * n_ffts_per_sg);
+    } else {
+      int N = detail::factorize(fft_size);
+      int M = fft_size / N;
+    }
+  }
+}
+
+template <typename T>
+int num_scalars_in_twiddles(std::size_t fft_size, std::size_t subgroup_size) {
+  if (fits_in_wi<T>(fft_size)) {
+    return 1;
+  } else {
+    int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
+    if (fits_in_wi<T>(fft_size / factor_sg)) {
+      return 2 * fft_size;
+    } else {
+      int N = detail::factorize(fft_size);
+      int M = fft_size / N;
+      return 2 * (fft_size + M + N);
+    }
   }
 }
 

@@ -106,6 +106,7 @@ class committed_descriptor {
   std::size_t usm_kernel_fwd_subgroup_size;
   std::size_t buffer_kernel_bwd_subgroup_size;
   std::size_t usm_kernel_bwd_subgroup_size;
+  std::size_t local_memory_size;
   Scalar* twiddles_forward;
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
@@ -168,6 +169,7 @@ class committed_descriptor {
     // get some properties we will use for tunning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_fwd_subgroup_size);
+    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
   }
 
  public:
@@ -324,19 +326,21 @@ class committed_descriptor {
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
     Scalar* twiddles_local = twiddles_forward;
-    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
+    std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
+    std::size_t local_elements = (local_memory_size - (twiddle_elements * sizeof(Scalar))) / sizeof(Scalar);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
-          });
+          sycl::nd_range<1>{{global_size}, {4 * subgroup_size}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
+              [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+                detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
+                                        kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                        twiddles_local, scale_factor, local_elements * sizeof(Scalar));
+              });
     });
   }
 
@@ -378,20 +382,22 @@ class committed_descriptor {
     auto in_scalar = in.template reinterpret<Scalar, dim>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, dim>(2 * out.size());
     Scalar* twiddles_local = twiddles_forward;
-    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
+    std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
+    std::size_t local_elements = (local_memory_size - (twiddle_elements * sizeof(Scalar))) / sizeof(Scalar);
     queue.submit([&](sycl::handler& cgh) {
       auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {subgroup_size}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
-          });
+          sycl::nd_range<1>{{global_size}, {4 * subgroup_size}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
+              [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
+                detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
+                                        kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                        twiddles_local, scale_factor, local_elements * sizeof(Scalar));
+              });
     });
   }
 };
