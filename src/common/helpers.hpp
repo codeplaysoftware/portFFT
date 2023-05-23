@@ -21,9 +21,9 @@
 #ifndef SYCL_FFT_COMMON_HELPERS_HPP
 #define SYCL_FFT_COMMON_HELPERS_HPP
 
+#include <complex>
 #include <sycl/sycl.hpp>
 #include <type_traits>
-
 namespace sycl_fft::detail {
 
 template <typename T>
@@ -103,6 +103,13 @@ inline T divideCeil(T dividend, T divisor) {
 template <typename T>
 inline T roundUpToMultiple(T value, T factor) {
   return divideCeil(value, factor) * factor;
+}
+
+template <int i, int N, typename T>
+constexpr std::complex<T> calc_twiddle() {
+  constexpr double PI = static_cast<T>(3.141592653589793);
+  constexpr double theta = (2 * PI * i) / N;
+  return std::complex<T>(std::cos(theta), std::sin(theta));  // rely on constant folding
 }
 
 };  // namespace sycl_fft::detail

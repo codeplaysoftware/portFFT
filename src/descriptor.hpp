@@ -107,7 +107,6 @@ class committed_descriptor {
   std::size_t buffer_kernel_bwd_subgroup_size;
   std::size_t usm_kernel_bwd_subgroup_size;
   Scalar* twiddles_forward;
-
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
    *

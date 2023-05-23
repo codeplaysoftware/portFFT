@@ -51,6 +51,10 @@ INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
                                                                                      ::testing::Values(64))));
+INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
+                                                                                     ::testing::Values(1024))));
+
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
