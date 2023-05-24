@@ -170,16 +170,10 @@ void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengt
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
 
-  try {
-    fft_state.desc.commit(q);
-    q.wait_and_throw();
-    // warmup
-    fft_state.compute().wait_and_throw();
-  } catch (...) {
-    // Can't run this benchmark!
-    state.SkipWithError("Exception thrown: commit or warm-up failed.");
-    return;
-  }
+  fft_state.desc.commit(q);
+  q.wait_and_throw();
+  // warmup
+  fft_state.compute().wait_and_throw();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<backward_t> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
@@ -210,15 +204,23 @@ void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengt
 
 // Helper functions for GBench
 template <typename... Args>
-void average_host_time_complex_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
-      std::forward<Args>(args)..., runs_to_average);
+void average_host_time_complex_float(benchmark::State& state, Args&&... args) {
+  try {
+    bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
+        state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename... Args>
-void average_host_time_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
-      std::forward<Args>(args)..., runs_to_average);
+void average_host_time_float(benchmark::State& state, Args&&... args) {
+  try {
+    bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
+        state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 #define BENCH_COMPLEX_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_complex_float, __VA_ARGS__)->UseManualTime();

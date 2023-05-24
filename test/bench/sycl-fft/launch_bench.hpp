@@ -32,7 +32,8 @@
 #include "ops_estimate.hpp"
 
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc, std::size_t runs) {
+void bench_dft_average_host_time_impl(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc,
+                                      std::size_t runs) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
@@ -103,7 +104,17 @@ void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<f
 }
 
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
+void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc, std::size_t runs) {
+  try {
+    // seperate impl function to handle errors
+    bench_dft_average_host_time_impl(state, desc, runs);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
+}
+
+template <typename ftype, sycl_fft::domain domain>
+void bench_dft_device_time_impl(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
@@ -151,6 +162,16 @@ void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, 
   }
   sycl::free(in_dev, q);
   sycl::free(out_dev, q);
+}
+
+template <typename ftype, sycl_fft::domain domain>
+void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
+  // seperate impl function to handle errors
+  try {
+    bench_dft_device_time_impl(state, desc);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename ftype, sycl_fft::domain domain>

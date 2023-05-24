@@ -18,6 +18,7 @@
  *
  **************************************************************************/
 
+#include <chrono>
 #include <iostream>
 #include <tuple>
 #include <type_traits>
@@ -228,23 +229,39 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
 
 // Helper functions for GBench
 template <typename... Args>
-void rocfft_oop_average_host_time_complex_float(Args&&... args) {
-  rocfft_oop_average_host_time<std::complex<float>>(std::forward<Args>(args)..., runs_to_average);
+void rocfft_oop_average_host_time_complex_float(benchmark::State& state, Args&&... args) {
+  try {
+    rocfft_oop_average_host_time<std::complex<float>>(state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename... Args>
-void rocfft_oop_average_host_time_float(Args&&... args) {
-  rocfft_oop_average_host_time<float>(std::forward<Args>(args)..., runs_to_average);
+void rocfft_oop_average_host_time_float(benchmark::State& state, Args&&... args) {
+  try {
+    rocfft_oop_average_host_time<float>(state, std::forward<Args>(args)..., runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename... Args>
-void rocfft_oop_device_time_complex_float(Args&&... args) {
-  rocfft_oop_device_time<std::complex<float>>(std::forward<Args>(args)...);
+void rocfft_oop_device_time_complex_float(benchmark::State& state, Args&&... args) {
+  try {
+    rocfft_oop_device_time<std::complex<float>>(state, std::forward<Args>(args)...);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 template <typename... Args>
-void rocfft_oop_device_time_float(Args&&... args) {
-  rocfft_oop_device_time<float>(std::forward<Args>(args)...);
+void rocfft_oop_device_time_float(benchmark::State& state, Args&&... args) {
+  try {
+    rocfft_oop_device_time<float>(state, std::forward<Args>(args)...);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
 #define BENCH_COMPLEX_FLOAT(...)                                                               \

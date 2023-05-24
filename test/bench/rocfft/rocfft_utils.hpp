@@ -22,48 +22,51 @@
 #define SYCL_FFT_BENCH_ROCFFT_UTILS_HPP
 
 #include <hip/hip_runtime_api.h>
+#ifdef SYCLFFT_VERIFY_BENCHMARK
 #include <rocrand.h>
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
-#define ROCRAND_CHECK(expr)                                              \
-  {                                                                      \
-    auto status = expr;                                                  \
-    if (status != ROCRAND_STATUS_SUCCESS) {                              \
-      std::cerr << "failed with status: " << status << '\n';             \
-      throw std::runtime_error("rocRAND expression (" #expr ") failed"); \
-    }                                                                    \
+#define ROCFFT_CHECK(expr)                                                                                    \
+  {                                                                                                           \
+    auto status = expr;                                                                                       \
+    if (status != rocfft_status_success) {                                                                    \
+      throw std::runtime_error("rocFFT expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                         \
   }
 
-#define ROCFFT_CHECK(expr)                                              \
-  {                                                                     \
-    auto status = expr;                                                 \
-    if (status != rocfft_status_success) {                              \
-      std::cerr << "failed with status: " << status << '\n';            \
-      throw std::runtime_error("rocFFT expression (" #expr ") failed"); \
-    }                                                                   \
+#define ROCFFT_CHECK_NO_THROW(expr)                                                                   \
+  {                                                                                                   \
+    auto status = expr;                                                                               \
+    if (status != rocfft_status_success) {                                                            \
+      std::string msg = "rocFFT expression (" #expr ") failed with status " + std::to_string(status); \
+      state.SkipWithError(msg.c_str());                                                               \
+    }                                                                                                 \
   }
 
-#define ROCFFT_CHECK_NO_THROW(expr)                                \
-  {                                                                \
-    auto status = expr;                                            \
-    if (status != rocfft_status_success) {                         \
-      state.SkipWithError("rocFFT expression (" #expr ") failed"); \
-    }                                                              \
+#define HIP_CHECK(expr)                                                                                    \
+  {                                                                                                        \
+    auto status = expr;                                                                                    \
+    if (status != hipSuccess) {                                                                            \
+      throw std::runtime_error("HIP expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                      \
   }
 
-#define HIP_CHECK(expr)                                              \
-  {                                                                  \
-    auto status = expr;                                              \
-    if (status != hipSuccess) {                                      \
-      throw std::runtime_error("HIP expression (" #expr ") failed"); \
-    }                                                                \
+#define HIP_CHECK_NO_THROW(expr)                                                                   \
+  {                                                                                                \
+    auto status = expr;                                                                            \
+    if (status != hipSuccess) {                                                                    \
+      std::string msg = "HIP expression (" #expr ") failed with status " + std::to_string(status); \
+      state.SkipWithError(msg.c_str());                                                            \
+    }                                                                                              \
   }
 
-#define HIP_CHECK_NO_THROW(expr)                                \
-  {                                                             \
-    auto status = expr;                                         \
-    if (status != hipSuccess) {                                 \
-      state.SkipWithError("HIP expression (" #expr ") failed"); \
-    }                                                           \
+#ifdef SYCLFFT_VERIFY_BENCHMARK
+#define ROCRAND_CHECK(expr)                                                                                    \
+  {                                                                                                            \
+    auto status = expr;                                                                                        \
+    if (status != ROCRAND_STATUS_SUCCESS) {                                                                    \
+      throw std::runtime_error("rocRAND expression (" #expr ") failed with status " + std::to_string(status)); \
+    }                                                                                                          \
   }
 
 /**
@@ -90,5 +93,8 @@ void roc_populate_with_random(T* dev_ptr, std::size_t N) {
   HIP_CHECK(hipStreamSynchronize(nullptr));
   ROCRAND_CHECK(rocrand_destroy_generator(generator));
 }
+
+#undef ROCRAND_CHECK
+#endif  // SYCLFFT_VERIFY_BENCHMARK
 
 #endif  // SYCL_FFT_BENCH_ROCFFT_UTILS_HPP
