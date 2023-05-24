@@ -49,6 +49,7 @@
 // 11. small       real    3D                                      (batch=1024        N=64x64x64)
 //
 // Configurations must match with the ones in test/bench/sycl-fft/launch_bench.hpp
+// clang-format on
 
 /**
  * @brief Helper function to register a single benchmark
@@ -72,12 +73,14 @@ void register_benchmark(const std::string& name, Args&&... args, const std::vect
  */
 template <typename... Args>
 void register_complex_float_benchmark_set(const std::string& prefix, Args&&... args) {
+  // clang-format off
   register_benchmark<Args...>(prefix + "/small_1d",        args..., {16},            8 * 1024 * 1024);
   register_benchmark<Args...>(prefix + "/medium_small_1d", args..., {256},           512 * 1024);
   register_benchmark<Args...>(prefix + "/medium_large_1d", args..., {4 * 1024},      32 * 1024);
   register_benchmark<Args...>(prefix + "/large_1d",        args..., {64 * 1024},     2 * 1024);
   register_benchmark<Args...>(prefix + "/large_1d_prime",  args..., {64 * 1024 + 1}, 2 * 1024);
   register_benchmark<Args...>(prefix + "/large_2d",        args..., {4096, 4096},    8);
+  // clang-format on
 }
 
 /**
@@ -89,12 +92,13 @@ void register_complex_float_benchmark_set(const std::string& prefix, Args&&... a
  */
 template <typename... Args>
 void register_real_float_benchmark_set(const std::string& prefix, Args&&... args) {
+  // clang-format off
   register_benchmark<Args...>(prefix + "/small_1d",        args..., {32},         8 * 1024 * 1024);
   register_benchmark<Args...>(prefix + "/medium_small_1d", args..., {512},        512 * 1024);
   register_benchmark<Args...>(prefix + "/medium_large_1d", args..., {8 * 1024},   32 * 1024);
   register_benchmark<Args...>(prefix + "/large_1d",        args..., {128 * 1024}, 2 * 1024);
   register_benchmark<Args...>(prefix + "/small_3d",        args..., {64, 64, 64}, 1024);
+  // clang-format on
 }
-// clang-format on
 
 #endif  // SYCL_FFT_REFERENCE_DFT_SET_HPP
