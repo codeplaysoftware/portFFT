@@ -54,14 +54,27 @@
 /**
  * @brief Helper function to register a single benchmark
  *
- * @param name Benchmark name
+ * @param prefix Benchmark prefix, expected to end with the description of the FFT problem. The lengths and batch are
+ * appended to this description.
+ * @param suffix Benchmark suffix (i.e. a short name)
  * @param args Function to benchmark followed by optional arguments like a SYCL queue
  * @param lengths FFT lengths
  * @param batch FFT batch size
  */
 template <typename... Args>
-void register_benchmark(const std::string& name, Args&&... args, const std::vector<int>& lengths, std::size_t batch) {
-  benchmark::RegisterBenchmark(name.c_str(), args..., lengths, batch)->UseManualTime();
+void register_benchmark(std::string prefix, const std::string& suffix, Args&&... args, const std::vector<int>& lengths,
+                        std::size_t batch) {
+  prefix += ",n=[";
+  for (std::size_t i = 0; i < lengths.size(); ++i) {
+    if (i > 0) {
+      prefix += ", ";
+    }
+    prefix += std::to_string(lengths[i]);
+  }
+  prefix += "],batch=";
+  prefix += std::to_string(batch);
+  prefix += "/" + suffix;
+  benchmark::RegisterBenchmark(prefix.c_str(), args..., lengths, batch)->UseManualTime();
 }
 
 /**
@@ -72,14 +85,15 @@ void register_benchmark(const std::string& name, Args&&... args, const std::vect
  *             Followed by optional arguments forwarded to the benchmark function (i.e. a SYCL queue).
  */
 template <typename... Args>
-void register_complex_float_benchmark_set(const std::string& prefix, Args&&... args) {
+void register_complex_float_benchmark_set(std::string prefix, Args&&... args) {
+  prefix += "/d=cpx,prec=single";
   // clang-format off
-  register_benchmark<Args...>(prefix + "/small_1d",        args..., {16},            8 * 1024 * 1024);
-  register_benchmark<Args...>(prefix + "/medium_small_1d", args..., {256},           512 * 1024);
-  register_benchmark<Args...>(prefix + "/medium_large_1d", args..., {4 * 1024},      32 * 1024);
-  register_benchmark<Args...>(prefix + "/large_1d",        args..., {64 * 1024},     2 * 1024);
-  register_benchmark<Args...>(prefix + "/large_1d_prime",  args..., {64 * 1024 + 1}, 2 * 1024);
-  register_benchmark<Args...>(prefix + "/large_2d",        args..., {4096, 4096},    8);
+  register_benchmark<Args...>(prefix, "small_1d",        args..., {16},            8 * 1024 * 1024);
+  register_benchmark<Args...>(prefix, "medium_small_1d", args..., {256},           512 * 1024);
+  register_benchmark<Args...>(prefix, "medium_large_1d", args..., {4 * 1024},      32 * 1024);
+  register_benchmark<Args...>(prefix, "large_1d",        args..., {64 * 1024},     2 * 1024);
+  register_benchmark<Args...>(prefix, "large_1d_prime",  args..., {64 * 1024 + 1}, 2 * 1024);
+  register_benchmark<Args...>(prefix, "large_2d",        args..., {4096, 4096},    8);
   // clang-format on
 }
 
@@ -91,13 +105,14 @@ void register_complex_float_benchmark_set(const std::string& prefix, Args&&... a
  *             Followed by optional arguments forwarded to the benchmark function (i.e. a SYCL queue).
  */
 template <typename... Args>
-void register_real_float_benchmark_set(const std::string& prefix, Args&&... args) {
+void register_real_float_benchmark_set(std::string prefix, Args&&... args) {
+  prefix += "/d=re,prec=single";
   // clang-format off
-  register_benchmark<Args...>(prefix + "/small_1d",        args..., {32},         8 * 1024 * 1024);
-  register_benchmark<Args...>(prefix + "/medium_small_1d", args..., {512},        512 * 1024);
-  register_benchmark<Args...>(prefix + "/medium_large_1d", args..., {8 * 1024},   32 * 1024);
-  register_benchmark<Args...>(prefix + "/large_1d",        args..., {128 * 1024}, 2 * 1024);
-  register_benchmark<Args...>(prefix + "/small_3d",        args..., {64, 64, 64}, 1024);
+  register_benchmark<Args...>(prefix, "small_1d",        args..., {32},         8 * 1024 * 1024);
+  register_benchmark<Args...>(prefix, "medium_small_1d", args..., {512},        512 * 1024);
+  register_benchmark<Args...>(prefix, "medium_large_1d", args..., {8 * 1024},   32 * 1024);
+  register_benchmark<Args...>(prefix, "large_1d",        args..., {128 * 1024}, 2 * 1024);
+  register_benchmark<Args...>(prefix, "small_3d",        args..., {64, 64, 64}, 1024);
   // clang-format on
 }
 

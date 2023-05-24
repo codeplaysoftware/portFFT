@@ -21,14 +21,17 @@
 #ifndef SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
 #define SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
 
-#include <benchmark/benchmark.h>
 #include <cassert>
+#include <sstream>
+#include <type_traits>
+
+#include <benchmark/benchmark.h>
+
 #include <descriptor.hpp>
-#include <traits.hpp>
+#include <enums.hpp>
 
 #include "bench_utils.hpp"
 #include "device_number_generator.hpp"
-#include "enums.hpp"
 #include "ops_estimate.hpp"
 
 /**
@@ -220,11 +223,32 @@ void bench_dft_device_time(benchmark::State& state, sycl::queue q, sycl_fft::des
 template <typename ftype, sycl_fft::domain domain>
 void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sycl::queue profiling_q,
                                     const sycl_fft::descriptor<ftype, domain>& desc) {
-  std::string bench_host_name = "average_host_time/" + suffix;
-  benchmark::RegisterBenchmark(bench_host_name.c_str(), bench_dft_average_host_time<ftype, domain>, q, desc)
+  static_assert(domain == sycl_fft::domain::REAL || domain == sycl_fft::domain::COMPLEX, "Unsupported domain");
+  static_assert(std::is_same<ftype, float>::value || std::is_same<ftype, double>::value, "Unsupported precision");
+  // Print descriptor's parameters relevant for benchmarks
+  // Additional parameters could be added to the suffix if needed
+  auto print_desc = [&](std::ostream& name) {
+    name << "d=" << (domain == sycl_fft::domain::REAL ? "re" : "cpx");
+    name << ",prec=" << (std::is_same<ftype, float>::value ? "single" : "double");
+    name << ",n=[";
+    for (std::size_t i = 0; i < desc.lengths.size(); ++i) {
+      name << (i > 0 ? ", " : "") << desc.lengths[i];
+    }
+    name << "],batch=" << desc.number_of_transforms;
+  };
+
+  std::stringstream bench_host_name;
+  bench_host_name << "average_host_time/";
+  print_desc(bench_host_name);
+  bench_host_name << "/" << suffix;
+  benchmark::RegisterBenchmark(bench_host_name.str().c_str(), bench_dft_average_host_time<ftype, domain>, q, desc)
       ->UseManualTime();
-  std::string bench_device_name = "device_time/" + suffix;
-  benchmark::RegisterBenchmark(bench_device_name.c_str(), bench_dft_device_time<ftype, domain>, profiling_q, desc)
+
+  std::stringstream bench_device_name;
+  bench_device_name << "device_time/";
+  print_desc(bench_device_name);
+  bench_device_name << "/" << suffix;
+  benchmark::RegisterBenchmark(bench_device_name.str().c_str(), bench_dft_device_time<ftype, domain>, profiling_q, desc)
       ->UseManualTime();
 }
 

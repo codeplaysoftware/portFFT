@@ -18,6 +18,8 @@
  *
  **************************************************************************/
 
+#include <traits.hpp>
+
 #include "launch_bench.hpp"
 #include "sycl_utils.hpp"
 
