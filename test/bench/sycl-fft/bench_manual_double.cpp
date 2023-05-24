@@ -20,4 +20,4 @@
 
 #include "register_manual_bench.hpp"
 
-int main(int argc, char** argv) { return main_manual_bench<float>(argc, argv); }
+int main(int argc, char** argv) { return main_manual_bench<double>(argc, argv); }
