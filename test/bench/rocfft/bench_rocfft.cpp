@@ -300,6 +300,7 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
 }
 
 int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
   print_device();
   register_complex_float_benchmark_set("average_host_time", rocfft_oop_average_host_time<std::complex<float>>);

@@ -336,6 +336,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 }
 
 int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
   print_device();
   register_complex_float_benchmark_set("average_host_time", cufft_oop_average_host_time<std::complex<float>>);

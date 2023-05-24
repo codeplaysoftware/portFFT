@@ -303,6 +303,7 @@ void print_help(const std::string_view& name) {
 
 template <typename ftype>
 int main_manual_bench(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
 
   sycl::queue q;

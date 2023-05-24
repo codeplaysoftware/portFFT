@@ -37,6 +37,7 @@ void bench_dft(sycl::queue q, sycl::queue profiling_q, const std::string& suffix
 
 int main(int argc, char** argv) {
   using ftype = float;
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
 
   sycl::queue q;

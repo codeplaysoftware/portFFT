@@ -237,6 +237,7 @@ void onemkl_average_host_time(benchmark::State& state, sycl::queue q, std::vecto
 }
 
 int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
   sycl::queue q;
   print_device(q);
