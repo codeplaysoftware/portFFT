@@ -30,13 +30,32 @@
 #include "number_generators.hpp"
 #include "ops_estimate.hpp"
 #include "reference_dft_set.hpp"
+#include "sycl_utils.hpp"
 
-/// Get the floating-point type from the MKL precision enum.
-template <oneapi::mkl::dft::precision prec>
-using get_float_t = std::conditional_t<prec == oneapi::mkl::dft::precision::SINGLE, float, double>;
+template <typename Backward, oneapi::mkl::dft::precision Prec, oneapi::mkl::dft::domain Domain>
+struct forward_type_info_impl {
+  using backward_type = Backward;
+  static constexpr oneapi::mkl::dft::precision prec = Prec;
+  static constexpr oneapi::mkl::dft::domain domain = Domain;
+};
 
-template <oneapi::mkl::dft::domain domain, typename float_t>
-using get_forward_t = std::conditional_t<domain == oneapi::mkl::dft::domain::REAL, float_t, std::complex<float_t>>;
+template <typename T>
+struct forward_type_info;
+template <>
+struct forward_type_info<float>
+    : forward_type_info_impl<std::complex<float>, oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL> {
+};
+template <>
+struct forward_type_info<std::complex<float>>
+    : forward_type_info_impl<std::complex<float>, oneapi::mkl::dft::precision::SINGLE,
+                             oneapi::mkl::dft::domain::COMPLEX> {};
+template <>
+struct forward_type_info<double> : forward_type_info_impl<std::complex<double>, oneapi::mkl::dft::precision::DOUBLE,
+                                                          oneapi::mkl::dft::domain::REAL> {};
+template <>
+struct forward_type_info<std::complex<double>>
+    : forward_type_info_impl<std::complex<double>, oneapi::mkl::dft::precision::DOUBLE,
+                             oneapi::mkl::dft::domain::COMPLEX> {};
 
 /**
  * @brief Copy an input vector to an output vector, with element-wise casts.
@@ -60,18 +79,17 @@ std::vector<TOut> cast_vector_elements(const std::vector<TIn>& in_vec) {
  * @tparam prec DFT precision
  * @tparam domain DFT domain
  */
-template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
+template <typename forward_type>
 struct onemkl_state {
-  using descriptor_t = oneapi::mkl::dft::descriptor<prec, domain>;
-  using float_t = get_float_t<prec>;
-  using forward_t = get_forward_t<domain, float_t>;
-  using backward_t = std::complex<float_t>;
+  using type_info = forward_type_info<forward_type>;
+  using backward_type = typename type_info::backward_type;
+  using descriptor_type = oneapi::mkl::dft::descriptor<type_info::prec, type_info::domain>;
 
   // Queue & allocations for test
-  descriptor_t desc;
+  descriptor_type desc;
   sycl::queue sycl_queue;
-  forward_t* in_dev = nullptr;
-  backward_t* out_dev = nullptr;
+  forward_type* in_dev = nullptr;
+  backward_type* out_dev = nullptr;
 
   // Descriptor data to avoid having to use get_value.
   std::vector<std::int64_t> lengths;
@@ -86,7 +104,7 @@ struct onemkl_state {
         lengths{lengths},
         number_of_transforms{number_of_transforms},
         fwd_per_transform(get_fwd_per_transform(lengths)),
-        bwd_per_transform(get_bwd_per_transform<get_forward_t<domain, get_float_t<prec>>>(lengths)) {
+        bwd_per_transform(get_bwd_per_transform<forward_type>(lengths)) {
     using config_param_t = oneapi::mkl::dft::config_param;
     // For now, out-of-place only.
     set_out_of_place();
@@ -107,7 +125,7 @@ struct onemkl_state {
 
     desc.set_value(config_param_t::INPUT_STRIDES, &strides);
 
-    if constexpr (domain == oneapi::mkl::dft::domain::REAL) {
+    if constexpr (type_info::domain == oneapi::mkl::dft::domain::REAL) {
       // strides must be adjusted to account for the conjugate symmetry
       for (std::size_t i = 1; i < lengths.size(); ++i) {
         strides[i] = (strides[i] / lengths.back()) * (lengths.back() / 2 + 1);
@@ -117,8 +135,8 @@ struct onemkl_state {
     desc.set_value(config_param_t::OUTPUT_STRIDES, &strides);
 
     // Allocate memory.
-    in_dev = sycl::malloc_device<forward_t>(fwd_per_transform * number_of_transforms, sycl_queue);
-    out_dev = sycl::malloc_device<backward_t>(bwd_per_transform * number_of_transforms, sycl_queue);
+    in_dev = sycl::malloc_device<forward_type>(fwd_per_transform * number_of_transforms, sycl_queue);
+    out_dev = sycl::malloc_device<backward_type>(bwd_per_transform * number_of_transforms, sycl_queue);
     sycl_queue.wait_and_throw();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
@@ -140,51 +158,47 @@ struct onemkl_state {
   void set_out_of_place();
 };
 
-/*** Benchmark a DFT on the host.
- * @tparam prec The DFT precision.
- * @tparam domain The DFT domain.
- * @param state Google benchmark state.
+/**
+ * @brief Main function to run oneMKL benchmarks and measure the time spent on the host.
+ * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
+ * runtime. The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double.
+ * @param state GBench state.
+ * @param q SYCL queue.
  * @param lengths The lengths defining and N-dimensional DFT.
  * @param number_of_transforms The DFT batch size.
- * @param runs The number of runs to average for the result.
+ * @param runs The number of runs to average for one GBench iteration.
  */
-template <oneapi::mkl::dft::precision prec, oneapi::mkl::dft::domain domain>
-void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengths, int number_of_transforms,
-                                 std::size_t runs) {
-  sycl::queue q{};
+template <typename forward_type>
+void onemkl_average_host_time_impl(benchmark::State& state, sycl::queue q, std::vector<int> lengths,
+                                   int number_of_transforms, std::size_t runs) {
   auto lengthsI64 = cast_vector_elements<std::int64_t>(lengths);
-  onemkl_state<prec, domain> fft_state{q, lengthsI64, number_of_transforms};
-
-  using forward_t = typename decltype(fft_state)::forward_t;
-  using backward_t = typename decltype(fft_state)::backward_t;
+  onemkl_state<forward_type> fft_state{q, lengthsI64, number_of_transforms};
+  using info = typename decltype(fft_state)::type_info;
+  using backward_type = typename info::backward_type;
 
   double ops = cooley_tukey_ops_estimate(fft_state.fwd_per_transform, fft_state.number_of_transforms);
-  std::size_t bytes_transfered = global_mem_transactions<forward_t, backward_t>(
+  std::size_t bytes_transferred = global_mem_transactions<forward_type, backward_type>(
       fft_state.number_of_transforms, fft_state.fwd_per_transform, fft_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<forward_t> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
-  q.copy<forward_t>(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
+  std::vector<forward_type> host_input(fft_state.fwd_per_transform * fft_state.number_of_transforms);
+  q.copy<forward_type>(fft_state.in_dev, host_input.data(), host_input.size()).wait_and_throw();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
 
-  try {
-    fft_state.desc.commit(q);
-    q.wait_and_throw();
-    // warmup
-    fft_state.compute().wait_and_throw();
-  } catch (...) {
-    // Can't run this benchmark!
-    state.SkipWithError("Exception thrown: commit or warm-up failed.");
-    return;
-  }
+  fft_state.desc.commit(q);
+  q.wait_and_throw();
+  // warmup
+  fft_state.compute().wait_and_throw();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  std::vector<backward_t> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
-  q.copy<backward_t>(fft_state.out_dev, host_output.data(), host_output.size()).wait_and_throw();
-  verify_dft<forward_t, backward_t>(host_input.data(), host_output.data(), lengths, number_of_transforms, 1.0);
+  std::vector<backward_type> host_output(fft_state.bwd_per_transform * fft_state.number_of_transforms);
+  q.copy<backward_type>(fft_state.out_dev, host_output.data(), host_output.size()).wait_and_throw();
+  verify_dft<forward_type, backward_type>(host_input.data(), host_output.data(), lengths, number_of_transforms, 1.0);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
@@ -203,28 +217,33 @@ void bench_dft_average_host_time(benchmark::State& state, std::vector<int> lengt
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+    state.counters["throughput"] = bytes_transferred / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
 }
 
-// Helper functions for GBench
-template <typename... Args>
-void average_host_time_complex_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::COMPLEX>(
-      std::forward<Args>(args)..., runs_to_average);
+/**
+ * @brief Separate impl function to handle errors
+ * @see onemkl_average_host_time_impl
+ */
+template <typename forward_type>
+void onemkl_average_host_time(benchmark::State& state, sycl::queue q, std::vector<int> lengths,
+                              int number_of_transforms) {
+  try {
+    onemkl_average_host_time_impl<forward_type>(state, q, lengths, number_of_transforms, runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
-template <typename... Args>
-void average_host_time_float(Args&&... args) {
-  bench_dft_average_host_time<oneapi::mkl::dft::precision::SINGLE, oneapi::mkl::dft::domain::REAL>(
-      std::forward<Args>(args)..., runs_to_average);
+int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
+  benchmark::Initialize(&argc, argv);
+  sycl::queue q;
+  print_device(q);
+  register_complex_float_benchmark_set("average_host_time", onemkl_average_host_time<std::complex<float>>, q);
+  register_real_float_benchmark_set("average_host_time", onemkl_average_host_time<float>, q);
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
 }
-
-#define BENCH_COMPLEX_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_complex_float, __VA_ARGS__)->UseManualTime();
-
-#define BENCH_SINGLE_FLOAT(...) BENCHMARK_CAPTURE(average_host_time_float, __VA_ARGS__)->UseManualTime();
-
-INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
-
-BENCHMARK_MAIN();

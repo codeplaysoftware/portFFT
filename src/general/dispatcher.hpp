@@ -63,25 +63,27 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
   std::size_t global_id = it.get_global_id(0);
   std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t global_size = it.get_global_range(0);
+  std::size_t subgroup_id = sg.get_group_id();
+  std::size_t local_offset = N_reals * subgroup_size * subgroup_id;
 
   for (size_t i = global_id; i < roundUpToMultiple(n_transforms, subgroup_size); i += global_size) {
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
     global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
-                       N_reals * (i - subgroup_local_id));
+                       N_reals * (i - subgroup_local_id), local_offset);
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals);
+      local2private<N_reals, true>(loc, priv, subgroup_local_id, N_reals, local_offset);
       wi_dft<dir, N, 1, 1>(priv, priv);
       unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
-      private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals);
+      private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
-    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, 0,
+    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, local_offset,
                        N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
@@ -125,7 +127,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t subgroup_id = sg.get_group_id();
-  std::size_t n_sgs_in_wg = it.get_local_range(0) / subgroup_size;
+  constexpr std::size_t n_sgs_in_wg = SYCLFFT_SGS_IN_WG;
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
@@ -203,7 +205,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  */
 template <direction dir, int fft_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
-                                                          const sycl::local_accessor<T, 1>& loc, int loc_size,
+                                                          const sycl::local_accessor<T, 1>& loc,
                                                           const sycl::local_accessor<T, 1>& loc_twiddles,
                                                           std::size_t n_transforms, sycl::nd_item<1> it,
                                                           T_twiddles twiddles, T scaling_factor) {
@@ -228,7 +230,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int num_workgroups = it.get_group_range(0);
   int sg_id = sg.get_group_id();
   int num_sgs = workgroup_size / sg_size;
-  int n_ffts_in_local_memory = (2 * fft_size) / loc_size;
+  //int n_ffts_in_local_memory = (2 * fft_size) / loc_size;
   int wg_id = it.get_group(0);
   int id_of_thread_in_wg = it.get_local_linear_id();
   int id_of_thread_in_sg = sg.get_local_linear_id();
@@ -340,7 +342,6 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in inpu
     }                                                                                                                 \
     break;
     // cross-sg size 1 cases are supported by workitem implementation
-
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
@@ -404,7 +405,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
 }
 
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size, int loc_size,
+__attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
                                                                 const sycl::local_accessor<T, 1>& loc,
                                                                 std::size_t n_transforms, sycl::nd_item<1> it,
                                                                 T_twiddles twiddles, T scaling_factor) {
@@ -412,7 +413,7 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
 #define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                     \
   case N:                                                                                                  \
     \            
-    workgroup_impl<dir, N>(input, output, loc, loc_size, loc, n_transforms, it, twiddles, scaling_factor); \
+    workgroup_impl<dir, N>(input, output, loc, loc, n_transforms, it, twiddles, scaling_factor); \
     break;
     SYCL_FFT_WG_DISPATCHER_IMPL(1)
     SYCL_FFT_WG_DISPATCHER_IMPL(2)
@@ -457,11 +458,8 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                                                      const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                      std::size_t fft_size, std::size_t n_transforms,
-                                                      sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor,
-                                                      int loc_size = 65536) {
+void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles, std::size_t fft_size,
+                std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
@@ -473,7 +471,7 @@ __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, 
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
-      workgroup_dispatcher<dir>(input, output, fft_size, loc_size, loc, n_transforms, it, twiddles, scaling_factor);
+      workgroup_dispatcher<dir>(input, output, fft_size, loc, n_transforms, it, twiddles, scaling_factor);
     }
   }
 }
@@ -562,16 +560,11 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
 template <typename T>
 int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
-    return detail::pad_local(2 * fft_size * subgroup_size);
+    return detail::pad_local(2 * fft_size * subgroup_size) * SYCLFFT_SGS_IN_WG;
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
-    if (fits_in_wi<T>(fft_size / factor_sg)) {
-      int n_ffts_per_sg = subgroup_size / factor_sg;
-      return detail::pad_local(2 * fft_size * n_ffts_per_sg);
-    } else {
-      int N = detail::factorize(fft_size);
-      int M = fft_size / N;
-    }
+    int n_ffts_per_sg = subgroup_size / factor_sg;
+    return detail::pad_local(2 * fft_size * n_ffts_per_sg);
   }
 }
 
@@ -616,7 +609,8 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std:
     // This is a temporary solution until we have tunning
     maximum_n_sgs /= 4;
   }
-  return subgroup_size * std::min(maximum_n_sgs, n_sgs_we_can_utilize);
+  return subgroup_size *
+         detail::roundUpToMultiple<std::size_t>(std::min(maximum_n_sgs, n_sgs_we_can_utilize), SYCLFFT_SGS_IN_WG);
 }
 }  // namespace detail
 }  // namespace sycl_fft

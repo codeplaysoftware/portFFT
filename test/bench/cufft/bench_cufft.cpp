@@ -22,6 +22,7 @@
 #include <complex>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -79,35 +80,54 @@ void cufft_verify(const custate& cu_state, const std::vector<int>& lengths, cons
 
   auto fwd_copy = std::make_unique<forward_type[]>(cu_state.fwd_per_transform * batch);
   auto bwd_copy = std::make_unique<typename info::backward_type[]>(cu_state.bwd_per_transform * batch);
-  cudaMemcpy(fwd_copy.get(), cu_state.in.get(), cu_state.fwd_per_transform * batch * sizeof(forward_type),
-             cudaMemcpyDeviceToHost);
-  cudaMemcpy(bwd_copy.get(), cu_state.out.get(),
-             cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type), cudaMemcpyDeviceToHost);
+  CUDA_CHECK(cudaMemcpy(fwd_copy.get(), cu_state.in.get(), cu_state.fwd_per_transform * batch * sizeof(forward_type),
+                        cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(bwd_copy.get(), cu_state.out.get(),
+                        cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
+                        cudaMemcpyDeviceToHost));
   verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
+}
+
+static void print_device() {
+  int device_id;
+  CUDA_CHECK(cudaGetDevice(&device_id));
+
+  cudaDeviceProp prop;
+  CUDA_CHECK(cudaGetDeviceProperties(&prop, device_id));
+  std::string compute_capabilities = std::to_string(prop.major) + "." + std::to_string(prop.minor);
+
+  int runtime_version;
+  CUDA_CHECK(cudaRuntimeGetVersion(&runtime_version));
+  int runtime_major = runtime_version / 1000;
+  int runtime_minor = (runtime_version % 1000) / 10;
+  std::string runtime_version_str = std::to_string(runtime_major) + "." + std::to_string(runtime_minor);
+
+  int cufft_version;
+  CUFFT_CHECK(cufftGetVersion(&cufft_version));
+
+  benchmark::AddCustomContext("Device id", std::to_string(device_id));
+  benchmark::AddCustomContext("Name", prop.name);
+  benchmark::AddCustomContext("Compute capabilities", compute_capabilities);
+  benchmark::AddCustomContext("Runtime version", runtime_version_str);
+  benchmark::AddCustomContext("cuFFT version", std::to_string(cufft_version));
 }
 
 template <typename T>
 struct cuda_freer {
-  benchmark::State& test_state;
+  benchmark::State& state;
 
-  cuda_freer(benchmark::State& s) : test_state(s) {}
-  void operator()(T* cu_ptr) {
-    if (cudaFree(cu_ptr) != cudaSuccess) {
-      test_state.SkipWithError("cudaFree failed");
-    }
-  }
+  cuda_freer(benchmark::State& s) : state(s) {}
+  void operator()(T* cu_ptr) { CUDA_CHECK_NO_THROW(cudaFree(cu_ptr)); }
 };
 
 struct cufftHandle_holder {
-  benchmark::State& test_state;
+  benchmark::State& state;
   std::optional<cufftHandle> handle;
 
-  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h) : test_state(s), handle(h) {}
+  cufftHandle_holder(benchmark::State& s, std::optional<cufftHandle> h) : state(s), handle(h) {}
   ~cufftHandle_holder() {
     if (handle) {
-      if (cufftDestroy(handle.value()) != CUFFT_SUCCESS) {
-        test_state.SkipWithError("plan cufftDestroy failed");
-      }
+      CUFFT_CHECK_NO_THROW(cufftDestroy(handle.value()));
     }
   }
 };
@@ -130,9 +150,6 @@ struct cufft_state {
         out(nullptr, cuda_freer<typename type_info::device_backward_type>{state}),
         fwd_per_transform(get_fwd_per_transform(lengths)),
         bwd_per_transform(get_bwd_per_transform<forward_type>(lengths)) {
-    if (lengths.empty()) {
-      test_state.SkipWithError("invalid configuration");
-    }
     // nullptr inembed and onembed is equivalent to giving the lengths for both
     int *inembed = nullptr, *onembed = nullptr;
     int istride = 1;
@@ -140,28 +157,18 @@ struct cufft_state {
     int idist = fwd_per_transform;
     int odist = bwd_per_transform;
     cufftHandle plan_tmp;
-    auto res = cufftPlanMany(&plan_tmp, lengths.size(), lengths.data(), inembed, istride, idist, onembed, ostride,
-                             odist, type_info::plan_type, batch);
-    if (res == CUFFT_SUCCESS) {
-      plan.handle = plan_tmp;
-    } else {
-      test_state.SkipWithError("plan creation failed");
-    }
+    CUFFT_CHECK(cufftPlanMany(&plan_tmp, lengths.size(), lengths.data(), inembed, istride, idist, onembed, ostride,
+                              odist, type_info::plan_type, batch));
+    plan.handle = plan_tmp;
 
     typename type_info::device_forward_type* in_tmp;
-    // TODO overallocing in the REAL-COMPLEX case
-    if (cudaMalloc(&in_tmp, sizeof(forward_type) * fwd_per_transform * batch) == cudaSuccess) {
-      in.reset(in_tmp);
-    } else {
-      test_state.SkipWithError("in allocation failed");
-    }
+    CUDA_CHECK(cudaMalloc(&in_tmp, sizeof(forward_type) * fwd_per_transform * batch));
+    in.reset(in_tmp);
 
     typename type_info::device_backward_type* out_tmp;
-    if (cudaMalloc(&out_tmp, sizeof(typename type_info::backward_type) * bwd_per_transform * batch) == cudaSuccess) {
-      out.reset(out_tmp);
-    } else {
-      test_state.SkipWithError("out allocation failed");
-    }
+    CUDA_CHECK(cudaMalloc(&out_tmp, sizeof(typename type_info::backward_type) * bwd_per_transform * batch));
+    out.reset(out_tmp);
+
 #ifdef SYCLFFT_VERIFY_BENCHMARK
     populate_with_random(reinterpret_cast<typename scalar_data_type<type_info::plan_type>::type*>(in.get()),
                          fwd_per_transform * batch);
@@ -184,9 +191,20 @@ inline cufftResult cufft_exec(cufftHandle plan, typename fwd_type_info::device_f
   }
 }
 
+/**
+ * @brief Main function to run cuFFT benchmarks and measure the time spent on the host.
+ * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
+ * runtime. The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ * @param runs Number of asynchronous compute in one GBench iteration
+ */
 template <typename forward_type>
-static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch,
-                                        std::size_t runs) noexcept {
+static void cufft_oop_average_host_time_impl(benchmark::State& state, std::vector<int> lengths, int batch,
+                                             std::size_t runs) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
@@ -198,17 +216,13 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered =
+  const auto bytes_transferred =
       global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
           batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
-  if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
-    state.SkipWithError("warmup exec failed");
-  }
-  if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
-    state.SkipWithError("warmup synchronize failed");
-  }
+  CUFFT_CHECK(cufft_exec<info>(plan, in, out));
+  CUDA_CHECK(cudaStreamSynchronize(nullptr));
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   cufft_verify<forward_type>(cu_state, lengths, batch);
@@ -228,12 +242,34 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 }
 
+/**
+ * @brief Separate impl function to handle errors
+ * @see cufft_oop_average_host_time_impl
+ */
 template <typename forward_type>
-static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+  try {
+    cufft_oop_average_host_time_impl<forward_type>(state, lengths, batch, runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
+}
+
+/**
+ * @brief Main function to run cuFFT benchmarks and measure the time spent on the device.
+ * The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ */
+template <typename forward_type>
+static void cufft_oop_device_time_impl(benchmark::State& state, std::vector<int> lengths, int batch) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
@@ -245,17 +281,13 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered =
+  const auto bytes_transferred =
       global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
           batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
   // warmup
-  if (cufft_exec<info>(plan, in, out) != CUFFT_SUCCESS) {
-    state.SkipWithError("warmup exec failed");
-  }
-  if (cudaStreamSynchronize(nullptr) != cudaSuccess) {
-    state.SkipWithError("warmup synchronize failed");
-  }
+  CUFFT_CHECK(cufft_exec<info>(plan, in, out));
+  CUDA_CHECK(cudaStreamSynchronize(nullptr));
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   cufft_verify<forward_type>(cu_state, lengths, batch);
@@ -263,10 +295,8 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 
   cudaEvent_t before;
   cudaEvent_t after;
-
-  if (cudaEventCreate(&before) != cudaSuccess || cudaEventCreate(&after) != cudaSuccess) {
-    state.SkipWithError("event creation failed");
-  }
+  CUDA_CHECK(cudaEventCreate(&before));
+  CUDA_CHECK(cudaEventCreate(&after));
 
   // benchmark
   for (auto _ : state) {
@@ -274,53 +304,46 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
     auto exec_res = cufft_exec<info>(plan, in, out);
     auto after_res = cudaEventRecord(after);
     auto sync_res = cudaEventSynchronize(after);
-    if (before_res != cudaSuccess || exec_res != CUFFT_SUCCESS || after_res != cudaSuccess || sync_res != cudaSuccess) {
-      state.SkipWithError("benchmark run failed");
-    }
+    CUDA_CHECK(before_res);
+    CUFFT_CHECK(exec_res);
+    CUDA_CHECK(after_res);
+    CUDA_CHECK(sync_res);
+
     float ms;
-    if (cudaEventElapsedTime(&ms, before, after) != cudaSuccess) {
-      state.SkipWithError("cudaEventElapsedTime failed");
-    }
+    CUDA_CHECK(cudaEventElapsedTime(&ms, before, after));
+
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 
-  if (cudaEventDestroy(before) != cudaSuccess || cudaEventDestroy(after) != cudaSuccess) {
-    state.SkipWithError("event destroy failed");
+  CUDA_CHECK(cudaEventDestroy(before));
+  CUDA_CHECK(cudaEventDestroy(after));
+}
+
+/**
+ * @brief Separate impl function to handle errors
+ * @see cufft_oop_device_time_impl
+ */
+template <typename forward_type>
+static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+  try {
+    cufft_oop_device_time_impl<forward_type>(state, lengths, batch);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
   }
 }
 
-// Helper functions for GBench
-template <typename... Args>
-void cufft_oop_average_host_time_complex_float(Args&&... args) {
-  cufft_oop_average_host_time<std::complex<float>>(std::forward<Args>(args)..., runs_to_average);
+int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
+  benchmark::Initialize(&argc, argv);
+  print_device();
+  register_complex_float_benchmark_set("average_host_time", cufft_oop_average_host_time<std::complex<float>>);
+  register_complex_float_benchmark_set("device_time", cufft_oop_device_time<std::complex<float>>);
+  register_real_float_benchmark_set("average_host_time", cufft_oop_average_host_time<float>);
+  register_real_float_benchmark_set("device_time", cufft_oop_device_time<float>);
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
 }
-
-template <typename... Args>
-void cufft_oop_average_host_time_float(Args&&... args) {
-  cufft_oop_average_host_time<float>(std::forward<Args>(args)..., runs_to_average);
-}
-
-template <typename... Args>
-void cufft_oop_device_time_complex_float(Args&&... args) {
-  cufft_oop_device_time<std::complex<float>>(std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-void cufft_oop_device_time_float(Args&&... args) {
-  cufft_oop_device_time<float>(std::forward<Args>(args)...);
-}
-
-#define BENCH_COMPLEX_FLOAT(...)                                                              \
-  BENCHMARK_CAPTURE(cufft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
-
-#define BENCH_SINGLE_FLOAT(...)                                                       \
-  BENCHMARK_CAPTURE(cufft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
-
-INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
-
-BENCHMARK_MAIN();

@@ -292,7 +292,7 @@ __attribute__((always_inline)) inline void private2local_transposed(T_priv_ptr p
   using T_vec = sycl::vec<T, vec_size>;
   constexpr std::size_t num_vec_per_wi = num_elems_per_wi / vec_size;
   T_vec* priv_vec = reinterpret_cast<T_vec*>(priv);
-  T_vec* local_vec = reinterpret_cast<T_vec*>(&local[local_offset]);
+  T_vec* local_vec = reinterpret_cast<T_vec*>(&local[0]);
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * 2 + i * workers_in_group);

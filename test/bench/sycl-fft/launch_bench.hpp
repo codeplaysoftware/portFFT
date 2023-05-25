@@ -21,26 +21,42 @@
 #ifndef SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
 #define SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
 
-#include <benchmark/benchmark.h>
 #include <cassert>
+#include <sstream>
+#include <type_traits>
+
+#include <benchmark/benchmark.h>
+
 #include <descriptor.hpp>
-#include <traits.hpp>
+#include <enums.hpp>
 
 #include "bench_utils.hpp"
 #include "device_number_generator.hpp"
-#include "enums.hpp"
 #include "ops_estimate.hpp"
 
+/**
+ * @brief Main function to run benchmarks and measure the time spent on the host.
+ * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
+ * runtime. The function is used in \p bench_float and \p bench_manual_(float|double) . The function throws exception if
+ * an error occurs.
+ *
+ * @tparam ftype float or double
+ * @tparam domain COMPLEX or REAL
+ * @param state GBench state
+ * @param q Queue to use
+ * @param desc Description of the FFT problem
+ * @param runs Number of asynchronous compute in one GBench iteration
+ */
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc, std::size_t runs) {
+void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<ftype, domain> desc,
+                                      std::size_t runs) {
   using complex_type = std::complex<ftype>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
+  std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  sycl::queue q;
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =
       desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
@@ -95,23 +111,50 @@ void bench_dft_average_host_time(benchmark::State& state, sycl_fft::descriptor<f
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+    state.counters["throughput"] = bytes_transferred / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
   sycl::free(out_dev, q);
 }
 
+/**
+ * @brief Separate impl function to handle
+ * @see bench_dft_average_host_time_impl
+ */
 template <typename ftype, sycl_fft::domain domain>
-void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, domain> desc) {
+void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<ftype, domain> desc) {
+  try {
+    bench_dft_average_host_time_impl(state, q, desc, runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
+}
+
+/**
+ * @brief Main function to run benchmarks and measure the time spent on the device.
+ * The function is used in \p bench_float and \p bench_manual_(float|double) .
+ * The function throws exception if an error occurs.
+ *
+ * @tparam ftype float or double
+ * @tparam domain COMPLEX or REAL
+ * @param state GBench state
+ * @param q Queue to use, \p enable_profiling property must be set
+ * @param desc Description of the FFT problem
+ */
+template <typename ftype, sycl_fft::domain domain>
+void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<ftype, domain> desc) {
   using complex_type = std::complex<ftype>;
+  if (!q.has_property<sycl::property::queue::enable_profiling>()) {
+    throw std::runtime_error("Queue does not have the profiling property");
+  }
+
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
-  std::size_t bytes_transfered = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
+  std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  sycl::queue q({sycl::property::queue::enable_profiling()});
   complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
   complex_type* out_dev =
       desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
@@ -146,35 +189,67 @@ void bench_dft_device_time(benchmark::State& state, sycl_fft::descriptor<ftype, 
     int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
     double elapsed_seconds = (end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transfered / elapsed_seconds;
+    state.counters["throughput"] = bytes_transferred / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
   sycl::free(out_dev, q);
 }
 
+/**
+ * @brief Separate impl function to handle
+ * @see bench_dft_device_time_impl
+ */
 template <typename ftype, sycl_fft::domain domain>
-sycl_fft::descriptor<ftype, domain> create_descriptor(benchmark::State& state) {
-  std::size_t N = state.range(0);
-  sycl_fft::descriptor<ftype, sycl_fft::domain::COMPLEX> desc{{N}};
-  desc.number_of_transforms = state.range(1);
-  return desc;
+void bench_dft_device_time(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<ftype, domain> desc) {
+  try {
+    bench_dft_device_time_impl(state, q, desc);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
 }
 
-template <typename T>
-void bench_dft_average_host_time(benchmark::State& state) {
-  using ftype = typename sycl_fft::get_real<T>::type;
-  constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
-  auto desc = create_descriptor<ftype, domain>(state);
-  bench_dft_average_host_time<ftype, domain>(state, desc, runs_to_average);
-}
+/**
+ * @brief Helper function to register each benchmark configuration twice, once for measuring the time on host and once
+ * for measuring on device.
+ *
+ * @tparam ftype float or double
+ * @tparam domain COMPLEX or REAL
+ * @param suffix Suffix for the benchmark name
+ * @param q Queue used for profiling the time on the host
+ * @param profiling_q Queue used for profiling the time on the device
+ * @param desc Description of the FFT problem
+ */
+template <typename ftype, sycl_fft::domain domain>
+void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sycl::queue profiling_q,
+                                    const sycl_fft::descriptor<ftype, domain>& desc) {
+  static_assert(domain == sycl_fft::domain::REAL || domain == sycl_fft::domain::COMPLEX, "Unsupported domain");
+  static_assert(std::is_same<ftype, float>::value || std::is_same<ftype, double>::value, "Unsupported precision");
+  // Print descriptor's parameters relevant for benchmarks
+  // Additional parameters could be added to the suffix if needed
+  auto print_desc = [&](std::ostream& name) {
+    name << "d=" << (domain == sycl_fft::domain::REAL ? "re" : "cpx");
+    name << ",prec=" << (std::is_same<ftype, float>::value ? "single" : "double");
+    name << ",n=[";
+    for (std::size_t i = 0; i < desc.lengths.size(); ++i) {
+      name << (i > 0 ? ", " : "") << desc.lengths[i];
+    }
+    name << "],batch=" << desc.number_of_transforms;
+  };
 
-template <typename T>
-void bench_dft_device_time(benchmark::State& state) {
-  using ftype = typename sycl_fft::get_real<T>::type;
-  constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
-  auto desc = create_descriptor<ftype, domain>(state);
-  bench_dft_device_time<ftype, domain>(state, desc);
+  std::stringstream bench_host_name;
+  bench_host_name << "average_host_time/";
+  print_desc(bench_host_name);
+  bench_host_name << "/" << suffix;
+  benchmark::RegisterBenchmark(bench_host_name.str().c_str(), bench_dft_average_host_time<ftype, domain>, q, desc)
+      ->UseManualTime();
+
+  std::stringstream bench_device_name;
+  bench_device_name << "device_time/";
+  print_desc(bench_device_name);
+  bench_device_name << "/" << suffix;
+  benchmark::RegisterBenchmark(bench_device_name.str().c_str(), bench_dft_device_time<ftype, domain>, profiling_q, desc)
+      ->UseManualTime();
 }
 
 #endif  // SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
