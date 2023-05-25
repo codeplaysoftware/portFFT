@@ -22,6 +22,7 @@
 #include <complex>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -85,6 +86,30 @@ void cufft_verify(const custate& cu_state, const std::vector<int>& lengths, cons
                         cu_state.bwd_per_transform * batch * sizeof(typename info::backward_type),
                         cudaMemcpyDeviceToHost));
   verify_dft<forward_type, typename info::backward_type>(fwd_copy.get(), bwd_copy.get(), lengths, batch, 1.0);
+}
+
+static void print_device() {
+  int device_id;
+  CUDA_CHECK(cudaGetDevice(&device_id));
+
+  cudaDeviceProp prop;
+  CUDA_CHECK(cudaGetDeviceProperties(&prop, device_id));
+  std::string compute_capabilities = std::to_string(prop.major) + "." + std::to_string(prop.minor);
+
+  int runtime_version;
+  CUDA_CHECK(cudaRuntimeGetVersion(&runtime_version));
+  int runtime_major = runtime_version / 1000;
+  int runtime_minor = (runtime_version % 1000) / 10;
+  std::string runtime_version_str = std::to_string(runtime_major) + "." + std::to_string(runtime_minor);
+
+  int cufft_version;
+  CUFFT_CHECK(cufftGetVersion(&cufft_version));
+
+  benchmark::AddCustomContext("Device id", std::to_string(device_id));
+  benchmark::AddCustomContext("Name", prop.name);
+  benchmark::AddCustomContext("Compute capabilities", compute_capabilities);
+  benchmark::AddCustomContext("Runtime version", runtime_version_str);
+  benchmark::AddCustomContext("cuFFT version", std::to_string(cufft_version));
 }
 
 template <typename T>
@@ -166,9 +191,20 @@ inline cufftResult cufft_exec(cufftHandle plan, typename fwd_type_info::device_f
   }
 }
 
+/**
+ * @brief Main function to run cuFFT benchmarks and measure the time spent on the host.
+ * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
+ * runtime. The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ * @param runs Number of asynchronous compute in one GBench iteration
+ */
 template <typename forward_type>
-static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch,
-                                        std::size_t runs) {
+static void cufft_oop_average_host_time_impl(benchmark::State& state, std::vector<int> lengths, int batch,
+                                             std::size_t runs) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
@@ -180,7 +216,7 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered =
+  const auto bytes_transferred =
       global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
           batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
@@ -206,12 +242,34 @@ static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 }
 
+/**
+ * @brief Separate impl function to handle errors
+ * @see cufft_oop_average_host_time_impl
+ */
 template <typename forward_type>
-static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+static void cufft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
+  try {
+    cufft_oop_average_host_time_impl<forward_type>(state, lengths, batch, runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
+}
+
+/**
+ * @brief Main function to run cuFFT benchmarks and measure the time spent on the device.
+ * The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ */
+template <typename forward_type>
+static void cufft_oop_device_time_impl(benchmark::State& state, std::vector<int> lengths, int batch) {
   // setup state
   cufft_state<forward_type> cu_state(state, lengths, batch);
   using info = typename decltype(cu_state)::type_info;
@@ -223,7 +281,7 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
 
   // ops estimate for flops
   const auto ops_est = cooley_tukey_ops_estimate(cu_state.fwd_per_transform, batch);
-  const auto bytes_transfered =
+  const auto bytes_transferred =
       global_mem_transactions<typename info::device_forward_type, typename info::device_backward_type>(
           batch, cu_state.fwd_per_transform, cu_state.bwd_per_transform);
 
@@ -257,58 +315,35 @@ static void cufft_oop_device_time(benchmark::State& state, std::vector<int> leng
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 
   CUDA_CHECK(cudaEventDestroy(before));
   CUDA_CHECK(cudaEventDestroy(after));
 }
 
-// Helper functions for GBench
-template <typename... Args>
-void cufft_oop_average_host_time_complex_float(benchmark::State& state, Args&&... args) {
+/**
+ * @brief Separate impl function to handle errors
+ * @see cufft_oop_device_time_impl
+ */
+template <typename forward_type>
+static void cufft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) noexcept {
   try {
-    cufft_oop_average_host_time<std::complex<float>>(state, std::forward<Args>(args)..., runs_to_average);
+    cufft_oop_device_time_impl<forward_type>(state, lengths, batch);
   } catch (std::exception& e) {
     handle_exception(state, e);
   }
 }
 
-template <typename... Args>
-void cufft_oop_average_host_time_float(benchmark::State& state, Args&&... args) {
-  try {
-    cufft_oop_average_host_time<float>(state, std::forward<Args>(args)..., runs_to_average);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
+int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
+  benchmark::Initialize(&argc, argv);
+  print_device();
+  register_complex_float_benchmark_set("average_host_time", cufft_oop_average_host_time<std::complex<float>>);
+  register_complex_float_benchmark_set("device_time", cufft_oop_device_time<std::complex<float>>);
+  register_real_float_benchmark_set("average_host_time", cufft_oop_average_host_time<float>);
+  register_real_float_benchmark_set("device_time", cufft_oop_device_time<float>);
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
 }
-
-template <typename... Args>
-void cufft_oop_device_time_complex_float(benchmark::State& state, Args&&... args) {
-  try {
-    cufft_oop_device_time<std::complex<float>>(state, std::forward<Args>(args)...);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
-}
-
-template <typename... Args>
-void cufft_oop_device_time_float(benchmark::State& state, Args&&... args) {
-  try {
-    cufft_oop_device_time<float>(state, std::forward<Args>(args)...);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
-}
-
-#define BENCH_COMPLEX_FLOAT(...)                                                              \
-  BENCHMARK_CAPTURE(cufft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
-
-#define BENCH_SINGLE_FLOAT(...)                                                       \
-  BENCHMARK_CAPTURE(cufft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(cufft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
-
-INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
-
-BENCHMARK_MAIN();
