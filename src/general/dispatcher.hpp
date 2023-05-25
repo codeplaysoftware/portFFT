@@ -235,7 +235,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int id_of_thread_in_wg = it.get_local_linear_id();
   int id_of_thread_in_sg = sg.get_local_linear_id();
 
-  int max_global_offset = 2 * (n_transforms - 1) * num_workgroups;
+  int max_global_offset = 2 * (n_transforms - 1) * fft_size;
   int global_offset = 2 * fft_size * wg_id;
   int offset_increment = 2 * fft_size * num_workgroups;
 
