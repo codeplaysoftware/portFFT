@@ -334,7 +334,7 @@ class committed_descriptor {
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {4 * subgroup_size}},
+          sycl::nd_range<1>{{global_size}, {2 * subgroup_size}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
                 detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
@@ -391,7 +391,7 @@ class committed_descriptor {
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
-          sycl::nd_range<1>{{global_size}, {4 * subgroup_size}},
+          sycl::nd_range<1>{{global_size}, {2 * subgroup_size}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
                 detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
