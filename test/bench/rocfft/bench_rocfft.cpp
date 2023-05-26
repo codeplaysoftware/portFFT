@@ -19,7 +19,7 @@
  **************************************************************************/
 
 #include <chrono>
-#include <iostream>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -49,6 +49,31 @@ using backward_type = std::conditional<is_real<forward_type>::value, std::comple
 template <typename forward_type>
 using is_double =
     std::bool_constant<std::is_same_v<forward_type, double> || std::is_same_v<forward_type, std::complex<double>>>;
+
+static void print_device() {
+  int device_id;
+  HIP_CHECK(hipGetDevice(&device_id));
+
+  hipDeviceProp_t prop;
+  HIP_CHECK(hipGetDeviceProperties(&prop, device_id));
+  std::string compute_capabilities = std::to_string(prop.major) + "." + std::to_string(prop.minor);
+
+  int runtime_version;
+  HIP_CHECK(hipRuntimeGetVersion(&runtime_version));
+  int runtime_major = runtime_version / 1000;
+  int runtime_minor = (runtime_version % 1000) / 10;
+  std::string runtime_version_str = std::to_string(runtime_major) + "." + std::to_string(runtime_minor);
+
+  // Minimum buffer length required by the rocFFT documentation.
+  char rocfft_version[30];
+  ROCFFT_CHECK(rocfft_get_version_string(rocfft_version, sizeof(rocfft_version)));
+
+  benchmark::AddCustomContext("Device id", std::to_string(device_id));
+  benchmark::AddCustomContext("Name", prop.name);
+  benchmark::AddCustomContext("Compute capabilities", compute_capabilities);
+  benchmark::AddCustomContext("Runtime version", runtime_version_str);
+  benchmark::AddCustomContext("rocFFT version", rocfft_version);
+}
 
 template <typename forward_type>
 struct rocfft_state {
@@ -116,8 +141,19 @@ struct rocfft_state {
   }
 };
 
+/**
+ * @brief Main function to run rocFFT benchmarks and measure the time spent on the host.
+ * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
+ * runtime. The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ * @param runs Number of asynchronous compute in one GBench iteration
+ */
 template <typename forward_type>
-void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch, std::size_t runs) {
+void rocfft_oop_average_host_time_impl(benchmark::State& state, std::vector<int> lengths, int batch, std::size_t runs) {
   using backward_t = typename backward_type<forward_type>::type;
 
   std::vector<std::size_t> roc_lengths(lengths.size());
@@ -129,8 +165,8 @@ void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> leng
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
   const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
-                                                                                  roc_state.bwd_per_transform);
+  const auto bytes_transferred = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
+                                                                                   roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
@@ -163,13 +199,36 @@ void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> leng
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 }
 
+/**
+ * @brief Separate impl function to handle
+ * @see rocfft_oop_average_host_time_impl
+ */
 template <typename forward_type>
-static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+void rocfft_oop_average_host_time(benchmark::State& state, std::vector<int> lengths, int batch) {
+  try {
+    rocfft_oop_average_host_time_impl<forward_type>(state, lengths, batch, runs_to_average);
+  } catch (std::exception& e) {
+    handle_exception(state, e);
+  }
+}
+
+/**
+ * @brief Main function to run rocFFT benchmarks and measure the time spent on the device.
+ * The function throws exception if an error occurs.
+ *
+ * @tparam forward_type Can be std::complex or real, float or double
+ * @param state GBench state
+ * @param lengths FFT lengths
+ * @param batch FFT batch size
+ */
+template <typename forward_type>
+static void rocfft_oop_device_time_impl(benchmark::State& state, std::vector<int> lengths, int batch) {
   using backward_t = typename backward_type<forward_type>::type;
+
   std::vector<std::size_t> roc_lengths(lengths.size());
   std::copy(lengths.begin(), lengths.end(), roc_lengths.begin());
   rocfft_state<forward_type> roc_state(state, roc_lengths, batch);
@@ -179,8 +238,8 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
   void* in = roc_state.fwd;
   void* out = roc_state.bwd;
   const auto ops_est = cooley_tukey_ops_estimate(roc_state.fwd_per_transform, batch);
-  const auto bytes_transfered = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
-                                                                                  roc_state.bwd_per_transform);
+  const auto bytes_transferred = global_mem_transactions<forward_type, backward_t>(batch, roc_state.fwd_per_transform,
+                                                                                   roc_state.bwd_per_transform);
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   // rocfft modifies the input values, so for validation we need to save them before the run
@@ -220,58 +279,35 @@ static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> len
     double seconds = ms / 1000.0;
     state.SetIterationTime(seconds);
     state.counters["flops"] = ops_est / seconds;
-    state.counters["throughput"] = bytes_transfered / seconds;
+    state.counters["throughput"] = bytes_transferred / seconds;
   }
 
   HIP_CHECK(hipEventDestroy(before));
   HIP_CHECK(hipEventDestroy(after));
 }
 
-// Helper functions for GBench
-template <typename... Args>
-void rocfft_oop_average_host_time_complex_float(benchmark::State& state, Args&&... args) {
+/**
+ * @brief Separate impl function to handle errors
+ * @see rocfft_oop_device_time_impl
+ */
+template <typename forward_type>
+static void rocfft_oop_device_time(benchmark::State& state, std::vector<int> lengths, int batch) {
   try {
-    rocfft_oop_average_host_time<std::complex<float>>(state, std::forward<Args>(args)..., runs_to_average);
+    rocfft_oop_device_time_impl<forward_type>(state, lengths, batch);
   } catch (std::exception& e) {
     handle_exception(state, e);
   }
 }
 
-template <typename... Args>
-void rocfft_oop_average_host_time_float(benchmark::State& state, Args&&... args) {
-  try {
-    rocfft_oop_average_host_time<float>(state, std::forward<Args>(args)..., runs_to_average);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
+int main(int argc, char** argv) {
+  benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
+  benchmark::Initialize(&argc, argv);
+  print_device();
+  register_complex_float_benchmark_set("average_host_time", rocfft_oop_average_host_time<std::complex<float>>);
+  register_complex_float_benchmark_set("device_time", rocfft_oop_device_time<std::complex<float>>);
+  register_real_float_benchmark_set("average_host_time", rocfft_oop_average_host_time<float>);
+  register_real_float_benchmark_set("device_time", rocfft_oop_device_time<float>);
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
 }
-
-template <typename... Args>
-void rocfft_oop_device_time_complex_float(benchmark::State& state, Args&&... args) {
-  try {
-    rocfft_oop_device_time<std::complex<float>>(state, std::forward<Args>(args)...);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
-}
-
-template <typename... Args>
-void rocfft_oop_device_time_float(benchmark::State& state, Args&&... args) {
-  try {
-    rocfft_oop_device_time<float>(state, std::forward<Args>(args)...);
-  } catch (std::exception& e) {
-    handle_exception(state, e);
-  }
-}
-
-#define BENCH_COMPLEX_FLOAT(...)                                                               \
-  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_complex_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(rocfft_oop_device_time_complex_float, __VA_ARGS__)->UseManualTime();
-
-#define BENCH_SINGLE_FLOAT(...)                                                        \
-  BENCHMARK_CAPTURE(rocfft_oop_average_host_time_float, __VA_ARGS__)->UseManualTime(); \
-  BENCHMARK_CAPTURE(rocfft_oop_device_time_float, __VA_ARGS__)->UseManualTime();
-
-INSTANTIATE_REFERENCE_BENCHMARK_SET(BENCH_COMPLEX_FLOAT, BENCH_SINGLE_FLOAT);
-
-BENCHMARK_MAIN();

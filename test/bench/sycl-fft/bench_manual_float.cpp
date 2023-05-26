@@ -20,9 +20,4 @@
 
 #include "register_manual_bench.hpp"
 
-int main(int argc, char** argv) {
-  register_benchmarks<float>(argc, argv);
-  benchmark::Initialize(&argc, argv);
-  benchmark::RunSpecifiedBenchmarks();
-  benchmark::Shutdown();
-}
+int main(int argc, char** argv) { return main_manual_bench<float>(argc, argv); }
