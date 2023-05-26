@@ -43,7 +43,6 @@ void test() {
   a.resize(N * wg_size);
   b.resize(N * wg_size);
 
-  populate_with_random(a, ftype(-1.0), ftype(1.0));
   for(int i=0;i<N*wg_size;i++){
     a[i] = i;
   }
