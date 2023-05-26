@@ -43,7 +43,7 @@ void test() {
   a.resize(N * wg_size);
   b.resize(N * wg_size);
 
-  for(int i=0;i<N*wg_size;i++){
+  for (int i = 0; i < N * wg_size; i++) {
     a[i] = i;
   }
 

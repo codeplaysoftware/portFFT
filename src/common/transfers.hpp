@@ -77,9 +77,10 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param local_offset offset to the local pointer
  */
 template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local, std::size_t total_num_elems,
-                                                        std::size_t local_size, std::size_t local_id,
-                                                        std::size_t global_offset = 0, std::size_t local_offset = 0) {
+__attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local,
+                                                        std::size_t total_num_elems, std::size_t local_size,
+                                                        std::size_t local_id, std::size_t global_offset = 0,
+                                                        std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
@@ -87,10 +88,11 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#if(SYCLFFT_USE_SG_TRANSFERS)
+#if (SYCLFFT_USE_SG_TRANSFERS)
   // Each subgroup loads a chunck of `chunck_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec loaded = sg.load<chunk_size>(sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
+    T_vec loaded = sg.load<chunk_size>(
+        sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
     detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
       local[local_idx] = loaded[j];
@@ -154,9 +156,10 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * @param global_offset offset to the global pointer
  */
 template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
-__attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global, std::size_t total_num_elems,
-                                                        std::size_t local_size, std::size_t local_id,
-                                                        std::size_t local_offset = 0, std::size_t global_offset = 0) {
+__attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global,
+                                                        std::size_t total_num_elems, std::size_t local_size,
+                                                        std::size_t local_id, std::size_t local_offset = 0,
+                                                        std::size_t global_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
@@ -164,7 +167,7 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#if(SYCLFFT_USE_SG_TRANSFERS)
+#if (SYCLFFT_USE_SG_TRANSFERS)
   // Each subgroup stores a chunck of `chunck_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
