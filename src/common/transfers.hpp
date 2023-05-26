@@ -28,8 +28,8 @@
 #define SYCL_FFT_N_LOCAL_BANKS 32
 #endif
 
-static_assert((SYCLFFT_TARGET_WG_LOAD & (SYCLFFT_TARGET_WG_LOAD - 1)) == 0,
-              "SYCLFFT_TARGET_WG_LOAD should be a power of 2!");
+static_assert((SYCLFFT_TARGET_WI_LOAD & (SYCLFFT_TARGET_WI_LOAD - 1)) == 0,
+              "SYCLFFT_TARGET_WI_LOAD should be a power of 2!");
 
 namespace sycl_fft {
 
@@ -81,36 +81,44 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
                                                         std::size_t local_size, std::size_t local_id,
                                                         std::size_t global_offset = 0, std::size_t local_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
-  //constexpr int chunk_size_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
-  //constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  constexpr int chunk_size = 8;
+  constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-  //const T* global_ptr = &global[global_offset];
-  //const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
-  //std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
+#if(SYCLFFT_USE_SG_TRANSFERS)
+  // Each subgroup loads a chunck of `chunck_size * local_size` elements.
+  for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
+    T_vec loaded = sg.load<chunk_size>(sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
+      local[local_idx] = loaded[j];
+    });
+  }
+#else
+  const T* global_ptr = &global[global_offset];
+  const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+  std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
 
   // load the first few unaligned elements
-  /*if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     local[local_idx] = global[global_offset + local_id];
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
-*/
+
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
-  for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec loaded = sg.load<chunk_size>(sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    //loaded.load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
+  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+    T_vec loaded;
+    loaded.load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
     detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
-      //if(local_id == 0){
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       local[local_idx] = loaded[j];
-      //}
     });
   }
+#endif
   // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {
@@ -150,14 +158,24 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
                                                         std::size_t local_size, std::size_t local_id,
                                                         std::size_t local_offset = 0, std::size_t global_offset = 0) {
   using T = detail::remove_ptr<T_loc_ptr>;
-  constexpr int chunk_size_raw = SYCLFFT_TARGET_WG_LOAD / sizeof(T);
-  //constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  constexpr int chunk_size = 8;
+  constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-  /*const T* global_ptr = &global[global_offset];
+#if(SYCLFFT_USE_SG_TRANSFERS)
+  // Each subgroup stores a chunck of `chunck_size * local_size` elements.
+  for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
+    T_vec to_store;
+    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
+      to_store[j] = local[local_idx];
+    });
+    sg.store(sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]), to_store);
+  }
+#else
+  const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = global_aligned_ptr - global_ptr;
 
@@ -167,18 +185,19 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
     global[global_offset + local_id] = local[local_idx];
   }
   local_offset += unaligned_elements;
-  global_offset += unaligned_elements;*/
+  global_offset += unaligned_elements;
 
   // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
-  for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
+  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+    T_vec* global_vec = reinterpret_cast<T_vec*>(&global[global_offset + i]);
     T_vec to_store;
     detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j);
       to_store[j] = local[local_idx];
     });
-    sg.store(sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]), to_store);
-    //to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
+    to_store.store(0, sycl::make_ptr<T, sycl::access::address_space::global_space>(&global[global_offset + i]));
   }
+#endif
   // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   int last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (int j = 0; j < last_chunk_size; j++) {

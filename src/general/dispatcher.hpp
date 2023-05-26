@@ -69,7 +69,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local<true>(sg, input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
+    global2local<true>(input, loc, N_reals * n_working, subgroup_size, subgroup_local_id,
                        N_reals * (i - subgroup_local_id), local_offset);
     sycl::group_barrier(sg);
     if (working) {
@@ -82,7 +82,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
       private2local<N_reals, true>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
-    local2global<true>(sg, loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, local_offset,
+    local2global<true>(loc, output, N_reals * n_working, subgroup_size, subgroup_local_id, local_offset,
                        N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
@@ -143,14 +143,14 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t rounded_up_n_ffts =
       roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
-  global2local<false>(sg, twiddles, loc_twiddles, N_reals_per_wi * factor_sg, workgroup_size, workgroup_local_id);
+  global2local<false>(twiddles, loc_twiddles, N_reals_per_wi * factor_sg, workgroup_size, workgroup_local_id);
   sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_sg)), n_ffts_per_sg);
 
-    global2local<true>(sg, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
+    global2local<true>(input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
                        n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
@@ -168,7 +168,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
     }
     sycl::group_barrier(sg);
 
-    local2global<true>(sg, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
+    local2global<true>(loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_size, subgroup_local_id,
                        subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
     sycl::group_barrier(sg);
