@@ -241,11 +241,11 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
 
   int m_sg_offset = 2 * sg_id * m_ffts_in_sg;
   int m_sg_increment = 2 * m_ffts_in_sg * num_sgs;
-  constexpr int max_m_sg_offset = (N - 1) * M;
+  constexpr int max_m_sg_offset = 2 * (N - 1) * M;
 
   int n_sg_offset = 2 * sg_id * n_ffts_in_sg;
   int n_sg_increment = 2 * n_ffts_in_sg * num_sgs;
-  constexpr int max_n_sg_offset = (M - 1) * N;
+  constexpr int max_n_sg_offset = 2 * (M - 1) * N;
 
   global2local<false>(twiddles, loc_twiddles, 2 * (fft_size + N + M), workgroup_size, id_of_thread_in_wg);
   sycl::group_barrier(it.get_group());
@@ -255,7 +255,8 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, m_reals_per_fft, n_reals_per_fft, m_ffts_in_sg,
            n_ffts_in_sg, fft_size, M>(priv, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment,
-                                      n_sg_offset, max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m);
+                                      n_sg_offset, max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m,
+                                      scaling_factor);
     sycl::group_barrier(it.get_group());
     local2global<true>(loc, output, 2 * fft_size, workgroup_size, id_of_thread_in_wg, 0, offset);
     sycl::group_barrier(it.get_group());

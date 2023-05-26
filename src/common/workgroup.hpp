@@ -34,7 +34,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
                                                   T_twiddles_ptr loc_twiddles, sycl::nd_item<1> it, int m_sg_offset,
                                                   int max_m_sg_offset, int m_sg_increment, int n_sg_offset,
                                                   int max_n_sg_offset, int n_sg_increment,
-                                                  int num_threads_per_fft_in_sg_m) {
+                                                  int num_threads_per_fft_in_sg_m, T scaling_factor) {
   sycl::sub_group sg = it.get_sub_group();
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
@@ -64,6 +64,10 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
     }
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + 2 * (fft_size + M));
     sycl::group_barrier(sg);
+    detail::unrolled_loop<0, 2 * fact_wi_N, 1>([&](const int i) __attribute__((always_inline)) {
+      priv[i] *= scaling_factor;
+      priv[i + 1] *= scaling_factor;
+    });
     if (sg.get_local_linear_id() < max_working_tid_in_sg_n) {
       private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
     }
