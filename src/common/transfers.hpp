@@ -59,7 +59,8 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
 
 /**
  * Copies data from global memory to local memory. Depending on how parameters
- * are set, this can work on work group or subgroup level.
+ * are set, this can work on work group or subgroup level. If SYCLFFT_USE_SG_TRANSFERS is true, 
+ * only works on subgroup level.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
@@ -67,6 +68,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
+ * @param sg subgroup
  * @param global pointer to global memory
  * @param local pointer to local memory
  * @param total_num_elems total number of values to copy per group
@@ -138,7 +140,8 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
 
 /**
  * Copies data from local memory to global memory. Depending of how parameters
- * are set, this can work on work group or subgroup level.
+ * are set, this can work on work group or subgroup level. If SYCLFFT_USE_SG_TRANSFERS is true, 
+ * only works on subgroup level.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
@@ -146,6 +149,7 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
+ * @param sg subgroup
  * @param local pointer to local memory
  * @param global pointer to global memory
  * @param total_num_elems total number of values to copy per group
