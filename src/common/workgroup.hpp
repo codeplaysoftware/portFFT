@@ -28,7 +28,7 @@
 namespace sycl_fft {
 // TODO: refactor code here
 template <direction dir, int fact_wi_M, int fact_sg_M, int fact_wi_N, int fact_sg_N, int m_reals_per_fft,
-          int n_reals_per_fft, int m_ffts_in_sg, int n_ffts_in_sg, int fft_size, int M, typename T_ptr, typename T,
+          int n_reals_per_fft, int m_ffts_in_sg, int n_ffts_in_sg, int fft_size, int N, int M, typename T_ptr, typename T,
           typename T_twiddles_ptr>
 __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_accessor<T, 1>& loc,
                                                   T_twiddles_ptr loc_twiddles, sycl::nd_item<1> it, int m_sg_offset,
@@ -38,11 +38,12 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   sycl::sub_group sg = it.get_sub_group();
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
+  constexpr int twiddle_offset_N = 2 * fft_size;
+  constexpr int twiddle_offset_M = 2 * (fft_size + N);
   for (int sg_m_offset = m_sg_offset; sg_m_offset <= max_m_sg_offset; sg_m_offset += m_sg_increment) {
-    if (sg.get_local_linear_id() < max_working_tid_in_sg_m) {
-      local2private<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, sg_m_offset);
-    }
-    sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles.get_pointer() + 2 * fft_size);
+    local2private<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, sg_m_offset);
+
+    sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles.get_pointer() + twiddle_offset_M);
     detail::unrolled_loop<0, 2 * fact_wi_M, 2>([&](const int idx) __attribute__((always_inline)) {
       T tmp_real = priv[idx];
       int twiddle_n_idx = sg.get_group_id() * m_ffts_in_sg + sg.get_local_linear_id() / fact_sg_M;
@@ -52,28 +53,16 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
       priv[idx] = tmp_real * twiddle_real - priv[idx + 1] * twiddle_imag;
       priv[idx + 1] = tmp_real * twiddle_imag + priv[idx + 1] * twiddle_real;
     });
-    if (sg.get_group_linear_id() < max_working_tid_in_sg_m) {
-      private2local_transposed<2 * fact_wi_M, true>(priv, loc, sg.get_local_linear_id(), fact_sg_M, sg_m_offset);
-    }
-    sycl::group_barrier(sg);
+    private2local_transposed<2 * fact_wi_M, true>(priv, loc, sg.get_local_linear_id() % fact_sg_M, fact_sg_M,
+                                                  sg_m_offset);
   }
   sycl::group_barrier(it.get_group());
-  for (int sg_n_offset = n_sg_offset; n_sg_offset <= max_n_sg_offset; sg_n_offset += n_sg_increment) {
-    if (sg.get_local_linear_id() < max_working_tid_in_sg_n) {
-      local2private<2 * fact_wi_N, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
-    }
-    sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + 2 * (fft_size + M));
+  for (std::size_t sg_n_offset = n_sg_offset; sg_n_offset <= max_n_sg_offset; sg_n_offset += n_sg_increment) {
+    local2private<2 * fact_wi_N, false>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
+    sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer().get() + twiddle_offset_N);
     sycl::group_barrier(sg);
-    detail::unrolled_loop<0, 2 * fact_wi_N, 1>([&](const int i) __attribute__((always_inline)) {
-      priv[i] *= scaling_factor;
-      priv[i + 1] *= scaling_factor;
-    });
-    if (sg.get_local_linear_id() < max_working_tid_in_sg_n) {
-      private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
-    }
-    sycl::group_barrier(sg);
+    private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
   }
 }
-
 }  // namespace sycl_fft
 #endif
