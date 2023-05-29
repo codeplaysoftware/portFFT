@@ -25,8 +25,8 @@
 #include <complex>
 #include <gtest/gtest.h>
 
-constexpr int N = 8;
-constexpr int wg_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+constexpr int N = 4;
+constexpr int wg_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
 constexpr int N_sentinel_values = 64;
 using ftype = float;
 constexpr ftype sentinel_a = -999;
@@ -80,12 +80,12 @@ void test() {
         }
       }
       group_barrier(it.get_group());
-      sycl_fft::global2local<Pad>(it.get_sub_group(), a_dev_work, loc1_work, N * wg_size, wg_size, local_id);
+      sycl_fft::global2local<Pad, true>(it.get_sub_group(), a_dev_work, loc1_work, N * wg_size, wg_size, local_id);
       group_barrier(it.get_group());
       sycl_fft::local2private<N, Pad>(loc1_work, priv, local_id, N);
       sycl_fft::private2local<N, Pad>(priv, loc2_work, local_id, N);
       group_barrier(it.get_group());
-      sycl_fft::local2global<Pad>(it.get_sub_group(), loc2_work, b_dev_work, N * wg_size, wg_size, local_id);
+      sycl_fft::local2global<Pad, true>(it.get_sub_group(), loc2_work, b_dev_work, N * wg_size, wg_size, local_id);
       group_barrier(it.get_group());
       if (local_id == 0) {
         for (int i = 0; i < N_sentinel_values; i++) {

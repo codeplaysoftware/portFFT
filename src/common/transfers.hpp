@@ -59,11 +59,12 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
 
 /**
  * Copies data from global memory to local memory. Depending on how parameters
- * are set, this can work on work group or subgroup level. If SYCLFFT_USE_SG_TRANSFERS is true, 
- * only works on subgroup level.
+ * are set, this can work on work group or subgroup level.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
+ * @tparam Workgroup whether to do the transfer on Workgroup level. By default the transfer
+ * is done on subgroup level.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -78,7 +79,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <bool Pad, typename T_glob_ptr, typename T_loc_ptr>
+template <bool Pad, bool Workgroup, typename T_glob_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t global_offset = 0,
@@ -90,7 +91,20 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#if (SYCLFFT_USE_SG_TRANSFERS)
+#ifdef SYCLFFT_USE_SG_TRANSFERS
+  if constexpr(Workgroup){ // recalculate parameters for subgroup transfer
+    std::size_t subgroup_id = sg.get_group_id();
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t offset = subgroup_id * elems_per_sg;
+    std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
+    local_offset += offset;
+    global_offset += offset;
+    total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
+    local_id = sg.get_local_linear_id();
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    stride = local_size * chunk_size;
+    rounded_down_num_elems = (total_num_elems / stride) * stride;
+  }
   // Each subgroup loads a chunck of `chunck_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(
@@ -140,11 +154,12 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
 
 /**
  * Copies data from local memory to global memory. Depending of how parameters
- * are set, this can work on work group or subgroup level. If SYCLFFT_USE_SG_TRANSFERS is true, 
- * only works on subgroup level.
+ * are set, this can work on work group or subgroup level.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
+ * @tparam Workgroup whether to do the transfer on Workgroup level. By default the transfer
+ * is done on subgroup level.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
@@ -159,7 +174,7 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <bool Pad, typename T_loc_ptr, typename T_glob_ptr>
+template <bool Pad, bool Workgroup, typename T_loc_ptr, typename T_glob_ptr>
 __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t local_offset = 0,
@@ -171,7 +186,20 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#if (SYCLFFT_USE_SG_TRANSFERS)
+#ifdef SYCLFFT_USE_SG_TRANSFERS
+  if constexpr(Workgroup){ // recalculate parameters for subgroup transfer
+    std::size_t subgroup_id = sg.get_group_id();
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t offset = subgroup_id * elems_per_sg;
+    std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
+    local_offset += offset;
+    global_offset += offset;
+    total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
+    local_id = sg.get_local_linear_id();
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    stride = local_size * chunk_size;
+    rounded_down_num_elems = (total_num_elems / stride) * stride;
+  }
   // Each subgroup stores a chunck of `chunck_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;

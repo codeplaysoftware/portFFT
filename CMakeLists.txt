@@ -42,13 +42,13 @@ option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using 
 option(SYCLFFT_ENABLE_CUFFT_BENCHMARKS "Whether to also build the cuFFT benchmark for comparison" OFF)
 option(SYCLFFT_ENABLE_ROCFFT_BENCHMARKS "Whether to also build the rocFFT benchmark for comparison" OFF)
 option(SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS "Whether to also build the closed-source Intel OneMKL benchmark for comparison" OFF)
+option(SYCLFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 set(SYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND CACHE STRING "Build the open-source Intel OneMKL benchmark for comparison. Must be set to one of `MKLCPU`, `MKLGPU` or `CUFFT`.")
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(SYCLFFT_TARGET_SUBGROUP_SIZE 32 CACHE STRING "Size of the subgroup on the target device")
 set(SYCLFFT_TARGET_WI_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(SYCLFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
-set(SYCLFFT_USE_SG_TRANSFERS 0 CACHE STRING "Whether to use intel extension for subgroup joint loads and stores.")
 
 set(SYCLFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -66,7 +66,9 @@ target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLF
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_SUBGROUP_SIZE=${SYCLFFT_TARGET_SUBGROUP_SIZE})
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_WI_LOAD=${SYCLFFT_TARGET_WI_LOAD})
 target_compile_definitions(sycl_fft INTERFACE SYCLFFT_SGS_IN_WG=${SYCLFFT_SGS_IN_WG})
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_USE_SG_TRANSFERS=${SYCLFFT_USE_SG_TRANSFERS})
+if(${SYCLFFT_USE_SG_TRANSFERS})
+  target_compile_definitions(sycl_fft INTERFACE SYCLFFT_USE_SG_TRANSFERS)
+endif()
 
 target_compile_options(sycl_fft INTERFACE -fgpu-inline-threshold=1000000)
 
