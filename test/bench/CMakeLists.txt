@@ -64,15 +64,3 @@ function(add_benchmark target source_file)
 endfunction()
 
 add_subdirectory(sycl-fft)
-
-if(${SYCLFFT_ENABLE_CUFFT_BENCHMARKS})
-  add_subdirectory(cufft)
-endif()
-
-if(${SYCLFFT_ENABLE_ROCFFT_BENCHMARKS})
-  add_subdirectory(rocfft)
-endif()
-
-if(${SYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS} OR SYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND)
-    add_subdirectory(onemkl)
-endif()
