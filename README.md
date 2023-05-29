@@ -20,7 +20,7 @@ Build using DPC++ 2023.1.0 as:
 
 ```shell
 source /opt/intel/oneapi/compiler/2023.1.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=$/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
+cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
