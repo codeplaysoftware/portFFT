@@ -92,7 +92,7 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef SYCLFFT_USE_SG_TRANSFERS
-  if constexpr(Workgroup){ // recalculate parameters for subgroup transfer
+  if constexpr (Workgroup) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
     std::size_t offset = subgroup_id * elems_per_sg;
@@ -187,7 +187,7 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef SYCLFFT_USE_SG_TRANSFERS
-  if constexpr(Workgroup){ // recalculate parameters for subgroup transfer
+  if constexpr (Workgroup) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
     std::size_t offset = subgroup_id * elems_per_sg;
