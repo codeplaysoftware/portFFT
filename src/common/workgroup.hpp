@@ -61,6 +61,10 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
     local2private<2 * fact_wi_N, false>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer().get() + twiddle_offset_N);
     sycl::group_barrier(sg);
+    detail::unrolled_loop<0, 2 * fact_wi_N, 2>([&](const int idx) __attribute__((always_inline)){
+      priv[idx] *= scaling_factor;
+      priv[idx + 1] *= scaling_factor;
+    });
     private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
   }
 }
