@@ -69,7 +69,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   sycl::group_barrier(it.get_group());
 
   for (std::size_t sg_n_offset = n_sg_offset; sg_n_offset <= max_n_sg_offset; sg_n_offset += n_sg_increment) {
-    local2private<2 * fact_wi_N, false>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
+    local2private<2 * fact_wi_N, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
 
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + twiddle_offset_N);
     sycl::group_barrier(sg);
