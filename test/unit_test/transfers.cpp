@@ -34,10 +34,10 @@ constexpr ftype sentinel_b = -888;
 constexpr ftype sentinel_loc1 = -777;
 constexpr ftype sentinel_loc2 = -666;
 
-template <bool Pad>
+template <sycl_fft::detail::pad Pad>
 class test_transfers_kernel;
 
-template <bool Pad>
+template <sycl_fft::detail::pad Pad>
 void test() {
   std::vector<ftype> a, b;
   a.resize(N * wg_size);
@@ -128,6 +128,6 @@ void test() {
   sycl::free(sentinels_loc2_dev, q);
 }
 
-TEST(transfers, unpadded) { test<false>(); }
+TEST(transfers, unpadded) { test<sycl_fft::detail::pad::DONT_PAD>(); }
 
-TEST(transfers, padded) { test<true>(); }
+TEST(transfers, padded) { test<sycl_fft::detail::pad::DO_PAD>(); }

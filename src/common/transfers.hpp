@@ -22,6 +22,7 @@
 #define SYCL_FFT_COMMON_TRANSFERS_HPP
 
 #include <common/helpers.hpp>
+#include <enums.hpp>
 #include <sycl/sycl.hpp>
 
 #ifndef SYCL_FFT_N_LOCAL_BANKS
@@ -47,9 +48,9 @@ namespace detail {
  * @param local_idx index to transform
  * @return transformed local_idx
  */
-template <bool Pad = true>
+template <detail::pad Pad = detail::pad::DO_PAD>
 __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx) {
-  if constexpr (Pad) {
+  if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / SYCL_FFT_N_LOCAL_BANKS;
   }
   return local_idx;
@@ -79,7 +80,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <bool Pad, bool Workgroup, typename T_glob_ptr, typename T_loc_ptr>
+template <detail::pad Pad, bool Workgroup, typename T_glob_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t global_offset = 0,
@@ -174,7 +175,7 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <bool Pad, bool Workgroup, typename T_loc_ptr, typename T_glob_ptr>
+template <detail::pad Pad, bool Workgroup, typename T_loc_ptr, typename T_glob_ptr>
 __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t local_offset = 0,
@@ -265,7 +266,7 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv_ptr priv, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
@@ -290,7 +291,7 @@ __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv
  * less than subgroup size)
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, bool Pad, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
                                                                     std::size_t local_id, std::size_t workers_in_sg,
                                                                     std::size_t local_offset = 0) {
@@ -316,7 +317,7 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  * Should be >= num_elems_per_wi
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
+template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_priv_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void private2local(T_priv_ptr priv, T_loc_ptr local, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
@@ -341,7 +342,7 @@ __attribute__((always_inline)) inline void private2local(T_priv_ptr priv, T_loc_
  * less than the group size)
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, bool Pad, typename T_priv_ptr, typename T_loc_ptr>
+template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_priv_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local,
                                                                     std::size_t local_id, std::size_t workers_in_group,
                                                                     std::size_t local_offset = 0) {
