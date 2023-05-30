@@ -59,24 +59,19 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
 }  // namespace detail
 
 /**
- * Copies data from global memory to local memory. Depending on how parameters
- * are set, this can work on work group or subgroup level.
+ * Copies data from global memory to local memory.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
- * @tparam Workgroup whether to do the transfer on Workgroup level. By default the transfer
- * is done on subgroup level.
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
- * @param sg subgroup
+ * @param it nd_item
  * @param global pointer to global memory
  * @param local pointer to local memory
  * @param total_num_elems total number of values to copy per group
- * @param local_size local size of group that is doing the copying
- * @param local_id local id of work item withing the group that is doing the
- * copying
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
@@ -167,24 +162,19 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
 }
 
 /**
- * Copies data from local memory to global memory. Depending of how parameters
- * are set, this can work on work group or subgroup level.
+ * Copies data from local memory to global memory.
  *
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
- * @tparam Workgroup whether to do the transfer on Workgroup level. By default the transfer
- * is done on subgroup level.
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
- * @param sg subgroup
+ * @param it nd_item
  * @param local pointer to local memory
  * @param global pointer to global memory
  * @param total_num_elems total number of values to copy per group
- * @param local_size local size of group that is doing the copying
- * @param local_id local id of work item withing the group that is doing the
- * copying
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
