@@ -20,7 +20,7 @@ Build using DPC++ 2023.1.0 as:
 
 ```shell
 source /opt/intel/oneapi/compiler/2023.1.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
+cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
@@ -87,54 +87,6 @@ FFT sizes that are a multiple of a workitem FFT size and the subgroup size `SYCL
 
 Any batch size is supported as long as the FFT fits in global memory.
 
-## Third party benchmarks
-
-### [Open-source oneMKL]
-
-The benchmark can be enabled with `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT`.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_open_onemkl
-```
-
-### [Closed-source oneMKL]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON`.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_closed_onemkl
-```
-
-### [cuFFT]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_cufft
-```
-
-### [rocFFT]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`. ROCm 5.4.3 or greater is required.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_rocfft
-```
-
 ## Troubleshooting
 
 The library should compile without error on our supported platforms.
@@ -156,7 +108,3 @@ contact.
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
-[open-source oneMKL]: https://github.com/oneapi-src/oneMKL
-[closed-source oneMKL]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html
-[cuFFT]: https://docs.nvidia.com/cuda/cufft/
-[rocFFT]: https://github.com/ROCmSoftwarePlatform/rocFFT
