@@ -80,11 +80,13 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::pad Pad, bool Workgroup, typename T_glob_ptr, typename T_loc_ptr>
+template <detail::pad Pad, detail::level Level, typename T_glob_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
+  static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, 
+          "Only implemented for subgroup and workgroup levels!");
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
@@ -93,7 +95,7 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef SYCLFFT_USE_SG_TRANSFERS
-  if constexpr (Workgroup) {  // recalculate parameters for subgroup transfer
+  if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
     std::size_t offset = subgroup_id * elems_per_sg;
@@ -175,11 +177,13 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::pad Pad, bool Workgroup, typename T_loc_ptr, typename T_glob_ptr>
+template <detail::pad Pad, detail::level Level, typename T_loc_ptr, typename T_glob_ptr>
 __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global,
                                                         std::size_t total_num_elems, std::size_t local_size,
                                                         std::size_t local_id, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
+  static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, 
+          "Only implemented for subgroup and workgroup levels!");
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
@@ -188,7 +192,7 @@ __attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_lo
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef SYCLFFT_USE_SG_TRANSFERS
-  if constexpr (Workgroup) {  // recalculate parameters for subgroup transfer
+  if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
     std::size_t offset = subgroup_id * elems_per_sg;
