@@ -118,7 +118,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                                                          const sycl::local_accessor<T, 1>& loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          T_twiddles twiddles, T scaling_factor) {
-  constexpr int N_reals_per_wi = 2 * factor_wi;
+  /*constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
   sycl::sub_group sg = it.get_sub_group();
@@ -173,25 +173,11 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                        subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
     sycl::group_barrier(sg);
-  }
+  }*/
 }
 
 /**
- * @brief Entire workgroup calculates an entire FFT problem.
- * Each workgroup handles batch_size / num_workgroups (ceil it)
- * Load the First batch using global2local.
- * After that overlap compute and memcpy by issuing a async DMA. Utilize entire local memory.
- * Async DMA does not bypasses the L1->register step, thus we can use vector load/stores
- * Extra Scratch space comes from local memory addresses of the FFT being computed
- * Begin the 4 step algorithm. Given FFT_SIZE = N * M
- *     Calculate N M sized FFTs
- *     Twiddle multiplication (fuse this with step 1 before writing back to local)
- *     Transpose
- *     Calculate M N sized FFTs
- * Given the maximum  available shared memory encountered will be 228KB -> Length of 29184
- * That still factorizes to 152, 192. Thus one subgroup can handle multiple batches
- * Both N (M) FFTs will execute in parallel as subgroups execute concurrently
- * Optimize local size and subgroup_size for the above
+ * @brief Entire workgroup calculates an one FFT.
  *
  * @tparam dir Direction of the FFT
  * @tparam fft_size size of the fft_problem'
@@ -239,12 +225,12 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int global_offset = 2 * fft_size * wg_id;
   int offset_increment = 2 * fft_size * num_workgroups;
 
-  int m_sg_offset = 2 * sg_id * m_ffts_in_sg;
-  int m_sg_increment = 2 * m_ffts_in_sg * num_sgs;
+  int m_sg_offset = 2 * sg_id * m_ffts_in_sg * m_reals_per_fft;
+  int m_sg_increment = 2 * m_ffts_in_sg * m_reals_per_fft * num_sgs;
   constexpr int max_m_sg_offset = 2 * (N - m_ffts_in_sg) * M;
 
-  int n_sg_offset = 2 * sg_id * n_ffts_in_sg;
-  int n_sg_increment = 2 * n_ffts_in_sg * num_sgs;
+  int n_sg_offset = 2 * sg_id * n_ffts_in_sg * n_reals_per_fft;
+  int n_sg_increment = 2 * n_ffts_in_sg * num_sgs * n_reals_per_fft;
   constexpr int max_n_sg_offset = 2 * (M - n_ffts_in_sg) * N;
 
   global2local<false>(twiddles, loc_twiddles, 2 * (fft_size + N + M), workgroup_size, id_of_thread_in_wg);
@@ -253,10 +239,9 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   for (int offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     global2local<true>(input, loc, 2 * fft_size, workgroup_size, id_of_thread_in_wg, offset);
     sycl::group_barrier(it.get_group());
-    wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, m_reals_per_fft, n_reals_per_fft, m_ffts_in_sg,
-           n_ffts_in_sg, fft_size, N, M>(priv, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment,
-                                      n_sg_offset, max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m,
-                                      scaling_factor);
+    wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, m_ffts_in_sg, n_ffts_in_sg, fft_size, N, M>(
+        priv, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment, n_sg_offset, max_n_sg_offset,
+        n_sg_increment, num_threads_per_fft_in_sg_m, scaling_factor);
     sycl::group_barrier(it.get_group());
     local2global<true>(loc, output, 2 * fft_size, workgroup_size, id_of_thread_in_wg, 0, offset);
     sycl::group_barrier(it.get_group());
@@ -518,7 +503,7 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
         cgh.parallel_for(sycl::range<2>({N, M}), [=](sycl::item<2> it) {
           int n = it.get_id(0);
           int k = it.get_id(1);
-          sg_calc_twiddles(N, M, n, k, res);
+          wg_calc_twiddles(N, M, n, k, res);
         });
       });
       q.wait();

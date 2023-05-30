@@ -288,6 +288,15 @@ void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles) {
   sg_twiddles[(k + M) * N + n] = twiddle.imag();
 }
 
+template <typename T_ptr>
+void wg_calc_twiddles(int N, int M, int n, int k, T_ptr twiddle_ptr) {
+  using T = detail::remove_ptr<T_ptr>;
+  detail::remove_ptr<T_ptr>;
+  std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
+  twiddle_ptr[2 * (n * N + k)] = twiddle.real();
+  twiddle_ptr[2 * (n * N + k) + 1] = twiddle.imag();
+}
+
 };  // namespace sycl_fft
 
 #endif

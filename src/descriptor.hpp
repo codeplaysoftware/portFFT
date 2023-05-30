@@ -168,8 +168,17 @@ class committed_descriptor {
     }
     // get some properties we will use for tunning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_fwd_subgroup_size);
     local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    std::size_t minimum_local_mem_required =
+        2 *
+        (params.lengths[0] + detail::factorize(params.lengths[0]) +
+         params.lengths[0] / detail::factorize(params.lengths[0])) *
+        sizeof(Scalar);  // at least one fft and all twiddles should fit in local memory
+    if (minimum_local_mem_required > local_memory_size) {
+      throw std::runtime_error(
+          "Local Memory size of the selected device is lesser than required for the commited size");
+    }
+    twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_fwd_subgroup_size);
   }
 
  public:
@@ -332,7 +341,7 @@ class committed_descriptor {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it,
@@ -388,7 +397,7 @@ class committed_descriptor {
       auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}},
