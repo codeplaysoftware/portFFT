@@ -42,7 +42,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   constexpr int m_threads_per_fft_in_sg = SYCLFFT_TARGET_SUBGROUP_SIZE / m_ffts_in_sg;
 
   for (int sg_m_offset = m_sg_offset; sg_m_offset <= max_m_sg_offset; sg_m_offset += m_sg_increment) {
-    local2private_transposed<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, sg_m_offset);
+    local2private<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, sg_m_offset);
 
     sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles.get_pointer() + twiddle_offset_M);
     sycl::group_barrier(sg);
