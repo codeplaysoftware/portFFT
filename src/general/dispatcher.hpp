@@ -69,8 +69,8 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working,
-                              N_reals * (i - subgroup_local_id), local_offset);
+    global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
+                                               local_offset);
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
@@ -83,7 +83,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     }
     sycl::group_barrier(sg);
     local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, N_reals * n_working, local_offset,
-                              N_reals * (i - subgroup_local_id));
+                                               N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
 }
@@ -151,11 +151,12 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_sg)), n_ffts_per_sg);
 
     global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                              n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
+                                               n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi, subgroup_id * n_reals_per_sg);
+      local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
+                                                 subgroup_id * n_reals_per_sg);
     }
     sg_dft<dir, factor_wi, factor_sg>(priv, sg, loc_twiddles);
     unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) {
@@ -163,13 +164,13 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       priv[i + 1] *= scaling_factor;
     });
     if (working) {
-      private2local_transposed<N_reals_per_wi, pad::DO_PAD>(priv, loc, id_of_wi_in_fft, factor_sg,
-                                                     subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+      private2local_transposed<N_reals_per_wi, pad::DO_PAD>(
+          priv, loc, id_of_wi_in_fft, factor_sg, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
     }
     sycl::group_barrier(sg);
 
     local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                              subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
+                                               subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
     sycl::group_barrier(sg);
   }
