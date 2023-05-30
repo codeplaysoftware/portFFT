@@ -81,16 +81,27 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param local_offset offset to the local pointer
  */
 template <detail::pad Pad, detail::level Level, typename T_glob_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_glob_ptr global, T_loc_ptr local,
-                                                        std::size_t total_num_elems, std::size_t local_size,
-                                                        std::size_t local_id, std::size_t global_offset = 0,
+__attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_glob_ptr global, T_loc_ptr local,
+                                                        std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
-  static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, 
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, 
           "Only implemented for subgroup and workgroup levels!");
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
+
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_size;
+  std::size_t local_id;
+  if constexpr(Level == detail::level::SUBGROUP){
+    local_id = sg.get_local_linear_id();
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+  } else{
+    local_id = it.get_local_id(0);
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
+  }
+
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
@@ -178,16 +189,27 @@ __attribute__((always_inline)) inline void global2local(sycl::sub_group sg, T_gl
  * @param global_offset offset to the global pointer
  */
 template <detail::pad Pad, detail::level Level, typename T_loc_ptr, typename T_glob_ptr>
-__attribute__((always_inline)) inline void local2global(sycl::sub_group sg, T_loc_ptr local, T_glob_ptr global,
-                                                        std::size_t total_num_elems, std::size_t local_size,
-                                                        std::size_t local_id, std::size_t local_offset = 0,
+__attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_loc_ptr local, T_glob_ptr global,
+                                                        std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
-  static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, 
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, 
           "Only implemented for subgroup and workgroup levels!");
   using T = detail::remove_ptr<T_loc_ptr>;
   constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
+  
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_size;
+  std::size_t local_id;
+  if constexpr(Level == detail::level::SUBGROUP){
+    local_id = sg.get_local_linear_id();
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+  } else{
+    local_id = it.get_local_id(0);
+    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
+  }
+
   int stride = local_size * chunk_size;
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 

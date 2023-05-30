@@ -80,12 +80,12 @@ void test() {
         }
       }
       group_barrier(it.get_group());
-      sycl_fft::global2local<Pad, detail::level::WORKGROUP>(it.get_sub_group(), a_dev_work, loc1_work, N * wg_size, wg_size, local_id);
+      sycl_fft::global2local<Pad, detail::level::WORKGROUP>(it, a_dev_work, loc1_work, N * wg_size);
       group_barrier(it.get_group());
       sycl_fft::local2private<N, Pad>(loc1_work, priv, local_id, N);
       sycl_fft::private2local<N, Pad>(priv, loc2_work, local_id, N);
       group_barrier(it.get_group());
-      sycl_fft::local2global<Pad, detail::level::WORKGROUP>(it.get_sub_group(), loc2_work, b_dev_work, N * wg_size, wg_size, local_id);
+      sycl_fft::local2global<Pad, detail::level::WORKGROUP>(it, loc2_work, b_dev_work, N * wg_size);
       group_barrier(it.get_group());
       if (local_id == 0) {
         for (int i = 0; i < N_sentinel_values; i++) {
