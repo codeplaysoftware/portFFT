@@ -58,6 +58,7 @@ foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
         ${TEST_TARGET}
         PRIVATE
         sycl_fft
+        sycl_fft_warnings
         GTest::gtest_main
         Threads::Threads
     )
