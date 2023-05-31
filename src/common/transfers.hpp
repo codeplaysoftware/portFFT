@@ -118,12 +118,12 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(
         sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    if constexpr(SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD){
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
-        std::size_t  local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size);
+        std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size);
         sg.store(sycl::make_ptr<T, sycl::access::address_space::local_space>(&local[local_idx]), loaded[j]);
       });
-    } else{
+    } else {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
         local[local_idx] = loaded[j];
@@ -226,13 +226,13 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_l
   }
   // Each subgroup stores a chunck of `chunck_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec to_store;    
-    if constexpr(SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD){
+    T_vec to_store;
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size);
         to_store[j] = sg.load(sycl::make_ptr<T, sycl::access::address_space::local_space>(&local[local_idx]));
       });
-    } else{
+    } else {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size + local_id);
         to_store[j] = local[local_idx];
