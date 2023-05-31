@@ -118,7 +118,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                                                          const sycl::local_accessor<T, 1>& loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          T_twiddles twiddles, T scaling_factor) {
-  /*constexpr int N_reals_per_wi = 2 * factor_wi;
+  constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
   sycl::sub_group sg = it.get_sub_group();
@@ -173,7 +173,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                        subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
     sycl::group_barrier(sg);
-  }*/
+  }
 }
 
 /**
@@ -216,7 +216,6 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int num_workgroups = it.get_group_range(0);
   int sg_id = sg.get_group_id();
   int num_sgs = workgroup_size / sg_size;
-  // int n_ffts_in_local_memory = (2 * fft_size) / loc_size;
   int wg_id = it.get_group(0);
   int id_of_thread_in_wg = it.get_local_linear_id();
   int id_of_thread_in_sg = sg.get_local_linear_id();
@@ -233,7 +232,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int n_sg_increment = 2 * n_ffts_in_sg * num_sgs * n_reals_per_fft;
   constexpr int max_n_sg_offset = 2 * (M - n_ffts_in_sg) * N;
 
-  global2local<false>(twiddles, loc_twiddles, 2 * (fft_size + N + M), workgroup_size, id_of_thread_in_wg);
+  global2local<false>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
   sycl::group_barrier(it.get_group());
 
   for (int offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
@@ -486,40 +485,33 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
     } else {
       std::size_t N = detail::factorize(fft_size);
       std::size_t M = fft_size / N;
-      std::size_t factor_sg1 = detail::factorize_sg(M, subgroup_size);
-      std::size_t factor_wi1 = N / factor_sg;
-      if (!fits_in_wi<T>(factor_wi1)) {
+      std::size_t factor_sg_M = detail::factorize_sg(M, subgroup_size);
+      std::size_t factor_wi_M = N / factor_sg;
+      if (!fits_in_wi<T>(factor_wi_M)) {
         throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported for subgroup_size " +
                                  std::to_string(subgroup_size));
       }
-      std::size_t factor_sg2 = detail::factorize_sg(N, subgroup_size);
-      std::size_t factor_wi2 = N / factor_sg;
-      if (!fits_in_wi<T>(factor_wi2)) {
+      std::size_t factor_sg_N = detail::factorize_sg(N, subgroup_size);
+      std::size_t factor_wi_N = N / factor_sg;
+      if (!fits_in_wi<T>(factor_wi_N)) {
         throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported for subgroup_size " +
                                  std::to_string(subgroup_size));
       }
-      T* res = sycl::malloc_device<T>(fft_size * 2 + N * 2 + M * 2, q);
+      T* res = sycl::malloc_device<T>(2 * (M + N), q);
+
       q.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<2>({N, M}), [=](sycl::item<2> it) {
+        cgh.parallel_for(sycl::range<2>({factor_sg_M, factor_wi_M}), [=](sycl::item<2> it) {
           int n = it.get_id(0);
           int k = it.get_id(1);
-          wg_calc_twiddles(N, M, n, k, res);
+          sg_calc_twiddles(factor_sg_M, factor_wi_M, n, k, res);
         });
       });
       q.wait();
       q.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<2>({factor_sg1, factor_wi1}), [=](sycl::item<2> it) {
+        cgh.parallel_for(sycl::range<2>({factor_sg_N, factor_wi_N}), [=](sycl::item<2> it) {
           int n = it.get_id(0);
           int k = it.get_id(1);
-          sg_calc_twiddles(factor_sg1, factor_wi1, n, k, res + fft_size * 2);
-        });
-      });
-      q.wait();
-      q.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(sycl::range<2>({factor_sg2, factor_wi2}), [=](sycl::item<2> it) {
-          int n = it.get_id(0);
-          int k = it.get_id(1);
-          sg_calc_twiddles(factor_sg2, factor_wi2, n, k, res + fft_size * 2 + N * 2);
+          sg_calc_twiddles(factor_sg_N, factor_wi_N, n, k, res + (2 * M));
         });
       });
       q.wait();
@@ -558,7 +550,7 @@ int num_scalars_in_twiddles(std::size_t fft_size, std::size_t subgroup_size) {
     } else {
       int N = detail::factorize(fft_size);
       int M = fft_size / N;
-      return 2 * (fft_size + M + N);
+      return 2 * (M + N);
     }
   }
 }

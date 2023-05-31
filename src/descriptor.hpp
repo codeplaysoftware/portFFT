@@ -173,7 +173,7 @@ class committed_descriptor {
         2 *
         (params.lengths[0] + detail::factorize(params.lengths[0]) +
          params.lengths[0] / detail::factorize(params.lengths[0])) *
-        sizeof(Scalar);  // at least one fft and all twiddles should fit in local memory
+        sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
     if (minimum_local_mem_required > local_memory_size) {
       throw std::runtime_error(
           "Local Memory size of the selected device is lesser than required for the commited size");
