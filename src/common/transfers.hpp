@@ -114,7 +114,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
     stride = local_size * chunk_size;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup loads a chunck of `chunck_size * local_size` elements.
+  // Each subgroup loads a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(
         sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
@@ -224,7 +224,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_l
     stride = local_size * chunk_size;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup stores a chunck of `chunck_size * local_size` elements.
+  // Each subgroup stores a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
     if constexpr (SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD) {
