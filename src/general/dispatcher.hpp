@@ -164,15 +164,15 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       priv[i + 1] *= scaling_factor;
     });
     if (working) {
-      private2local_transposed<N_reals_per_wi, pad::DO_PAD>(
-          priv, loc, id_of_wi_in_fft, factor_sg, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+      private2local_transposed<N_reals_per_wi, pad::DONT_PAD>(
+          priv, output, id_of_wi_in_fft, factor_sg, i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
     }
     sycl::group_barrier(sg);
 
-    local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
+    /*local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
 
-    sycl::group_barrier(sg);
+    sycl::group_barrier(sg);*/
   }
 }
 
