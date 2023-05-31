@@ -349,8 +349,8 @@ __attribute__((always_inline)) inline void private2local(T_priv_ptr priv, T_loc_
  */
 template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_priv_ptr, typename T_dst_ptr>
 __attribute__((always_inline)) inline void store_transposed(T_priv_ptr priv, T_dst_ptr destination,
-                                                                    std::size_t local_id, std::size_t workers_in_group,
-                                                                    std::size_t destination_offset = 0) {
+                                                            std::size_t local_id, std::size_t workers_in_group,
+                                                            std::size_t destination_offset = 0) {
   using T = detail::remove_ptr<T_dst_ptr>;
   constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
   using T_vec = sycl::vec<T, vec_size>;
@@ -360,7 +360,7 @@ __attribute__((always_inline)) inline void store_transposed(T_priv_ptr priv, T_d
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t destination_idx = detail::pad_local<Pad>(destination_offset + local_id * 2 + i * workers_in_group);
-    if (destination_idx % 2 == 0) { // if the destination address is aligned, we can use vector store
+    if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
       local_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
       destination[destination_idx] = priv[i];

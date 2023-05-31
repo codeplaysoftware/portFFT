@@ -163,21 +163,21 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
     });
-    if constexpr(factor_sg == SYCLFFT_TARGET_SUBGROUP_SIZE) {
+    if constexpr (factor_sg == SYCLFFT_TARGET_SUBGROUP_SIZE) {
       // in this case we get fully coalesced memory access even without going trough local memory
       // TODO we may want to tune maximal `factor_sg` for which we use direct stores.
       if (working) {
-        store_transposed<N_reals_per_wi, pad::DONT_PAD>(
-            priv, output, id_of_wi_in_fft, factor_sg, i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+        store_transposed<N_reals_per_wi, pad::DONT_PAD>(priv, output, id_of_wi_in_fft, factor_sg,
+                                                        i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
       }
-    } else{
+    } else {
       if (working) {
-        store_transposed<N_reals_per_wi, pad::DO_PAD>(
-            priv, output, id_of_wi_in_fft, factor_sg, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+        store_transposed<N_reals_per_wi, pad::DO_PAD>(priv, output, id_of_wi_in_fft, factor_sg,
+                                                      subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
       }
       sycl::group_barrier(sg);
       local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                                                subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
+                                                 subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
       sycl::group_barrier(sg);
     }
   }
