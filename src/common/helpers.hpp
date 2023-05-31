@@ -105,6 +105,16 @@ inline T roundUpToMultiple(T value, T factor) {
   return divideCeil(value, factor) * factor;
 }
 
+template <typename T>
+inline auto get_global_multi_ptr(T ptr) {
+  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::no>(ptr);
+}
+
+template <typename T>
+inline auto get_local_multi_ptr(T ptr) {
+  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::no>(ptr);
+}
+
 };  // namespace sycl_fft::detail
 
 #endif
