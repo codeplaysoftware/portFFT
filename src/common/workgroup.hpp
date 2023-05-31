@@ -40,18 +40,21 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   int id_of_wi_in_fft = sg.get_local_linear_id() % fact_sg_M;
 
   for (int sg_m_offset = m_sg_offset; sg_m_offset <= max_m_sg_offset; sg_m_offset += m_sg_increment) {
-    int twiddle_n_idx = (sg_m_offset / (2 * M)) + (sg.get_local_linear_id() / fact_sg_M);
+    bool working = sg_m_offset < M && sg.get_local_linear_id() < max_working_tid_in_sg_m;
+
+    int twiddle_n_idx = sg_m_offset  + (sg.get_local_linear_id() / fact_sg_M);
     int twiddle_k_idx = id_of_wi_in_fft * fact_wi_M;
 
-    local2private<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, sg_m_offset);
+    if(working)
+      local2private<2 * fact_wi_M, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, 2 * sg_m_offset * M);
 
     sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
     sycl::group_barrier(sg);
 
     detail::unrolled_loop<0, fact_wi_M, 1>([&](const int idx) __attribute__((always_inline)) {
       constexpr T TWOPI_OVER_N = (-2 * M_PI) / (N * M);
-      T twiddle_real = sycl::cos(static_cast<T>(twiddle_n_idx * (twiddle_k_idx + idx)) / TWOPI_OVER_N);
-      T twiddle_imag = sycl::sin(static_cast<T>(twiddle_n_idx * (twiddle_k_idx + idx)) / TWOPI_OVER_N);
+      T twiddle_real = sycl::cos(static_cast<T>(twiddle_n_idx * (twiddle_k_idx + idx)) * TWOPI_OVER_N);
+      T twiddle_imag = sycl::sin(static_cast<T>(twiddle_n_idx * (twiddle_k_idx + idx)) * TWOPI_OVER_N);
       if constexpr (dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
 
       T tmp_real = priv[2 * idx];
@@ -59,13 +62,16 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
       priv[2 * idx] = tmp_real * twiddle_real - priv[2 * idx + 1] * twiddle_imag;
       priv[2 * idx + 1] = priv[2 * idx + 1] * twiddle_real + tmp_real * twiddle_imag;
     });
-    private2local_transposed<2 * fact_wi_M, true>(priv, loc, id_of_wi_in_fft, fact_sg_M, sg_m_offset);
+    if(working)
+      private2local_transposed<2 * fact_wi_M, true>(priv, loc, id_of_wi_in_fft, fact_sg_M, 2 * M * sg_m_offset);
   }
 
   sycl::group_barrier(it.get_group());
 
   for (std::size_t sg_n_offset = n_sg_offset; sg_n_offset <= max_n_sg_offset; sg_n_offset += n_sg_increment) {
-    local2private<2 * fact_wi_N, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
+    bool working = sg_n_offset < N && sg.get_local_linear_id() < max_working_tid_in_sg_n;
+    if(working)
+      local2private<2 * fact_wi_N, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, 2 * sg_n_offset * N);
 
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
 
@@ -73,8 +79,8 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
       priv[idx] *= scaling_factor;
       priv[idx + 1] *= scaling_factor;
     });
-
-    private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, sg_n_offset);
+    if(working)
+      private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, 2 * N * sg_n_offset);
   }
   sycl::group_barrier(sg);
 }
