@@ -121,7 +121,7 @@ class committed_descriptor {
    * Constructor.
    *
    * @param params descriptor this is created from
-   * @param queue queue to use qhen enqueueing device work
+   * @param queue queue to use when enqueueing device work
    */
   committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
       : params{params},
@@ -132,7 +132,7 @@ class committed_descriptor {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
 
-    // get some properties we will use for tunning
+    // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
   }
@@ -306,7 +306,7 @@ class committed_descriptor {
    * @brief Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam dim Dimention of the buffer
+   * @tparam dim Number of dimension of the buffer
    * @tparam T Type of buffer
    * @param in buffer containing input data
    * @param out buffer containing output data
@@ -391,7 +391,7 @@ struct descriptor {
    * Commits the descriptor, precalculating what can be done in advance.
    *
    * @param queue queue to use for computations
-   * @return commited_descriptor<Scalar, Domain>
+   * @return committed_descriptor<Scalar, Domain>
    */
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
 

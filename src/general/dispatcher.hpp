@@ -445,7 +445,7 @@ std::size_t get_global_size(std::size_t fft_size, std::size_t n_transforms, std:
     std::size_t n_ffts_per_sg = subgroup_size / factor_sg;
     n_sgs_we_can_utilize = divideCeil(n_transforms, n_ffts_per_sg);
     // Less subgroups launched seems to be optimal for subgroup implementation.
-    // This is a temporary solution until we have tunning
+    // This is a temporary solution until we have tuning
     maximum_n_sgs /= 4;
   }
   return subgroup_size *

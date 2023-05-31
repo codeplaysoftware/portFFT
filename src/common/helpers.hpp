@@ -31,8 +31,8 @@ struct remove_multi_ptr {
   using type = T;
 };
 
-template <typename T, int Dimms>
-struct remove_multi_ptr<sycl::local_accessor<T, Dimms>> {
+template <typename T, int Dims>
+struct remove_multi_ptr<sycl::local_accessor<T, Dims>> {
   using type = T;
 };
 
@@ -84,7 +84,7 @@ void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
 /**
  * Divides the value and rounds the result up.
  * @tparam T type of the inputs and the result
- * @param dividend divident
+ * @param dividend dividend
  * @param divisor divisor
  * @return rounded-up quotient
  */
