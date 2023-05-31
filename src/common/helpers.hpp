@@ -36,25 +36,10 @@ struct remove_multi_ptr<sycl::local_accessor<T, Dims>> {
   using type = T;
 };
 
-#ifdef SYCL_IMPLEMENTATION_ONEAPI
-// OneAPI Adds decorate address space during version 6.1, so this will
-// not work in all cases.
-#if __LIBSYCL_MAJOR_VERSION >= 6 & __LIBSYCL_MINOR_VERSION >= 1
-#define SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-#endif  // __LIBSYCL version
-#endif  // SYCL_IMPLEMENTATION_ONEAPI
-#ifdef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
 template <typename T, sycl::access::address_space Space, sycl::access::decorated DecorateAddress>
 struct remove_multi_ptr<sycl::multi_ptr<T, Space, DecorateAddress>> {
   using type = T;
 };
-#else
-template <typename T, sycl::access::address_space Space>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space>> {
-  using type = T;
-};
-#endif  // SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-#undef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
 
 /**
  * Removes pointer or sycl::multi_ptr.
