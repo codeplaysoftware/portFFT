@@ -164,7 +164,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       priv[i + 1] *= scaling_factor;
     });
     if constexpr (factor_sg == SYCLFFT_TARGET_SUBGROUP_SIZE) {
-      // in this case we get fully coalesced memory access even without going trough local memory
+      // in this case we get fully coalesced memory access even without going through local memory
       // TODO we may want to tune maximal `factor_sg` for which we use direct stores.
       if (working) {
         store_transposed<N_reals_per_wi, pad::DONT_PAD>(priv, output, id_of_wi_in_fft, factor_sg,
