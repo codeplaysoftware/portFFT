@@ -172,7 +172,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       }
     } else {
       if (working) {
-        store_transposed<N_reals_per_wi, pad::DO_PAD>(priv, output, id_of_wi_in_fft, factor_sg,
+        store_transposed<N_reals_per_wi, pad::DO_PAD>(priv, loc, id_of_wi_in_fft, factor_sg,
                                                       subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
       }
       sycl::group_barrier(sg);
