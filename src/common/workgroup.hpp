@@ -40,9 +40,9 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   int id_of_wi_in_fft = sg.get_local_linear_id() % fact_sg_M;
 
   for (int sg_m_offset = m_sg_offset; sg_m_offset <= max_m_sg_offset; sg_m_offset += m_sg_increment) {
-    bool working = sg_m_offset < M && sg.get_local_linear_id() < max_working_tid_in_sg_m;
+    bool working = sg_m_offset < N && sg.get_local_linear_id() < max_working_tid_in_sg_m;
 
-    int twiddle_n_idx = sg_m_offset  + (sg.get_local_linear_id() / fact_sg_M);
+    int twiddle_n_idx = sg_m_offset;
     int twiddle_k_idx = id_of_wi_in_fft * fact_wi_M;
 
     if(working)
@@ -69,12 +69,12 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
   sycl::group_barrier(it.get_group());
 
   for (std::size_t sg_n_offset = n_sg_offset; sg_n_offset <= max_n_sg_offset; sg_n_offset += n_sg_increment) {
-    bool working = sg_n_offset < N && sg.get_local_linear_id() < max_working_tid_in_sg_n;
+    bool working = sg_n_offset < M && sg.get_local_linear_id() < max_working_tid_in_sg_n;
     if(working)
       local2private<2 * fact_wi_N, true>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_N, 2 * sg_n_offset * N);
 
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
-
+    sycl::group_barrier(sg);
     detail::unrolled_loop<0, 2 * fact_wi_N, 2>([&](const int idx) __attribute__((always_inline)) {
       priv[idx] *= scaling_factor;
       priv[idx + 1] *= scaling_factor;
@@ -82,7 +82,6 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
     if(working)
       private2local<2 * fact_wi_N, true>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_N, 2 * N * sg_n_offset);
   }
-  sycl::group_barrier(sg);
 }
 }  // namespace sycl_fft
 #endif
