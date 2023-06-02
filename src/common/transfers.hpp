@@ -306,31 +306,6 @@ __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv
 }
 
 /**
- * Copies data from local memory to private memory. Consecutive workitems get
- * consecutive elements.
- *
- * @tparam num_elems_per_wi Number of elements to copy by each work item
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @param local pointer to local memory
- * @param priv pointer to private memory
- * @param local_id local id of work item
- * @param workers_in_sg how many workitems are working in each subgroup (can be
- * less than subgroup size)
- * @param local_offset offset to the local pointer
- */
-template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
-__attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr local, T_priv_ptr priv,
-                                                                    std::size_t local_id, std::size_t workers_in_sg,
-                                                                    std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](int i) __attribute__((always_inline)) {
-    priv[i] = local[local_offset + local_id + i * workers_in_sg];
-  });
-}
-
-/**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
  *
@@ -357,39 +332,39 @@ __attribute__((always_inline)) inline void private2local(T_priv_ptr priv, T_loc_
 }
 
 /**
- * Copies data from private memory to local memory. Consecutive workitems write
- * consecutive elements.
+ * Copies data from private memory to local or global memory. Consecutive workitems write
+ * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
  * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
  * sycl::multi_ptr.
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
+ * @tparam T_dst_ptr type of pointer to local or global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @param priv pointer to private memory
- * @param local pointer to local memory
+ * @param destination pointer to destination - local or global memory
  * @param local_id local id of work item
  * @param workers_in_group how many workitems are working in each group (can be
  * less than the group size)
- * @param local_offset offset to the local pointer
+ * @param destination_offset offset to the destination pointer
  */
-template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_priv_ptr, typename T_loc_ptr>
-__attribute__((always_inline)) inline void private2local_transposed(T_priv_ptr priv, T_loc_ptr local,
-                                                                    std::size_t local_id, std::size_t workers_in_group,
-                                                                    std::size_t local_offset = 0) {
-  using T = detail::remove_ptr<T_loc_ptr>;
+template <std::size_t num_elems_per_wi, detail::pad Pad, typename T_priv_ptr, typename T_dst_ptr>
+__attribute__((always_inline)) inline void store_transposed(T_priv_ptr priv, T_dst_ptr destination,
+                                                            std::size_t local_id, std::size_t workers_in_group,
+                                                            std::size_t destination_offset = 0) {
+  using T = detail::remove_ptr<T_dst_ptr>;
   constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
   using T_vec = sycl::vec<T, vec_size>;
   constexpr std::size_t num_vec_per_wi = num_elems_per_wi / vec_size;
   T_vec* priv_vec = reinterpret_cast<T_vec*>(priv);
-  T_vec* local_vec = reinterpret_cast<T_vec*>(&local[0]);
+  T_vec* local_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * 2 + i * workers_in_group);
-    if (local_idx % 2 == 0) { // if the local address is aligned, we can use vector store
-      local_vec[local_idx / 2] = priv_vec[i / 2];
+    std::size_t destination_idx = detail::pad_local<Pad>(destination_offset + local_id * 2 + i * workers_in_group);
+    if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
+      local_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
-      local[local_idx] = priv[i];
-      local[local_idx + 1] = priv[i + 1];
+      destination[destination_idx] = priv[i];
+      destination[destination_idx + 1] = priv[i + 1];
     }
   });
 }
