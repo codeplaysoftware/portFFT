@@ -223,18 +223,19 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int max_global_offset = 2 * (n_transforms - 1) * fft_size;
   int global_offset = 2 * fft_size * wg_id;
   int offset_increment = 2 * fft_size * num_workgroups;
-  
+
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
-  
+
   int m_sg_offset = sg_id * m_ffts_in_sg + sg.get_local_linear_id() / fact_sg_M;
   int m_sg_increment = num_sgs * m_ffts_in_sg;
-  int max_m_sg_offset = detail::roundUpToMultiple<size_t>(N, m_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
+  int max_m_sg_offset =
+      detail::roundUpToMultiple<size_t>(N, m_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
 
   int n_sg_offset = sg_id * n_ffts_in_sg + sg.get_local_linear_id() / fact_sg_N;
   int n_sg_increment = num_sgs * n_ffts_in_sg;
-  int max_n_sg_offset = detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
-
+  int max_n_sg_offset =
+      detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
 
   global2local<false>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
   sycl::group_barrier(it.get_group());

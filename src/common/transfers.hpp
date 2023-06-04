@@ -241,6 +241,22 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
   });
 }
 
+template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_ptr, typename T_priv_ptr>
+__attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
+                                                                    int thread_id, int sub_batch) {
+  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
+    priv[i] = loc_base_ptr[stride * (thread_id * num_elements_per_wi + i) + sub_batch];
+  });
+}
+
+template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_ptr, typename T_priv_ptr>
+__attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
+                                                                    int thread_id, int sub_batch) {
+  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
+    loc_base_ptr[stride * (thread_id * num_elements_per_wi + i) + sub_batch] = priv[i];
+  });
+}
+
 /**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
