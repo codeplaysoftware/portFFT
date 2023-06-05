@@ -245,7 +245,8 @@ template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_pt
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    priv[i] = loc_base_ptr[stride * (thread_id * num_elements_per_wi + i) + sub_batch];
+    priv[2 * i] = loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch];
+    priv[2 * i + 1] = loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch + 1];
   });
 }
 
@@ -253,7 +254,8 @@ template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_pt
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    loc_base_ptr[stride * (thread_id * num_elements_per_wi + i) + sub_batch] = priv[i];
+    loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch] = priv[2 * i];
+    loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch + 1] = priv[2 * i + 1];
   });
 }
 
