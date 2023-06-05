@@ -66,19 +66,19 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * Each workitem holds one input and one output complex value.
  *
  * @tparam dir direction of the FFT
- * @tparam N size of the DFT transform
  * @tparam stride stride between workitems working on consecutive values of one
  * DFT
  * @tparam T type of the scalar to work on
+ * @param N size of the DFT transform
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
-  if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
+template <direction dir, int stride, typename T>
+__attribute__((always_inline)) inline void cross_sg_naive_dft(int N, T& real, T& imag, sycl::sub_group& sg) {
+  if (N == 2 && (stride & (stride - 1)) == 0) {
     int local_id = sg.get_local_linear_id();
     int idx_out = (local_id / stride) % 2;
     int fft_start = local_id - idx_out * stride;
@@ -100,7 +100,9 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_real = 0;
     T res_imag = 0;
 
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    #pragma unroll
+    for(int idx_in=0; idx_in < N; idx_in++){
+    //unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
       const T multi_im = [&]() __attribute__((always_inline)) {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
@@ -115,7 +117,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
       // multiply cur and multi
       res_real += cur_real * multi_re - cur_imag * multi_im;
       res_imag += cur_real * multi_im + cur_imag * multi_re;
-    });
+    }//);
 
     real = res_real;
     imag = res_imag;
@@ -210,7 +212,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);
   } else {
-    cross_sg_naive_dft<dir, N, stride>(real, imag, sg);
+    cross_sg_naive_dft<dir, stride>(N, real, imag, sg);
   }
 }
 

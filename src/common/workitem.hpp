@@ -49,22 +49,26 @@ strides.
  * Calculates DFT using naive algorithm. Can work in or out of place.
  *
  * @tparam dir direction of the FFT
- * @tparam N size of the DFT transform
  * @tparam stride_in stride (in complex values) between complex values in `in`
  * @tparam stride_out stride (in complex values) between complex values in `out`
  * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
+ * @param N size of the DFT transform
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
+template <direction dir, int stride_in, int stride_out, typename T_ptr>
+__attribute__((always_inline)) inline void naive_dft(int N, T_ptr in, T_ptr out) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
-  T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+  T tmp[2 * 56];
+  #pragma unroll
+  for(int idx_out=0; idx_out<N; idx_out++){
+  //unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    #pragma unroll
+    for(int idx_in=0; idx_in<N; idx_in++){
+    //unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -77,12 +81,14 @@ __attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
           in[2 * idx_in * stride_in] * re_multiplier - in[2 * idx_in * stride_in + 1] * im_multiplier;
       tmp[2 * idx_out + 1] +=
           in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
-    });
-  });
-  unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
+    }//);
+  }//);
+  #pragma unroll
+  for(int idx_out=0; idx_out<N; idx_out++){
+  //unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
     out[idx_out * stride_out + 0] = tmp[idx_out + 0];
     out[idx_out * stride_out + 1] = tmp[idx_out + 1];
-  });
+  }//);
 }
 
 // mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
@@ -104,9 +110,13 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out)
   using T = remove_ptr<T_ptr>;
   T tmp_buffer[2 * N * M];
 
-  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
+  #pragma unroll
+  for(int i=0;i<M;i++){
+  //unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<dir, N, M * stride_in, 1>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N);
-    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
+    #pragma unroll
+    for(int j=0;j<N;j++){
+    //unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
       auto re_multiplier = twiddle<T>::re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][i * j];
@@ -116,11 +126,13 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out)
       tmp_buffer[2 * i * N + 2 * j + 1] =
           tmp_buffer[2 * i * N + 2 * j] * im_multiplier + tmp_buffer[2 * i * N + 2 * j + 1] * re_multiplier;
       tmp_buffer[2 * i * N + 2 * j + 0] = tmp_val;
-    });
-  });
-  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
+    }//);
+  }//);
+  #pragma unroll
+  for(int i=0;i<N;i++){
+  //unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<dir, M, N, N * stride_out>(tmp_buffer + 2 * i, out + 2 * i * stride_out);
-  });
+  }//);
 }
 
 /**
@@ -241,7 +253,7 @@ __attribute__((always_inline)) inline void wi_dft(T_ptr in, T_ptr out) {
   } else if constexpr (F0 >= 2 && N / F0 >= 2) {
     detail::cooley_tukey_dft<dir, N / F0, F0, stride_in, stride_out>(in, out);
   } else {
-    detail::naive_dft<dir, N, stride_in, stride_out, T_ptr>(in, out);
+    detail::naive_dft<dir, stride_in, stride_out, T_ptr>(N, in, out);
   }
 }
 
