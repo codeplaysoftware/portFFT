@@ -250,7 +250,7 @@ int factorize_sg(int N, int sg_size) {
  * commit
  */
 template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T_ptr inout, T_ptr tmp, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
   using T = detail::remove_ptr<T_ptr>;
   int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
 
@@ -268,7 +268,7 @@ __attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& 
     real = tmp_real;
   });
 
-  wi_dft<dir, M, 1, 1>(inout, inout);
+  wi_dft<dir, 0>(M, 1, 1, inout, inout, tmp);
 }
 
 /**

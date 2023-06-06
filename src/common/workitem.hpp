@@ -29,8 +29,8 @@
 namespace sycl_fft {
 
 // forward declaration
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-inline void wi_dft(T_ptr in, T_ptr out);
+template <direction dir, int level, typename T_ptr>
+inline void wi_dft(int N, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp);
 
 namespace detail {
 
@@ -49,18 +49,18 @@ strides.
  * Calculates DFT using naive algorithm. Can work in or out of place.
  *
  * @tparam dir direction of the FFT
- * @tparam stride_in stride (in complex values) between complex values in `in`
- * @tparam stride_out stride (in complex values) between complex values in `out`
  * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
  * @param N size of the DFT transform
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_out stride (in complex values) between complex values in `out`
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void naive_dft(int N, T_ptr in, T_ptr out) {
+template <direction dir, typename T_ptr>
+__attribute__((always_inline)) inline void naive_dft(int N, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
-  T tmp[2 * 56];
+  //T tmp[2 * 56];
   #pragma unroll
   for(int idx_out=0; idx_out<N; idx_out++){
   //unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
@@ -97,23 +97,24 @@ __attribute__((always_inline)) inline void naive_dft(int N, T_ptr in, T_ptr out)
  * Calculates DFT using Cooley-Tukey FFT algorithm. Can work in or out of place. Size of the problem is N*M
  *
  * @tparam dir direction of the FFT
- * @tparam N the first factor of the problem size
- * @tparam M the second factor of the problem size
- * @tparam stride_in stride (in complex values) between complex values in `in`
- * @tparam stride_out stride (in complex values) between complex values in `out`
+ * @tparam level level of recursion
+ * @param N the first factor of the problem size
+ * @param M the second factor of the problem size
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_out stride (in complex values) between complex values in `out`
  * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int M, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out) {
+template <direction dir, int level, typename T_ptr>
+__attribute__((always_inline)) inline void cooley_tukey_dft(int N, int M, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp_buffer) {
   using T = remove_ptr<T_ptr>;
-  T tmp_buffer[2 * N * M];
+  //T tmp_buffer[2 * 56];
 
   #pragma unroll
   for(int i=0;i<M;i++){
   //unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
-    wi_dft<dir, N, M * stride_in, 1>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N);
+    wi_dft<dir, level + 1>(N, M * stride_in, 1, in + 2 * i * stride_in, tmp_buffer + 2 * i * N, tmp_buffer + 2*N*M);
     #pragma unroll
     for(int j=0;j<N;j++){
     //unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
@@ -131,7 +132,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out)
   #pragma unroll
   for(int i=0;i<N;i++){
   //unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
-    wi_dft<dir, M, N, N * stride_out>(tmp_buffer + 2 * i, out + 2 * i * stride_out);
+    wi_dft<dir, level + 1>(M, N, N * stride_out, tmp_buffer + 2 * i, out + 2 * i * stride_out, tmp_buffer + 2*N*M);
   }//);
 }
 
@@ -231,29 +232,32 @@ __attribute__((always_inline)) inline bool fits_in_wi_device(int fft_size) {
  * Calculates DFT using FFT algorithm. Can work in or out of place.
  *
  * @tparam dir direction of the FFT
- * @tparam N size of the DFT transform
- * @tparam stride_in stride (in complex values) between complex values in `in`
- * @tparam stride_out stride (in complex values) between complex values in `out`
+ * @tparam level level of recursion
  * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
+ * @param N size of the DFT transform
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_out stride (in complex values) between complex values in `out`
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void wi_dft(T_ptr in, T_ptr out) {
-  constexpr int F0 = detail::factorize(N);
-  if constexpr (N == 2) {
-    using T = detail::remove_ptr<T_ptr>;
-    T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
-    T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
-    T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];
-    out[2 * stride_out + 1] = in[0 * stride_in + 1] - in[2 * stride_in + 1];
-    out[0 * stride_out + 0] = a;
-    out[0 * stride_out + 1] = b;
-    out[2 * stride_out + 0] = c;
-  } else if constexpr (F0 >= 2 && N / F0 >= 2) {
-    detail::cooley_tukey_dft<dir, N / F0, F0, stride_in, stride_out>(in, out);
-  } else {
-    detail::naive_dft<dir, stride_in, stride_out, T_ptr>(N, in, out);
+template <direction dir, int level, typename T_ptr>
+__attribute__((always_inline)) inline void wi_dft(int N, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp) {
+  if constexpr(level < 6){
+    int F0 = detail::factorize(N);
+    if (N == 2) {
+      using T = detail::remove_ptr<T_ptr>;
+      T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
+      T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
+      T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];
+      out[2 * stride_out + 1] = in[0 * stride_in + 1] - in[2 * stride_in + 1];
+      out[0 * stride_out + 0] = a;
+      out[0 * stride_out + 1] = b;
+      out[2 * stride_out + 0] = c;
+    } else if (F0 >= 2 && N / F0 >= 2) {
+      detail::cooley_tukey_dft<dir, level>(N / F0, F0, stride_in, stride_out, in, out, tmp);
+    } else {
+      detail::naive_dft<dir, T_ptr>(N, stride_in, stride_out, in, out, tmp);
+    }
   }
 }
 

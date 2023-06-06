@@ -57,6 +57,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
   constexpr int N_reals = 2 * N;
 
   T priv[N_reals];
+  T temp[2*wi_temps(N)];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
@@ -74,7 +75,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
-      wi_dft<dir, N, 1, 1>(priv, priv);
+      wi_dft<dir, 0>(N, 1, 1, priv, priv, temp);
       unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
@@ -120,6 +121,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   constexpr int N_reals_per_wi = 2 * factor_wi;
 
   T priv[N_reals_per_wi];
+  T temp[2 * wi_temps(factor_wi)];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t workgroup_local_id = it.get_local_id(0);
   std::size_t workgroup_size = it.get_local_range(0);
@@ -158,7 +160,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
                                                  subgroup_id * n_reals_per_sg);
     }
-    sg_dft<dir, factor_wi, factor_sg>(priv, sg, loc_twiddles);
+    sg_dft<dir, factor_wi, factor_sg>(priv, temp, sg, loc_twiddles);
     unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) {
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
