@@ -102,10 +102,6 @@ class committed_descriptor {
   sycl::context ctx;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   std::size_t n_compute_units;
-  std::size_t buffer_kernel_fwd_subgroup_size;
-  std::size_t usm_kernel_fwd_subgroup_size;
-  std::size_t buffer_kernel_bwd_subgroup_size;
-  std::size_t usm_kernel_bwd_subgroup_size;
   Scalar* twiddles_forward;
 
   /**
@@ -137,38 +133,9 @@ class committed_descriptor {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
 
-    // query the kernels associated with the queue, and get the sub_group info
-    buffer_kernel_fwd_subgroup_size =
-        get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain, direction::FORWARD>>(dev, exec_bundle);
-    usm_kernel_fwd_subgroup_size =
-        get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::FORWARD>>(dev, exec_bundle);
-    buffer_kernel_bwd_subgroup_size =
-        get_max_sub_group_size<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
-    usm_kernel_bwd_subgroup_size =
-        get_max_sub_group_size<detail::usm_kernel<Scalar, Domain, direction::BACKWARD>>(dev, exec_bundle);
-    if (buffer_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_fwd_subgroup_size) +
-                               " of the fwd buffer kernel does not match required size of " +
-                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
-    }
-    if (usm_kernel_fwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_fwd_subgroup_size) +
-                               " of the fwd usm kernel does not match required size of " +
-                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
-    }
-    if (buffer_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(buffer_kernel_bwd_subgroup_size) +
-                               " of the bwd buffer kernel does not match required size of " +
-                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
-    }
-    if (usm_kernel_bwd_subgroup_size != SYCLFFT_TARGET_SUBGROUP_SIZE) {
-      throw std::runtime_error("Subgroup size " + std::to_string(usm_kernel_bwd_subgroup_size) +
-                               " of the bwd usm kernel does not match required size of " +
-                               std::to_string(SYCLFFT_TARGET_SUBGROUP_SIZE));
-    }
     // get some properties we will use for tunning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, usm_kernel_fwd_subgroup_size);
+    twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
   }
 
  public:
@@ -303,12 +270,7 @@ class committed_descriptor {
                                       const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
-    const std::size_t subgroup_size = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return usm_kernel_fwd_subgroup_size;
-      else
-        return usm_kernel_bwd_subgroup_size;
-    }();
+    const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
     std::size_t input_distance = [&]() {
       if constexpr (dir == direction::FORWARD)
@@ -357,12 +319,7 @@ class committed_descriptor {
                         const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
-    const std::size_t subgroup_size = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return buffer_kernel_fwd_subgroup_size;
-      else
-        return buffer_kernel_bwd_subgroup_size;
-    }();
+    const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
     std::size_t input_distance = [&]() {
       if constexpr (dir == direction::FORWARD)
