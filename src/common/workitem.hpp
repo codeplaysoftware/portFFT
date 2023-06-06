@@ -60,15 +60,12 @@ template <direction dir, typename T_ptr>
 __attribute__((always_inline)) inline void naive_dft(int N, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp) {
   using T = remove_ptr<T_ptr>;
   constexpr T TWOPI = 2.0 * M_PI;
-  //T tmp[2 * 56];
   #pragma unroll
   for(int idx_out=0; idx_out<N; idx_out++){
-  //unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
     #pragma unroll
     for(int idx_in=0; idx_in<N; idx_in++){
-    //unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -81,14 +78,13 @@ __attribute__((always_inline)) inline void naive_dft(int N, int stride_in, int s
           in[2 * idx_in * stride_in] * re_multiplier - in[2 * idx_in * stride_in + 1] * im_multiplier;
       tmp[2 * idx_out + 1] +=
           in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
-    }//);
-  }//);
+    }
+  }
   #pragma unroll
   for(int idx_out=0; idx_out<N; idx_out++){
-  //unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
     out[idx_out * stride_out + 0] = tmp[idx_out + 0];
     out[idx_out * stride_out + 1] = tmp[idx_out + 1];
-  }//);
+  }
 }
 
 // mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
@@ -109,15 +105,12 @@ __attribute__((always_inline)) inline void naive_dft(int N, int stride_in, int s
 template <direction dir, int level, typename T_ptr>
 __attribute__((always_inline)) inline void cooley_tukey_dft(int N, int M, int stride_in, int stride_out, T_ptr in, T_ptr out, T_ptr tmp_buffer) {
   using T = remove_ptr<T_ptr>;
-  //T tmp_buffer[2 * 56];
 
   #pragma unroll
   for(int i=0;i<M;i++){
-  //unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<dir, level + 1>(N, M * stride_in, 1, in + 2 * i * stride_in, tmp_buffer + 2 * i * N, tmp_buffer + 2*N*M);
     #pragma unroll
     for(int j=0;j<N;j++){
-    //unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
       auto re_multiplier = twiddle<T>::re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][i * j];
@@ -127,13 +120,12 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int N, int M, int st
       tmp_buffer[2 * i * N + 2 * j + 1] =
           tmp_buffer[2 * i * N + 2 * j] * im_multiplier + tmp_buffer[2 * i * N + 2 * j + 1] * re_multiplier;
       tmp_buffer[2 * i * N + 2 * j + 0] = tmp_val;
-    }//);
-  }//);
+    }
+  }
   #pragma unroll
   for(int i=0;i<N;i++){
-  //unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<dir, level + 1>(M, N, N * stride_out, tmp_buffer + 2 * i, out + 2 * i * stride_out, tmp_buffer + 2*N*M);
-  }//);
+  }
 }
 
 /**
