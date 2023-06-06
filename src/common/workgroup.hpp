@@ -44,13 +44,12 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
     if (working) local2private_transposed<fact_wi_N, M>(loc, priv, sg.get_local_linear_id() % fact_sg_N, sub_batch);
 
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
+    //TODO: Transpose sg_dft result
 
     detail::unrolled_loop<0, fact_wi_N, 1>([&](const int i) __attribute__((always_inline)) {
-      // transpose the sg_dft fact_sg_N x fact_wi_N tile
       T& curr_real = priv[2 * i];
       T& curr_imag = priv[2 * i + 1];
-      detail::cross_sg_transpose<fact_wi_N, fact_sg_N, 1>(curr_real, curr_imag, sg);
-
+      
       // TODO: L2 cache latency vs sin,cos (compare SFU latency vs sequence of FFMAD).
       T twiddle_m_index = sub_batch;
       T twiddle_n_index = (sg.get_local_linear_id() % fact_sg_N) * fact_wi_N + i;
@@ -74,18 +73,28 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, const sycl::local_
       local2private<2 * fact_wi_M, false>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M, 2 * M * sub_batch);
 
     sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
+    //TODO: transpose sg_dft result 
 
     detail::unrolled_loop<0, 2 * fact_wi_M, 2>([&](const int i) __attribute__((always_inline)) {
       T& curr_real = priv[2 * i];
       T& curr_imag = priv[2 * i + 1];
-      detail::cross_sg_transpose<fact_wi_N, fact_sg_N, 1>(curr_real, curr_imag, sg);
 
       curr_real *= scaling_factor;
       curr_imag *= scaling_factor;
     });
     if (working)
-      private2local<2 * fact_wi_M, false>(priv, loc, sg.get_local_linear_id(), 2 * fact_wi_M, 2 * M * sub_batch);
+      private2local_transposed<fact_wi_M, M>(loc, priv, sg.get_local_linear_id() % fact_sg_M, sub_batch);
   }
 }
+
+template<int num_complex_per_wi, int num_threads_per_fft, typename T_ptr>
+__attribute__((always_inline)) inline void transpose(T_ptr priv, sycl::sub_group sg) {
+    //WIP
+    int id_of_thread_in_fft = sg.get_local_linear_id() % num_threads_per_fft;
+    detail::unrolled_loop<0, num_complex_per_wi, 1>([&](const int id_of_element_in_wi)__attribute__((always_inline)) {
+
+    });
+}
+
 }  // namespace sycl_fft
 #endif
