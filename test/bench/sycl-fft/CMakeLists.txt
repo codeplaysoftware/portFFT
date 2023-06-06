@@ -24,6 +24,7 @@
 # **************************************************************************/
 
 set(SYCLFFT_BENCHMARKS
+    repro.cpp
     bench_float.cpp
     bench_manual_float.cpp
 )
