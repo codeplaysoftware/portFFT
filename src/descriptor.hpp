@@ -29,6 +29,7 @@
 #include <complex>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -37,9 +38,9 @@ namespace sycl_fft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction dir>
+template <typename Scalar, typename T_index, domain Domain, direction dir>
 class buffer_kernel;
-template <typename Scalar, domain Domain, direction dir>
+template <typename Scalar, typename T_index, domain Domain, direction dir>
 class usm_kernel;
 }  // namespace detail
 
@@ -48,7 +49,18 @@ template <typename Scalar, domain Domain>
 struct descriptor;
 
 // specialization constants
-constexpr static sycl::specialization_id<int> fft_size_spec_const;
+template <typename T_index>
+struct fft_size_spec_const;
+
+template <>
+struct fft_size_spec_const<unsigned> {
+  constexpr static sycl::specialization_id<unsigned> value{};
+};
+
+template <>
+struct fft_size_spec_const<unsigned long> {
+  constexpr static sycl::specialization_id<unsigned long> value{};
+};
 
 /*
 Compute functions in the `committed_descriptor` call `dispatch_compute`. There are two overloads of `dispatch_compute`,
@@ -94,7 +106,7 @@ template <typename Scalar, domain Domain>
 class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
-  friend class descriptor<Scalar, Domain>;
+  friend struct descriptor<Scalar, Domain>;
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
@@ -113,7 +125,12 @@ class committed_descriptor {
     // are already initialized by the time this is called only if they are declared in the class definition before the
     // member that is initialized by this function.
     auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context());
-    in_bundle.set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
+    if (use_32bit_indices()) {
+      in_bundle.set_specialization_constant<fft_size_spec_const<unsigned>::value>(
+          static_cast<unsigned>(params.lengths[0]));
+    } else {
+      in_bundle.set_specialization_constant<fft_size_spec_const<unsigned long>::value>(params.lengths[0]);
+    }
     return sycl::build(in_bundle);
   }
 
@@ -130,7 +147,14 @@ class committed_descriptor {
         ctx(queue.get_context()),
         exec_bundle(build_w_spec_const()) {
     // TODO: check and support all the parameter values
-    assert(params.lengths.size() == 1);
+    if (params.lengths.size() != 1) {
+      throw std::runtime_error("SYCL-FFT only supports 1D FFT for now");
+    }
+#ifndef SYCLFFT_ENABLE_64BIT_INDICES
+    if (!use_32bit_indices()) {
+      throw std::runtime_error("Indices are too large, enable 64bit indices with SYCLFFT_ENABLE_64BIT_INDICES");
+    }
+#endif
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
@@ -188,7 +212,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    dispatch_compute<direction::FORWARD, 1, complex_type>(in, out, params.forward_scale);
+    dispatch_compute_select_indices<direction::FORWARD, 1, complex_type>(in, out, params.forward_scale);
   }
 
   /**
@@ -198,7 +222,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_backward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    dispatch_compute<direction::BACKWARD, 1, complex_type>(in, out, params.backward_scale);
+    dispatch_compute_select_indices<direction::BACKWARD, 1, complex_type>(in, out, params.backward_scale);
   }
 
   /**
@@ -235,7 +259,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const complex_type* in, complex_type* out,
                               const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_compute<direction::FORWARD>(in, out, params.forward_scale, dependencies);
+    return dispatch_compute_select_indices<direction::FORWARD>(in, out, params.forward_scale, dependencies);
   }
 
   /**
@@ -248,12 +272,21 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const complex_type* in, complex_type* out,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_compute<direction::BACKWARD>(in, out, params.backward_scale, dependencies);
+    return dispatch_compute_select_indices<direction::BACKWARD>(in, out, params.backward_scale, dependencies);
   }
 
  private:
   /**
-   * Common interface to dispatch compute called by compute_forward and compute_backward
+   * @return Whether 32bit indices can be used for the current configuration.
+   */
+  bool use_32bit_indices() {
+    std::size_t n_transforms = params.number_of_transforms;
+    std::size_t fft_size = params.lengths[0];  // 1d only for now
+    return fft_size <= std::numeric_limits<unsigned>::max() && n_transforms <= std::numeric_limits<unsigned>::max();
+  }
+
+  /**
+   * Chooses whether 32bit or 64bit indicies should be used and submit the kernel.
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam Tin Type of the input USM pointer
@@ -265,89 +298,114 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, typename Tin, typename Tout>
-  inline sycl::event dispatch_compute(const Tin in, Tout out, Scalar scale_factor = 1.0f,
-                                      const std::vector<sycl::event>& dependencies = {}) {
+  inline sycl::event dispatch_compute_select_indices(const Tin in, Tout out, Scalar scale_factor = 1.0f,
+                                                     const std::vector<sycl::event>& dependencies = {}) {
+    if (use_32bit_indices()) {
+      return dispatch_compute_impl<unsigned, dir>(in, out, scale_factor, dependencies);
+    } else {
+      return dispatch_compute_impl<unsigned long, dir>(in, out, scale_factor, dependencies);
+    }
+  }
+
+  /**
+   * Common interface to dispatch compute called by compute_forward and compute_backward
+   *
+   * @tparam T_index Index type
+   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam Tin Type of the input USM pointer
+   * @tparam Tout Type of the output USM pointer
+   * @param in USM pointer to memory containing input data
+   * @param out USM pointer to memory containing output data
+   * @param scale_factor Value with which the result of the FFT will be multiplied
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event
+   */
+  template <typename T_index, direction dir, typename Tin, typename Tout>
+  inline sycl::event dispatch_compute_impl(const Tin in, Tout out, Scalar scale_factor = 1.0f,
+                                           const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
-    std::size_t input_distance = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return params.forward_distance * 2;
-      else
-        return params.backward_distance * 2;
-    }();
-    std::size_t output_distance = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return params.backward_distance * 2;
-      else
-        return params.forward_distance * 2;
-    }();
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
-    Scalar* twiddles_local = twiddles_forward;
+    const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
-      cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir>>(
+      cgh.parallel_for<detail::usm_kernel<Scalar, T_index, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+            detail::dispatcher<dir>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
+                                    kh.get_specialization_constant<fft_size_spec_const<T_index>::value>(),
+                                    static_cast<T_index>(n_transforms), it, twiddles_ptr, scale_factor);
           });
     });
   }
 
   /**
-   * @brief Common interface to dispatch compute called by compute_forward and compute_backward
+   * Chooses whether 32bit or 64bit indicies should be used and submit the kernel.
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam dim Number of dimension of the buffer
-   * @tparam T Type of buffer
+   * @tparam Tin Type of the input buffer
+   * @tparam Tout Type of the output buffer
    * @param in buffer containing input data
    * @param out buffer containing output data
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    */
-  template <direction dir, int dim, typename T>
-  void dispatch_compute(const sycl::buffer<T, dim>& in, sycl::buffer<T, dim>& out, Scalar scale_factor = 1.0f,
-                        const std::vector<sycl::event>& dependencies = {}) {
+  template <direction dir, int dim, typename Tin, typename Tout>
+  inline void dispatch_compute_select_indices(const sycl::buffer<Tin, dim>& in, sycl::buffer<Tout, dim>& out,
+                                              Scalar scale_factor = 1.0f,
+                                              const std::vector<sycl::event>& dependencies = {}) {
+    if (use_32bit_indices()) {
+      dispatch_compute_impl<unsigned, dir>(in, out, scale_factor, dependencies);
+    } else {
+      dispatch_compute_impl<unsigned long, dir>(in, out, scale_factor, dependencies);
+    }
+  }
+
+  /**
+   * Common interface to dispatch compute called by compute_forward and compute_backward
+   *
+   * @tparam T_index Index type
+   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam dim Number of dimension of the buffer
+   * @tparam Tin Type of the input buffer
+   * @tparam Tout Type of the output buffer
+   * @param in buffer containing input data
+   * @param out buffer containing output data
+   * @param scale_factor Value with which the result of the FFT will be multiplied
+   * @param dependencies events that must complete before the computation
+   */
+  template <typename T_index, direction dir, int dim, typename Tin, typename Tout>
+  void dispatch_compute_impl(const sycl::buffer<Tin, dim>& in, sycl::buffer<Tout, dim>& out, Scalar scale_factor = 1.0f,
+                             const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
-    std::size_t input_distance = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return params.forward_distance * 2;
-      else
-        return params.backward_distance * 2;
-    }();
-    std::size_t output_distance = [&]() {
-      if constexpr (dir == direction::FORWARD)
-        return params.backward_distance * 2;
-      else
-        return params.forward_distance * 2;
-    }();
     auto in_scalar = in.template reinterpret<Scalar, dim>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, dim>(2 * out.size());
-    Scalar* twiddles_local = twiddles_forward;
+    const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     queue.submit([&](sycl::handler& cgh) {
-      auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
-      auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
+      cgh.depends_on(dependencies);
+      sycl::accessor in_acc{in_scalar, cgh, sycl::read_only};
+      sycl::accessor out_acc{out_scalar, cgh, sycl::write_only};
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
       cgh.use_kernel_bundle(exec_bundle);
-      cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir>>(
+      cgh.parallel_for<detail::buffer_kernel<Scalar, T_index, Domain, dir>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+            detail::dispatcher<dir>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
+                                    kh.get_specialization_constant<fft_size_spec_const<T_index>::value>(),
+                                    static_cast<T_index>(n_transforms), it, twiddles_ptr, scale_factor);
           });
     });
   }
@@ -383,7 +441,7 @@ struct descriptor {
     forward_distance = lengths[0];
     backward_distance = lengths[0];
     for (auto l : lengths) {
-      backward_scale *= 1.0 / l;
+      backward_scale *= Scalar(1) / static_cast<Scalar>(l);
     }
   }
 
@@ -396,7 +454,7 @@ struct descriptor {
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
 
   std::size_t get_total_length() const noexcept {
-    return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<std::size_t>());
+    return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
 };
 

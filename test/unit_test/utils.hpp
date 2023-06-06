@@ -38,7 +38,7 @@ using namespace sycl_fft;
 template <typename type>
 void compare_arrays(std::vector<std::complex<type>> array1, std::vector<std::complex<type>> array2, double tol) {
   ASSERT_EQ(array1.size(), array2.size());
-  for (size_t i = 0; i < array1.size(); i++) {
+  for (std::size_t i = 0; i < array1.size(); i++) {
     EXPECT_NEAR(array1[i].real(), array2[i].real(), tol) << "i=" << i;
     EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol) << "i=" << i;
   }
@@ -47,7 +47,7 @@ void compare_arrays(std::vector<std::complex<type>> array1, std::vector<std::com
 template <typename type>
 void compare_arrays(std::vector<type> array1, std::vector<type> array2, double tol) {
   ASSERT_EQ(array1.size(), array2.size());
-  for (size_t i = 0; i < array1.size(); i++) {
+  for (std::size_t i = 0; i < array1.size(); i++) {
     EXPECT_NEAR(array1[i], array2[i], tol) << "i=" << i;
   }
 }

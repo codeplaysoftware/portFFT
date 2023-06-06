@@ -26,9 +26,11 @@
 using param_tuple = std::tuple<int, int>;
 
 struct test_params {
-  int batch;
-  int length;
-  test_params(param_tuple params) : batch(std::get<0>(params)), length(std::get<1>(params)) {}
+  std::size_t batch;
+  std::size_t length;
+
+  explicit test_params(param_tuple params)
+      : batch(static_cast<std::size_t>(std::get<0>(params))), length(static_cast<std::size_t>(std::get<1>(params))) {}
 };
 
 void operator<<(std::ostream& stream, const test_params& params) {

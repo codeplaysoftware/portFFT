@@ -28,7 +28,7 @@ template <typename T>
 class memFillKernel;
 
 /**
- * @brief Kernel for populating device pointer with values
+ * Kernel for populating device pointer with values
  *
  * @tparam T Type of the input pointer
  * @param input The Device pointer

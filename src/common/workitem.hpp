@@ -29,8 +29,8 @@
 namespace sycl_fft {
 
 // forward declaration
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-inline void wi_dft(T_ptr in, T_ptr out);
+template <direction dir, auto N, auto stride_in, auto stride_out, typename T>
+inline void wi_dft(const T* in, T* out);
 
 namespace detail {
 
@@ -52,19 +52,18 @@ strides.
  * @tparam N size of the DFT transform
  * @tparam stride_in stride (in complex values) between complex values in `in`
  * @tparam stride_out stride (in complex values) between complex values in `out`
- * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
-  using T = remove_ptr<T_ptr>;
-  constexpr T TWOPI = 2.0 * M_PI;
+template <direction dir, auto N, auto stride_in, auto stride_out, typename T>
+__attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
+  using T_index = decltype(N);
   T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+  unrolled_loop<0, N, 1, T_index>([&](T_index idx_out) __attribute__((always_inline)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1, T_index>([&](T_index idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -79,7 +78,7 @@ __attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
           in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
     });
   });
-  unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
+  unrolled_loop<0, 2 * N, 2, T_index>([&](T_index idx_out) {
     out[idx_out * stride_out + 0] = tmp[idx_out + 0];
     out[idx_out * stride_out + 1] = tmp[idx_out + 1];
   });
@@ -95,18 +94,18 @@ __attribute__((always_inline)) inline void naive_dft(T_ptr in, T_ptr out) {
  * @tparam M the second factor of the problem size
  * @tparam stride_in stride (in complex values) between complex values in `in`
  * @tparam stride_out stride (in complex values) between complex values in `out`
- * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int M, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out) {
-  using T = remove_ptr<T_ptr>;
+template <direction dir, auto N, auto M, auto stride_in, auto stride_out, typename T>
+__attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out) {
+  using T_index = decltype(N);
   T tmp_buffer[2 * N * M];
 
-  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
+  unrolled_loop<0, M, 1, T_index>([&](T_index i) __attribute__((always_inline)) {
     wi_dft<dir, N, M * stride_in, 1>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N);
-    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1, T_index>([&](T_index j) __attribute__((always_inline)) {
       auto re_multiplier = twiddle<T>::re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][i * j];
@@ -118,19 +117,21 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(T_ptr in, T_ptr out)
       tmp_buffer[2 * i * N + 2 * j + 0] = tmp_val;
     });
   });
-  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
+  unrolled_loop<0, N, 1, T_index>([&](T_index i) __attribute__((always_inline)) {
     wi_dft<dir, M, N, N * stride_out>(tmp_buffer + 2 * i, out + 2 * i * stride_out);
   });
 }
 
 /**
  * Factorizes a number into two roughly equal factors.
+ * @tparam T_index Index type
  * @param N the number to factorize
  * @return the smaller of the factors
  */
-constexpr int factorize(int N) {
-  int res = 1;
-  for (int i = 2; i * i <= N; i++) {
+template <typename T_index>
+constexpr T_index factorize(T_index N) {
+  T_index res = 1;
+  for (T_index i = 2; i * i <= N; i++) {
     if (N % i == 0) {
       res = i;
     }
@@ -141,17 +142,19 @@ constexpr int factorize(int N) {
 /**
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
+ * @tparam T_index Index type
  * @param N size of the FFT problem
  * @return Number of temporary complex values
  */
-constexpr int wi_temps(int N) {
-  int F0 = factorize(N);
-  int F1 = N / F0;
+template <typename T_index>
+constexpr T_index wi_temps(T_index N) {
+  T_index F0 = factorize(N);
+  T_index F1 = N / F0;
   if (F0 < 2 || F1 < 2) {
     return N;
   }
-  int a = wi_temps(F0);
-  int b = wi_temps(F1);
+  T_index a = wi_temps(F0);
+  T_index b = wi_temps(F1);
   return (a > b ? a : b) + N;
 }
 
@@ -159,14 +162,15 @@ constexpr int wi_temps(int N) {
  * Checks whether a problem can be solved with workitem implementation without
  * registers spilling.
  * @tparam Scalar type of the real scalar used for the computation
+ * @tparam T_index Index type
  * @param N Size of the problem, in complex values
  * @return true if the problem fits in the registers
  */
-template <typename Scalar>
-constexpr bool fits_in_wi(int N) {
-  int N_complex = N + wi_temps(N);
-  int complex_size = 2 * sizeof(Scalar);
-  int register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
+template <typename Scalar, typename T_index>
+constexpr bool fits_in_wi(T_index N) {
+  T_index N_complex = N + wi_temps(N);
+  T_index complex_size = 2 * sizeof(Scalar);
+  T_index register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
   return N_complex * complex_size <= register_space;
 }
 
@@ -200,11 +204,12 @@ struct fits_in_wi_device_struct {
  * Checks whether a problem can be solved with workitem implementation without
  * registers spilling. Non-recursive implementation for the use on device.
  * @tparam Scalar type of the real scalar used for the computation
+ * @tparam T_index Index type
  * @param N Size of the problem, in complex values
  * @return true if the problem fits in the registers
  */
-template <typename Scalar>
-__attribute__((always_inline)) inline bool fits_in_wi_device(int fft_size) {
+template <typename Scalar, typename T_index>
+__attribute__((always_inline)) inline bool fits_in_wi_device(T_index fft_size) {
   // 56 is the maximal size we support in workitem implementation and also
   // the size of the array above that is used if this if is not taken
   if (fft_size > 56) {
@@ -222,15 +227,14 @@ __attribute__((always_inline)) inline bool fits_in_wi_device(int fft_size) {
  * @tparam N size of the DFT transform
  * @tparam stride_in stride (in complex values) between complex values in `in`
  * @tparam stride_out stride (in complex values) between complex values in `out`
- * @tparam T_ptr type of pointer for `in` and `out`. Can be raw pointer or sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction dir, int N, int stride_in, int stride_out, typename T_ptr>
-__attribute__((always_inline)) inline void wi_dft(T_ptr in, T_ptr out) {
-  constexpr int F0 = detail::factorize(N);
+template <direction dir, auto N, auto stride_in, auto stride_out, typename T>
+__attribute__((always_inline)) inline void wi_dft(const T* in, T* out) {
+  constexpr auto F0 = detail::factorize(N);
   if constexpr (N == 2) {
-    using T = detail::remove_ptr<T_ptr>;
     T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
     T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
     T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];
@@ -241,7 +245,7 @@ __attribute__((always_inline)) inline void wi_dft(T_ptr in, T_ptr out) {
   } else if constexpr (F0 >= 2 && N / F0 >= 2) {
     detail::cooley_tukey_dft<dir, N / F0, F0, stride_in, stride_out>(in, out);
   } else {
-    detail::naive_dft<dir, N, stride_in, stride_out, T_ptr>(in, out);
+    detail::naive_dft<dir, N, stride_in, stride_out>(in, out);
   }
 }
 

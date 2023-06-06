@@ -58,7 +58,7 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction dir, int N, int stride, typename T>
+template <direction dir, auto N, auto stride, typename T>
 inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
 
 /**
@@ -76,14 +76,14 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int stride, typename T>
+template <direction dir, auto N, auto stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
+  using T_index = decltype(N);
   if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
-    int local_id = sg.get_local_linear_id();
-    int idx_out = (local_id / stride) % 2;
-    int fft_start = local_id - idx_out * stride;
+    T_index local_id = static_cast<T_index>(sg.get_local_linear_id());
+    T_index idx_out = (local_id / stride) % 2;
 
-    T multi_re = (idx_out & 1) ? -1.0 : 1.0;
+    T multi_re = (idx_out & 1) ? T(-1) : T(1);
     T res_real = real * multi_re;
     T res_imag = imag * multi_re;
 
@@ -93,21 +93,21 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     real = res_real;
     imag = res_imag;
   } else {
-    int local_id = sg.get_local_linear_id();
-    int idx_out = (local_id / stride) % N;
-    int fft_start = local_id - idx_out * stride;
+    T_index local_id = static_cast<T_index>(sg.get_local_linear_id());
+    T_index idx_out = (local_id / stride) % N;
+    T_index fft_start = local_id - idx_out * stride;
 
     T res_real = 0;
     T res_imag = 0;
 
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1, T_index>([&](T_index idx_in) __attribute__((always_inline)) {
       const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
       const T multi_im = [&]() __attribute__((always_inline)) {
         if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
         return -twiddle<T>::im[N][idx_in * idx_out % N];
       }
       ();
-      int source_wi_id = fft_start + idx_in * stride;
+      T_index source_wi_id = fft_start + idx_in * stride;
 
       T cur_real = sycl::select_from_group(sg, real, source_wi_id);
       T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
@@ -136,14 +136,15 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * one workitem
  * @param sg subgroup
  */
-template <int N, int M, int stride, typename T>
+template <auto N, auto M, auto stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
-  int local_id = sg.get_local_linear_id();
-  int index_in_outer_dft = (local_id / stride) % (N * M);
-  int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
-  int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
-  int fft_start = local_id - index_in_outer_dft * stride;
-  int source_wi_id = fft_start + stride * (k * M + n);
+  using T_index = decltype(N);
+  T_index local_id = static_cast<T_index>(sg.get_local_linear_id());
+  T_index index_in_outer_dft = (local_id / stride) % (N * M);
+  T_index k = index_in_outer_dft % N;  // index in the contiguous factor/fft
+  T_index n = index_in_outer_dft / N;  // index of the contiguous factor/fft
+  T_index fft_start = local_id - index_in_outer_dft * stride;
+  T_index source_wi_id = fft_start + stride * (k * M + n);
   real = sycl::select_from_group(sg, real, source_wi_id);
   imag = sycl::select_from_group(sg, imag, source_wi_id);
 }
@@ -164,12 +165,13 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int M, int stride, typename T>
+template <direction dir, auto N, auto M, auto stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
-  int local_id = sg.get_local_linear_id();
-  int index_in_outer_dft = (local_id / stride) % (N * M);
-  int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
-  int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
+  using T_index = decltype(N);
+  T_index local_id = static_cast<T_index>(sg.get_local_linear_id());
+  T_index index_in_outer_dft = (local_id / stride) % (N * M);
+  T_index k = index_in_outer_dft % N;  // index in the contiguous factor/fft
+  T_index n = index_in_outer_dft / N;  // index of the contiguous factor/fft
 
   // factor N
   cross_sg_dft<dir, N, M * stride>(real, imag, sg);
@@ -204,9 +206,9 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int stride, typename T>
+template <direction dir, auto N, auto stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
-  constexpr int F0 = detail::factorize(N);
+  constexpr auto F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);
   } else {
@@ -217,13 +219,14 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
-
+ * @tparam T_index Index type
  * @param N the number to factorize
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-int factorize_sg(int N, int sg_size) {
-  for (int i = sg_size; i > 1; i--) {
+template <typename T_index>
+T_index factorize_sg(T_index N, T_index sg_size) {
+  for (T_index i = sg_size; i > 1; i--) {
     if (N % i == 0) {
       return i;
     }
@@ -240,19 +243,19 @@ int factorize_sg(int N, int sg_size) {
  * @tparam dir direction of the FFT
  * @tparam M number of elements per workitem
  * @tparam N number of workitems in a subgroup that work on one FFT
- * @tparam T_prt type of the pointer to the data
- * @tparam T_twiddles_ptr type of the accessor or pointer with twiddle factors
+ * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  */
-template <direction dir, int M, int N, typename T_ptr, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& sg, T_twiddles_ptr sg_twiddles) {
-  using T = detail::remove_ptr<T_ptr>;
-  int idx_of_wi_in_fft = sg.get_local_linear_id() % N;
+template <direction dir, auto M, auto N, typename T>
+__attribute__((always_inline)) inline std::enable_if_t<std::is_same<decltype(M), decltype(N)>::value> sg_dft(
+    T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
+  using T_index = decltype(N);
+  T_index idx_of_wi_in_fft = static_cast<T_index>(sg.get_local_linear_id()) % N;
 
-  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, M, 1, T_index>([&](T_index idx_of_element_in_wi) __attribute__((always_inline)) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
@@ -272,17 +275,16 @@ __attribute__((always_inline)) inline void sg_dft(T_ptr inout, sycl::sub_group& 
 /**
  * Calculates a twiddle factor for subgroup implementation.
  *
- * @tparam T_ptr type of the pointer of accessor into which to store the
- * twiddles
- * @tparam N number of workitems in a subgroup that work on one FFT
- * @tparam M number of elements per workitem
+ * @tparam T type of the scalar used for computations
+ * @tparam T_index Index type
+ * @param N number of workitems in a subgroup that work on one FFT
+ * @param M number of elements per workitem
  * @param n index of the twiddle to calculate in the direction of N
  * @param k index of the twiddle to calculate in the direction of M
  * @param sg_twiddles destination into which to store the twiddles
  */
-template <typename T_ptr>
-void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles) {
-  using T = detail::remove_ptr<T_ptr>;
+template <typename T, typename T_index>
+void sg_calc_twiddles(T_index N, T_index M, T_index n, T_index k, T* sg_twiddles) {
   std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
   sg_twiddles[k * N + n] = twiddle.real();
   sg_twiddles[(k + M) * N + n] = twiddle.imag();

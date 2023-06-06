@@ -26,29 +26,6 @@
 
 namespace sycl_fft::detail {
 
-template <typename T>
-struct remove_multi_ptr {
-  using type = T;
-};
-
-template <typename T, int Dims>
-struct remove_multi_ptr<sycl::local_accessor<T, Dims>> {
-  using type = T;
-};
-
-template <typename T, sycl::access::address_space Space, sycl::access::decorated DecorateAddress>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space, DecorateAddress>> {
-  using type = T;
-};
-
-/**
- * Removes pointer or sycl::multi_ptr.
- * @tparam T type to remove pointer from
- */
-template <typename T>
-using remove_ptr =
-    std::conditional_t<std::is_pointer_v<T>, std::remove_pointer_t<T>, typename remove_multi_ptr<T>::type>;
-
 /**
  * Implements a loop that will be fully unrolled.
  * @tparam Start starting value of loop counter
@@ -58,12 +35,23 @@ using remove_ptr =
  * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
  * __attribute__((always_inline)).
  */
-template <int Start, int Stop, int Step, typename Functor>
+template <auto Start, auto Stop, auto Step, typename Functor>
 void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+  static_assert(std::is_same<decltype(Start), decltype(Stop)>::value, "Mismatching indices");
+  static_assert(std::is_same<decltype(Start), decltype(Step)>::value, "Mismatching indices");
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);
   }
+}
+
+/**
+ * Helper unrolled_loop to cast all indices to \p T_index
+ * @see unrolled_loop<Start, Stop, Step, Functor>
+ */
+template <auto Start, auto Stop, auto Step, typename T_index, typename Functor>
+void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+  unrolled_loop<static_cast<T_index>(Start), static_cast<T_index>(Stop), static_cast<T_index>(Step)>(funct);
 }
 
 /**
@@ -92,12 +80,12 @@ inline T roundUpToMultiple(T value, T factor) {
 
 template <typename T>
 inline auto get_global_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::no>(ptr);
+  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::legacy>(ptr);
 }
 
 template <typename T>
 inline auto get_local_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::no>(ptr);
+  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
 };  // namespace sycl_fft::detail
