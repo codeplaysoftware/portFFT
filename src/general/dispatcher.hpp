@@ -69,8 +69,8 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
-                                               local_offset);
+    global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, N_reals * n_working,
+                                                              N_reals * (i - subgroup_local_id), local_offset);
     sycl::group_barrier(sg);
     if (working) {
       local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
@@ -83,7 +83,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     }
     sycl::group_barrier(sg);
     local2global<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, loc, output, N_reals * n_working, local_offset,
-                                               N_reals * (i - subgroup_local_id));
+                                                              N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
 }
@@ -112,7 +112,8 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, int factor_sg, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int factor_wi, int factor_sg, int subgroup_size, typename T_in, typename T_out, typename T,
+          typename T_twiddles>
 __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out output,
                                                          const sycl::local_accessor<T, 1>& loc,
                                                          const sycl::local_accessor<T, 1>& loc_twiddles,
@@ -151,7 +152,8 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_sg)), n_ffts_per_sg);
 
     global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                                               n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
+                                                              n_reals_per_fft * (i - id_of_fft_in_sg),
+                                                              subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
     if (working) {
@@ -176,8 +178,9 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                                                       subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
       }
       sycl::group_barrier(sg);
-      local2global<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                                                 subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
+      local2global<pad::DO_PAD, level::SUBGROUP, subgroup_size>(
+          it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
+          n_reals_per_fft * (i - id_of_fft_in_sg));
       sycl::group_barrier(sg);
     }
   }
@@ -209,11 +212,11 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
                                                                std::size_t fft_size, std::size_t n_transforms,
                                                                sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
-  case N:                                                                          \
-    if constexpr (fits_in_wi<T>(N)) {                                              \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                            \
+  case N:                                                                                         \
+    if constexpr (fits_in_wi<T>(N)) {                                                             \
       workitem_impl<dir, N, subgroup_size>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                              \
+    }                                                                                             \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
@@ -252,18 +255,20 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int factor_wi, int subgroup_size, typename T_in, typename T_out, typename T,
+          typename T_twiddles>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output,
                                                         const sycl::local_accessor<T, 1>& loc,
                                                         const sycl::local_accessor<T, 1>& loc_twiddles,
                                                         std::size_t n_transforms, sycl::nd_item<1> it,
                                                         T_twiddles twiddles, T scaling_factor) {
   switch (factor_sg) {
-#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                          \
-  case M:                                                                                                             \
-    if constexpr (M <= subgroup_size && !fits_in_wi<T>(M * factor_wi)) {                               \
-      subgroup_impl<dir, factor_wi, M, subgroup_size>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
-    }                                                                                                                 \
+#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                        \
+  case M:                                                                                                           \
+    if constexpr (M <= subgroup_size && !fits_in_wi<T>(M * factor_wi)) {                                            \
+      subgroup_impl<dir, factor_wi, M, subgroup_size>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, \
+                                                      scaling_factor);                                              \
+    }                                                                                                               \
     break;
     // cross-sg size 1 cases are supported by workitem implementation
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
@@ -310,12 +315,12 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
                                                                std::size_t n_transforms, sycl::nd_item<1> it,
                                                                T_twiddles twiddles, T scaling_factor) {
   switch (factor_wi) {
-#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                  \
-  case N:                                                                                                  \
-    if constexpr (fits_in_wi<T>(N)) {                                                                      \
-      cross_sg_dispatcher<dir, N, subgroup_size>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, \
-                                  scaling_factor);                                                         \
-    }                                                                                                      \
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                       \
+  case N:                                                                                                       \
+    if constexpr (fits_in_wi<T>(N)) {                                                                           \
+      cross_sg_dispatcher<dir, N, subgroup_size>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, \
+                                                 twiddles, scaling_factor);                                     \
+    }                                                                                                           \
     break;
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
@@ -365,8 +370,8 @@ __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, 
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher<dir, subgroup_size>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
-                               scaling_factor);
+      subgroup_dispatcher<dir, subgroup_size>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it,
+                                              twiddles, scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented

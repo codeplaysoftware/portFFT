@@ -52,10 +52,10 @@ struct descriptor;
 constexpr static sycl::specialization_id<int> fft_size_spec_const;
 
 /*
-Compute functions in the `committed_descriptor` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions 
-ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. There are two overloads of `run_kernel`,
-one for buffer interfaces and one for USM. `run_kernel` handles differences between forward and backward
-computations, casts the memory (USM or buffers) from complex to scalars and launches the kernel.
+Compute functions in the `committed_descriptor` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
+ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. There are two
+overloads of `run_kernel`, one for buffer interfaces and one for USM. `run_kernel` handles differences between forward
+and backward computations, casts the memory (USM or buffers) from complex to scalars and launches the kernel.
 
 Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations
 are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` from `dispatcher.hpp`. The kernel calls
@@ -114,26 +114,38 @@ class committed_descriptor {
    * @tparam other_sg_sizes other subgroup sizes
    * @return sycl::kernel_bundle<sycl::bundle_state::executable>
    */
-  
-  template<int sg_size, int... other_sg_sizes>
+
+  template <int sg_size, int... other_sg_sizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const() {
     // This function is called from constructor initializer list and it accesses other data members of the class. These
     // are already initialized by the time this is called only if they are declared in the class definition before the
     // member that is initialized by this function.
-    if(std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)){
+    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
       std::vector<sycl::kernel_id> ids;
       // if not used, some kernels might be optimized away in AOT compilation and not available here
-      try {ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD, sg_size>>());} catch (...) {}
-      try {ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, sg_size>>());} catch (...) {}
-      try {ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::FORWARD, sg_size>>());} catch (...) {}
-      try {ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::BACKWARD, sg_size>>());} catch (...) {}
+      try {
+        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD, sg_size>>());
+      } catch (...) {
+      }
+      try {
+        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, sg_size>>());
+      } catch (...) {
+      }
+      try {
+        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::FORWARD, sg_size>>());
+      } catch (...) {
+      }
+      try {
+        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::BACKWARD, sg_size>>());
+      } catch (...) {
+      }
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
       in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
       return sycl::build(in_bundle);
     }
-    if constexpr(sizeof...(other_sg_sizes)==0){
+    if constexpr (sizeof...(other_sg_sizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
-    } else{
+    } else {
       return build_w_spec_const<other_sg_sizes...>();
     }
   }
@@ -152,7 +164,7 @@ class committed_descriptor {
         // get some properties we will use for tunning
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
-        //compile the kernels
+        // compile the kernels
         exec_bundle(build_w_spec_const<SYCLFFT_TARGET_SUBGROUP_SIZE>()) {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
@@ -276,27 +288,27 @@ class committed_descriptor {
   }
 
  private:
- /**
-  * Returns the first of the subgroup sizes that is supported by the device.
-  * @tparam sg_size first subgroup size
-  * @tparam other_sg_sizes other subgroup sizes
-  * @return subgroup size
- */
-  template<int sg_size, int... other_sg_sizes>
-  std::size_t get_used_sg_size(){
-    if(std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)){
+  /**
+   * Returns the first of the subgroup sizes that is supported by the device.
+   * @tparam sg_size first subgroup size
+   * @tparam other_sg_sizes other subgroup sizes
+   * @return subgroup size
+   */
+  template <int sg_size, int... other_sg_sizes>
+  std::size_t get_used_sg_size() {
+    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
       return sg_size;
     }
-    if constexpr(sizeof...(other_sg_sizes)==0){
+    if constexpr (sizeof...(other_sg_sizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
-    } else{
+    } else {
       return get_used_sg_size<other_sg_sizes...>();
     }
   }
 
   /**
    * Dispatches the kernel with the first subgroup size that is supported by the device.
-   * 
+   *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam T_in Type of the input buffer or USM pointer
    * @tparam T_out Type of the output buffer or USM pointer
@@ -305,16 +317,16 @@ class committed_descriptor {
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
-  */
-  template<direction dir, typename T_in, typename T_out>
+   */
+  template <direction dir, typename T_in, typename T_out>
   sycl::event dispatch_kernel(const T_in in, T_out out, Scalar scale_factor = 1.0f,
-                                      const std::vector<sycl::event>& dependencies = {}){
+                              const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_kernel_helper<dir, T_in, T_out, SYCLFFT_TARGET_SUBGROUP_SIZE>(in, out, scale_factor, dependencies);
   }
-  
+
   /**
    * Helper for dispatching the kernel with the first subgroup size that is supported by the device.
-   * 
+   *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam T_in Type of the input buffer or USM pointer
    * @tparam T_out Type of the output buffer or USM pointer
@@ -325,16 +337,16 @@ class committed_descriptor {
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
-  */
-  template<direction dir, typename T_in, typename T_out, int sg_size, int... other_sg_sizes>
+   */
+  template <direction dir, typename T_in, typename T_out, int sg_size, int... other_sg_sizes>
   sycl::event dispatch_kernel_helper(const T_in in, T_out out, Scalar scale_factor = 1.0f,
-                                      const std::vector<sycl::event>& dependencies = {}){
-    if(std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)){
+                                     const std::vector<sycl::event>& dependencies = {}) {
+    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
       return run_kernel<dir, sg_size>(in, out, scale_factor, dependencies);
     }
-    if constexpr(sizeof...(other_sg_sizes)==0){
+    if constexpr (sizeof...(other_sg_sizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
-    }else{
+    } else {
       return dispatch_kernel_helper<dir, T_in, T_out, other_sg_sizes...>(in, out, scale_factor, dependencies);
     }
   }
@@ -354,7 +366,7 @@ class committed_descriptor {
    */
   template <direction dir, int subgroup_size, typename T_in, typename T_out>
   sycl::event run_kernel(const T_in* in, T_out* out, Scalar scale_factor = 1.0f,
-                                      const std::vector<sycl::event>& dependencies = {}) {
+                         const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
@@ -383,8 +395,8 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(subgroup_size)]] {
             detail::dispatcher<dir, subgroup_size>(in_scalar, out_scalar, loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+                                                   kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
+                                                   it, twiddles_local, scale_factor);
           });
     });
   }
@@ -403,7 +415,7 @@ class committed_descriptor {
    */
   template <direction dir, int subgroup_size, int dim, typename T>
   sycl::event run_kernel(const sycl::buffer<T, dim>& in, sycl::buffer<T, dim>& out, Scalar scale_factor = 1.0f,
-                        const std::vector<sycl::event>& dependencies = {}) {
+                         const std::vector<sycl::event>& dependencies = {}) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
@@ -433,8 +445,8 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(subgroup_size)]] {
             detail::dispatcher<dir, subgroup_size>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+                                                   kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
+                                                   it, twiddles_local, scale_factor);
           });
     });
   }

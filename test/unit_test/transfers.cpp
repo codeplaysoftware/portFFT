@@ -26,7 +26,7 @@
 #include <gtest/gtest.h>
 
 constexpr int N = 4;
-constexpr int sg_size = (SYCLFFT_TARGET_SUBGROUP_SIZE); // turn the list into the last value using commma operator
+constexpr int sg_size = (SYCLFFT_TARGET_SUBGROUP_SIZE);  // turn the list into the last value using commma operator
 constexpr int wg_size = sg_size * SYCLFFT_SGS_IN_WG;
 constexpr int N_sentinel_values = 64;
 using ftype = float;
