@@ -64,6 +64,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
@@ -75,7 +76,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::pad Pad, detail::level Level, typename T_glob_ptr, typename T_loc_ptr>
+template <detail::pad Pad, detail::level Level, int subgroup_size, typename T_glob_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_glob_ptr global, T_loc_ptr local,
                                                         std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
@@ -91,10 +92,10 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = sg.get_local_linear_id();
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    local_size = subgroup_size;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
+    local_size = subgroup_size * SYCLFFT_SGS_IN_WG;
   }
 
   int stride = local_size * chunk_size;
@@ -110,7 +111,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    local_size = subgroup_size;
     stride = local_size * chunk_size;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
@@ -118,7 +119,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(
         sycl::make_ptr<const T, sycl::access::address_space::global_space>(&global[global_offset + i]));
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % subgroup_size == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size);
         sg.store(sycl::make_ptr<T, sycl::access::address_space::local_space>(&local[local_idx]), loaded[j]);
@@ -174,6 +175,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
  * sycl::multi_ptr.
  * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
@@ -185,7 +187,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, T_g
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::pad Pad, detail::level Level, typename T_loc_ptr, typename T_glob_ptr>
+template <detail::pad Pad, detail::level Level, int subgroup_size, typename T_loc_ptr, typename T_glob_ptr>
 __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_loc_ptr local, T_glob_ptr global,
                                                         std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
@@ -201,10 +203,10 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_l
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = sg.get_local_linear_id();
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    local_size = subgroup_size;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
+    local_size = subgroup_size * SYCLFFT_SGS_IN_WG;
   }
 
   int stride = local_size * chunk_size;
@@ -220,14 +222,14 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_l
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
-    local_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
+    local_size = subgroup_size;
     stride = local_size * chunk_size;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
   // Each subgroup stores a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SYCLFFT_TARGET_SUBGROUP_SIZE == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % subgroup_size == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + j * local_size);
         to_store[j] = sg.load(sycl::make_ptr<T, sycl::access::address_space::local_space>(&local[local_idx]));

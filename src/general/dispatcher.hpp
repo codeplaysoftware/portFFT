@@ -36,6 +36,7 @@ namespace detail {
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N size of each transform
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -49,7 +50,7 @@ namespace detail {
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int N, typename T_in, typename T_out, typename T>
+template <direction dir, int N, std::size_t subgroup_size, typename T_in, typename T_out, typename T>
 __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out output,
                                                          const sycl::local_accessor<T, 1>& loc,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
@@ -60,7 +61,6 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
-  std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t global_size = it.get_global_range(0);
   std::size_t subgroup_id = sg.get_group_id();
   std::size_t local_offset = N_reals * subgroup_size * subgroup_id;
@@ -69,7 +69,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
+    global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
                                                local_offset);
     sycl::group_barrier(sg);
     if (working) {
@@ -82,7 +82,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
       private2local<N_reals, pad::DO_PAD>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
-    local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, N_reals * n_working, local_offset,
+    local2global<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, loc, output, N_reals * n_working, local_offset,
                                                N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
@@ -94,6 +94,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam factor_wi factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -111,7 +112,7 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, int factor_sg, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int factor_wi, int factor_sg, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out output,
                                                          const sycl::local_accessor<T, 1>& loc,
                                                          const sycl::local_accessor<T, 1>& loc_twiddles,
@@ -124,7 +125,6 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t workgroup_local_id = it.get_local_id(0);
   std::size_t workgroup_size = it.get_local_range(0);
   std::size_t subgroup_local_id = sg.get_local_linear_id();
-  std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   std::size_t subgroup_id = sg.get_group_id();
   constexpr std::size_t n_sgs_in_wg = SYCLFFT_SGS_IN_WG;
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
@@ -143,14 +143,14 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
   std::size_t rounded_up_n_ffts =
       roundUpToMultiple<size_t>(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
-  global2local<pad::DONT_PAD, level::WORKGROUP>(it, twiddles, loc_twiddles, N_reals_per_wi * factor_sg);
+  global2local<pad::DONT_PAD, level::WORKGROUP, subgroup_size>(it, twiddles, loc_twiddles, N_reals_per_wi * factor_sg);
   sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     int n_ffts_worked_on_by_sg = sycl::min(static_cast<int>(n_transforms - (i - id_of_fft_in_sg)), n_ffts_per_sg);
 
-    global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+    global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
     sycl::group_barrier(sg);
@@ -163,7 +163,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
       priv[i] *= scaling_factor;
       priv[i + 1] *= scaling_factor;
     });
-    if constexpr (factor_sg == SYCLFFT_TARGET_SUBGROUP_SIZE) {
+    if constexpr (factor_sg == subgroup_size) {
       // in this case we get fully coalesced memory access even without going through local memory
       // TODO we may want to tune maximal `factor_sg` for which we use direct stores.
       if (working) {
@@ -176,7 +176,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
                                                       subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
       }
       sycl::group_barrier(sg);
-      local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      local2global<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                  subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
       sycl::group_barrier(sg);
     }
@@ -188,7 +188,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * given size of DFT.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -203,7 +203,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T_in, typename T_out, typename T>
+template <direction dir, int subgroup_size, typename T_in, typename T_out, typename T>
 __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out output,
                                                                const sycl::local_accessor<T, 1>& loc,
                                                                std::size_t fft_size, std::size_t n_transforms,
@@ -212,7 +212,7 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
   case N:                                                                          \
     if constexpr (fits_in_wi<T>(N)) {                                              \
-      workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
+      workitem_impl<dir, N, subgroup_size>(input, output, loc, n_transforms, it, scaling_factor); \
     }                                                                              \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
@@ -232,12 +232,15 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N size of each transform
+ * @tparam factor_wi factor of the FFT size. How many elements per FFT are processed by one workitem
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
  * data
  * @tparam T type of the scalar used for computations
  * @tparam T_twiddles pointer containing the twiddles
+ * @param factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*subgroup_size
@@ -249,7 +252,7 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int factor_wi, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in input, T_out output,
                                                         const sycl::local_accessor<T, 1>& loc,
                                                         const sycl::local_accessor<T, 1>& loc_twiddles,
@@ -258,8 +261,8 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in inpu
   switch (factor_sg) {
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                          \
   case M:                                                                                                             \
-    if constexpr (M <= SYCLFFT_TARGET_SUBGROUP_SIZE && !fits_in_wi<T>(M * factor_wi)) {                               \
-      subgroup_impl<dir, factor_wi, M>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
+    if constexpr (M <= subgroup_size && !fits_in_wi<T>(M * factor_wi)) {                               \
+      subgroup_impl<dir, factor_wi, M, subgroup_size>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     }                                                                                                                 \
     break;
     // cross-sg size 1 cases are supported by workitem implementation
@@ -279,6 +282,7 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in inpu
  * given factor_wi.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -299,7 +303,7 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, T_in inpu
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, int factor_sg, T_in input, T_out output,
                                                                const sycl::local_accessor<T, 1>& loc,
                                                                const sycl::local_accessor<T, 1>& loc_twiddles,
@@ -309,7 +313,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
 #define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                  \
   case N:                                                                                                  \
     if constexpr (fits_in_wi<T>(N)) {                                                                      \
-      cross_sg_dispatcher<dir, N>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, \
+      cross_sg_dispatcher<dir, N, subgroup_size>(factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, \
                                   scaling_factor);                                                         \
     }                                                                                                      \
     break;
@@ -328,6 +332,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * Selects appropriate implementation for given problem size.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam subgroup_size size of the subgroup
  * @tparam T_in type of the accessor or pointer to global memory containing
  * input data
  * @tparam T_out type of the accessor or pointer to global memory for output
@@ -347,7 +352,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
+template <direction dir, int subgroup_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
                                                       const sycl::local_accessor<T, 1>& loc_twiddles,
                                                       std::size_t fft_size, std::size_t n_transforms,
@@ -355,12 +360,12 @@ __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, 
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    workitem_dispatcher<dir, subgroup_size>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
+      subgroup_dispatcher<dir, subgroup_size>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
