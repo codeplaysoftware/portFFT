@@ -165,11 +165,11 @@ class committed_descriptor {
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         // compile the kernels
-        exec_bundle(build_w_spec_const<SYCLFFT_TARGET_SUBGROUP_SIZE>()) {
+        exec_bundle(build_w_spec_const<SYCLFFT_SUBGROUP_SIZES>()) {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
 
-    used_sg_size = get_used_sg_size<SYCLFFT_TARGET_SUBGROUP_SIZE>();
+    used_sg_size = get_used_sg_size<SYCLFFT_SUBGROUP_SIZES>();
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, used_sg_size);
   }
 
@@ -321,7 +321,7 @@ class committed_descriptor {
   template <direction dir, typename T_in, typename T_out>
   sycl::event dispatch_kernel(const T_in in, T_out out, Scalar scale_factor = 1.0f,
                               const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_kernel_helper<dir, T_in, T_out, SYCLFFT_TARGET_SUBGROUP_SIZE>(in, out, scale_factor, dependencies);
+    return dispatch_kernel_helper<dir, T_in, T_out, SYCLFFT_SUBGROUP_SIZES>(in, out, scale_factor, dependencies);
   }
 
   /**
