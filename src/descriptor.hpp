@@ -139,9 +139,15 @@ class committed_descriptor {
         ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::BACKWARD, sg_size>>());
       } catch (...) {
       }
-      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-      in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
-      return sycl::build(in_bundle);
+      if(sycl::is_compatible(ids, dev)){
+        auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+        in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
+        try{
+          return sycl::build(in_bundle);
+        } catch(std::exception& e){
+          std::cerr << "Build for subgroup size " << sg_size << " failed with message:\n" << e.what() << std::endl;
+        }
+      }
     }
     if constexpr (sizeof...(other_sg_sizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");

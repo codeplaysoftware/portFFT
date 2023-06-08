@@ -67,6 +67,7 @@ if(${SYCLFFT_USE_SG_TRANSFERS})
 endif()
 
 target_compile_options(sycl_fft INTERFACE -fgpu-inline-threshold=1000000)
+target_compile_options(sycl_fft INTERFACE -fsycl-device-code-split=per_kernel)
 
 include(CMakePackageConfigHelpers)
 set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
