@@ -23,7 +23,6 @@
 
 #include <enums.hpp>
 #include <general/dispatcher.hpp>
-#include <utils.hpp>
 
 #include <sycl/sycl.hpp>
 

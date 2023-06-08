@@ -83,9 +83,11 @@ SYCL-FFT is still in early development. The supported configurations are:
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
 For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes up to this maximum are supported.
-FFT sizes that are a multiple of a workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
+FFT sizes that are a product of a supported workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
 
-Any batch size is supported as long as the FFT fits in global memory.
+Any batch size is supported as long as the input and output data fits in global memory.
+
+By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_TARGET_SUBGROUP_SIZE`.
 
 ## Troubleshooting
 
