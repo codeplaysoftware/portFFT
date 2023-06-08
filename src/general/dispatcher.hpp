@@ -245,7 +245,7 @@ __attribute__((always_inline)) inline void workgroup_impl(
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, m_ffts_in_sg, n_ffts_in_sg, fft_size, N, M>(
         priv, scratch, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment, n_sg_offset,
-        max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m, scaling_factor, out);
+        max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m, scaling_factor);
     sycl::group_barrier(it.get_group());
     local2global<true>(loc, output, 2 * fft_size, workgroup_size, id_of_thread_in_wg, 0, offset);
     sycl::group_barrier(it.get_group());
@@ -395,16 +395,16 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
 }
 
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void workgroup_dispatcher(
-    T_in input, T_out output, int fft_size, const sycl::local_accessor<T, 1>& loc,
-    const sycl::local_accessor<T, 1>& loc_twiddles,
-    std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+__attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
+                                                                const sycl::local_accessor<T, 1>& loc,
+                                                                const sycl::local_accessor<T, 1>& loc_twiddles,
+                                                                std::size_t n_transforms, sycl::nd_item<1> it,
+                                                                T_twiddles twiddles, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                         \
-  case N:                                                                                                      \
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                    \
+  case N:                                                                                                 \
     \            
-    workgroup_impl<dir, N>(input, output, loc, loc_twiddles, scratch_loc_accessor, n_transforms, it, twiddles, \
-                           scaling_factor, out);                                                               \
+    workgroup_impl<dir, N>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     break;
     SYCL_FFT_WG_DISPATCHER_IMPL(256)
     SYCL_FFT_WG_DISPATCHER_IMPL(512)
@@ -456,7 +456,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
-      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, loc_scratch_space, n_transforms, it,
+      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it,
                                 twiddles, scaling_factor);
     }
   }
