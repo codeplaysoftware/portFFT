@@ -42,7 +42,7 @@ Some AOT targets do not support double precision.
 To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
 
 SYCL-FFT currently requires to set the subgroup size at compile time. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_TARGET_SUBGROUP_SIZE=<size>`.
-If you run into the exception with the message `Subgroup size <N1> of the [..] kernel does not match required size of <N2>` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to `N1`.
+If you run into the exception with the message `Unsupported required sub group size` or `Block reads not supported in SIMD32` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to a different value supported by the device.
 
 ### Tests
 
