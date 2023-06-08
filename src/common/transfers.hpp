@@ -241,21 +241,24 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
   });
 }
 
-template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_ptr, typename T_priv_ptr>
+
+template <std::size_t num_elements_per_wi, std::size_t stride, bool pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    priv[2 * i] = loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch];
-    priv[2 * i + 1] = loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch + 1];
+    int local_idx = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
+    priv[2 * i] = loc_base_ptr[local_idx];
+    priv[2 * i + 1] = loc_base_ptr[local_idx + 1];
   });
 }
 
-template <std::size_t num_elements_per_wi, std::size_t stride, typename T_loc_ptr, typename T_priv_ptr>
+template <std::size_t num_elements_per_wi, std::size_t stride, bool pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch] = priv[2 * i];
-    loc_base_ptr[2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch + 1] = priv[2 * i + 1];
+    int loc_base_offset = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
+    loc_base_ptr[loc_base_offset] = priv[2 * i];
+    loc_base_ptr[loc_base_offset + 1] = priv[2 * i + 1];
   });
 }
 

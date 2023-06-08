@@ -190,11 +190,10 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @tparam T_twiddles
  */
 template <direction dir, int fft_size, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
-                                                          const sycl::local_accessor<T, 1>& loc,
-                                                          const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                          std::size_t n_transforms, sycl::nd_item<1> it,
-                                                          T_twiddles twiddles, T scaling_factor) {
+__attribute__((always_inline)) inline void workgroup_impl(
+    T_in input, T_out output, const sycl::local_accessor<T, 1>& loc, const sycl::local_accessor<T, 1>& loc_twiddles,
+    std::size_t n_transforms, sycl::nd_item<1> it,
+    T_twiddles twiddles, T scaling_factor) {
   constexpr int N = detail::factorize(fft_size);
   constexpr int M = fft_size / N;
   constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
@@ -210,6 +209,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   constexpr int num_threads_per_fft_in_sg_n = n_ffts_in_sg / SYCLFFT_TARGET_SUBGROUP_SIZE;
   constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
   T priv[private_mem_size];
+  T scratch[private_mem_size];
 
   sycl::sub_group sg = it.get_sub_group();
   int workgroup_size = it.get_local_range(0);
@@ -237,15 +237,15 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int max_n_sg_offset =
       detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
 
-  global2local<false>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
+  global2local<true>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
   sycl::group_barrier(it.get_group());
 
   for (int offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     global2local<true>(input, loc, 2 * fft_size, workgroup_size, id_of_thread_in_wg, offset);
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, m_ffts_in_sg, n_ffts_in_sg, fft_size, N, M>(
-        priv, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment, n_sg_offset, max_n_sg_offset,
-        n_sg_increment, num_threads_per_fft_in_sg_m, scaling_factor);
+        priv, scratch, loc, loc_twiddles, it, m_sg_offset, max_m_sg_offset, m_sg_increment, n_sg_offset,
+        max_n_sg_offset, n_sg_increment, num_threads_per_fft_in_sg_m, scaling_factor, out);
     sycl::group_barrier(it.get_group());
     local2global<true>(loc, output, 2 * fft_size, workgroup_size, id_of_thread_in_wg, 0, offset);
     sycl::group_barrier(it.get_group());
@@ -395,15 +395,16 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
 }
 
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
-__attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
-                                                                const sycl::local_accessor<T, 1>& loc,
-                                                                std::size_t n_transforms, sycl::nd_item<1> it,
-                                                                T_twiddles twiddles, T scaling_factor) {
+__attribute__((always_inline)) inline void workgroup_dispatcher(
+    T_in input, T_out output, int fft_size, const sycl::local_accessor<T, 1>& loc,
+    const sycl::local_accessor<T, 1>& loc_twiddles,
+    std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                           \
-  case N:                                                                                        \
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                         \
+  case N:                                                                                                      \
     \            
-    workgroup_impl<dir, N>(input, output, loc, loc, n_transforms, it, twiddles, scaling_factor); \
+    workgroup_impl<dir, N>(input, output, loc, loc_twiddles, scratch_loc_accessor, n_transforms, it, twiddles, \
+                           scaling_factor, out);                                                               \
     break;
     SYCL_FFT_WG_DISPATCHER_IMPL(256)
     SYCL_FFT_WG_DISPATCHER_IMPL(512)
@@ -441,8 +442,9 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                const sycl::local_accessor<T, 1>& loc_twiddles, std::size_t fft_size, std::size_t n_transforms,
-                sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                const sycl::local_accessor<T, 1>& loc_twiddles,
+                std::size_t fft_size, std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles,
+                T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
@@ -454,7 +456,8 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
-      workgroup_dispatcher<dir>(input, output, fft_size, loc, n_transforms, it, twiddles, scaling_factor);
+      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, loc_scratch_space, n_transforms, it,
+                                twiddles, scaling_factor);
     }
   }
 }
