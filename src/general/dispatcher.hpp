@@ -237,7 +237,7 @@ __attribute__((always_inline)) inline void workgroup_impl(
   int max_n_sg_offset =
       detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
 
-  global2local<true>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
+  global2local<false>(twiddles, loc_twiddles, 2 * (M + N), workgroup_size, id_of_thread_in_wg);
   sycl::group_barrier(it.get_group());
 
   for (int offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
