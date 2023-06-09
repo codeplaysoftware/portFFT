@@ -20,7 +20,7 @@ Build using DPC++ 2023.1.0 as:
 
 ```shell
 source /opt/intel/oneapi/compiler/2023.1.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
+cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang -DSYCLFFT_BUILD_TESTS=ON -DSYCLFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
@@ -42,7 +42,7 @@ Some AOT targets do not support double precision.
 To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
 
 SYCL-FFT currently requires to set the subgroup size at compile time. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_TARGET_SUBGROUP_SIZE=<size>`.
-If you run into the exception with the message `Subgroup size <N1> of the [..] kernel does not match required size of <N2>` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to `N1`.
+If you run into the exception with the message `Unsupported required sub group size` or `Block reads not supported in SIMD32` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to a different value supported by the device.
 
 ### Tests
 
@@ -83,57 +83,11 @@ SYCL-FFT is still in early development. The supported configurations are:
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
 For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes up to this maximum are supported.
-FFT sizes that are a multiple of a workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
+FFT sizes that are a product of a supported workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
 
-Any batch size is supported as long as the FFT fits in global memory.
+Any batch size is supported as long as the input and output data fits in global memory.
 
-## Third party benchmarks
-
-### [Open-source oneMKL]
-
-The benchmark can be enabled with `-DSYCLFFT_INTEL_OPEN_ONEMKL_BENCHMARK_BACKEND=<backend>` where `<backend>` can be one of `MKLCPU`, `MKLGPU` or `CUFFT`.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_open_onemkl
-```
-
-### [Closed-source oneMKL]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_INTEL_CLOSED_ONEMKL_BENCHMARKS=ON`.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_closed_onemkl
-```
-
-### [cuFFT]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_CUFFT_BENCHMARKS=ON`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_cufft
-```
-
-### [rocFFT]
-
-The benchmark can be enabled with `-DSYCLFFT_ENABLE_ROCFFT_BENCHMARKS=ON`. ROCm 5.4.3 or greater is required.
-
-The compiler must be set to `icpx` and `icx` using `-DCMAKE_CXX_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icpx -DCMAKE_C_COMPILER=${ONEAPI_ROOT}/compiler/2023.1.0/linux/bin/icx`.
-
-Run the benchmark with:
-
-```shell
-./test/bench/bench_rocfft
-```
+By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_TARGET_SUBGROUP_SIZE`.
 
 ## Troubleshooting
 
@@ -156,7 +110,3 @@ contact.
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
-[open-source oneMKL]: https://github.com/oneapi-src/oneMKL
-[closed-source oneMKL]: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl.html
-[cuFFT]: https://docs.nvidia.com/cuda/cufft/
-[rocFFT]: https://github.com/ROCmSoftwarePlatform/rocFFT
