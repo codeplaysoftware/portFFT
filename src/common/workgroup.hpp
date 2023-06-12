@@ -52,9 +52,9 @@ __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, s
 }
 
 template <direction dir, int fact_wi_M, int fact_sg_M, int fact_wi_N, int fact_sg_N, int m_ffts_in_sg, int n_ffts_in_sg,
-          int fft_size, int N, int M, typename T_ptr, typename T, typename T_twiddles_ptr>
+          int fft_size, int N, int M, typename T_ptr, typename T, typename T_twiddles_ptr, typename twiddles_type>
 __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, const sycl::local_accessor<T, 1>& loc,
-                                                  T_twiddles_ptr loc_twiddles, sycl::nd_item<1> it, int m_sg_offset,
+                                                  T_twiddles_ptr loc_twiddles, twiddles_type* wg_twiddles, sycl::nd_item<1> it, int m_sg_offset,
                                                   int max_m_sg_offset, int m_sg_increment, int n_sg_offset,
                                                   int max_n_sg_offset, int n_sg_increment,
                                                   int num_threads_per_fft_in_sg_m, T scaling_factor) {
@@ -78,15 +78,14 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
       // TODO: L2 cache latency vs sin,cos (compare SFU latency vs sequence of FFMAD).
       T twiddle_m_index = sub_batch;
       T twiddle_n_index = (sg.get_local_linear_id() % fact_sg_N) * fact_wi_N + i;
-      constexpr T MINUS_TWO_PI = -2 * M_PI;
-      T twiddle_real = sycl::cos((MINUS_TWO_PI * twiddle_n_index * twiddle_m_index) / fft_size);
-      T twiddle_imag = sycl::sin((MINUS_TWO_PI * twiddle_n_index * twiddle_m_index) / fft_size);
+      size_t twiddle_index = 2 * M * twiddle_n_index + 2 * twiddle_m_index;
+      T twiddle_real = wg_twiddles[twiddle_index];
+      T twiddle_imag = wg_twiddles[twiddle_index + 1];
       if (dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
       T tmp_real = scratch[2 * i];
       curr_real = tmp_real * twiddle_real - curr_imag * twiddle_imag;
       curr_imag = tmp_real * twiddle_imag + curr_imag * twiddle_real;
     });
-
     if (working)
       private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, scratch, sg.get_local_linear_id() % fact_sg_N,
                                                                   sub_batch);
@@ -97,7 +96,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
   for (int sub_batch = m_sg_offset; sub_batch <= max_m_sg_offset; sub_batch += m_sg_increment) {
     bool working = sub_batch < N && sg.get_local_linear_id() < max_working_tid_in_sg_m;
     if (working)
-      local2private<2 * fact_wi_M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id(), 2 * fact_wi_M,
+      local2private<2 * fact_wi_M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_M, 2 * fact_wi_M,
                                                         2 * M * sub_batch);
 
     sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
@@ -111,7 +110,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
       curr_imag *= scaling_factor;
     });
     if (working)
-      private2local_transposed<fact_wi_M, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_M,
+      private2local_transposed<fact_wi_M, M, detail::pad::DO_PAD>(loc, scratch, sg.get_local_linear_id() % fact_sg_M,
                                                                   sub_batch);
   }
 }

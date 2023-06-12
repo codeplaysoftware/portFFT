@@ -103,6 +103,7 @@ class committed_descriptor {
   std::size_t n_compute_units;
   std::size_t local_memory_size;
   Scalar* twiddles_forward;
+  Scalar* workgroup_twiddles;
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
    *
@@ -145,6 +146,7 @@ class committed_descriptor {
           "Local Memory size of the selected device is lesser than required for the commited size");
     }
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
+    workgroup_twiddles = detail::populate_wg_twiddles<Scalar>(params.lengths[0], queue);
   }
 
  public:
@@ -166,6 +168,9 @@ class committed_descriptor {
     queue.wait();
     if (twiddles_forward != nullptr) {
       sycl::free(twiddles_forward, queue);
+    }
+    if (workgroup_twiddles != nullptr) {
+      sycl::free(workgroup_twiddles, queue);
     }
   }
 
@@ -296,8 +301,9 @@ class committed_descriptor {
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
     Scalar* twiddles_local = twiddles_forward;
+    Scalar* wg_twiddles_local = workgroup_twiddles;
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
-    std::size_t local_elements = (local_memory_size - (twiddle_elements * sizeof(Scalar))) / sizeof(Scalar);
+    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
@@ -307,7 +313,7 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it,
               sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
+            detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles, wg_twiddles_local,
                                     kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
                                     twiddles_local, scale_factor);
           });
@@ -347,8 +353,9 @@ class committed_descriptor {
     auto in_scalar = in.template reinterpret<Scalar, dim>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, dim>(2 * out.size());
     Scalar* twiddles_local = twiddles_forward;
+    Scalar* wg_twiddles_local = workgroup_twiddles;
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
-    std::size_t local_elements = (local_memory_size - (twiddle_elements * sizeof(Scalar))) / sizeof(Scalar);
+    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     queue.submit([&](sycl::handler& cgh) {
       auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
       auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
@@ -359,7 +366,7 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it,
               sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
+            detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles, wg_twiddles_local,
                                     kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
                                     twiddles_local, scale_factor);
           });

@@ -319,7 +319,7 @@ template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, 
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    int loc_base_offset = detail::pad_local<>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
+    int loc_base_offset = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
     loc_base_ptr[loc_base_offset] = priv[2 * i];
     loc_base_ptr[loc_base_offset + 1] = priv[2 * i + 1];
   });
