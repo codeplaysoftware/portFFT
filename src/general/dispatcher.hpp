@@ -79,8 +79,6 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
         unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&input[i*2 + j * n_transforms]));
-          //priv[j] = input[i*2 + j * n_transforms];
-          //priv[j + 1] = input[i*2 + j * n_transforms + 1];
         });
       } else{
         local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
