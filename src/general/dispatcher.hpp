@@ -69,18 +69,19 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
     bool working = i < n_transforms;
     int n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    if constexpr(!transposed_in){
+    if constexpr (!transposed_in) {
       global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
-                                                local_offset);
+                                                 local_offset);
       sycl::group_barrier(sg);
     }
     if (working) {
-      if constexpr(transposed_in){
+      if constexpr (transposed_in) {
         unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[j])->load(0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&input[i*2 + j * n_transforms]));
+          reinterpret_cast<T_vec*>(&priv[j])->load(
+              0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&input[i * 2 + j * n_transforms]));
         });
-      } else{
+      } else {
         local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
       }
       wi_dft<dir, N, 1, 1>(priv, priv);
@@ -218,11 +219,11 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
                                                                std::size_t fft_size, std::size_t n_transforms,
                                                                sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
-  case N:                                                                          \
-    if constexpr (fits_in_wi<T>(N)) {                                              \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                            \
+  case N:                                                                                         \
+    if constexpr (fits_in_wi<T>(N)) {                                                             \
       workitem_impl<dir, transposed_in, N>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                              \
+    }                                                                                             \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)

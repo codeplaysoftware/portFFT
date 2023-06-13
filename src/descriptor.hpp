@@ -252,7 +252,7 @@ class committed_descriptor {
   }
 
  private:
-   /**
+  /**
    * Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
@@ -264,26 +264,25 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, typename T_in, typename T_out>
-  inline sycl::event dispatch_compute(const T_in in, T_out out, 
-                                      const std::vector<sycl::event>& dependencies = {}) {
+  inline sycl::event dispatch_compute(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t input_distance;
     std::size_t output_distance;
     Scalar scale_factor;
-    if constexpr (dir == direction::FORWARD){
+    if constexpr (dir == direction::FORWARD) {
       input_distance = params.forward_distance;
       output_distance = params.backward_distance;
       scale_factor = params.forward_scale;
-    } else{
+    } else {
       input_distance = params.backward_distance;
       output_distance = params.forward_distance;
       scale_factor = params.backward_scale;
     }
-    if(input_distance == fft_size && output_distance == fft_size){
+    if (input_distance == fft_size && output_distance == fft_size) {
       return dispatch_compute_impl<dir, false>(in, out, scale_factor, dependencies);
-    } else if(input_distance == 1 && output_distance == fft_size && in != out){
+    } else if (input_distance == 1 && output_distance == fft_size && in != out) {
       return dispatch_compute_impl<dir, true>(in, out, scale_factor, dependencies);
-    } else{
+    } else {
       throw std::runtime_error("Unsupported configuration");
     }
   }
@@ -301,7 +300,7 @@ class committed_descriptor {
    */
   template <direction dir, bool transpose_in, typename T_in, typename T_out>
   sycl::event dispatch_compute_impl(const T_in in, T_out out, Scalar scale_factor,
-                                      const std::vector<sycl::event>& dependencies) {
+                                    const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
@@ -318,9 +317,9 @@ class committed_descriptor {
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir, transpose_in>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir,transpose_in>(in_scalar, out_scalar, loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+            detail::dispatcher<dir, transpose_in>(in_scalar, out_scalar, loc, loc_twiddles,
+                                                  kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
+                                                  it, twiddles_local, scale_factor);
           });
     });
   }
@@ -337,7 +336,7 @@ class committed_descriptor {
    */
   template <direction dir, bool transpose_in, typename T>
   sycl::event dispatch_compute_impl(const sycl::buffer<T, 1>& in, sycl::buffer<T, 1>& out, Scalar scale_factor,
-                        const std::vector<sycl::event>& dependencies) {
+                                    const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
@@ -355,9 +354,9 @@ class committed_descriptor {
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir, transpose_in>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir,transpose_in>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                    kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
-                                    twiddles_local, scale_factor);
+            detail::dispatcher<dir, transpose_in>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
+                                                  kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
+                                                  it, twiddles_local, scale_factor);
           });
     });
   }
