@@ -37,21 +37,10 @@ namespace sycl_fft::detail {
  */
 template <auto Start, auto Stop, auto Step, typename Functor>
 void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
-  static_assert(std::is_same<decltype(Start), decltype(Stop)>::value, "Mismatching indices");
-  static_assert(std::is_same<decltype(Start), decltype(Step)>::value, "Mismatching indices");
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);
   }
-}
-
-/**
- * Helper unrolled_loop to cast all indices to \p T_index
- * @see unrolled_loop<Start, Stop, Step, Functor>
- */
-template <auto Start, auto Stop, auto Step, typename T_index, typename Functor>
-void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
-  unrolled_loop<static_cast<T_index>(Start), static_cast<T_index>(Stop), static_cast<T_index>(Step)>(funct);
 }
 
 /**
