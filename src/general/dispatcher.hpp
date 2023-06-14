@@ -49,15 +49,15 @@ namespace detail {
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int N, typename T_in, typename T_out, typename T>
-__attribute__((always_inline)) inline void workitem_impl(T_in input, T_out output,
+template <direction dir, typename T_in, typename T_out, typename T>
+__attribute__((always_inline)) inline void workitem_impl(int N, T_in input, T_out output,
                                                          const sycl::local_accessor<T, 1>& loc,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          T scaling_factor) {
-  constexpr int N_reals = 2 * N;
+  int N_reals = 2 * N;
 
-  T priv[N_reals];
-  T temp[2*wi_temps(N)];
+  T priv[32];
+  T temp[64];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
@@ -74,13 +74,14 @@ __attribute__((always_inline)) inline void workitem_impl(T_in input, T_out outpu
                                                local_offset);
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
+      local2private<pad::DO_PAD>(N_reals, loc, priv, subgroup_local_id, N_reals, local_offset);
       wi_dft<dir, 0>(N, 1, 1, priv, priv, temp);
-      unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
+      #pragma unroll
+      for(int i=0;i<N_reals;i++){
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
-      });
-      private2local<N_reals, pad::DO_PAD>(priv, loc, subgroup_local_id, N_reals, local_offset);
+      }
+      private2local<pad::DO_PAD>(N_reals, priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
     local2global<pad::DO_PAD, level::SUBGROUP>(it, loc, output, N_reals * n_working, local_offset,
@@ -157,7 +158,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
 
     sycl::group_barrier(sg);
     if (working) {
-      local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
+      local2private<pad::DO_PAD>(N_reals_per_wi, loc, priv, subgroup_local_id, N_reals_per_wi,
                                                  subgroup_id * n_reals_per_sg);
     }
     sg_dft<dir, factor_wi, factor_sg>(priv, temp, sg, loc_twiddles);
@@ -205,7 +206,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T_in, typename T_out, typename T>
+/*template <direction dir, typename T_in, typename T_out, typename T>
 __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out output,
                                                                const sycl::local_accessor<T, 1>& loc,
                                                                std::size_t fft_size, std::size_t n_transforms,
@@ -226,7 +227,7 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
     // We compile a limited set of configurations to limit the compilation time
 #undef SYCL_FFT_WI_DISPATCHER_IMPL
   }
-}
+}*/
 
 /**
  * Selects appropriate template instantiation of subgroup implementation for
@@ -357,7 +358,8 @@ __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, 
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    //workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    workitem_impl<dir>(fft_size, input, output, loc, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
