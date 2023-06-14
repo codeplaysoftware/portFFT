@@ -27,6 +27,18 @@
 
 namespace sycl_fft {
 
+/**
+ * @brief Implements Subgroup level transpose. Each subgroup can handle more than one nxm matrices, where n,m are
+ * arbitrary dimensions, each being lesser than subgroup size. Works out of place.
+ *
+ * @tparam num_complex_per_wi number of complex values each workitem holds
+ * @tparam num_threads_per_fft second dimension of the matrix, number of threads taking part in the transpose
+ * @tparam subgroup_size Subgroup size
+ * @tparam T_ptr Pointer type to input and output private memory
+ *
+ * @param priv Input to be transposed
+ * @param output Transposed Out
+ */
 template <int num_complex_per_wi, int num_threads_per_fft, int subgroup_size, typename T_ptr>
 __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, sycl::sub_group sg) {
   using T = detail::remove_ptr<T_ptr>;
@@ -51,13 +63,91 @@ __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, s
   });
 }
 
+// clang-format off
+/**
+ * @brief Entire workgroup transposes data in the local memory in place, viewing the data as a N x M Matrix
+ * Works by fragmenting the data in the local memory into multiple tiles, transposing each tile, and then transposing
+ * the tile arrangement 
+ * A B C          A' D'
+ *       ------>  B' E'   where each alphabet is a tile of some size
+ * D E F          C' F'
+ * Transposes tiles row by row
+ * @tparam N Number of rows
+ * @tparam M Number of columns
+ * @tparam num_subgroups number of subgroup working
+ * @tparam subgroup_size workitems in each subgroup
+ * @tparam T_ptr Pointer to local memory
+ *
+ * @param loc Pointer to the local memory
+ */
+// clang-format on
+template <int N, int M, int num_subgroups, int subgroup_size, typename T_ptr>
+__attribute__((always_inline)) inline void tiled_transpose(T_ptr loc, sycl::nd_item<1> it) {
+  using T = detail::remove_ptr<T_ptr>;
+  sycl::sub_group sg = it.get_sub_group();
+  constexpr int number_of_rows_per_tile = subgroup_size;
+  constexpr int num_elements_per_wi = subgroup_size;
+  constexpr int num_tiles_along_row = N / number_of_rows_per_tile;
+  constexpr int num_tiles_along_col = M / num_elements_per_wi;
+  constexpr int tile_stride = num_subgroups;
+  int tile_start = sg.get_group_id();
+
+  T input[2 * num_elements_per_wi];
+  T output[2 * num_elements_per_wi];
+
+  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
+    int row_start_index = 2 * M * i * number_of_rows_per_tile;
+    // TODO: use sg.load/store functions ?
+    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
+      // load the tile
+      int row_start_in_tile = row_start_index + sg.get_local_linear_id() * 2 * M;
+      int col_start_in_tile = 2 * j * num_elements_per_wi;
+      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
+        input[k] = loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)];
+      }
+      transpose<num_elements_per_wi, subgroup_size, subgroup_size>(input, output, sg);
+      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
+        loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)] = output[k];
+      }
+    }
+  });
+
+  sycl::group_barrier(it.get_group());
+
+  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
+    int row_start_index = 2 * M * i * number_of_rows_per_tile;
+    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
+      int row_start_in_tile = row_start_index + sg.get_local_linear_id() * 2 * M;
+      int col_start_in_tile = 2 * j * num_elements_per_wi;
+      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
+        input[k] = loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)];
+      }
+    }
+  });
+
+  sycl::group_barrier(it.get_group());
+
+  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
+    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
+      // If I am in tile i, j then I want to write to tile j,i
+      int tile_row_start_index = 2 * M * (j + sg.get_local_linear_id());
+      int tile_col_start_index = 2 * i * num_elements_per_wi;
+      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
+        loc[detail::pad_local(tile_row_start_index + tile_col_start_index + k)] = input[k];
+      }
+    }
+  });
+  sycl::group_barrier(it.get_group());
+}
+
 template <direction dir, int fact_wi_M, int fact_sg_M, int fact_wi_N, int fact_sg_N, int m_ffts_in_sg, int n_ffts_in_sg,
           int fft_size, int N, int M, typename T_ptr, typename T, typename T_twiddles_ptr, typename twiddles_type>
 __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, const sycl::local_accessor<T, 1>& loc,
-                                                  T_twiddles_ptr loc_twiddles, twiddles_type* wg_twiddles, sycl::nd_item<1> it, int m_sg_offset,
-                                                  int max_m_sg_offset, int m_sg_increment, int n_sg_offset,
-                                                  int max_n_sg_offset, int n_sg_increment,
-                                                  int num_threads_per_fft_in_sg_m, T scaling_factor) {
+                                                  T_twiddles_ptr loc_twiddles, twiddles_type* wg_twiddles,
+                                                  sycl::nd_item<1> it, int m_sg_offset, int max_m_sg_offset,
+                                                  int m_sg_increment, int n_sg_offset, int max_n_sg_offset,
+                                                  int n_sg_increment, int num_threads_per_fft_in_sg_m,
+                                                  T scaling_factor) {
   sycl::sub_group sg = it.get_sub_group();
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
@@ -68,6 +158,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
     if (working)
       local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
                                                                   sub_batch);
+
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
     transpose<fact_wi_N, fact_sg_N, SYCLFFT_TARGET_SUBGROUP_SIZE>(priv, scratch, sg);
 
@@ -75,7 +166,6 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
       T& curr_real = scratch[2 * i];
       T& curr_imag = scratch[2 * i + 1];
 
-      // TODO: L2 cache latency vs sin,cos (compare SFU latency vs sequence of FFMAD).
       T twiddle_m_index = sub_batch;
       T twiddle_n_index = (sg.get_local_linear_id() % fact_sg_N) * fact_wi_N + i;
       size_t twiddle_index = 2 * M * twiddle_n_index + 2 * twiddle_m_index;
@@ -86,6 +176,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
       curr_real = tmp_real * twiddle_real - curr_imag * twiddle_imag;
       curr_imag = tmp_real * twiddle_imag + curr_imag * twiddle_real;
     });
+
     if (working)
       private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, scratch, sg.get_local_linear_id() % fact_sg_N,
                                                                   sub_batch);
@@ -102,18 +193,21 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
     sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
     transpose<fact_wi_M, fact_sg_M, SYCLFFT_TARGET_SUBGROUP_SIZE>(priv, scratch, sg);
 
-    detail::unrolled_loop<0, 2 * fact_wi_M, 2>([&](const int i) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
       T& curr_real = scratch[2 * i];
       T& curr_imag = scratch[2 * i + 1];
 
       curr_real *= scaling_factor;
       curr_imag *= scaling_factor;
     });
-    if (working)
-      private2local_transposed<fact_wi_M, M, detail::pad::DO_PAD>(loc, scratch, sg.get_local_linear_id() % fact_sg_M,
-                                                                  sub_batch);
-  }
-}
 
+    if (working)
+      private2local<2 * fact_wi_M, detail::pad::DO_PAD>(scratch, loc, sg.get_local_linear_id() % fact_sg_M,
+                                                        2 * fact_wi_M, 2 * M * sub_batch);
+  }
+  sycl::group_barrier(it.get_group());
+
+  tiled_transpose<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE>(loc, it);
+}
 }  // namespace sycl_fft
 #endif

@@ -36,19 +36,20 @@ using namespace sycl_fft;
   if (!queue.first) GTEST_SKIP() << queue.second;
 
 template <typename type>
-void compare_arrays(std::vector<std::complex<type>> array1, std::vector<std::complex<type>> array2, double tol) {
-  ASSERT_EQ(array1.size(), array2.size());
-  for (size_t i = 0; i < array1.size(); i++) {
-    EXPECT_NEAR(array1[i].real(), array2[i].real(), tol) << "i=" << i;
-    EXPECT_NEAR(array1[i].imag(), array2[i].imag(), tol) << "i=" << i;
+void compare_arrays(std::vector<std::complex<type>> reference_output, std::vector<std::complex<type>> device_output,
+                    double tol) {
+  ASSERT_EQ(reference_output.size(), device_output.size());
+  for (size_t i = 0; i < reference_output.size(); i++) {
+    EXPECT_NEAR(reference_output[i].real(), device_output[i].real(), tol) << "i=" << i;
+    EXPECT_NEAR(reference_output[i].imag(), device_output[i].imag(), tol) << "i=" << i;
   }
 }
 
 template <typename type>
-void compare_arrays(std::vector<type> array1, std::vector<type> array2, double tol) {
-  ASSERT_EQ(array1.size(), array2.size());
-  for (size_t i = 0; i < array1.size(); i++) {
-    EXPECT_NEAR(array1[i], array2[i], tol) << "i=" << i;
+void compare_arrays(std::vector<type> reference_output, std::vector<type> device_output, double tol) {
+  ASSERT_EQ(reference_output.size(), device_output.size());
+  for (size_t i = 0; i < reference_output.size(); i++) {
+    EXPECT_NEAR(reference_output[i], device_output[i], tol) << "i=" << i;
   }
 }
 

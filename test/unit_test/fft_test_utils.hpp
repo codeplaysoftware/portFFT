@@ -129,7 +129,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     }
     queue.wait();
   }
-  compare_arrays(test_type == placement::IN_PLACE ? host_input : buffer, host_reference_output, 1e-5);
+  compare_arrays(host_reference_output, test_type == placement::IN_PLACE ? host_input : buffer, 1e-5);
 }
 
 #endif
