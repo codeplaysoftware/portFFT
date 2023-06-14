@@ -50,8 +50,6 @@ void transpose(TypeIn in, TypeOut& out, int FFT_size, int batch_size) {
   for (int j = 0; j < batch_size; j++) {
     for (int i = 0; i < FFT_size; i++) {
       out[i + j * FFT_size] = in[j + i * batch_size];
-      // std::cout << "idx " << i + j * FFT_size << " i " << i << " j " << j << " val " << out[i + j * FFT_size] <<
-      // std::endl;
     }
   }
 }
@@ -60,7 +58,7 @@ void transpose(TypeIn in, TypeOut& out, int FFT_size, int batch_size) {
 template <typename ftype, placement test_type, direction dir, bool transpose_in = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (transpose_in && params.length > 16) {  // while we only support transpose_in for workitem sizes
+  if (transpose_in && params.length >= 13) {  // while we only support transpose_in for workitem sizes
     GTEST_SKIP();
   }
   auto num_elements = params.batch * params.length;
@@ -132,7 +130,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 template <typename ftype, placement test_type, direction dir, bool transpose_in = false>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (transpose_in && params.length > 16) {  // while we only support transpose_in for workitem sizes
+  if (transpose_in && params.length > 13) {  // while we only support transpose_in for workitem sizes
     GTEST_SKIP();
   }
   auto num_elements = params.batch * params.length;

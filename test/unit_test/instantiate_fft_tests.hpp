@@ -30,12 +30,12 @@ class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 4, 8, 16))));
+                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(32))));
+                                                                                     ::testing::Values(16, 32))));
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
