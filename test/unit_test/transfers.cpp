@@ -22,7 +22,6 @@
 #include "number_generators.hpp"
 #include "utils.hpp"
 
-#include <complex>
 #include <gtest/gtest.h>
 
 constexpr std::size_t N = 4;
