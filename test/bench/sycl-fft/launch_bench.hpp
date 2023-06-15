@@ -118,7 +118,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 }
 
 /**
- * Separate impl function to handle
+ * Separate impl function to handle catching exceptions
  * @see bench_dft_average_host_time_impl
  */
 template <typename ftype, sycl_fft::domain domain>
