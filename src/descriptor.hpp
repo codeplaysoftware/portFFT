@@ -282,7 +282,7 @@ class committed_descriptor {
   bool use_32bit_indices() {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
-    return fft_size <= std::numeric_limits<unsigned>::max() && n_transforms <= std::numeric_limits<unsigned>::max();
+    return n_transforms * fft_size <= std::numeric_limits<unsigned>::max();
   }
 
   /**
