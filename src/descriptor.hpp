@@ -303,7 +303,12 @@ class committed_descriptor {
     if (use_32bit_indices()) {
       return dispatch_compute_impl<unsigned, dir>(in, out, scale_factor, dependencies);
     } else {
+#ifdef SYCLFFT_ENABLE_64BIT_INDICES
       return dispatch_compute_impl<unsigned long, dir>(in, out, scale_factor, dependencies);
+#else
+      assert(false && "unreachable");
+      return {};
+#endif
     }
   }
 
@@ -365,7 +370,11 @@ class committed_descriptor {
     if (use_32bit_indices()) {
       dispatch_compute_impl<unsigned, dir>(in, out, scale_factor, dependencies);
     } else {
+#ifdef SYCLFFT_ENABLE_64BIT_INDICES
       dispatch_compute_impl<unsigned long, dir>(in, out, scale_factor, dependencies);
+#else
+      assert(false && "unreachable");
+#endif
     }
   }
 
