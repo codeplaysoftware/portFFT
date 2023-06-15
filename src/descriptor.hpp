@@ -323,10 +323,10 @@ class committed_descriptor {
   template <typename T_index, direction dir, typename Tin, typename Tout>
   inline sycl::event dispatch_compute_impl(const Tin in, Tout out, Scalar scale_factor = 1.0f,
                                            const std::vector<sycl::event>& dependencies = {}) {
-    std::size_t n_transforms = params.number_of_transforms;
+    T_index n_transforms = static_cast<T_index>(params.number_of_transforms);
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
-    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
+    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, params.number_of_transforms, subgroup_size, n_compute_units);
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
     const Scalar* twiddles_ptr = twiddles_forward;
@@ -341,7 +341,7 @@ class committed_descriptor {
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
                                     kh.get_specialization_constant<fft_size_spec_const<T_index>::value>(),
-                                    static_cast<T_index>(n_transforms), it, twiddles_ptr, scale_factor);
+                                    n_transforms, it, twiddles_ptr, scale_factor);
           });
     });
   }
@@ -385,10 +385,10 @@ class committed_descriptor {
   template <typename T_index, direction dir, int dim, typename Tin, typename Tout>
   void dispatch_compute_impl(const sycl::buffer<Tin, dim>& in, sycl::buffer<Tout, dim>& out, Scalar scale_factor = 1.0f,
                              const std::vector<sycl::event>& dependencies = {}) {
-    std::size_t n_transforms = params.number_of_transforms;
+    T_index n_transforms = static_cast<T_index>(params.number_of_transforms);
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     const std::size_t subgroup_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
-    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
+    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, params.number_of_transforms, subgroup_size, n_compute_units);
     auto in_scalar = in.template reinterpret<Scalar, dim>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, dim>(2 * out.size());
     const Scalar* twiddles_ptr = twiddles_forward;
@@ -405,7 +405,7 @@ class committed_descriptor {
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
             detail::dispatcher<dir>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
                                     kh.get_specialization_constant<fft_size_spec_const<T_index>::value>(),
-                                    static_cast<T_index>(n_transforms), it, twiddles_ptr, scale_factor);
+                                    n_transforms, it, twiddles_ptr, scale_factor);
           });
     });
   }
