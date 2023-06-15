@@ -143,7 +143,7 @@ template <direction dir, int fact_wi_M, int fact_sg_M, int fact_wi_N, int fact_s
           typename T_ptr, typename T, typename T_twiddles_ptr, typename twiddles_type>
 __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, const sycl::local_accessor<T, 1>& loc,
                                                   T_twiddles_ptr loc_twiddles, twiddles_type* wg_twiddles,
-                                                  sycl::nd_item<1> it, T scaling_factor) {
+                                                  sycl::nd_item<1> it, T scaling_factor, const sycl::stream& out) {
   sycl::sub_group sg = it.get_sub_group();
   constexpr int sg_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   constexpr int m_ffts_in_sg = sg_size / fact_sg_M;
@@ -200,6 +200,8 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
                                                                   sub_batch);
     }
   }
+
+  sycl::group_barrier(it.get_group());
 
   for (int sub_batch = m_sg_offset; sub_batch <= max_m_sg_offset; sub_batch += m_sg_increment) {
     bool working = sub_batch < N && sg.get_local_linear_id() < max_working_tid_in_sg_m;
