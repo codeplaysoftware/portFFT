@@ -307,12 +307,12 @@ __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv
 
 /**
  * @brief Views the data in the local memory as an NxM matrix, and loads a column into the private memory
- * 
+ *
  * @tparam num_elements_per_wi Elements per workitem
  * @tparam stride Inner most dimension of the reinterpreted matrix
  * @tparam pad Whether data in the local memory is padded or not
  * @tparam T_loc_ptr Pointer to Local memory
- * @tparam T_priv_ptr Pointer to private memory 
+ * @tparam T_priv_ptr Pointer to private memory
  */
 template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
@@ -326,7 +326,7 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
 
 /**
  * @brief Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
- * 
+ *
  * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
  * @tparam stride Inner most dimension of the reinterpreted matrix
  * @tparam pad Whether data in the local memory is padded or not
