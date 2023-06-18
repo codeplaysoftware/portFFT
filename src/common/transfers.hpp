@@ -316,9 +316,9 @@ __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv
  */
 template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
-                                                                    int thread_id, int sub_batch) {
+                                                                    int thread_id, int col_num) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    int local_idx = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
+    int local_idx = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num);
     priv[2 * i] = loc_base_ptr[local_idx];
     priv[2 * i + 1] = loc_base_ptr[local_idx + 1];
   });
@@ -335,9 +335,9 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  */
 template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
-                                                                    int thread_id, int sub_batch) {
+                                                                    int thread_id, int num_workers, int sub_batch) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    int loc_base_offset = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * sub_batch);
+    int loc_base_offset = detail::pad_local<pad>(2 * stride * (i * num_workers + thread_id) + 2 * sub_batch);
     loc_base_ptr[loc_base_offset] = priv[2 * i];
     loc_base_ptr[loc_base_offset + 1] = priv[2 * i + 1];
   });
