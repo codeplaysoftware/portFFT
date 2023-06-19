@@ -23,6 +23,7 @@
 
 #include "fft_test_utils.hpp"
 #include <gtest/gtest.h>
+#include <type_traits>
 
 class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
@@ -50,6 +51,11 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
   TEST_P(DIRECTION_TEST_SUITE, MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##TRANSPOSE_NAME) { \
     auto param = GetParam();                                                                                       \
     sycl::queue queue;                                                                                             \
+    if constexpr(std::is_same<TYPE, double>::value){                                                               \
+      auto queue_pair = get_queue(fp64_selector);                                                                  \
+      CHECK_QUEUE(queue_pair);                                                                                     \
+      queue = queue_pair.first.value();                                                                            \
+    }                                                                                                              \
     check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, TRANSPOSE>(param, queue);                    \
   }
 
