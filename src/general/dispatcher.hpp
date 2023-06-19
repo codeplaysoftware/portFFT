@@ -185,24 +185,31 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
 }
 
 /**
- * @brief Entire workgroup calculates an one FFT.
- *
- * @tparam dir Direction of the FFT
- * @tparam fft_size size of the fft_problem'
- * @tparam N First Factor
- * @tparam M Second Factor
- * @tparam loc_size local memory size in bytes
- * @tparam T_in
- * @tparam T_out
- * @tparam T
- * @tparam T_twiddles
+ * Implementation that can be handled by a workgroup
+ * 
+ * @tparam dir Direction of the FFt
+ * @tparam fft_size Problem size of the FFT
+ * @tparam T_in Input pointer type
+ * @tparam T_out Output pointer type
+ * @tparam T Scalar type
+ * @tparam T_twiddles Twiddles to the sub FFTs
+ * @tparam Pointer to precalculated twiddles which are to be used before second set of FFTs
+ * 
+ * @param input Input pointer
+ * @param output Output pointer
+ * @param loc Local Accessor containing the inupts
+ * @param loc_twiddles local accessor to to twiddles to be used by sub FFTs
+ * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
+ * @param n_transforms Batch size
+ * @param it Associated nd_item
+ * @param twiddles Pointer to the global memory containing twiddles for sub FFTs
+ * @param T Scaling factor by which the result will be scaled
  */
-template <direction dir, int fft_size, typename T_in, typename T_out, typename T, typename T_twiddles,
-          typename twiddles_type>
+template <direction dir, int fft_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
                                                           const sycl::local_accessor<T, 1>& loc,
                                                           const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                          twiddles_type* wg_twiddles, std::size_t n_transforms,
+                                                          T* wg_twiddles, std::size_t n_transforms,
                                                           sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   int workgroup_size = it.get_local_range(0);
   int num_workgroups = it.get_group_range(0);
@@ -367,11 +374,11 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
   }
 }
 
-template <direction dir, typename T_in, typename T_out, typename T, typename twiddles_type, typename T_twiddles>
+template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
                                                                 const sycl::local_accessor<T, 1>& loc,
                                                                 const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                                twiddles_type* wg_twiddles, std::size_t n_transforms,
+                                                                T* wg_twiddles, std::size_t n_transforms,
                                                                 sycl::nd_item<1> it, T_twiddles twiddles,
                                                                 T scaling_factor) {
   switch (fft_size) {
@@ -414,9 +421,9 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles, typename twiddles_type>
+template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                const sycl::local_accessor<T, 1>& loc_twiddles, twiddles_type* wg_twiddles, std::size_t fft_size,
+                const sycl::local_accessor<T, 1>& loc_twiddles, T* wg_twiddles, std::size_t fft_size,
                 std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?

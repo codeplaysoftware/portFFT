@@ -28,7 +28,7 @@
 namespace sycl_fft {
 
 /**
- * @brief Implements Subgroup level transpose. Each subgroup can handle more than one nxm matrices, where n,m are
+ * Implements Subgroup level transpose. Each subgroup can handle more than one nxm matrices, where n,m are
  * arbitrary dimensions, each being lesser than subgroup size. Works out of place.
  *
  * @tparam num_complex_per_wi number of complex values each workitem holds
@@ -43,29 +43,29 @@ template <int num_complex_per_wi, int num_threads_per_fft, int subgroup_size, ty
 __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, sycl::sub_group sg) {
   using T = detail::remove_ptr<T_ptr>;
   int id_of_thread_in_fft = sg.get_local_linear_id() % num_threads_per_fft;
-  int current_simd_lane = sg.get_local_linear_id() & (subgroup_size - 1);
-  int batch_start_simd_lane = (sg.get_local_linear_id() - id_of_thread_in_fft) & (subgroup_size - 1);
-  int simd_lane_relative_to_batch = id_of_thread_in_fft & (num_threads_per_fft - 1);
+  int current_lane = sg.get_local_linear_id() & (subgroup_size - 1);
+  int batch_start_lane = (sg.get_local_linear_id() - id_of_thread_in_fft) & (subgroup_size - 1);
+  int relative_lane = id_of_thread_in_fft & (num_threads_per_fft - 1);
 
   detail::unrolled_loop<0, num_complex_per_wi, 1>([&](const int id_of_element_in_wi) __attribute__((always_inline)) {
-    int relative_target_simd_lane = ((simd_lane_relative_to_batch + id_of_element_in_wi) & (num_complex_per_wi - 1)) *
+    int relative_target_simd_lane = ((relative_lane + id_of_element_in_wi) & (num_complex_per_wi - 1)) *
                                         (num_threads_per_fft / num_complex_per_wi) +
-                                    (simd_lane_relative_to_batch / num_complex_per_wi);
-    int target_simd_lane = batch_start_simd_lane + relative_target_simd_lane;
-    int store_address = (current_simd_lane + id_of_element_in_wi) & (num_complex_per_wi - 1);
+                                    (relative_lane / num_complex_per_wi);
+    int target_lane = batch_start_lane + relative_target_simd_lane;
+    int store_address = (current_lane + id_of_element_in_wi) & (num_complex_per_wi - 1);
     int target_address = ((num_complex_per_wi - id_of_element_in_wi) +
-                          (current_simd_lane / (num_threads_per_fft / num_complex_per_wi))) &
+                          (current_lane / (num_threads_per_fft / num_complex_per_wi))) &
                          (num_complex_per_wi - 1);
     T& real_value = priv[2 * target_address];
     T& complex_value = priv[2 * target_address + 1];
-    output[2 * store_address] = sycl::select_from_group(sg, real_value, target_simd_lane);
-    output[2 * store_address + 1] = sycl::select_from_group(sg, complex_value, target_simd_lane);
+    output[2 * store_address] = sycl::select_from_group(sg, real_value, target_lane);
+    output[2 * store_address + 1] = sycl::select_from_group(sg, complex_value, target_lane);
   });
 }
 
 // clang-format off
 /**
- * @brief Entire workgroup transposes data in the local memory in place, viewing the data as a N x M Matrix
+ * Entire workgroup transposes data in the local memory in place, viewing the data as a N x M Matrix
  * Works by fragmenting the data in the local memory into multiple tiles, transposing each tile, and then transposing
  * the tile arrangement 
  * A B C          A' D'
@@ -79,6 +79,7 @@ __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, s
  * @tparam T_ptr Pointer to local memory
  *
  * @param loc Pointer to the local memory
+ * @param it Associated nd_item
  */
 // clang-format on
 template <int N, int M, int num_subgroups, int subgroup_size, typename T_ptr>
@@ -139,9 +140,26 @@ __attribute__((always_inline)) inline void tiled_transpose(T_ptr loc, sycl::nd_i
   sycl::group_barrier(it.get_group());
 }
 
-template <direction dir, int fft_size, int N, int M, typename T, typename T_twiddles_ptr, typename twiddles_type>
+/**
+ * Calculates FFT using Bailey 4 step algorithm.
+ *
+ * @tparam dir Direction of the FFT
+ * @tparam fft_size Problem Size
+ * @tparam N Smaller factor of the Problem size
+ * @tparam M Larger factor of the problem size
+ * @tparam T Scalar Type
+ * @tparam T_twiddles_ptr Type of twiddle pointer utilized by subgroup ffts
+ * @tparam twiddles_type Type of pointer to intermediate precalculatuted twiddles
+ *
+ * @param loc local accessor containing the input
+ * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
+ * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
+ * @param it Associated nd_item
+ * @param scaling_factor Scalar value with which the result is to be scaled
+ */
+template <direction dir, int fft_size, int N, int M, typename T, typename T_twiddles_ptr>
 __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 1>& loc, T_twiddles_ptr loc_twiddles,
-                                                  twiddles_type* wg_twiddles, sycl::nd_item<1> it, T scaling_factor) {
+                                                  T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor) {
   constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
   constexpr int fact_wi_N = N / fact_sg_N;
   constexpr int fact_sg_M = detail::factorize_sg(M, SYCLFFT_TARGET_SUBGROUP_SIZE);
