@@ -51,7 +51,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
 
-  descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
+  descriptor<ftype, domain::COMPLEX> desc{{params.length}};
   desc.number_of_transforms = params.batch;
   auto committed_descriptor = desc.commit(queue);
 
@@ -104,7 +104,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       output_buffer = sycl::buffer<std::complex<ftype>, 1>(buffer.data(), num_elements);
     }
 
-    descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
+    descriptor<ftype, domain::COMPLEX> desc{{params.length}};
     desc.number_of_transforms = params.batch;
     auto committed_descriptor = desc.commit(queue);
     double scaling_factor = dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
