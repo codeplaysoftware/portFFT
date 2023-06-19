@@ -186,7 +186,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
 
 /**
  * Implementation that can be handled by a workgroup
- * 
+ *
  * @tparam dir Direction of the FFt
  * @tparam fft_size Problem size of the FFT
  * @tparam T_in Input pointer type
@@ -194,7 +194,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @tparam T Scalar type
  * @tparam T_twiddles Twiddles to the sub FFTs
  * @tparam Pointer to precalculated twiddles which are to be used before second set of FFTs
- * 
+ *
  * @param input Input pointer
  * @param output Output pointer
  * @param loc Local Accessor containing the inupts
@@ -209,8 +209,8 @@ template <direction dir, int fft_size, typename T_in, typename T_out, typename T
 __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
                                                           const sycl::local_accessor<T, 1>& loc,
                                                           const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                          T* wg_twiddles, std::size_t n_transforms,
-                                                          sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                                                          T* wg_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
+                                                          T_twiddles twiddles, T scaling_factor) {
   int workgroup_size = it.get_local_range(0);
   int num_workgroups = it.get_group_range(0);
 
@@ -387,6 +387,7 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
     \        
     workgroup_impl<dir, N>(input, output, loc, loc_twiddles, wg_twiddles, n_transforms, it, twiddles, scaling_factor); \
     break;
+
     SYCL_FFT_WG_DISPATCHER_IMPL(256)
     SYCL_FFT_WG_DISPATCHER_IMPL(512)
     SYCL_FFT_WG_DISPATCHER_IMPL(1024)
@@ -548,7 +549,7 @@ int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
     int fact_wi = fft_size / factor_sg;
     if (fits_in_wi<T>(fact_wi)) {
       int n_ffts_per_sg = subgroup_size / factor_sg;
-      return detail::pad_local(2 * fft_size * n_ffts_per_sg);
+      return detail::pad_local(2 * fft_size * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
     } else {
       return detail::pad_local(2 * fft_size);
     }

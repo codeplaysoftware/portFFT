@@ -53,9 +53,9 @@ __attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, s
                                     (relative_lane / num_complex_per_wi);
     int target_lane = batch_start_lane + relative_target_simd_lane;
     int store_address = (current_lane + id_of_element_in_wi) & (num_complex_per_wi - 1);
-    int target_address = ((num_complex_per_wi - id_of_element_in_wi) +
-                          (current_lane / (num_threads_per_fft / num_complex_per_wi))) &
-                         (num_complex_per_wi - 1);
+    int target_address =
+        ((num_complex_per_wi - id_of_element_in_wi) + (current_lane / (num_threads_per_fft / num_complex_per_wi))) &
+        (num_complex_per_wi - 1);
     T& real_value = priv[2 * target_address];
     T& complex_value = priv[2 * target_address + 1];
     output[2 * store_address] = sycl::select_from_group(sg, real_value, target_lane);
@@ -239,5 +239,7 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
 
   tiled_transpose<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE>(loc, it);
 }
+
 }  // namespace sycl_fft
+
 #endif

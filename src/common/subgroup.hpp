@@ -287,6 +287,7 @@ void sg_calc_twiddles(int N, int M, int n, int k, T_ptr sg_twiddles) {
   sg_twiddles[k * N + n] = twiddle.real();
   sg_twiddles[(k + M) * N + n] = twiddle.imag();
 }
+
 };  // namespace sycl_fft
 
 #endif

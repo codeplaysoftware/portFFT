@@ -141,8 +141,8 @@ class committed_descriptor {
          (detail::factorize(params.lengths[0]) + params.lengths[0] / detail::factorize(params.lengths[0]))) *
         sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
     if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error(
-          "Local Memory size of the selected device is lesser than required for the commited size");
+      throw std::runtime_error("Insufficient amount of local memory available: " + to_string(local_memory_size) +
+                               " Required: " + to_string(minimum_local_mem_required));
     }
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
     workgroup_twiddles = detail::populate_wg_twiddles<Scalar>(params.lengths[0], queue);
@@ -304,7 +304,6 @@ class committed_descriptor {
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
-      ;
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);

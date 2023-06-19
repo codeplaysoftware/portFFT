@@ -21,9 +21,9 @@
 #ifndef SYCL_FFT_COMMON_HELPERS_HPP
 #define SYCL_FFT_COMMON_HELPERS_HPP
 
-#include <complex>
 #include <sycl/sycl.hpp>
 #include <type_traits>
+
 namespace sycl_fft::detail {
 
 template <typename T>
