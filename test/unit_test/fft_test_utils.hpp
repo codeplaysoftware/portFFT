@@ -58,7 +58,7 @@ void transpose(TypeIn in, TypeOut& out, int FFT_size, int batch_size) {
 template <typename ftype, placement test_type, direction dir, bool transpose_in = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (transpose_in && params.length >= 13) {  // while we only support transpose_in for workitem sizes
+  if (transpose_in && params.length > 13) {  // while we only support transpose_in for workitem sizes
     GTEST_SKIP();
   }
   auto num_elements = params.batch * params.length;
@@ -120,7 +120,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   queue.copy(test_type == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
              {fft_event});
   queue.wait();
-  compare_arrays(buffer, host_reference_output, 1e-5);
+  compare_arrays(host_reference_output, buffer, 1e-5);
   sycl::free(device_input, queue);
   if (test_type == placement::OUT_OF_PLACE) {
     sycl::free(device_output, queue);
@@ -188,7 +188,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     }
     queue.wait();
   }
-  compare_arrays(test_type == placement::IN_PLACE ? host_input : buffer, host_reference_output, 1e-5);
+  compare_arrays(host_reference_output, test_type == placement::IN_PLACE ? host_input : buffer, 1e-5);
 }
 
 #endif
