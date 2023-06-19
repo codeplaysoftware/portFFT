@@ -67,11 +67,27 @@ inline T roundUpToMultiple(T value, T factor) {
   return divideCeil(value, factor) * factor;
 }
 
+/**
+ * Cast a raw pointer to a global sycl::multi_ptr.
+ * The multi_ptr is using the legacy decoration for now as this is better supported.
+ *
+ * @tparam T Pointer type
+ * @param ptr Raw pointer to cast to multi_ptr
+ * @return sycl::multi_ptr
+ */
 template <typename T>
 inline auto get_global_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::legacy>(ptr);
 }
 
+/**
+ * Cast a raw pointer to a local sycl::multi_ptr.
+ * The multi_ptr is using the legacy decoration for now as this is better supported.
+ *
+ * @tparam T Pointer type
+ * @param ptr Raw pointer to cast to multi_ptr
+ * @return sycl::multi_ptr
+ */
 template <typename T>
 inline auto get_local_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
