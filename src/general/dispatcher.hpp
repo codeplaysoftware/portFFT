@@ -204,14 +204,6 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
                                                           const sycl::local_accessor<T, 1>& loc_twiddles,
                                                           twiddles_type* wg_twiddles, std::size_t n_transforms,
                                                           sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
-  constexpr int N = detail::factorize(fft_size);
-  constexpr int M = fft_size / N;
-  constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
-  constexpr int fact_wi_N = N / fact_sg_N;
-  constexpr int fact_sg_M = detail::factorize_sg(M, SYCLFFT_TARGET_SUBGROUP_SIZE);
-  constexpr int fact_wi_M = M / fact_sg_M;
-  constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
-
   int workgroup_size = it.get_local_range(0);
   int num_workgroups = it.get_group_range(0);
 
@@ -219,9 +211,8 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int max_global_offset = 2 * (n_transforms - 1) * fft_size;
   int global_offset = 2 * fft_size * wg_id;
   int offset_increment = 2 * fft_size * num_workgroups;
-
-  T priv[private_mem_size];
-  T scratch[private_mem_size];
+  constexpr int N = detail::factorize(fft_size);
+  constexpr int M = fft_size / N;
 
   global2local<pad::DONT_PAD, level::WORKGROUP>(it, twiddles, loc_twiddles, 2 * (M + N));
   sycl::group_barrier(it.get_group());
@@ -229,9 +220,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   for (int offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     global2local<pad::DO_PAD, level::WORKGROUP>(it, input, loc, 2 * fft_size, offset);
     sycl::group_barrier(it.get_group());
-    wg_dft<dir, fact_wi_M, fact_sg_M, fact_wi_N, fact_sg_N, fft_size, N, M>(priv, scratch, loc, loc_twiddles,
-                                                                            wg_twiddles, it, scaling_factor);
-    sycl::group_barrier(it.get_group());
+    wg_dft<dir, fft_size, N, M>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
     local2global<pad::DO_PAD, level::WORKGROUP>(it, loc, output, 2 * fft_size, 0, offset);
   }
 }

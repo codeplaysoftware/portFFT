@@ -139,11 +139,16 @@ __attribute__((always_inline)) inline void tiled_transpose(T_ptr loc, sycl::nd_i
   sycl::group_barrier(it.get_group());
 }
 
-template <direction dir, int fact_wi_M, int fact_sg_M, int fact_wi_N, int fact_sg_N, int fft_size, int N, int M,
-          typename T_ptr, typename T, typename T_twiddles_ptr, typename twiddles_type>
-__attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, const sycl::local_accessor<T, 1>& loc,
-                                                  T_twiddles_ptr loc_twiddles, twiddles_type* wg_twiddles,
-                                                  sycl::nd_item<1> it, T scaling_factor) {
+template <direction dir, int fft_size, int N, int M, typename T, typename T_twiddles_ptr, typename twiddles_type>
+__attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 1>& loc, T_twiddles_ptr loc_twiddles,
+                                                  twiddles_type* wg_twiddles, sycl::nd_item<1> it, T scaling_factor) {
+  constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
+  constexpr int fact_wi_N = N / fact_sg_N;
+  constexpr int fact_sg_M = detail::factorize_sg(M, SYCLFFT_TARGET_SUBGROUP_SIZE);
+  constexpr int fact_wi_M = M / fact_sg_M;
+  constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
+  T priv[private_mem_size];
+
   sycl::sub_group sg = it.get_sub_group();
   constexpr int sg_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   constexpr int m_ffts_in_sg = sg_size / fact_sg_M;
@@ -178,8 +183,8 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
     }
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
     if (working) {
-      private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N, fact_sg_N,
-                                                                  sub_batch);
+      private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
+                                                                  fact_sg_N, sub_batch);
     }
   }
 
@@ -190,7 +195,7 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
       local2private<2 * fact_wi_M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_M, 2 * fact_wi_M,
                                                         2 * M * sub_batch);
     }
-    detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__ ((always_inline)) {
+    detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
       int twiddle_n_index = sub_batch;
       int twiddle_m_index = (sg.get_local_linear_id() % fact_sg_M) * fact_wi_M + i;
       int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
@@ -208,13 +213,13 @@ __attribute__((always_inline)) inline void wg_dft(T_ptr priv, T_ptr scratch, con
     });
 
     if (working) {
-      store_transposed<2 * fact_wi_M, detail::pad::DO_PAD>(priv, loc, sg.get_local_linear_id() % fact_sg_M, fact_sg_M, 2 * M * sub_batch);
+      store_transposed<2 * fact_wi_M, detail::pad::DO_PAD>(priv, loc, sg.get_local_linear_id() % fact_sg_M, fact_sg_M,
+                                                           2 * M * sub_batch);
     }
   }
   sycl::group_barrier(it.get_group());
 
   tiled_transpose<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE>(loc, it);
-
 }
 }  // namespace sycl_fft
 #endif
