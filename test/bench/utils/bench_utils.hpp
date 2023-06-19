@@ -44,11 +44,11 @@ inline T_index get_fwd_per_transform(std::vector<T_index> lengths) {
 
 template <typename forward_type, typename T_index>
 inline T_index get_bwd_per_transform(std::vector<T_index> lengths) {
-  if constexpr (std::is_same<forward_type, float>::value || std::is_same<forward_type, double>::value) {
+  if constexpr (std::is_same_v<forward_type, float> || std::is_same_v<forward_type, double>) {
     return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<T_index>());
   } else {
-    static_assert(std::is_same<forward_type, std::complex<float>>::value ||
-                  std::is_same<forward_type, std::complex<double>>::value);
+    static_assert(std::is_same_v<forward_type, std::complex<float>> ||
+                  std::is_same_v<forward_type, std::complex<double>>);
     return get_fwd_per_transform<T_index>(lengths);
   }
 }
@@ -78,7 +78,7 @@ void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::v
                 std::size_t number_of_transforms, double forward_scale) {
   std::size_t fwd_row_elems = lengths.back();
   std::size_t bwd_row_elems = lengths.back();
-  if constexpr (!std::is_same<forward_type, backward_type>::value) {
+  if constexpr (!std::is_same_v<forward_type, backward_type>) {
     bwd_row_elems = bwd_row_elems / 2 + 1;
   }
   std::size_t rows = std::accumulate(lengths.begin(), lengths.end() - 1, 1LU, std::multiplies<std::size_t>());

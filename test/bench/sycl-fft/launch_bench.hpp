@@ -222,12 +222,12 @@ template <typename ftype, sycl_fft::domain domain>
 void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sycl::queue profiling_q,
                                     const sycl_fft::descriptor<ftype, domain>& desc) {
   static_assert(domain == sycl_fft::domain::REAL || domain == sycl_fft::domain::COMPLEX, "Unsupported domain");
-  static_assert(std::is_same<ftype, float>::value || std::is_same<ftype, double>::value, "Unsupported precision");
+  static_assert(std::is_same_v<ftype, float> || std::is_same_v<ftype, double>, "Unsupported precision");
   // Print descriptor's parameters relevant for benchmarks
   // Additional parameters could be added to the suffix if needed
   auto print_desc = [&](std::ostream& name) {
     name << "d=" << (domain == sycl_fft::domain::REAL ? "re" : "cpx");
-    name << ",prec=" << (std::is_same<ftype, float>::value ? "single" : "double");
+    name << ",prec=" << (std::is_same_v<ftype, float> ? "single" : "double");
     name << ",n=[";
     for (std::size_t i = 0; i < desc.lengths.size(); ++i) {
       name << (i > 0 ? ", " : "") << desc.lengths[i];
