@@ -73,10 +73,9 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     }
     if (working) {
       if constexpr (transpose_in == detail::transpose::TRANSPOSED) {
-        unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
+        unrolled_loop<0, N_reals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[j])->load(
-              0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&input[i * 2 + j * n_transforms]));
+          reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
         local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
