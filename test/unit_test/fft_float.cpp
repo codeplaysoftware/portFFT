@@ -18,53 +18,6 @@
  *
  **************************************************************************/
 
-#include "fft_test_utils.hpp"
 #include "instantiate_fft_tests.hpp"
 
-TEST_P(FFTTest, USM_IP_C2C_Fwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_usm<float, placement::IN_PLACE, direction::FORWARD>(param, queue);
-}
-
-TEST_P(FFTTest, USM_OOP_C2C_Fwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_usm<float, placement::OUT_OF_PLACE, direction::FORWARD>(param, queue);
-}
-
-TEST_P(FFTTest, BUFFER_IP_C2C_Fwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_buffer<float, placement::IN_PLACE, direction::FORWARD>(param, queue);
-}
-
-TEST_P(FFTTest, BUFFER_OOP_C2C_Fwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_buffer<float, placement::OUT_OF_PLACE, direction::FORWARD>(param, queue);
-}
-
-TEST_P(BwdTest, USM_IP_C2C_Bwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_usm<float, placement::IN_PLACE, direction::BACKWARD>(param, queue);
-}
-
-TEST_P(BwdTest, USM_OOP_C2C_Bwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_usm<float, placement::OUT_OF_PLACE, direction::BACKWARD>(param, queue);
-}
-
-TEST_P(BwdTest, BUFFER_IP_C2C_Bwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_buffer<float, placement::IN_PLACE, direction::BACKWARD>(param, queue);
-}
-
-TEST_P(BwdTest, BUFFER_OOP_C2C_Bwd_Float) {
-  auto param = GetParam();
-  sycl::queue queue;
-  check_fft_buffer<float, placement::OUT_OF_PLACE, direction::BACKWARD>(param, queue);
-}
+INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_TRANSPOSE(float, Float)

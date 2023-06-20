@@ -37,6 +37,7 @@ namespace detail {
  * Implementation of FFT for sizes that can be done by independent work items.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
  * @tparam N size of each transform
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data
@@ -47,7 +48,7 @@ namespace detail {
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int N, typename T, typename T_loc>
+template <direction dir, detail::transpose transpose_in, int N, typename T, typename T_loc>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T_loc loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor) {
   constexpr std::size_t N_reals = 2 * N;
@@ -65,11 +66,21 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     bool working = i < n_transforms;
     std::size_t n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
-    global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
-                                               local_offset);
-    sycl::group_barrier(sg);
+    if constexpr (transpose_in == detail::transpose::NOT_TRANSPOSED) {
+      global2local<pad::DO_PAD, level::SUBGROUP>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
+                                                 local_offset);
+      sycl::group_barrier(sg);
+    }
     if (working) {
-      local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
+      if constexpr (transpose_in == detail::transpose::TRANSPOSED) {
+        unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
+          using T_vec = sycl::vec<T, 2>;
+          reinterpret_cast<T_vec*>(&priv[j])->load(
+              0, sycl::make_ptr<const T, sycl::access::address_space::global_space>(&input[i * 2 + j * n_transforms]));
+        });
+      } else {
+        local2private<N_reals, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals, local_offset);
+      }
       wi_dft<dir, N, 1, 1>(priv, priv);
       unrolled_loop<0, N_reals, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
@@ -175,6 +186,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * given size of DFT.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
  * @tparam factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data
@@ -186,16 +198,16 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T, typename T_loc>
+template <direction dir, detail::transpose transpose_in, typename T, typename T_loc>
 __attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T* output, T_loc loc,
                                                                std::size_t fft_size, std::size_t n_transforms,
                                                                sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
-  case N:                                                                          \
-    if constexpr (fits_in_wi<T>(N)) {                                              \
-      workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                              \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                           \
+  case N:                                                                                        \
+    if constexpr (fits_in_wi<T>(N)) {                                                            \
+      workitem_impl<dir, transpose_in, N>(input, output, loc, n_transforms, it, scaling_factor); \
+    }                                                                                            \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
@@ -296,6 +308,7 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * Selects appropriate implementation for given problem size.
  *
  * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
@@ -309,14 +322,14 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T, typename T_loc>
+template <direction dir, detail::transpose transpose_in, typename T, typename T_loc>
 __attribute__((always_inline)) inline void dispatcher(const T* input, T* output, T_loc loc, T_loc loc_twiddles,
                                                       std::size_t fft_size, std::size_t n_transforms,
                                                       sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    workitem_dispatcher<dir, transpose_in>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
     return;
   }
   std::size_t sg_size = it.get_sub_group().get_local_linear_range();

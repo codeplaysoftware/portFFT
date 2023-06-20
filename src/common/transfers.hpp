@@ -354,13 +354,13 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
   constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
   using T_vec = sycl::vec<T, vec_size>;
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
-  T_vec* local_vec = reinterpret_cast<T_vec*>(&destination[0]);
+  T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t destination_idx =
         detail::pad_local<Pad>(destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group);
     if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
-      local_vec[destination_idx / 2] = priv_vec[i / 2];
+      destination_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
       destination[destination_idx] = priv[i];
       destination[destination_idx + 1] = priv[i + 1];
