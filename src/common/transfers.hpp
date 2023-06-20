@@ -123,18 +123,20 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
       });
     } else {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
-        std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
+        std::size_t local_idx =
+            detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         local[local_idx] = loaded[j];
       });
     }
   }
 #else
   const T* global_ptr = &global[global_offset];
-  const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+  const T* global_aligned_ptr = reinterpret_cast<const T*>(
+      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // load the first few unaligned elements
-  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     local[local_idx] = global[global_offset + local_id];
   }
@@ -231,7 +233,8 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
       });
     } else {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
-        std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
+        std::size_t local_idx =
+            detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         to_store[j] = local[local_idx];
       });
     }
@@ -239,11 +242,12 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   }
 #else
   const T* global_ptr = &global[global_offset];
-  const T* global_aligned_ptr = reinterpret_cast<const T*>(detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+  const T* global_aligned_ptr = reinterpret_cast<const T*>(
+      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // store the first few unaligned elements
-  if (local_id < unaligned_elements) { // assuming unaligned_elements <= local_size
+  if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id);
     global[global_offset + local_id] = local[local_idx];
   }
@@ -344,8 +348,8 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * @param destination_offset offset to the destination pointer
  */
 template <int num_elems_per_wi, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination,
-                                                            std::size_t local_id, std::size_t workers_in_group,
+__attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
+                                                            std::size_t workers_in_group,
                                                             std::size_t destination_offset = 0) {
   constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
   using T_vec = sycl::vec<T, vec_size>;
@@ -353,7 +357,8 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
   T_vec* local_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
-    std::size_t destination_idx = detail::pad_local<Pad>(destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group);
+    std::size_t destination_idx =
+        detail::pad_local<Pad>(destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group);
     if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
       local_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {

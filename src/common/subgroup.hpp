@@ -245,8 +245,7 @@ int factorize_sg(int N, int sg_size) {
  * commit
  */
 template <direction dir, int M, int N, typename T, typename T_loc>
-__attribute__((always_inline)) inline void sg_dft(
-    T* inout, sycl::sub_group& sg, const T_loc sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T_loc sg_twiddles) {
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
   detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
