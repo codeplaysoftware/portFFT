@@ -30,8 +30,8 @@ class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 4, 8))));
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 33000),
+                                                                                     ::testing::Values(1, 2, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
@@ -51,7 +51,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
   TEST_P(DIRECTION_TEST_SUITE, MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##TRANSPOSE_NAME) { \
     auto param = GetParam();                                                                                       \
     sycl::queue queue;                                                                                             \
-    if constexpr(std::is_same<TYPE, double>::value){                                                               \
+    if constexpr (std::is_same<TYPE, double>::value) {                                                             \
       auto queue_pair = get_queue(fp64_selector);                                                                  \
       CHECK_QUEUE(queue_pair);                                                                                     \
       queue = queue_pair.first.value();                                                                            \

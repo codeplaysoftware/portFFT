@@ -221,11 +221,11 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
                                                                std::size_t fft_size, std::size_t n_transforms,
                                                                sycl::nd_item<1> it, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                            \
-  case N:                                                                                         \
-    if constexpr (fits_in_wi<T>(N)) {                                                             \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                           \
+  case N:                                                                                        \
+    if constexpr (fits_in_wi<T>(N)) {                                                            \
       workitem_impl<dir, transpose_in, N>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                                             \
+    }                                                                                            \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
