@@ -192,8 +192,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @tparam T_in Input pointer type
  * @tparam T_out Output pointer type
  * @tparam T Scalar type
- * @tparam T_twiddles Twiddles to the sub FFTs
- * @tparam Pointer to precalculated twiddles which are to be used before second set of FFTs
+ * @tparam T_twiddles Twiddles to be used by the FFT
  *
  * @param input Input pointer
  * @param output Output pointer
@@ -203,7 +202,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @param n_transforms Batch size
  * @param it Associated nd_item
  * @param twiddles Pointer to the global memory containing twiddles for sub FFTs
- * @param T Scaling factor by which the result will be scaled
+ * @param scaling_factor factor by which the result will be scaled
  */
 template <direction dir, int fft_size, typename T_in, typename T_out, typename T, typename T_twiddles>
 __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
@@ -365,7 +364,6 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
                                   scaling_factor);                                                         \
     }                                                                                                      \
     break;
-
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
     SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
@@ -389,7 +387,6 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
     \        
     workgroup_impl<dir, N>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     break;
-
     SYCL_FFT_WG_DISPATCHER_IMPL(256)
     SYCL_FFT_WG_DISPATCHER_IMPL(512)
     SYCL_FFT_WG_DISPATCHER_IMPL(1024)
@@ -487,8 +484,7 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
         throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported for subgroup_size " +
                                  std::to_string(subgroup_size));
       }
-      T* res = sycl::malloc_device<T>(2 * (M + N), q);
-
+      T* res = sycl::malloc_device<T>(2 * (M + N + fft_size), q);
       q.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::range<2>({factor_sg_M, factor_wi_M}), [=](sycl::item<2> it) {
           int n = it.get_id(0);

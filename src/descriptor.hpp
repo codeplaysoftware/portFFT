@@ -103,7 +103,6 @@ class committed_descriptor {
   std::size_t n_compute_units;
   std::size_t local_memory_size;
   Scalar* twiddles_forward;
-  Scalar* workgroup_twiddles;
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
@@ -264,6 +263,9 @@ class committed_descriptor {
                                const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_compute<direction::BACKWARD>(in, out, params.backward_scale, dependencies);
   }
+
+  committed_descriptor& operator=(const committed_descriptor&) = delete;
+  committed_descriptor(const committed_descriptor&) = delete;
 
  private:
   /**
