@@ -37,9 +37,9 @@ namespace sycl_fft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction dir, bool transpose_in>
+template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in>
 class buffer_kernel;
-template <typename Scalar, domain Domain, direction dir, bool transpose_in>
+template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in>
 class usm_kernel;
 }  // namespace detail
 
@@ -279,9 +279,9 @@ class committed_descriptor {
       scale_factor = params.backward_scale;
     }
     if (input_distance == fft_size && output_distance == fft_size) {
-      return dispatch_compute_impl<dir, false>(in, out, scale_factor, dependencies);
+      return dispatch_compute_impl<dir, detail::transpose::NOT_TRANSPOSED>(in, out, scale_factor, dependencies);
     } else if (input_distance == 1 && output_distance == fft_size && in != out) {
-      return dispatch_compute_impl<dir, true>(in, out, scale_factor, dependencies);
+      return dispatch_compute_impl<dir, detail::transpose::TRANSPOSED>(in, out, scale_factor, dependencies);
     } else {
       throw std::runtime_error("Unsupported configuration");
     }
@@ -290,6 +290,7 @@ class committed_descriptor {
    * Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam T_in Type of the input USM pointer
    * @tparam T_out Type of the output USM pointer
    * @param in USM pointer to memory containing input data
@@ -298,7 +299,7 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction dir, bool transpose_in, typename T_in, typename T_out>
+  template <direction dir, detail::transpose transpose_in, typename T_in, typename T_out>
   sycl::event dispatch_compute_impl(const T_in in, T_out out, Scalar scale_factor,
                                     const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
@@ -328,13 +329,14 @@ class committed_descriptor {
    * @brief Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam T Type of buffer
    * @param in buffer containing input data
    * @param out buffer containing output data
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    */
-  template <direction dir, bool transpose_in, typename T>
+  template <direction dir, detail::transpose transpose_in, typename T>
   sycl::event dispatch_compute_impl(const sycl::buffer<T, 1>& in, sycl::buffer<T, 1>& out, Scalar scale_factor,
                                     const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
