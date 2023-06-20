@@ -89,10 +89,6 @@ Any batch size is supported as long as the input and output data fits in global 
 
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_TARGET_SUBGROUP_SIZE`.
 
-## Known issues
-
-* Some configurations may not run on CPU and iGPU due to a known [compiler issue](https://github.com/intel/llvm/issues/7868)
-
 ## Troubleshooting
 
 The library should compile without error on our supported platforms.
