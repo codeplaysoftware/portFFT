@@ -48,8 +48,8 @@ namespace detail {
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, detail::transpose transpose_in, int N, typename T, typename T_loc>
-__attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T_loc loc, std::size_t n_transforms,
+template <direction dir, detail::transpose transpose_in, int N, typename T>
+__attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor) {
   constexpr std::size_t N_reals = 2 * N;
 
@@ -112,8 +112,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, int factor_wi, int factor_sg, typename T, typename T_loc>
-__attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T_loc loc, T_loc loc_twiddles,
+template <direction dir, int factor_wi, int factor_sg, typename T>
+__attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          const T* twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * factor_wi;
@@ -197,10 +197,10 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, detail::transpose transpose_in, typename T, typename T_loc>
-__attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T* output, T_loc loc,
-                                                               std::size_t fft_size, std::size_t n_transforms,
-                                                               sycl::nd_item<1> it, T scaling_factor) {
+template <direction dir, detail::transpose transpose_in, typename T>
+__attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T* output, T* loc, std::size_t fft_size,
+                                                               std::size_t n_transforms, sycl::nd_item<1> it,
+                                                               T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                           \
   case N:                                                                                        \
@@ -237,10 +237,10 @@ __attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, auto factor_wi, typename T, typename T_loc>
-__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T_loc loc,
-                                                        T_loc loc_twiddles, std::size_t n_transforms,
-                                                        sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
+template <direction dir, auto factor_wi, typename T>
+__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T* loc,
+                                                        T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
+                                                        const T* twiddles, T scaling_factor) {
   switch (factor_sg) {
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                          \
   case M:                                                                                                             \
@@ -279,9 +279,9 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* 
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, typename T, typename T_loc>
+template <direction dir, typename T>
 __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, int factor_sg, const T* input, T* output,
-                                                               T_loc loc, T_loc loc_twiddles, std::size_t n_transforms,
+                                                               T* loc, T* loc_twiddles, std::size_t n_transforms,
                                                                sycl::nd_item<1> it, const T* twiddles,
                                                                T scaling_factor) {
   switch (factor_wi) {
@@ -321,8 +321,8 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
  * @param twiddles twiddle factors to use
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, detail::transpose transpose_in, typename T, typename T_loc>
-__attribute__((always_inline)) inline void dispatcher(const T* input, T* output, T_loc loc, T_loc loc_twiddles,
+template <direction dir, detail::transpose transpose_in, typename T>
+__attribute__((always_inline)) inline void dispatcher(const T* input, T* output, T* loc, T* loc_twiddles,
                                                       std::size_t fft_size, std::size_t n_transforms,
                                                       sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
