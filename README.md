@@ -7,8 +7,12 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ## Pre-requisites
 
-* A SYCL implementation such as [DPC++].
-* CMake
+* Latest [DPC++] oneAPI release
+  * Nightly releases should work but are not tested
+  * Other SYCL implementations are not tested
+* [Level Zero] drivers
+  * OpenCL drivers are not tested
+* CMake 3.16+
 
 ## Getting Started
 
@@ -89,6 +93,12 @@ Any batch size is supported as long as the input and output data fits in global 
 
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_TARGET_SUBGROUP_SIZE`.
 
+## Known issues
+
+* The specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature so the performance is not optimal as of today.
+
+We are investigating other performance issues that affect all the backends.
+
 ## Troubleshooting
 
 The library should compile without error on our supported platforms.
@@ -107,6 +117,7 @@ welcome! If you have an idea for a new feature or a fix, please get in
 contact.
 
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
+[Level Zero]: https://dgpu-docs.intel.com/technologies/level-zero.html
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
