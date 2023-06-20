@@ -64,10 +64,7 @@ __attribute__((always_inline)) std::size_t pad_local(std::size_t local_idx) {
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
- * sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param it nd_item
  * @param global pointer to global memory
  * @param local pointer to local memory
@@ -174,10 +171,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_glob_ptr type of pointer to global memory. Can be raw pointer or
- * sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param it nd_item
  * @param local pointer to local memory
  * @param global pointer to global memory
@@ -285,10 +279,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
- * sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param local pointer to local memory
  * @param priv pointer to private memory
  * @param local_id local id of work item
@@ -311,10 +302,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
- * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_loc_ptr type of pointer to local memory. Can be raw pointer or
- * sycl::multi_ptr.
+ * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
  * @param local pointer to local memory
  * @param local_id local id of work item
@@ -336,10 +324,8 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam num_elems_per_wi Number of elements to copy by each work item
- * @tparam T_priv_ptr type of pointer to private memory. Can be raw pointer or
- * sycl::multi_ptr.
- * @tparam T_dst_ptr type of pointer to local or global memory. Can be raw pointer or
- * sycl::multi_ptr.
+ * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
  * @param destination pointer to destination - local or global memory
  * @param local_id local id of work item
