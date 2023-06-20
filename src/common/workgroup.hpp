@@ -36,7 +36,6 @@ namespace sycl_fft {
  * @tparam M Larger factor of the problem size
  * @tparam T Scalar Type
  * @tparam T_twiddles_ptr Type of twiddle pointer utilized by subgroup ffts
- * @tparam twiddles_type Type of pointer to intermediate precalculatuted twiddles
  *
  * @param loc local accessor containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
