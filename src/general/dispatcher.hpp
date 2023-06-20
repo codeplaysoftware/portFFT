@@ -229,7 +229,8 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
     global2local<pad::DO_PAD, level::WORKGROUP>(it, input, loc, 2 * fft_size, offset);
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fft_size, N, M>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
-    local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE, detail::pad::DO_PAD>(it, loc, output, offset);
+    local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE, detail::pad::DO_PAD>(it, loc, output,
+                                                                                                        offset);
     sycl::group_barrier(it.get_group());
   }
 }
@@ -380,12 +381,11 @@ template <direction dir, typename T_in, typename T_out, typename T, typename T_t
 __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
                                                                 const sycl::local_accessor<T, 1>& loc,
                                                                 const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                                std::size_t n_transforms,
-                                                                sycl::nd_item<1> it, T_twiddles twiddles,
-                                                                T scaling_factor) {
+                                                                std::size_t n_transforms, sycl::nd_item<1> it,
+                                                                T_twiddles twiddles, T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                                 \
-  case N:                                                                                                              \
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                    \
+  case N:                                                                                                 \
     \        
     workgroup_impl<dir, N>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     break;
@@ -426,8 +426,8 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                const sycl::local_accessor<T, 1>& loc_twiddles, std::size_t fft_size,
-                std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
+                const sycl::local_accessor<T, 1>& loc_twiddles, std::size_t fft_size, std::size_t n_transforms,
+                sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
@@ -439,8 +439,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
-      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it, twiddles,
-                                scaling_factor);
+      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
     }
   }
 }
@@ -515,7 +514,7 @@ void populate_wg_twiddles(std::size_t fft_size, T* global_pointer, sycl::queue& 
   std::size_t N = detail::factorize(fft_size);
   std::size_t M = fft_size / N;
   if (fits_in_wi<T>(M)) {
-    return ;
+    return;
   }
 
   T* temp_host = sycl::malloc_host<T>(2 * fft_size, queue);

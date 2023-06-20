@@ -106,8 +106,8 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
       int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
       T twiddle_real = wg_twiddles[twiddle_index];
       T twiddle_complex = wg_twiddles[twiddle_index + 1];
-      if(dir == direction::BACKWARD) {
-        twiddle_complex = - twiddle_complex;
+      if (dir == direction::BACKWARD) {
+        twiddle_complex = -twiddle_complex;
       }
       T tmp_real = priv[2 * i];
       priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_complex;

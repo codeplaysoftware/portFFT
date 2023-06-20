@@ -104,7 +104,7 @@ class committed_descriptor {
   std::size_t local_memory_size;
   Scalar* twiddles_forward;
   Scalar* workgroup_twiddles;
-  
+
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
    *
@@ -140,7 +140,8 @@ class committed_descriptor {
     size_t factor1 = detail::factorize(params.lengths[0]);
     size_t factor2 = params.lengths[0] / factor1;
     std::size_t minimum_local_mem_required =
-        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 + factor2) *
+        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 +
+         factor2) *
         sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
     if (minimum_local_mem_required > local_memory_size) {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
@@ -363,8 +364,8 @@ class committed_descriptor {
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
                 detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                        kh.get_specialization_constant<fft_size_spec_const>(),
-                                        n_transforms, it, twiddles_local, scale_factor);
+                                        kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
+                                        twiddles_local, scale_factor);
               });
     });
   }
