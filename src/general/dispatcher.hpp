@@ -209,7 +209,7 @@ template <direction dir, int fft_size, typename T_in, typename T_out, typename T
 __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out output,
                                                           const sycl::local_accessor<T, 1>& loc,
                                                           const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                          T* wg_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
+                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                           T_twiddles twiddles, T scaling_factor) {
   int workgroup_size = it.get_local_range(0);
   int num_workgroups = it.get_group_range(0);
@@ -220,6 +220,7 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
   int offset_increment = 2 * fft_size * num_workgroups;
   constexpr int N = detail::factorize(fft_size);
   constexpr int M = fft_size / N;
+  T* wg_twiddles = twiddles + 2 * (M + N);
 
   global2local<pad::DONT_PAD, level::WORKGROUP>(it, twiddles, loc_twiddles, 2 * (M + N));
   sycl::group_barrier(it.get_group());
@@ -228,7 +229,8 @@ __attribute__((always_inline)) inline void workgroup_impl(T_in input, T_out outp
     global2local<pad::DO_PAD, level::WORKGROUP>(it, input, loc, 2 * fft_size, offset);
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fft_size, N, M>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
-    local2global<pad::DO_PAD, level::WORKGROUP>(it, loc, output, 2 * fft_size, 0, offset);
+    local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE, detail::pad::DO_PAD>(it, loc, output, offset);
+    sycl::group_barrier(it.get_group());
   }
 }
 
@@ -378,14 +380,14 @@ template <direction dir, typename T_in, typename T_out, typename T, typename T_t
 __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_out output, int fft_size,
                                                                 const sycl::local_accessor<T, 1>& loc,
                                                                 const sycl::local_accessor<T, 1>& loc_twiddles,
-                                                                T* wg_twiddles, std::size_t n_transforms,
+                                                                std::size_t n_transforms,
                                                                 sycl::nd_item<1> it, T_twiddles twiddles,
                                                                 T scaling_factor) {
   switch (fft_size) {
 #define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                                 \
   case N:                                                                                                              \
     \        
-    workgroup_impl<dir, N>(input, output, loc, loc_twiddles, wg_twiddles, n_transforms, it, twiddles, scaling_factor); \
+    workgroup_impl<dir, N>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor); \
     break;
 
     SYCL_FFT_WG_DISPATCHER_IMPL(256)
@@ -424,7 +426,7 @@ __attribute__((always_inline)) inline void workgroup_dispatcher(T_in input, T_ou
  */
 template <direction dir, typename T_in, typename T_out, typename T, typename T_twiddles>
 void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
-                const sycl::local_accessor<T, 1>& loc_twiddles, T* wg_twiddles, std::size_t fft_size,
+                const sycl::local_accessor<T, 1>& loc_twiddles, std::size_t fft_size,
                 std::size_t n_transforms, sycl::nd_item<1> it, T_twiddles twiddles, T scaling_factor) {
   // TODO: should decision which implementation to use and factorization be done
   // on host?
@@ -437,7 +439,7 @@ void dispatcher(T_in input, T_out output, const sycl::local_accessor<T, 1>& loc,
       subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                                scaling_factor);
     } else {
-      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, wg_twiddles, n_transforms, it, twiddles,
+      workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it, twiddles,
                                 scaling_factor);
     }
   }
@@ -495,7 +497,6 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
           sg_calc_twiddles(factor_sg_M, factor_wi_M, n, k, res);
         });
       });
-      q.wait();
       q.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::range<2>({factor_sg_N, factor_wi_N}), [=](sycl::item<2> it) {
           int n = it.get_id(0);
@@ -510,15 +511,14 @@ T* calculate_twiddles(std::size_t fft_size, sycl::queue& q, std::size_t subgroup
 }
 
 template <typename T>
-T* populate_wg_twiddles(std::size_t fft_size, sycl::queue& queue) {
+void populate_wg_twiddles(std::size_t fft_size, T* global_pointer, sycl::queue& queue) {
   std::size_t N = detail::factorize(fft_size);
   std::size_t M = fft_size / N;
   if (fits_in_wi<T>(M)) {
-    return nullptr;
+    return ;
   }
 
   T* temp_host = sycl::malloc_host<T>(2 * fft_size, queue);
-  T* wg_twiddles = sycl::malloc_device<T>(2 * fft_size, queue);
 
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < M; j++) {
@@ -527,9 +527,8 @@ T* populate_wg_twiddles(std::size_t fft_size, sycl::queue& queue) {
       temp_host[index + 1] = static_cast<T>(std::sin((-2 * M_PI * i * j) / fft_size));
     }
   }
-  queue.copy(temp_host, wg_twiddles, 2 * fft_size).wait();
+  queue.copy(temp_host, global_pointer, 2 * fft_size).wait();
   sycl::free(temp_host, queue);
-  return wg_twiddles;
 }
 
 /**
@@ -559,7 +558,7 @@ int num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
 template <typename T>
 int num_scalars_in_twiddles(std::size_t fft_size, std::size_t subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
-    return 1;
+    return 0;
   } else {
     int factor_sg = detail::factorize_sg(fft_size, subgroup_size);
     if (fits_in_wi<T>(fft_size / factor_sg)) {

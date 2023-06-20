@@ -28,119 +28,6 @@
 namespace sycl_fft {
 
 /**
- * Implements Subgroup level transpose. Each subgroup can handle more than one nxm matrices, where n,m are
- * arbitrary dimensions, each being lesser than subgroup size. Works out of place.
- *
- * @tparam num_complex_per_wi number of complex values each workitem holds
- * @tparam num_threads_per_fft second dimension of the matrix, number of threads taking part in the transpose
- * @tparam subgroup_size Subgroup size
- * @tparam T_ptr Pointer type to input and output private memory
- *
- * @param priv Input to be transposed
- * @param output Transposed Out
- */
-template <int num_complex_per_wi, int num_threads_per_fft, int subgroup_size, typename T_ptr>
-__attribute__((always_inline)) inline void transpose(T_ptr priv, T_ptr output, sycl::sub_group sg) {
-  using T = detail::remove_ptr<T_ptr>;
-  int id_of_thread_in_fft = sg.get_local_linear_id() % num_threads_per_fft;
-  int current_lane = sg.get_local_linear_id() & (subgroup_size - 1);
-  int batch_start_lane = (sg.get_local_linear_id() - id_of_thread_in_fft) & (subgroup_size - 1);
-  int relative_lane = id_of_thread_in_fft & (num_threads_per_fft - 1);
-
-  detail::unrolled_loop<0, num_complex_per_wi, 1>([&](const int id_of_element_in_wi) __attribute__((always_inline)) {
-    int relative_target_simd_lane = ((relative_lane + id_of_element_in_wi) & (num_complex_per_wi - 1)) *
-                                        (num_threads_per_fft / num_complex_per_wi) +
-                                    (relative_lane / num_complex_per_wi);
-    int target_lane = batch_start_lane + relative_target_simd_lane;
-    int store_address = (current_lane + id_of_element_in_wi) & (num_complex_per_wi - 1);
-    int target_address =
-        ((num_complex_per_wi - id_of_element_in_wi) + (current_lane / (num_threads_per_fft / num_complex_per_wi))) &
-        (num_complex_per_wi - 1);
-    T& real_value = priv[2 * target_address];
-    T& complex_value = priv[2 * target_address + 1];
-    output[2 * store_address] = sycl::select_from_group(sg, real_value, target_lane);
-    output[2 * store_address + 1] = sycl::select_from_group(sg, complex_value, target_lane);
-  });
-}
-
-// clang-format off
-/**
- * Entire workgroup transposes data in the local memory in place, viewing the data as a N x M Matrix
- * Works by fragmenting the data in the local memory into multiple tiles, transposing each tile, and then transposing
- * the tile arrangement 
- * A B C          A' D'
- *       ------>  B' E'   where each alphabet is a tile of some size
- * D E F          C' F'
- * Transposes tiles row by row
- * @tparam N Number of rows
- * @tparam M Number of columns
- * @tparam num_subgroups number of subgroup working
- * @tparam subgroup_size workitems in each subgroup
- * @tparam T_ptr Pointer to local memory
- *
- * @param loc Pointer to the local memory
- * @param it Associated nd_item
- */
-// clang-format on
-template <int N, int M, int num_subgroups, int subgroup_size, typename T_ptr>
-__attribute__((always_inline)) inline void tiled_transpose(T_ptr loc, sycl::nd_item<1> it) {
-  using T = detail::remove_ptr<T_ptr>;
-  sycl::sub_group sg = it.get_sub_group();
-  constexpr int number_of_rows_per_tile = subgroup_size;
-  constexpr int num_elements_per_wi = subgroup_size;
-  constexpr int num_tiles_along_row = N / number_of_rows_per_tile;
-  constexpr int num_tiles_along_col = M / num_elements_per_wi;
-  constexpr int tile_stride = num_subgroups;
-  int tile_start = sg.get_group_id();
-
-  T input[2 * num_elements_per_wi];
-  T output[2 * num_elements_per_wi];
-
-  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
-    int row_start_index = 2 * M * i * number_of_rows_per_tile;
-    // TODO: use sg.load/store functions ?
-    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
-      // load the tile
-      int row_start_in_tile = row_start_index + sg.get_local_linear_id() * 2 * M;
-      int col_start_in_tile = 2 * j * num_elements_per_wi;
-      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
-        input[k] = loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)];
-      }
-      transpose<num_elements_per_wi, subgroup_size, subgroup_size>(input, output, sg);
-      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
-        loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)] = output[k];
-      }
-    }
-  });
-
-  sycl::group_barrier(it.get_group());
-
-  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
-    int row_start_index = 2 * M * i * number_of_rows_per_tile;
-    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
-      int row_start_in_tile = row_start_index + sg.get_local_linear_id() * 2 * M;
-      int col_start_in_tile = 2 * j * num_elements_per_wi;
-      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
-        input[k] = loc[detail::pad_local(row_start_in_tile + col_start_in_tile + k)];
-      }
-    }
-  });
-
-  sycl::group_barrier(it.get_group());
-
-  detail::unrolled_loop<0, num_tiles_along_row, 1>([&](const int i) __attribute__((always_inline)) {
-    for (int j = tile_start; j < num_tiles_along_col; j += tile_stride) {
-      int tile_row_start_index = 2 * M * (j + sg.get_local_linear_id());
-      int tile_col_start_index = 2 * i * num_elements_per_wi;
-      for (int k = 0; k < 2 * num_elements_per_wi; k++) {
-        loc[detail::pad_local(tile_row_start_index + tile_col_start_index + k)] = input[k];
-      }
-    }
-  });
-  sycl::group_barrier(it.get_group());
-}
-
-/**
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam dir Direction of the FFT
@@ -219,6 +106,9 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
       int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
       T twiddle_real = wg_twiddles[twiddle_index];
       T twiddle_complex = wg_twiddles[twiddle_index + 1];
+      if(dir == direction::BACKWARD) {
+        twiddle_complex = - twiddle_complex;
+      }
       T tmp_real = priv[2 * i];
       priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_complex;
       priv[2 * i + 1] = tmp_real * twiddle_complex + priv[2 * i + 1] * twiddle_real;
@@ -236,8 +126,6 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
     }
   }
   sycl::group_barrier(it.get_group());
-
-  tiled_transpose<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE>(loc, it);
 }
 
 }  // namespace sycl_fft

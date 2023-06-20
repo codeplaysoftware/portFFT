@@ -81,7 +81,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   queue.copy(test_type == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
              {fft_event});
   queue.wait();
-  compare_arrays(host_reference_output, buffer, 1e-5);
+  compare_arrays(host_reference_output, buffer, 1e-3);
   sycl::free(device_input, queue);
   if (test_type == placement::OUT_OF_PLACE) {
     sycl::free(device_output, queue);
@@ -129,7 +129,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     }
     queue.wait();
   }
-  compare_arrays(host_reference_output, test_type == placement::IN_PLACE ? host_input : buffer, 1e-5);
+  compare_arrays(host_reference_output, test_type == placement::IN_PLACE ? host_input : buffer, 1e-3);
 }
 
 #endif

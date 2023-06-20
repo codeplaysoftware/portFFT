@@ -104,6 +104,7 @@ class committed_descriptor {
   std::size_t local_memory_size;
   Scalar* twiddles_forward;
   Scalar* workgroup_twiddles;
+  
   /**
    * Builds the kernel bundle with appropriate values of specialization constants.
    *
@@ -136,16 +137,17 @@ class committed_descriptor {
     // get some properties we will use for tunning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    size_t factor1 = detail::factorize(params.lengths[0]);
+    size_t factor2 = params.lengths[0] / factor1;
     std::size_t minimum_local_mem_required =
-        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) +
-         (detail::factorize(params.lengths[0]) + params.lengths[0] / detail::factorize(params.lengths[0]))) *
+        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 + factor2) *
         sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
     if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + to_string(local_memory_size) +
-                               " Required: " + to_string(minimum_local_mem_required));
+      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                               " Required: " + std::to_string(minimum_local_mem_required));
     }
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
-    workgroup_twiddles = detail::populate_wg_twiddles<Scalar>(params.lengths[0], queue);
+    detail::populate_wg_twiddles<Scalar>(params.lengths[0], twiddles_forward + 2 * (factor1 + factor2), queue);
   }
 
  public:
@@ -167,9 +169,6 @@ class committed_descriptor {
     queue.wait();
     if (twiddles_forward != nullptr) {
       sycl::free(twiddles_forward, queue);
-    }
-    if (workgroup_twiddles != nullptr) {
-      sycl::free(workgroup_twiddles, queue);
     }
   }
 
@@ -300,7 +299,6 @@ class committed_descriptor {
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
     Scalar* twiddles_local = twiddles_forward;
-    Scalar* wg_twiddles_local = workgroup_twiddles;
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
@@ -312,7 +310,7 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-                detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles, wg_twiddles_local,
+                detail::dispatcher<dir>(in_scalar, out_scalar, loc, loc_twiddles,
                                         kh.get_specialization_constant<fft_size_spec_const>(), n_transforms, it,
                                         twiddles_local, scale_factor);
               });
@@ -352,7 +350,6 @@ class committed_descriptor {
     auto in_scalar = in.template reinterpret<Scalar, dim>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, dim>(2 * out.size());
     Scalar* twiddles_local = twiddles_forward;
-    Scalar* wg_twiddles_local = workgroup_twiddles;
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, subgroup_size);
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     queue.submit([&](sycl::handler& cgh) {
@@ -366,7 +363,7 @@ class committed_descriptor {
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
                 detail::dispatcher<dir>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
-                                        wg_twiddles_local, kh.get_specialization_constant<fft_size_spec_const>(),
+                                        kh.get_specialization_constant<fft_size_spec_const>(),
                                         n_transforms, it, twiddles_local, scale_factor);
               });
     });
