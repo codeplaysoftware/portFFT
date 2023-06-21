@@ -342,7 +342,8 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  *
  * @param it Associated nd_item
  * @param loc pointer to the local memory
- * @param global_ptr pointer to the global memory
+ * @param out pointer to the global memory
+ * @param offset offset to the global memory pointer
  */
 template <int N, int M, int num_subgroups, int subgroup_size, detail::pad pad, typename loc_ptr, typename global_ptr>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, loc_ptr loc, global_ptr out,
