@@ -338,7 +338,7 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  * @tparam subgroup_size Size of each subgroup
  * @tparam pad Whether or not to consider local memory as padded
  * @tparam loc_ptr pointer type to local memory
- * @tparam out_ptr pointer type to global memory
+ * @tparam global_ptr pointer type to global memory
  *
  * @param it Associated nd_item
  * @param loc pointer to the local memory
