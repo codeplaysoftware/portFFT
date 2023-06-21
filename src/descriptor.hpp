@@ -48,7 +48,7 @@ template <typename Scalar, domain Domain>
 struct descriptor;
 
 // specialization constants
-constexpr static sycl::specialization_id<int> fft_size_spec_const;
+constexpr static sycl::specialization_id<std::size_t> fft_size_spec_const{};
 
 /*
 Compute functions in the `committed_descriptor` call `dispatch_compute`. There are two overloads of `dispatch_compute`,
@@ -94,7 +94,7 @@ template <typename Scalar, domain Domain>
 class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
-  friend class descriptor<Scalar, Domain>;
+  friend struct descriptor<Scalar, Domain>;
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
@@ -121,7 +121,7 @@ class committed_descriptor {
    * Constructor.
    *
    * @param params descriptor this is created from
-   * @param queue queue to use qhen enqueueing device work
+   * @param queue queue to use when enqueueing device work
    */
   committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
       : params{params},
@@ -130,11 +130,13 @@ class committed_descriptor {
         ctx(queue.get_context()),
         exec_bundle(build_w_spec_const()) {
     // TODO: check and support all the parameter values
-    assert(params.lengths.size() == 1);
+    if (params.lengths.size() != 1) {
+      throw std::runtime_error("SYCL-FFT only supports 1D FFT for now");
+    }
 
-    // get some properties we will use for tunning
+    // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
+    twiddles_forward = detail::calculate_twiddles<Scalar>(queue, params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE);
   }
 
  public:
@@ -308,7 +310,7 @@ class committed_descriptor {
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
     auto in_scalar = reinterpret_cast<const Scalar*>(in);
     auto out_scalar = reinterpret_cast<Scalar*>(out);
-    Scalar* twiddles_local = twiddles_forward;
+    const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -318,15 +320,15 @@ class committed_descriptor {
       cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir, transpose_in>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir, transpose_in>(in_scalar, out_scalar, loc, loc_twiddles,
+            detail::dispatcher<dir, transpose_in>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
                                                   kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
-                                                  it, twiddles_local, scale_factor);
+                                                  it, twiddles_ptr, scale_factor);
           });
     });
   }
 
   /**
-   * @brief Common interface to dispatch compute called by compute_forward and compute_backward
+   * Common interface to dispatch compute called by compute_forward and compute_backward
    *
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
@@ -345,20 +347,21 @@ class committed_descriptor {
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
     auto in_scalar = in.template reinterpret<Scalar, 1>(2 * in.size());
     auto out_scalar = out.template reinterpret<Scalar, 1>(2 * out.size());
-    Scalar* twiddles_local = twiddles_forward;
+    const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
-      auto in_acc = in_scalar.template get_access<sycl::access::mode::read>(cgh);
-      auto out_acc = out_scalar.template get_access<sycl::access::mode::write>(cgh);
+      cgh.depends_on(dependencies);
+      sycl::accessor in_acc{in_scalar, cgh, sycl::read_only};
+      sycl::accessor out_acc{out_scalar, cgh, sycl::write_only};
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(fft_size * 2, cgh);
       cgh.use_kernel_bundle(exec_bundle);
       cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir, transpose_in>>(
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SYCLFFT_TARGET_SUBGROUP_SIZE)]] {
-            detail::dispatcher<dir, transpose_in>(in_acc.get_pointer(), out_acc.get_pointer(), loc, loc_twiddles,
+            detail::dispatcher<dir, transpose_in>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
                                                   kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
-                                                  it, twiddles_local, scale_factor);
+                                                  it, twiddles_ptr, scale_factor);
           });
     });
   }
@@ -394,7 +397,7 @@ struct descriptor {
     forward_distance = lengths[0];
     backward_distance = lengths[0];
     for (auto l : lengths) {
-      backward_scale *= 1.0 / l;
+      backward_scale *= Scalar(1) / static_cast<Scalar>(l);
     }
   }
 
@@ -402,12 +405,12 @@ struct descriptor {
    * Commits the descriptor, precalculating what can be done in advance.
    *
    * @param queue queue to use for computations
-   * @return commited_descriptor<Scalar, Domain>
+   * @return committed_descriptor<Scalar, Domain>
    */
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
 
   std::size_t get_total_length() const noexcept {
-    return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<std::size_t>());
+    return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
 };
 

@@ -33,23 +33,23 @@
 #include "reference_dft.hpp"
 
 /**
- * @brief number of runs to do when doing an average of many host runs.
+ * number of runs to do when doing an average of many host runs.
  */
 static constexpr std::size_t runs_to_average = 10;
 
-template <typename integer>
-inline integer get_fwd_per_transform(std::vector<integer> lengths) {
-  return std::accumulate(lengths.begin(), lengths.end(), 1, std::multiplies<integer>());
+template <typename T_index>
+inline T_index get_fwd_per_transform(std::vector<T_index> lengths) {
+  return std::accumulate(lengths.begin(), lengths.end(), T_index(1), std::multiplies<T_index>());
 }
 
-template <typename forward_type, typename integer>
-inline integer get_bwd_per_transform(std::vector<integer> lengths) {
-  if constexpr (std::is_same<forward_type, float>::value || std::is_same<forward_type, double>::value) {
-    return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<integer>());
+template <typename forward_type, typename T_index>
+inline T_index get_bwd_per_transform(std::vector<T_index> lengths) {
+  if constexpr (std::is_same_v<forward_type, float> || std::is_same_v<forward_type, double>) {
+    return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<T_index>());
   } else {
-    static_assert(std::is_same<forward_type, std::complex<float>>::value ||
-                  std::is_same<forward_type, std::complex<double>>::value);
-    return get_fwd_per_transform<integer>(lengths);
+    static_assert(std::is_same_v<forward_type, std::complex<float>> ||
+                  std::is_same_v<forward_type, std::complex<double>>);
+    return get_fwd_per_transform<T_index>(lengths);
   }
 }
 
@@ -63,7 +63,7 @@ inline void handle_exception(benchmark::State& state, std::exception& e) {
 }
 
 /*
- * @brief Compute the reference DFT and compare it with the provided output
+ * Compute the reference DFT and compare it with the provided output
  *
  * @tparam forward_type data type for forward domain
  * @tparam backward_type data type for backward domain
@@ -74,14 +74,14 @@ inline void handle_exception(benchmark::State& state, std::exception& e) {
  * @param forward_scale scaling applied to the output (backward domain)
  */
 template <typename forward_type, typename backward_type>
-void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::vector<int> lengths,
+void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::vector<std::size_t> lengths,
                 std::size_t number_of_transforms, double forward_scale) {
   std::size_t fwd_row_elems = lengths.back();
   std::size_t bwd_row_elems = lengths.back();
-  if constexpr (!std::is_same<forward_type, backward_type>::value) {
+  if constexpr (!std::is_same_v<forward_type, backward_type>) {
     bwd_row_elems = bwd_row_elems / 2 + 1;
   }
-  std::size_t rows = std::accumulate(lengths.begin(), lengths.end() - 1, 1, std::multiplies<std::size_t>());
+  std::size_t rows = std::accumulate(lengths.begin(), lengths.end() - 1, 1LU, std::multiplies<std::size_t>());
   std::size_t fwd_per_transform = rows * fwd_row_elems;
   std::size_t bwd_per_transform = rows * bwd_row_elems;
 

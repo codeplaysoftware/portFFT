@@ -45,6 +45,7 @@ function(add_benchmark target source_file)
   target_link_libraries(${target} PRIVATE
       benchmark::benchmark
       Threads::Threads
+      sycl_fft_warnings
   )
 
   # get target include directories from sycl-fft for the direction enum

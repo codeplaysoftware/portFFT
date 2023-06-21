@@ -104,6 +104,9 @@ export(EXPORT sycl_fft
   FILE sycl_fft-config.cmake
 )
 
+add_library(sycl_fft_warnings INTERFACE)
+target_compile_options(sycl_fft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
+
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()
 endif()

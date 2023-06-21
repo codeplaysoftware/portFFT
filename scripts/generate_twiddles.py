@@ -31,6 +31,10 @@ template = """
 #ifndef SYCL_FFT_COMMON_TWIDDLE_HPP
 #define SYCL_FFT_COMMON_TWIDDLE_HPP
 
+#pragma clang diagnostic push
+// The twiddle precision can be lower than the constants used here when not using double precision.
+#pragma clang diagnostic ignored "-Wimplicit-float-conversion"
+
 namespace sycl_fft::detail {{
 
 template <typename T>
@@ -47,6 +51,8 @@ static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
   // clang-format on
 }};
 }}  // namespace sycl_fft::detail
+
+#pragma clang diagnostic pop
 
 #endif
 """
