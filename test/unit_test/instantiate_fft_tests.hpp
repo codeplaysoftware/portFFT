@@ -21,9 +21,11 @@
 #ifndef SYCL_FFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 #define SYCL_FFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
-#include "fft_test_utils.hpp"
-#include <gtest/gtest.h>
 #include <type_traits>
+
+#include <gtest/gtest.h>
+
+#include "fft_test_utils.hpp"
 
 class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length

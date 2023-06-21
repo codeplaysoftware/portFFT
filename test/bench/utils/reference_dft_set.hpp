@@ -52,7 +52,7 @@
 // clang-format on
 
 /**
- * @brief Helper function to register a single benchmark
+ * Helper function to register a single benchmark
  *
  * @param prefix Benchmark prefix, expected to end with the description of the FFT problem. The lengths and batch are
  * appended to this description.
@@ -62,8 +62,8 @@
  * @param batch FFT batch size
  */
 template <typename... Args>
-void register_benchmark(std::string prefix, const std::string& suffix, Args&&... args, const std::vector<int>& lengths,
-                        std::size_t batch) {
+void register_benchmark(std::string prefix, const std::string& suffix, Args&&... args,
+                        const std::vector<std::size_t>& lengths, std::size_t batch) {
   prefix += ",n=[";
   for (std::size_t i = 0; i < lengths.size(); ++i) {
     if (i > 0) {
@@ -78,7 +78,7 @@ void register_benchmark(std::string prefix, const std::string& suffix, Args&&...
 }
 
 /**
- * @brief Register benchmarks for complex float configurations
+ * Register benchmarks for complex float configurations
  *
  * @param prefix Prefix to the benchmarks' name
  * @param args The first argument is the function to benchmark.
@@ -98,7 +98,7 @@ void register_complex_float_benchmark_set(std::string prefix, Args&&... args) {
 }
 
 /**
- * @brief Register benchmarks for real float configurations
+ * Register benchmarks for real float configurations
  *
  * @param prefix Prefix to the benchmarks' name
  * @param args The first argument is the function to benchmark.

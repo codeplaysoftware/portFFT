@@ -27,7 +27,7 @@
 #include "enums.hpp"
 
 /**
- * @brief Multidimensional Refernce DFT implementation
+ * Multidimensional Refernce DFT implementation
  *
  * @tparam FFT direction, takes sycl::direction::FORWARD/BACKWARD
  * @tparam TypeIn Type of the input
@@ -38,21 +38,22 @@
  * @param offset memory offset for in and out pointers
  */
 template <sycl_fft::direction dir, typename TypeIn, typename TypeOut>
-void reference_dft(TypeIn* in, TypeOut* out, const std::vector<int>& length, double scaling_factor = 1.0) {
+void reference_dft(TypeIn* in, TypeOut* out, const std::vector<std::size_t>& length, double scaling_factor = 1.0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
   std::copy(length.begin(), length.end(), dims.begin());
 
-  for (size_t ox = 0; ox < dims[0]; ox++) {
-    for (size_t oy = 0; oy < dims[1]; oy++) {
-      for (size_t oz = 0; oz < dims[2]; oz++) {
+  for (std::size_t ox = 0; ox < dims[0]; ox++) {
+    for (std::size_t oy = 0; oy < dims[1]; oy++) {
+      for (std::size_t oz = 0; oz < dims[2]; oz++) {
         std::complex<long double> out_temp = 0;
-        for (size_t ix = 0; ix < dims[0]; ix++) {
-          for (size_t iy = 0; iy < dims[1]; iy++) {
-            for (size_t iz = 0; iz < dims[2]; iz++) {
-              double theta = -1 * TWOPI *
-                             ((ix * ox / static_cast<double>(dims[0])) + (iy * oy / static_cast<double>(dims[1])) +
-                              (iz * oz / static_cast<double>(dims[2])));
+        for (std::size_t ix = 0; ix < dims[0]; ix++) {
+          auto x_factor = static_cast<long double>(ix * ox) / static_cast<long double>(dims[0]);
+          for (std::size_t iy = 0; iy < dims[1]; iy++) {
+            auto y_factor = static_cast<long double>(iy * oy) / static_cast<long double>(dims[1]);
+            for (std::size_t iz = 0; iz < dims[2]; iz++) {
+              auto z_factor = static_cast<long double>(iz * oz) / static_cast<long double>(dims[2]);
+              auto theta = -1.0 * TWOPI * (x_factor + y_factor + z_factor);
               if constexpr (dir == sycl_fft::direction::BACKWARD) {
                 theta = -theta;
               }

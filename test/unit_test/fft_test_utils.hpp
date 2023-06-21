@@ -33,11 +33,11 @@
 
 using namespace sycl_fft;
 
-using param_tuple = std::tuple<int, int>;
+using param_tuple = std::tuple<std::size_t, std::size_t>;
 
 struct test_params {
-  int batch;
-  int length;
+  std::size_t batch;
+  std::size_t length;
   test_params(param_tuple params) : batch(std::get<0>(params)), length(std::get<1>(params)) {}
 };
 
@@ -46,9 +46,9 @@ void operator<<(std::ostream& stream, const test_params& params) {
 }
 
 template <typename TypeIn, typename TypeOut>
-void transpose(TypeIn in, TypeOut& out, int FFT_size, int batch_size) {
-  for (int j = 0; j < batch_size; j++) {
-    for (int i = 0; i < FFT_size; i++) {
+void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_size) {
+  for (std::size_t j = 0; j < batch_size; j++) {
+    for (std::size_t i = 0; i < FFT_size; i++) {
       out[i + j * FFT_size] = in[j + i * batch_size];
     }
   }
@@ -75,7 +75,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
 
-  descriptor<ftype, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
+  descriptor<ftype, domain::COMPLEX> desc{{params.length}};
   desc.number_of_transforms = params.batch;
   if constexpr (transpose_in) {
     if constexpr (dir == direction::FORWARD) {
