@@ -257,7 +257,7 @@ void print_help(const std::string_view& name) {
     return ss.str();
   };
   const int w = 25;
-  auto cout_aligned = [w]() -> std::ostream& { return std::cout << std::left << std::setw(w); };
+  auto cout_aligned = []() -> std::ostream& { return std::cout << std::left << std::setw(w); };
   // clang-format off
   std::cout << "Usage " << name << " [option]... [configuration]...\n";
   std::cout << "\nOptions:\n";

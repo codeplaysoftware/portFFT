@@ -43,9 +43,9 @@ namespace sycl_fft {
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
  */
-template <direction dir, int fft_size, int N, int M, typename T, typename T_twiddles_ptr>
-__attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 1>& loc, T_twiddles_ptr loc_twiddles,
-                                                  T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor) {
+template <direction dir, int fft_size, int N, int M, typename T>
+__attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
+                                                  T scaling_factor) {
   constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
   constexpr int fact_wi_N = N / fact_sg_N;
   constexpr int fact_sg_M = detail::factorize_sg(M, SYCLFFT_TARGET_SUBGROUP_SIZE);
@@ -57,11 +57,7 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
   constexpr int sg_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
   constexpr int m_ffts_in_sg = sg_size / fact_sg_M;
   constexpr int n_ffts_in_sg = sg_size / fact_sg_N;
-  constexpr int m_reals_per_fft = 2 * M;
-  constexpr int n_reals_per_fft = 2 * N;
-  constexpr int num_threads_per_fft_in_sg_m = m_ffts_in_sg / SYCLFFT_TARGET_SUBGROUP_SIZE;
-  constexpr int num_threads_per_fft_in_sg_n = n_ffts_in_sg / SYCLFFT_TARGET_SUBGROUP_SIZE;
-  int sg_id = sg.get_group_id();
+  int sg_id = static_cast<int>(sg.get_group_id());
   constexpr int num_sgs = SYCLFFT_SGS_IN_WG;
 
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
@@ -69,15 +65,13 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
 
   int m_sg_offset = sg_id * m_ffts_in_sg + sg.get_local_linear_id() / fact_sg_M;
   int m_sg_increment = num_sgs * m_ffts_in_sg;
-  int max_m_sg_offset =
-      detail::roundUpToMultiple<size_t>(N, m_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_m);
+  int max_m_sg_offset = detail::roundUpToMultiple<size_t>(N, m_ffts_in_sg) +
+                        (static_cast<int>(sg.get_local_linear_id()) >= max_working_tid_in_sg_m);
 
   int n_sg_offset = sg_id * n_ffts_in_sg + sg.get_local_linear_id() / fact_sg_N;
   int n_sg_increment = num_sgs * n_ffts_in_sg;
   int max_n_sg_offset =
       detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_n);
-
-  int id_of_wi_in_fft = sg.get_local_linear_id() % fact_sg_M;
 
   for (int sub_batch = n_sg_offset; sub_batch <= max_n_sg_offset; sub_batch += n_sg_increment) {
     bool working = sub_batch < M && sg.get_local_linear_id() < max_working_tid_in_sg_n;
@@ -85,7 +79,7 @@ __attribute__((always_inline)) inline void wg_dft(const sycl::local_accessor<T, 
       local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
                                                                   sub_batch);
     }
-    sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles.get_pointer() + (2 * M));
+    sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
     if (working) {
       private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
                                                                   fact_sg_N, sub_batch);

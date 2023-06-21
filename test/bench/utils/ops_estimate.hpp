@@ -31,8 +31,8 @@
  * @return estimated number of operations to compute FFT. Returns a double to
  * avoid rounding.
  */
-inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
-  return 5 * batches * fft_size * std::log2(static_cast<double>(fft_size));
+inline double cooley_tukey_ops_estimate(std::size_t fft_size, std::size_t batches = 1) {
+  return static_cast<double>(5 * batches * fft_size) * std::log2(static_cast<double>(fft_size));
 }
 
 /**
@@ -42,10 +42,10 @@ inline double cooley_tukey_ops_estimate(int fft_size, int batches = 1) {
  * @tparam TypeOut Output Type
  * @param fft_size size of the FFT Problem
  * @param batches Number of batches computed.
- * @return size_t Number of memory transactions in bytes.
+ * @return std::size_t Number of memory transactions in bytes.
  */
 template <typename TypeIn, typename TypeOut>
-inline size_t global_mem_transactions(int batches, int num_in, int num_out) {
+inline std::size_t global_mem_transactions(std::size_t batches, std::size_t num_in, std::size_t num_out) {
   return batches * (sizeof(TypeIn) * num_in + sizeof(TypeOut) * num_out);
 }
 
