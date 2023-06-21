@@ -313,6 +313,11 @@ __attribute__((always_inline)) inline void local2private(T_loc_ptr local, T_priv
  * @tparam pad Whether data in the local memory is padded or not
  * @tparam T_loc_ptr Pointer to Local memory
  * @tparam T_priv_ptr Pointer to private memory
+ *
+ * @param loc_base_ptr Pointer to local memory
+ * @param priv Pointer to private memory
+ * @param thread_id ID of the working thread in FFT
+ * @param col_num Column number which is to be loaded
  */
 template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
