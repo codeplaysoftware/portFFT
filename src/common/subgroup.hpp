@@ -58,7 +58,7 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction dir, auto N, auto stride, typename T>
+template <direction dir, int N, int stride, typename T>
 inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
 
 /**
@@ -203,9 +203,9 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, auto N, auto stride, typename T>
+template <direction dir, int N, int stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
-  constexpr auto F0 = detail::factorize(N);
+  constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);
   } else {

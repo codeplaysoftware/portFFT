@@ -127,14 +127,14 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
-  std::size_t n_ffts_per_sg = subgroup_size / static_cast<std::size_t>(factor_sg);
-  std::size_t max_wis_working = n_ffts_per_sg * static_cast<std::size_t>(factor_sg);
-  std::size_t n_reals_per_fft = static_cast<std::size_t>(factor_sg) * N_reals_per_wi;
+  std::size_t n_ffts_per_sg = subgroup_size / factor_sg;
+  std::size_t max_wis_working = n_ffts_per_sg * factor_sg;
+  std::size_t n_reals_per_fft = factor_sg * N_reals_per_wi;
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
-  std::size_t id_of_fft_in_sg = subgroup_local_id / static_cast<std::size_t>(factor_sg);
+  std::size_t id_of_fft_in_sg = subgroup_local_id / factor_sg;
   std::size_t id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
   std::size_t n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
-  std::size_t id_of_wi_in_fft = subgroup_local_id % static_cast<std::size_t>(factor_sg);
+  std::size_t id_of_wi_in_fft = subgroup_local_id % factor_sg;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
   std::size_t rounded_up_n_ffts =
@@ -237,7 +237,7 @@ __attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction dir, auto factor_wi, typename T>
+template <direction dir, int factor_wi, typename T>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T* loc,
                                                         T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
                                                         const T* twiddles, T scaling_factor) {
