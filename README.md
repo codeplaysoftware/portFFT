@@ -95,7 +95,7 @@ By default the library assumes subgroup size of 32 is used. If that is not suppo
 
 ## Known issues
 
-* The specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
+* Specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
 
 We are investigating other performance issues that affect all the backends.
 
