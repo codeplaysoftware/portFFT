@@ -49,7 +49,7 @@ namespace detail {
  * @return transformed local_idx
  */
 template <detail::pad Pad = detail::pad::DO_PAD>
-__attribute__((always_inline)) std::size_t pad_local(std::size_t local_idx) {
+__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx) {
   if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / static_cast<std::size_t>(SYCL_FFT_N_LOCAL_BANKS);
   }
