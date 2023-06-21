@@ -422,12 +422,12 @@ __attribute__((always_inline)) inline void store_transposed(T_priv_ptr priv, T_d
   using T_vec = sycl::vec<T, vec_size>;
   constexpr std::size_t num_vec_per_wi = num_elems_per_wi / vec_size;
   T_vec* priv_vec = reinterpret_cast<T_vec*>(priv);
-  T_vec* local_vec = reinterpret_cast<T_vec*>(&destination[0]);
+  T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
   detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t destination_idx = detail::pad_local<Pad>(destination_offset + local_id * 2 + i * workers_in_group);
     if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
-      local_vec[destination_idx / 2] = priv_vec[i / 2];
+      destination_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
       destination[destination_idx] = priv[i];
       destination[destination_idx + 1] = priv[i + 1];
