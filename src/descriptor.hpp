@@ -142,9 +142,11 @@ class committed_descriptor {
         (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 +
          factor2) *
         sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
-    if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                               " Required: " + std::to_string(minimum_local_mem_required));
+    if (!detail::fits_in_wi<Scalar>(factor2)) {
+      if (minimum_local_mem_required > local_memory_size) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 " Required: " + std::to_string(minimum_local_mem_required));
+      }
     }
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, SYCLFFT_TARGET_SUBGROUP_SIZE);
     detail::populate_wg_twiddles<Scalar>(params.lengths[0], twiddles_forward + 2 * (factor1 + factor2), queue);
