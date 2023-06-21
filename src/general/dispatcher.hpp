@@ -21,8 +21,6 @@
 #ifndef SYCL_FFT_GENERAL_DISPATCHER_HPP
 #define SYCL_FFT_GENERAL_DISPATCHER_HPP
 
-#include <limits>
-
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
