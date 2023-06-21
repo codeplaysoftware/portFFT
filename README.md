@@ -7,11 +7,11 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ## Pre-requisites
 
-* Latest [DPC++] oneAPI release
+* [DPC++] oneAPI release 2023.1.0
   * Nightly releases should work but are not tested
   * Other SYCL implementations are not tested
 * [Level Zero] drivers
-  * OpenCL drivers are not tested
+  * OpenCL drivers are not supported
 * CMake 3.16+
 
 ## Getting Started
@@ -95,7 +95,7 @@ By default the library assumes subgroup size of 32 is used. If that is not suppo
 
 ## Known issues
 
-* The specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature so the performance is not optimal as of today.
+* The specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
 
 We are investigating other performance issues that affect all the backends.
 
