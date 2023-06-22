@@ -123,44 +123,58 @@ class committed_descriptor {
       std::vector<sycl::kernel_id> ids;
       // if not used, some kernels might be optimized away in AOT compilation and not available here
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD,
+                                                                detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD,
+                                                                detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::buffer_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
+        ids.push_back(
+            sycl::get_kernel_id<
+                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
-      if(sycl::is_compatible(ids, dev)){
+      if (sycl::is_compatible(ids, dev)) {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
         in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
-        try{
+        try {
           used_sg_size = sg_size;
           return sycl::build(in_bundle);
-        } catch(std::exception& e){
+        } catch (std::exception& e) {
           std::cerr << "Build for subgroup size " << sg_size << " failed with message:\n" << e.what() << std::endl;
         }
       }
@@ -313,7 +327,6 @@ class committed_descriptor {
   }
 
  private:
-
   /**
    * Dispatches the kernel with the first subgroup size that is supported by the device.
    *
@@ -327,8 +340,7 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, typename T_in, typename T_out>
-  sycl::event dispatch_kernel(const T_in in, T_out out,
-                              const std::vector<sycl::event>& dependencies = {}) {
+  sycl::event dispatch_kernel(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_kernel_helper<dir, T_in, T_out, SYCLFFT_SUBGROUP_SIZES>(in, out, dependencies);
   }
 
@@ -347,8 +359,7 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, typename T_in, typename T_out, int sg_size, int... other_sg_sizes>
-  sycl::event dispatch_kernel_helper(const T_in in, T_out out,
-                                     const std::vector<sycl::event>& dependencies = {}) {
+  sycl::event dispatch_kernel_helper(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
     if (sg_size == used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
       std::size_t input_distance;
@@ -393,8 +404,7 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, detail::transpose transpose_in, int subgroup_size, typename T_in, typename T_out>
-  sycl::event run_kernel(const T_in in, T_out out, Scalar scale_factor,
-                                    const std::vector<sycl::event>& dependencies) {
+  sycl::event run_kernel(const T_in in, T_out out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
@@ -411,8 +421,8 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(subgroup_size)]] {
             detail::dispatcher<dir, transpose_in, subgroup_size>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
-                                                  kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
-                                                  it, twiddles_ptr, scale_factor);
+                                                                 kh.get_specialization_constant<fft_size_spec_const>(),
+                                                                 n_transforms, it, twiddles_ptr, scale_factor);
           });
     });
   }
@@ -431,7 +441,7 @@ class committed_descriptor {
    */
   template <direction dir, detail::transpose transpose_in, int subgroup_size, typename T>
   sycl::event run_kernel(const sycl::buffer<T, 1>& in, sycl::buffer<T, 1>& out, Scalar scale_factor,
-                                    const std::vector<sycl::event>& dependencies) {
+                         const std::vector<sycl::event>& dependencies) {
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, subgroup_size, n_compute_units);
@@ -450,8 +460,8 @@ class committed_descriptor {
           sycl::nd_range<1>{{global_size}, {subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(subgroup_size)]] {
             detail::dispatcher<dir, transpose_in, subgroup_size>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
-                                                  kh.get_specialization_constant<fft_size_spec_const>(), n_transforms,
-                                                  it, twiddles_ptr, scale_factor);
+                                                                 kh.get_specialization_constant<fft_size_spec_const>(),
+                                                                 n_transforms, it, twiddles_ptr, scale_factor);
           });
     });
   }

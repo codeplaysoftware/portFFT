@@ -65,8 +65,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     std::size_t n_working = sycl::min(subgroup_size, n_transforms - i + subgroup_local_id);
 
     if constexpr (transpose_in == detail::transpose::NOT_TRANSPOSED) {
-      global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, N_reals * n_working, N_reals * (i - subgroup_local_id),
-                                                 local_offset);
+      global2local<pad::DO_PAD, level::SUBGROUP, subgroup_size>(it, input, loc, N_reals * n_working,
+                                                                N_reals * (i - subgroup_local_id), local_offset);
       sycl::group_barrier(sg);
     }
     if (working) {
@@ -202,11 +202,11 @@ __attribute__((always_inline)) inline void workitem_dispatcher(const T* input, T
                                                                std::size_t n_transforms, sycl::nd_item<1> it,
                                                                T scaling_factor) {
   switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                           \
-  case N:                                                                                        \
-    if constexpr (fits_in_wi<T>(N)) {                                                            \
+#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                          \
+  case N:                                                                                                       \
+    if constexpr (fits_in_wi<T>(N)) {                                                                           \
       workitem_impl<dir, transpose_in, N, subgroup_size>(input, output, loc, n_transforms, it, scaling_factor); \
-    }                                                                                            \
+    }                                                                                                           \
     break;
     SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
@@ -332,7 +332,8 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    workitem_dispatcher<dir, transpose_in, subgroup_size>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    workitem_dispatcher<dir, transpose_in, subgroup_size>(input, output, loc, fft_size, n_transforms, it,
+                                                          scaling_factor);
     return;
   }
   std::size_t sg_size = it.get_sub_group().get_local_linear_range();
@@ -341,8 +342,8 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(sg_size));
     int factor_wi = static_cast<int>(fft_size) / factor_sg;
     if (fits_in_wi_device<T>(static_cast<std::size_t>(factor_wi))) {
-      subgroup_dispatcher<dir, subgroup_size>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
-                               scaling_factor);
+      subgroup_dispatcher<dir, subgroup_size>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it,
+                                              twiddles, scaling_factor);
       return;
     }
   }
