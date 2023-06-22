@@ -26,44 +26,6 @@
 
 namespace sycl_fft::detail {
 
-template <typename T>
-struct remove_multi_ptr {
-  using type = T;
-};
-
-template <typename T, int Dimms>
-struct remove_multi_ptr<sycl::local_accessor<T, Dimms>> {
-  using type = T;
-};
-
-#ifdef SYCL_IMPLEMENTATION_ONEAPI
-// OneAPI Adds decorate address space during version 6.1, so this will
-// not work in all cases.
-#if __LIBSYCL_MAJOR_VERSION >= 6 & __LIBSYCL_MINOR_VERSION >= 1
-#define SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-#endif  // __LIBSYCL version
-#endif  // SYCL_IMPLEMENTATION_ONEAPI
-#ifdef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-template <typename T, sycl::access::address_space Space, sycl::access::decorated DecorateAddress>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space, DecorateAddress>> {
-  using type = T;
-};
-#else
-template <typename T, sycl::access::address_space Space>
-struct remove_multi_ptr<sycl::multi_ptr<T, Space>> {
-  using type = T;
-};
-#endif  // SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-#undef SYCLFFT_SYCL_HAS_DECORATEADDRSPACE
-
-/**
- * Removes pointer or sycl::multi_ptr.
- * @tparam T type to remove pointer from
- */
-template <typename T>
-using remove_ptr =
-    std::conditional_t<std::is_pointer_v<T>, std::remove_pointer_t<T>, typename remove_multi_ptr<T>::type>;
-
 /**
  * Implements a loop that will be fully unrolled.
  * @tparam Start starting value of loop counter
@@ -73,7 +35,7 @@ using remove_ptr =
  * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
  * __attribute__((always_inline)).
  */
-template <int Start, int Stop, int Step, typename Functor>
+template <auto Start, auto Stop, auto Step, typename Functor>
 void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
@@ -84,7 +46,7 @@ void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
 /**
  * Divides the value and rounds the result up.
  * @tparam T type of the inputs and the result
- * @param dividend divident
+ * @param dividend dividend
  * @param divisor divisor
  * @return rounded-up quotient
  */
@@ -103,6 +65,32 @@ inline T divideCeil(T dividend, T divisor) {
 template <typename T>
 inline T roundUpToMultiple(T value, T factor) {
   return divideCeil(value, factor) * factor;
+}
+
+/**
+ * Cast a raw pointer to a global sycl::multi_ptr.
+ * The multi_ptr is using the legacy decoration for now as this is better supported.
+ *
+ * @tparam T Pointer type
+ * @param ptr Raw pointer to cast to multi_ptr
+ * @return sycl::multi_ptr
+ */
+template <typename T>
+inline auto get_global_multi_ptr(T ptr) {
+  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::legacy>(ptr);
+}
+
+/**
+ * Cast a raw pointer to a local sycl::multi_ptr.
+ * The multi_ptr is using the legacy decoration for now as this is better supported.
+ *
+ * @tparam T Pointer type
+ * @param ptr Raw pointer to cast to multi_ptr
+ * @return sycl::multi_ptr
+ */
+template <typename T>
+inline auto get_local_multi_ptr(T ptr) {
+  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
 };  // namespace sycl_fft::detail

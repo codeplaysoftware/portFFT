@@ -35,7 +35,7 @@
 #include "ops_estimate.hpp"
 
 /**
- * @brief Main function to run benchmarks and measure the time spent on the host.
+ * Main function to run benchmarks and measure the time spent on the host.
  * One GBench iteration consists of multiple compute submitted asynchronously to reduce the overhead of the SYCL
  * runtime. The function is used in \p bench_float and \p bench_manual_(float|double) . The function throws exception if
  * an error occurs.
@@ -78,8 +78,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
-             desc.forward_scale);
+  verify_dft(host_input.data(), host_output.data(), std::vector<std::size_t>{N}, N_transforms, desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
@@ -111,7 +110,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transferred / elapsed_seconds;
+    state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
@@ -119,7 +118,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 }
 
 /**
- * @brief Separate impl function to handle
+ * Separate impl function to handle catching exceptions
  * @see bench_dft_average_host_time_impl
  */
 template <typename ftype, sycl_fft::domain domain>
@@ -132,7 +131,7 @@ void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, sycl_ff
 }
 
 /**
- * @brief Main function to run benchmarks and measure the time spent on the device.
+ * Main function to run benchmarks and measure the time spent on the device.
  * The function is used in \p bench_float and \p bench_manual_(float|double) .
  * The function throws exception if an error occurs.
  *
@@ -178,18 +177,17 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<int>{static_cast<int>(N)}, N_transforms,
-             desc.forward_scale);
+  verify_dft(host_input.data(), host_output.data(), std::vector<std::size_t>{N}, N_transforms, desc.forward_scale);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     sycl::event e = compute();
     e.wait();
-    int64_t start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
-    int64_t end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
-    double elapsed_seconds = (end - start) / 1e9;
+    auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
+    auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
+    double elapsed_seconds = static_cast<double>(end - start) / 1e9;
     state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = bytes_transferred / elapsed_seconds;
+    state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
   sycl::free(in_dev, q);
@@ -197,7 +195,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
 }
 
 /**
- * @brief Separate impl function to handle
+ * Separate impl function to handle catching exceptions
  * @see bench_dft_device_time_impl
  */
 template <typename ftype, sycl_fft::domain domain>
@@ -210,7 +208,7 @@ void bench_dft_device_time(benchmark::State& state, sycl::queue q, sycl_fft::des
 }
 
 /**
- * @brief Helper function to register each benchmark configuration twice, once for measuring the time on host and once
+ * Helper function to register each benchmark configuration twice, once for measuring the time on host and once
  * for measuring on device.
  *
  * @tparam ftype float or double
@@ -224,12 +222,12 @@ template <typename ftype, sycl_fft::domain domain>
 void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sycl::queue profiling_q,
                                     const sycl_fft::descriptor<ftype, domain>& desc) {
   static_assert(domain == sycl_fft::domain::REAL || domain == sycl_fft::domain::COMPLEX, "Unsupported domain");
-  static_assert(std::is_same<ftype, float>::value || std::is_same<ftype, double>::value, "Unsupported precision");
+  static_assert(std::is_same_v<ftype, float> || std::is_same_v<ftype, double>, "Unsupported precision");
   // Print descriptor's parameters relevant for benchmarks
   // Additional parameters could be added to the suffix if needed
   auto print_desc = [&](std::ostream& name) {
     name << "d=" << (domain == sycl_fft::domain::REAL ? "re" : "cpx");
-    name << ",prec=" << (std::is_same<ftype, float>::value ? "single" : "double");
+    name << ",prec=" << (std::is_same_v<ftype, float> ? "single" : "double");
     name << ",n=[";
     for (std::size_t i = 0; i < desc.lengths.size(); ++i) {
       name << (i > 0 ? ", " : "") << desc.lengths[i];
