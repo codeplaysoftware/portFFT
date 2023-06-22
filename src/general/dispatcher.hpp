@@ -398,15 +398,13 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
     return;
   }
   std::size_t sg_size = it.get_sub_group().get_local_linear_range();
+  int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(sg_size));
+  int factor_wi = static_cast<int>(fft_size) / factor_sg;
   // Check that fft_size can be represented as an int
-  if (fft_size <= MAX_FFT_SIZE_WI * sg_size) {
-    int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(sg_size));
-    int factor_wi = static_cast<int>(fft_size) / factor_sg;
-    if (fits_in_wi_device<T>(static_cast<std::size_t>(factor_wi))) {
-      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
-                               scaling_factor);
-      return;
-    }
+  if (fft_size <= MAX_FFT_SIZE_WI * sg_size && fits_in_wi_device<T>(static_cast<std::size_t>(factor_wi))) {
+    subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
+                             scaling_factor);
+    return;
   } else {
     workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
     return;
@@ -427,25 +425,22 @@ T* calculate_twiddles(sycl::queue& q, std::size_t fft_size, int subgroup_size) {
   if (fits_in_wi<T>(fft_size)) {
     return nullptr;
   }
-
+  int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), subgroup_size);
+  int factor_wi = static_cast<int>(fft_size) / factor_sg;
   // Check that fft_size can be represented as an int
-  if (fft_size <= MAX_FFT_SIZE_WI * static_cast<std::size_t>(subgroup_size)) {
-    int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), subgroup_size);
-    int factor_wi = static_cast<int>(fft_size) / factor_sg;
-    if (fits_in_wi<T>(factor_wi)) {
-      T* res = sycl::malloc_device<T>(fft_size * 2, q);
-      sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
-      q.submit([&](sycl::handler& cgh) {
-        cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
-          int n = static_cast<int>(it.get_id(0));
-          int k = static_cast<int>(it.get_id(1));
-          sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
-        });
+  if (fft_size <= MAX_FFT_SIZE_WI * static_cast<std::size_t>(subgroup_size) && detail::fits_in_wi<T>(factor_wi)) {
+    T* res = sycl::malloc_device<T>(fft_size * 2, q);
+    sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
+    q.submit([&](sycl::handler& cgh) {
+      cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
+        int n = static_cast<int>(it.get_id(0));
+        int k = static_cast<int>(it.get_id(1));
+        sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
       });
-      q.wait();  // waiting once here can be better than depending on the event
-                 // for all future calls to compute
-      return res;
-    }
+    });
+    q.wait();  // waiting once here can be better than depending on the event
+               // for all future calls to compute
+    return res;
   } else {
     std::size_t N = detail::factorize(fft_size);
     std::size_t M = fft_size / N;
@@ -486,11 +481,13 @@ T* calculate_twiddles(sycl::queue& q, std::size_t fft_size, int subgroup_size) {
 
 template <typename T>
 void populate_wg_twiddles(std::size_t fft_size, T* global_pointer, sycl::queue& queue) {
-  std::size_t N = detail::factorize(fft_size);
-  std::size_t M = fft_size / N;
-  if (fits_in_wi<T>(M)) {
+  int fact_wi =
+      static_cast<int>(fft_size) / detail::factorize_sg(static_cast<int>(fft_size), SYCLFFT_TARGET_SUBGROUP_SIZE);
+  if (fft_size <= (MAX_FFT_SIZE_WI * SYCLFFT_TARGET_SUBGROUP_SIZE) && fits_in_wi<T>(fact_wi)) {
     return;
   }
+  std::size_t N = detail::factorize(fft_size);
+  std::size_t M = fft_size / N;
 
   T* temp_host = sycl::malloc_host<T>(2 * fft_size, queue);
 
