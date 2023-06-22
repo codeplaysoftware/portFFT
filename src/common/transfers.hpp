@@ -358,6 +358,12 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @tparam pad Whether data in the local memory is padded or not
  * @tparam T_loc_ptr Pointer to Local memory
  * @tparam T_priv_ptr Pointer to private memory
+ *
+ * @param loc_base_ptr Pointer to local memory
+ * @param priv Pointer to private memory
+ * @param thread_id Id of the working thread for the FFT
+ * @param num_workers Number of threads working for that FFt
+ * @param col_num Column number in which the data will be stored
  */
 template <int num_elements_per_wi, int stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
