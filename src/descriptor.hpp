@@ -143,6 +143,7 @@ class committed_descriptor {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
         in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
         try{
+          used_sg_size = sg_size;
           return sycl::build(in_bundle);
         } catch(std::exception& e){
           std::cerr << "Build for subgroup size " << sg_size << " failed with message:\n" << e.what() << std::endl;
@@ -175,7 +176,6 @@ class committed_descriptor {
     // TODO: check and support all the parameter values
     assert(params.lengths.size() == 1);
 
-    used_sg_size = get_used_sg_size<SYCLFFT_SUBGROUP_SIZES>();
     twiddles_forward = detail::calculate_twiddles<Scalar>(params.lengths[0], queue, used_sg_size);
   }
 
@@ -294,23 +294,6 @@ class committed_descriptor {
   }
 
  private:
-  /**
-   * Returns the first of the subgroup sizes that is supported by the device.
-   * @tparam sg_size first subgroup size
-   * @tparam other_sg_sizes other subgroup sizes
-   * @return subgroup size
-   */
-  template <int sg_size, int... other_sg_sizes>
-  std::size_t get_used_sg_size() {
-    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
-      return sg_size;
-    }
-    if constexpr (sizeof...(other_sg_sizes) == 0) {
-      throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
-    } else {
-      return get_used_sg_size<other_sg_sizes...>();
-    }
-  }
 
   /**
    * Dispatches the kernel with the first subgroup size that is supported by the device.
@@ -347,7 +330,7 @@ class committed_descriptor {
   template <direction dir, typename T_in, typename T_out, int sg_size, int... other_sg_sizes>
   sycl::event dispatch_kernel_helper(const T_in in, T_out out, Scalar scale_factor = 1.0f,
                                      const std::vector<sycl::event>& dependencies = {}) {
-    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
+    if (sg_size == used_sg_size) {
       return run_kernel<dir, sg_size>(in, out, scale_factor, dependencies);
     }
     if constexpr (sizeof...(other_sg_sizes) == 0) {
