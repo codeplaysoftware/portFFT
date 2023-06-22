@@ -63,26 +63,26 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
 
-  int m_sg_offset = sg_id * m_ffts_in_sg + sg.get_local_linear_id() / fact_sg_M;
+  int m_sg_offset = sg_id * m_ffts_in_sg + static_cast<int>(sg.get_local_linear_id()) / fact_sg_M;
   int m_sg_increment = num_sgs * m_ffts_in_sg;
-  int max_m_sg_offset = detail::roundUpToMultiple<size_t>(N, m_ffts_in_sg) +
+  int max_m_sg_offset = detail::roundUpToMultiple<int>(N, m_ffts_in_sg) +
                         (static_cast<int>(sg.get_local_linear_id()) >= max_working_tid_in_sg_m);
 
-  int n_sg_offset = sg_id * n_ffts_in_sg + sg.get_local_linear_id() / fact_sg_N;
+  int n_sg_offset = sg_id * n_ffts_in_sg + static_cast<int>(sg.get_local_linear_id()) / fact_sg_N;
   int n_sg_increment = num_sgs * n_ffts_in_sg;
-  int max_n_sg_offset =
-      detail::roundUpToMultiple<size_t>(M, n_ffts_in_sg) + (sg.get_local_linear_id() >= max_working_tid_in_sg_n);
+  int max_n_sg_offset = detail::roundUpToMultiple<int>(M, n_ffts_in_sg) +
+                        (static_cast<int>(sg.get_local_linear_id()) >= max_working_tid_in_sg_n);
 
   for (int sub_batch = n_sg_offset; sub_batch <= max_n_sg_offset; sub_batch += n_sg_increment) {
-    bool working = sub_batch < M && sg.get_local_linear_id() < max_working_tid_in_sg_n;
+    bool working = sub_batch < M && static_cast<int>(sg.get_local_linear_id()) < max_working_tid_in_sg_n;
     if (working) {
-      local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
-                                                                  sub_batch);
+      local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
+          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, sub_batch);
     }
     sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
     if (working) {
-      private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_N,
-                                                                  fact_sg_N, sub_batch);
+      private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
+          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
     }
   }
 
@@ -90,12 +90,13 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   for (int sub_batch = m_sg_offset; sub_batch <= max_m_sg_offset; sub_batch += m_sg_increment) {
     bool working = sub_batch < N && sg.get_local_linear_id() < max_working_tid_in_sg_m;
     if (working) {
-      local2private<2 * fact_wi_M, detail::pad::DO_PAD>(loc, priv, sg.get_local_linear_id() % fact_sg_M, 2 * fact_wi_M,
-                                                        2 * M * sub_batch);
+      local2private<2 * fact_wi_M, detail::pad::DO_PAD>(
+          loc, priv, sg.get_local_linear_id() % static_cast<std::size_t>(fact_sg_M),
+          static_cast<std::size_t>(2 * fact_wi_M), static_cast<std::size_t>(2 * M * sub_batch));
     }
     detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
       int twiddle_n_index = sub_batch;
-      int twiddle_m_index = (sg.get_local_linear_id() % fact_sg_M) * fact_wi_M + i;
+      int twiddle_m_index = (static_cast<int>(sg.get_local_linear_id()) % fact_sg_M) * fact_wi_M + i;
       int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
       T twiddle_real = wg_twiddles[twiddle_index];
       T twiddle_complex = wg_twiddles[twiddle_index + 1];
@@ -114,8 +115,9 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     });
 
     if (working) {
-      store_transposed<2 * fact_wi_M, detail::pad::DO_PAD>(priv, loc, sg.get_local_linear_id() % fact_sg_M, fact_sg_M,
-                                                           2 * M * sub_batch);
+      store_transposed<2 * fact_wi_M, detail::pad::DO_PAD>(
+          priv, loc, sg.get_local_linear_id() % static_cast<std::size_t>(fact_sg_M),
+          static_cast<std::size_t>(fact_sg_M), static_cast<std::size_t>(2 * M * sub_batch));
     }
   }
   sycl::group_barrier(it.get_group());

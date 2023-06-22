@@ -310,11 +310,12 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  */
-template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
+template <int num_elements_per_wi, int stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int col_num) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    int local_idx = detail::pad_local<pad>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num);
+    std::size_t local_idx = detail::pad_local<pad>(
+        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
     priv[2 * i] = loc_base_ptr[local_idx];
     priv[2 * i + 1] = loc_base_ptr[local_idx + 1];
   });
@@ -343,7 +344,7 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<pad>(2 * M * source_col + 2 * source_row);
+    std::size_t source_index = detail::pad_local<pad>(2 * static_cast<std::size_t>(M) * source_col + 2 * source_row);
     out[offset + 2 * i] = loc[source_index];
     out[offset + 2 * i + 1] = loc[source_index + 1];
   }
@@ -358,11 +359,12 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @tparam T_loc_ptr Pointer to Local memory
  * @tparam T_priv_ptr Pointer to private memory
  */
-template <std::size_t num_elements_per_wi, std::size_t stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
+template <int num_elements_per_wi, int stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int num_workers, int col_num) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    int loc_base_offset = detail::pad_local<pad>(2 * stride * (i * num_workers + thread_id) + 2 * col_num);
+    std::size_t loc_base_offset =
+        detail::pad_local<pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
     loc_base_ptr[loc_base_offset] = priv[2 * i];
     loc_base_ptr[loc_base_offset + 1] = priv[2 * i + 1];
   });
