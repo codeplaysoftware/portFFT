@@ -490,8 +490,12 @@ T* calculate_twiddles(sycl::queue& q, std::size_t fft_size, int subgroup_size) {
 }
 
 /**
- * Calculates twiddles required for workgroup implementation in high precision
- * and copies them to device pointer
+ * Calculates twiddles required for workgroup implementation in higher accuracy
+ * and copies them to device pointer.
+ * 
+ * Device specific implementation can potentially be not accurate enough, and
+ * the accuracy depends on compiler flags as well. This results in high errors in the calculations.
+ * especially for longer input lengths. Hence calculation of twiddles is done on host.
  *
  * @tparam T Scalar type
  * @param fft_size fft problem size
