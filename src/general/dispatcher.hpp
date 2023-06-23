@@ -180,24 +180,21 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 }
 
 /**
- * Implementation that can be handled by a workgroup
+ * Implementation of FFT for sizes that can be done by a workgroup.
  *
- * @tparam dir Direction of the FFt
- * @tparam fft_size Problem size of the FFT
- * @tparam T_in Input pointer type
- * @tparam T_out Output pointer type
+ * @tparam dir Direction of the FFT
+ * @tparam fft_size Problem size
  * @tparam T Scalar type
- * @tparam T_twiddles Twiddles to be used by the FFT
  *
- * @param input Input pointer
- * @param output Output pointer
- * @param loc Local Accessor containing the inupts
- * @param loc_twiddles local accessor to to twiddles to be used by sub FFTs
- * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
- * @param n_transforms Batch size
- * @param it Associated nd_item
- * @param twiddles Pointer to the global memory containing twiddles for sub FFTs
- * @param scaling_factor factor by which the result will be scaled
+ * @param input global input pointer
+ * @param output global output pointer
+ * @param fft_size given problem size
+ * @param loc Pointer to local memory
+ * @param loc_twiddles pointer to twiddles residing in the local memory
+ * @param n_transforms number of fft batch size
+ * @param it Associated Iterator
+ * @param twiddles Pointer to twiddles residing in the global memory
+ * @param scaling_factor scaling factor applied to the result
  */
 template <direction dir, std::size_t fft_size, typename T>
 __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
@@ -348,6 +345,23 @@ __attribute__((always_inline)) inline void subgroup_dispatcher(int factor_wi, in
   }
 }
 
+/**
+ * Selects appropriate template instantiation of workgroup implementation for the
+ * given problem size
+ *
+ * @tparam dir Direction of the FFT
+ * @tparam T Scalar type
+ *
+ * @param input global input pointer
+ * @param output global output pointer
+ * @param fft_size given problem size
+ * @param loc Pointer to local memory
+ * @param loc_twiddles pointer to twiddles residing in the local memory
+ * @param n_transforms number of fft batch size
+ * @param it Associated Iterator
+ * @param twiddles Pointer to twiddles residing in the global memory
+ * @param scaling_factor scaling factor applied to the result
+ */
 template <direction dir, typename T>
 __attribute__((always_inline)) inline void workgroup_dispatcher(const T* input, T* output, std::size_t fft_size, T* loc,
                                                                 T* loc_twiddles, std::size_t n_transforms,

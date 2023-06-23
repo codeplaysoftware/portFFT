@@ -143,7 +143,7 @@ class committed_descriptor {
     std::size_t minimum_local_mem_required =
         (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 +
          factor2) *
-        sizeof(Scalar);  // at least one fft and sub-fft twiddles should fit in local memory
+        sizeof(Scalar);
     if (!detail::fits_in_wi<Scalar>(factor2)) {
       if (minimum_local_mem_required > local_memory_size) {
         throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
