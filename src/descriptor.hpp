@@ -101,7 +101,6 @@ class committed_descriptor {
   sycl::context ctx;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   std::size_t n_compute_units;
-  std::size_t local_memory_size;
   Scalar* twiddles_forward;
 
   /**
@@ -137,7 +136,7 @@ class committed_descriptor {
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
     size_t factor1 = detail::factorize(params.lengths[0]);
     size_t factor2 = params.lengths[0] / factor1;
     std::size_t minimum_local_mem_required =
@@ -145,6 +144,8 @@ class committed_descriptor {
          factor2) *
         sizeof(Scalar);
     if (!detail::fits_in_wi<Scalar>(factor2)) {
+      // the local memory required for one fft and sub-fft twiddles
+
       if (minimum_local_mem_required > local_memory_size) {
         throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                  " Required: " + std::to_string(minimum_local_mem_required));

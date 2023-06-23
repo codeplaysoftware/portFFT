@@ -210,7 +210,6 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   const T* wg_twiddles = twiddles + 2 * (M + N);
 
   global2local<pad::DONT_PAD, level::WORKGROUP>(it, twiddles, loc_twiddles, 2 * (M + N));
-  sycl::group_barrier(it.get_group());
 
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     global2local<pad::DO_PAD, level::WORKGROUP>(it, input, loc, 2 * fft_size, offset);
@@ -218,7 +217,6 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     wg_dft<dir, fft_size, N, M>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
     local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, SYCLFFT_TARGET_SUBGROUP_SIZE, detail::pad::DO_PAD>(it, loc, output,
                                                                                                         offset);
-    sycl::group_barrier(it.get_group());
   }
 }
 
@@ -409,7 +407,6 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
     workitem_dispatcher<dir, transpose_in>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
-    return;
   }
   std::size_t sg_size = it.get_sub_group().get_local_linear_range();
   int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(sg_size));
@@ -418,10 +415,8 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
   if (fft_size <= MAX_FFT_SIZE_WI * sg_size && fits_in_wi_device<T>(static_cast<std::size_t>(factor_wi))) {
     subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
                              scaling_factor);
-    return;
   } else {
     workgroup_dispatcher<dir>(input, output, fft_size, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
-    return;
   }
 }
 
@@ -493,6 +488,15 @@ T* calculate_twiddles(sycl::queue& q, std::size_t fft_size, int subgroup_size) {
   return nullptr;
 }
 
+/**
+ * Calculates twiddles required for workgroup implementation in high precision
+ * and copies them to device pointer
+ *
+ * @tparam T Scalar type
+ * @param fft_size fft problem size
+ * @param global_pointer Pointer to global memory
+ * @param queue Associated queue
+ */
 template <typename T>
 void populate_wg_twiddles(std::size_t fft_size, T* global_pointer, sycl::queue& queue) {
   int fact_wi =

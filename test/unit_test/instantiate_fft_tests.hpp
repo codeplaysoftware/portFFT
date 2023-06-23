@@ -70,7 +70,6 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
     if (exceeds_local_mem_size<TYPE>(queue, static_cast<int>(param.length))) {                                     \
       GTEST_SKIP() << "Not Enough Local Memory";                                                                   \
     }                                                                                                              \
-                                                                                                                   \
     check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, TRANSPOSE>(param, queue);                    \
   }
 

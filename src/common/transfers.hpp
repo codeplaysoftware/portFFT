@@ -337,14 +337,15 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  * @param out pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <int N, int M, int num_subgroups, int subgroup_size, detail::pad pad, typename loc_ptr, typename global_ptr>
+template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad pad,
+          typename loc_ptr, typename global_ptr>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, loc_ptr loc, global_ptr out,
                                                                    std::size_t offset) {
-  constexpr int num_threads = num_subgroups * subgroup_size;
+  constexpr std::size_t num_threads = num_subgroups * subgroup_size;
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<pad>(2 * static_cast<std::size_t>(M) * source_col + 2 * source_row);
+    std::size_t source_index = detail::pad_local<pad>(2 * M * source_col + 2 * source_row);
     out[offset + 2 * i] = loc[source_index];
     out[offset + 2 * i + 1] = loc[source_index + 1];
   }
