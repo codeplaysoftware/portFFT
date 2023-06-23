@@ -299,7 +299,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, T_l
 template <detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private(std::size_t num_elems_per_wi, T_loc_ptr local, T_priv_ptr priv, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
-  #pragma unroll
+  #pragma clang loop unroll(full)
   for(int i=0;i< num_elems_per_wi;i++){
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     priv[i] = local[local_idx];
@@ -326,7 +326,7 @@ __attribute__((always_inline)) inline void local2private(std::size_t num_elems_p
 template <detail::pad Pad, typename T_priv_ptr, typename T_loc_ptr>
 __attribute__((always_inline)) inline void private2local(std::size_t num_elems_per_wi, T_priv_ptr priv, T_loc_ptr local, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
-  #pragma unroll
+  #pragma clang loop unroll(full)
   for(int i=0;i< num_elems_per_wi;i++){
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     local[local_idx] = priv[i];

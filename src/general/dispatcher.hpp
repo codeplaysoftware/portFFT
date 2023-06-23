@@ -54,10 +54,11 @@ __attribute__((always_inline)) inline void workitem_impl(int N, T_in input, T_ou
                                                          const sycl::local_accessor<T, 1>& loc,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          T scaling_factor) {
-  int N_reals = 2 * N;
+  constexpr int max_N=56;
+  T priv[max_N];
+  T temp[wi_temps(max_N)];
 
-  T priv[32];
-  T temp[64];
+  int N_reals = 2 * N;
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
@@ -76,7 +77,7 @@ __attribute__((always_inline)) inline void workitem_impl(int N, T_in input, T_ou
     if (working) {
       local2private<pad::DO_PAD>(N_reals, loc, priv, subgroup_local_id, N_reals, local_offset);
       wi_dft<dir, 0>(N, 1, 1, priv, priv, temp);
-      #pragma unroll
+      #pragma clang loop unroll(full)
       for(int i=0;i<N_reals;i++){
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
@@ -206,7 +207,7 @@ __attribute__((always_inline)) inline void subgroup_impl(T_in input, T_out outpu
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-/*template <direction dir, typename T_in, typename T_out, typename T>
+template <direction dir, typename T_in, typename T_out, typename T>
 __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out output,
                                                                const sycl::local_accessor<T, 1>& loc,
                                                                std::size_t fft_size, std::size_t n_transforms,
@@ -215,19 +216,19 @@ __attribute__((always_inline)) inline void workitem_dispatcher(T_in input, T_out
 #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                             \
   case N:                                                                          \
     if constexpr (fits_in_wi<T>(N)) {                                              \
-      workitem_impl<dir, N>(input, output, loc, n_transforms, it, scaling_factor); \
+      workitem_impl<dir>(N, input, output, loc, n_transforms, it, scaling_factor); \
     }                                                                              \
     break;
-    SYCL_FFT_WI_DISPATCHER_IMPL(1)
+    /*SYCL_FFT_WI_DISPATCHER_IMPL(1)
     SYCL_FFT_WI_DISPATCHER_IMPL(2)
     SYCL_FFT_WI_DISPATCHER_IMPL(4)
-    SYCL_FFT_WI_DISPATCHER_IMPL(8)
+    SYCL_FFT_WI_DISPATCHER_IMPL(8)*/
     SYCL_FFT_WI_DISPATCHER_IMPL(16)
-    SYCL_FFT_WI_DISPATCHER_IMPL(32)
+    //SYCL_FFT_WI_DISPATCHER_IMPL(32)
     // We compile a limited set of configurations to limit the compilation time
 #undef SYCL_FFT_WI_DISPATCHER_IMPL
   }
-}*/
+}
 
 /**
  * Selects appropriate template instantiation of subgroup implementation for
@@ -358,14 +359,14 @@ __attribute__((always_inline)) inline void dispatcher(T_in input, T_out output, 
   // TODO: should decision which implementation to use and factorization be done
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
-    //workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
-    workitem_impl<dir>(fft_size, input, output, loc, n_transforms, it, scaling_factor);
+    workitem_dispatcher<dir>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    //workitem_impl<dir>(fft_size, input, output, loc, n_transforms, it, scaling_factor);
   } else {
     int factor_sg = detail::factorize_sg(fft_size, it.get_sub_group().get_local_linear_range());
     int factor_wi = fft_size / factor_sg;
     if (fits_in_wi_device<T>(factor_wi)) {
-      subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
-                               scaling_factor);
+      //subgroup_dispatcher<dir>(factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles,
+        //                       scaling_factor);
     } else {
       // TODO: do we have any way to report an error from a kernel?
       // this is not yet implemented

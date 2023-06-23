@@ -100,7 +100,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(int N, T& real, T&
     T res_real = 0;
     T res_imag = 0;
 
-    #pragma unroll
+    #pragma clang loop unroll(full)
     for(int idx_in=0; idx_in < N; idx_in++){
     //unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
