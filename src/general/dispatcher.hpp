@@ -407,6 +407,7 @@ __attribute__((always_inline)) inline void dispatcher(const T* input, T* output,
   // on host?
   if (fits_in_wi_device<T>(fft_size)) {
     workitem_dispatcher<dir, transpose_in>(input, output, loc, fft_size, n_transforms, it, scaling_factor);
+    return;
   }
   std::size_t sg_size = it.get_sub_group().get_local_linear_range();
   int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(sg_size));

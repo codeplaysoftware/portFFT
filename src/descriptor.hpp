@@ -139,13 +139,12 @@ class committed_descriptor {
     std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
     size_t factor1 = detail::factorize(params.lengths[0]);
     size_t factor2 = params.lengths[0] / factor1;
+    // the local memory required for one fft and sub-fft twiddles
     std::size_t minimum_local_mem_required =
         (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], SYCLFFT_TARGET_SUBGROUP_SIZE) + factor1 +
          factor2) *
         sizeof(Scalar);
     if (!detail::fits_in_wi<Scalar>(factor2)) {
-      // the local memory required for one fft and sub-fft twiddles
-
       if (minimum_local_mem_required > local_memory_size) {
         throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                  " Required: " + std::to_string(minimum_local_mem_required));
