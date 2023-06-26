@@ -93,6 +93,21 @@ inline auto get_local_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
+template<typename T, typename T_src>
+T* get_access(T_src* ptr, sycl::handler&){
+  return reinterpret_cast<T*>(ptr);
+}
+
+template<typename T, typename T_src, std::enable_if_t<std::is_const<T>::value>* = nullptr>
+auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh){
+  return buf.template reinterpret<T,1>(2*buf.size()).template get_access<sycl::access::mode::read>(cgh);
+}
+
+template<typename T, typename T_src, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
+auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh){
+  return buf.template reinterpret<T,1>(2*buf.size()).template get_access<sycl::access::mode::write>(cgh);
+}
+
 };  // namespace sycl_fft::detail
 
 #endif

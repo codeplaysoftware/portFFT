@@ -37,6 +37,8 @@ enum class pad { DO_PAD, DONT_PAD };
 enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 
 enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
+
+enum class memory {BUFFER, USM};
 }  // namespace detail
 
 }  // namespace sycl_fft

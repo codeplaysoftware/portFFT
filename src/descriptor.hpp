@@ -37,10 +37,8 @@ namespace sycl_fft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in, int sg_size>
-class buffer_kernel;
-template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in, int sg_size>
-class usm_kernel;
+template <typename Scalar, domain Domain, direction dir, detail::memory, detail::transpose transpose_in, int sg_size>
+class kernel;
 }  // namespace detail
 
 // forward declaration
@@ -123,49 +121,49 @@ class committed_descriptor {
       std::vector<sycl::kernel_id> ids;
       // if not used, some kernels might be optimized away in AOT compilation and not available here
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD,
+        ids.push_back(sycl::get_kernel_id<detail::kernel<Scalar, Domain, direction::FORWARD, detail::memory::BUFFER, 
                                                                 detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD,
+        ids.push_back(sycl::get_kernel_id<detail::kernel<Scalar, Domain, direction::BACKWARD, detail::memory::BUFFER, 
                                                                 detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::buffer_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       try {
         ids.push_back(
             sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
+                detail::kernel<Scalar, Domain, direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, sg_size>>());
       } catch (...) {
       }
       if (sycl::is_compatible(ids, dev)) {
@@ -411,8 +409,8 @@ class committed_descriptor {
    * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam Subgroup_size size of the subgroup
-   * @tparam T_in Type of the input USM pointer
-   * @tparam T_out Type of the output USM pointer
+   * @tparam T_in Type of the input USM pointer or buffer
+   * @tparam T_out Type of the output USM pointer or buffer
    * @param in USM pointer to memory containing input data
    * @param out USM pointer to memory containing output data
    * @param scale_factor Value with which the result of the FFT will be multiplied
@@ -420,66 +418,26 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction dir, detail::transpose transpose_in, int Subgroup_size, typename T_in, typename T_out>
-  sycl::event run_kernel(const T_in in, T_out out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
+  sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
+    constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = params.number_of_transforms;
     std::size_t fft_size = params.lengths[0];  // 1d only for now
     std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, Subgroup_size, n_compute_units);
-    auto in_scalar = reinterpret_cast<const Scalar*>(in);
-    auto out_scalar = reinterpret_cast<Scalar*>(out);
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
     const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
+      auto in_acc_or_usm = detail::get_access<const Scalar>(in,cgh);
+      auto out_acc_or_usm = detail::get_access<Scalar>(out,cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
-      cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir, transpose_in, Subgroup_size>>(
+      cgh.parallel_for<detail::kernel<Scalar, Domain, dir, mem, transpose_in, Subgroup_size>>(
           sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
               [[sycl::reqd_sub_group_size(Subgroup_size)]] {
-                detail::dispatcher<dir, transpose_in, Subgroup_size>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
-                                                      kh.get_specialization_constant<fft_size_spec_const>(),
-                                                      n_transforms, it, twiddles_ptr, scale_factor);
-              });
-    });
-  }
-
-  /**
-   * Common interface to dispatch compute called by compute_forward and compute_backward
-   *
-   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam Subgroup_size size of the subgroup
-   * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
-   * @tparam T Type of buffer
-   * @param in buffer containing input data
-   * @param out buffer containing output data
-   * @param scale_factor Value with which the result of the FFT will be multiplied
-   * @param dependencies events that must complete before the computation
-   */
-  template <direction dir, detail::transpose transpose_in, int Subgroup_size, typename T>
-  sycl::event run_kernel(const sycl::buffer<T, 1>& in, sycl::buffer<T, 1>& out, Scalar scale_factor,
-                         const std::vector<sycl::event>& dependencies) {
-    std::size_t n_transforms = params.number_of_transforms;
-    std::size_t fft_size = params.lengths[0];  // 1d only for now
-    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, Subgroup_size, n_compute_units);
-    auto in_scalar = in.template reinterpret<Scalar, 1>(2 * in.size());
-    auto out_scalar = out.template reinterpret<Scalar, 1>(2 * out.size());
-    std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
-    const Scalar* twiddles_ptr = twiddles_forward;
-    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
-    return queue.submit([&](sycl::handler& cgh) {
-      cgh.depends_on(dependencies);
-      sycl::accessor in_acc{in_scalar, cgh, sycl::read_only};
-      sycl::accessor out_acc{out_scalar, cgh, sycl::write_only};
-      sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
-      cgh.use_kernel_bundle(exec_bundle);
-      cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir, transpose_in, Subgroup_size>>(
-          sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
-              [[sycl::reqd_sub_group_size(Subgroup_size)]] {
-                detail::dispatcher<dir, transpose_in, Subgroup_size>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
+                detail::dispatcher<dir, transpose_in, Subgroup_size>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0],
                                                       kh.get_specialization_constant<fft_size_spec_const>(),
                                                       n_transforms, it, twiddles_ptr, scale_factor);
               });
