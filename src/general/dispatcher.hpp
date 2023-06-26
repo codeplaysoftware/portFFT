@@ -514,7 +514,7 @@ template <typename T>
 void populate_wg_twiddles(std::size_t fft_size, int subgroup_size, T* global_pointer, sycl::queue& queue) {
   int fact_wi =
       static_cast<int>(fft_size) / detail::factorize_sg(static_cast<int>(fft_size), subgroup_size);
-  if (fft_size <= (MAX_FFT_SIZE_WI * subgroup_size) && fits_in_wi<T>(fact_wi)) {
+  if (fft_size <= (MAX_FFT_SIZE_WI * static_cast<std::size_t>(subgroup_size)) && fits_in_wi<T>(fact_wi)) {
     return;
   }
   std::size_t N = detail::factorize(fft_size);

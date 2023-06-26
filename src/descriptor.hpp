@@ -214,7 +214,7 @@ class committed_descriptor {
     size_t factor2 = params.lengths[0] / factor1;
     // the local memory required for one fft and sub-fft twiddles
     std::size_t minimum_local_mem_required =
-        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], used_sg_size) + factor1 +
+        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], static_cast<std::size_t>(used_sg_size)) + factor1 +
          factor2) *
         sizeof(Scalar);
     if (!detail::fits_in_wi<Scalar>(factor2)) {
