@@ -218,6 +218,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     sycl::group_barrier(it.get_group());
     wg_dft<dir, fft_size, N, M, Subgroup_size>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
     local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, Subgroup_size, detail::pad::DO_PAD>(it, loc, output, offset);
+    sycl::group_barrier(it.get_group());
   }
 }
 
