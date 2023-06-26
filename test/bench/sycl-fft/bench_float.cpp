@@ -48,6 +48,7 @@ int main(int argc, char** argv) {
   // Configurations are progressively added as SYCL-FFT supports more of them.
   bench_dft<std::complex<ftype>>(q, profiling_q, "small_1d", {16}, 8 * 1024 * 1024);
   bench_dft<std::complex<ftype>>(q, profiling_q, "medium_small_1d", {256}, 512 * 1024);
+  bench_dft<std::complex<ftype>>(q, profiling_q, "medium_large_1d", {4096}, 32 * 1024);
 
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();

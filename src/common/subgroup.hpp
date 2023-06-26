@@ -220,7 +220,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-int factorize_sg(int N, int sg_size) {
+constexpr int factorize_sg(int N, int sg_size) {
   for (int i = sg_size; i > 1; i--) {
     if (N % i == 0) {
       return i;
