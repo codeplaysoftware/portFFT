@@ -335,7 +335,6 @@ class committed_descriptor {
    * @tparam T_out Type of the output buffer or USM pointer
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
-   * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
@@ -354,7 +353,6 @@ class committed_descriptor {
    * @tparam other_sg_sizes other subgroup sizes
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
-   * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */

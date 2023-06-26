@@ -41,7 +41,7 @@ option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarki
 option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(SYCLFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
-set(SYCLFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list o subgroup sizes to compile for. The first size supported by the device will be used.")
+set(SYCLFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
 set(SYCLFFT_TARGET_WI_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(SYCLFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
