@@ -40,7 +40,7 @@ using namespace sycl_fft;
 template <typename T>
 bool exceeds_local_mem_size(sycl::queue& queue, int fft_size) {
   std::size_t local_mem_available = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-  if (!detail::fits_in_wi<T>(fft_size / detail::factorize_sg(fft_size, SYCLFFT_TARGET_SUBGROUP_SIZE))) {
+  if (!detail::fits_in_wi<T>(fft_size / detail::factorize_sg(fft_size, (SYCLFFT_SUBGROUP_SIZES)))) {
     int N = detail::factorize(fft_size);
     int M = fft_size / N;
     std::size_t local_mem_required = 2 * sizeof(T) * static_cast<std::size_t>(fft_size + M + N);

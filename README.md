@@ -41,8 +41,8 @@ The list of available targets can be found on [DPC++ compiler documentation page
 Some AOT targets do not support double precision.
 To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
 
-SYCL-FFT currently requires to set the subgroup size at compile time. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_TARGET_SUBGROUP_SIZE=<size>`.
-If you run into the exception with the message `Unsupported required sub group size` or `Block reads not supported in SIMD32` then `SYCLFFT_TARGET_SUBGROUP_SIZE` must be set to a different value supported by the device.
+SYCL-FFT currently requires to set the subgroup size at compile time. Multiple sizes can be set and the first one that is supported by the device will be used. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_SUBGROUP_SIZES=<comma separated list of sizes>`. By default only size 32 is used.
+If you run into the exception with the message `None of the compiled subgroup sizes are supported by the device!` then `DSYCLFFT_SUBGROUP_SIZES` must be set to a different value(s) supported by the device.
 
 ### Tests
 
@@ -83,11 +83,11 @@ SYCL-FFT is still in early development. The supported configurations are:
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
 For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes up to this maximum are supported.
-FFT sizes that are a product of a supported workitem FFT size and the subgroup size `SYCLFFT_TARGET_SUBGROUP_SIZE` are also supported.
+FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `SYCLFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
 
 Any batch size is supported as long as the input and output data fits in global memory.
 
-By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_TARGET_SUBGROUP_SIZE`.
+By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_SUBGROUP_SIZES`.
 
 ## Troubleshooting
 

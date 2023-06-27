@@ -24,9 +24,10 @@
 
 #include <gtest/gtest.h>
 
-constexpr std::size_t N = 4;
-constexpr std::size_t wg_size = SYCLFFT_TARGET_SUBGROUP_SIZE * SYCLFFT_SGS_IN_WG;
-constexpr std::size_t N_sentinel_values = 64;
+constexpr int N = 4;
+constexpr int sg_size = (SYCLFFT_SUBGROUP_SIZES);  // turn the list into the last value using commma operator
+constexpr int wg_size = sg_size * SYCLFFT_SGS_IN_WG;
+constexpr int N_sentinel_values = 64;
 using ftype = float;
 constexpr ftype sentinel_a = -999;
 constexpr ftype sentinel_b = -888;
@@ -79,12 +80,12 @@ void test() {
         }
       }
       group_barrier(it.get_group());
-      sycl_fft::global2local<Pad, detail::level::WORKGROUP>(it, a_dev_work, loc1_work, N * wg_size);
+      sycl_fft::global2local<Pad, detail::level::WORKGROUP, sg_size>(it, a_dev_work, loc1_work, N * wg_size);
       group_barrier(it.get_group());
       sycl_fft::local2private<N, Pad>(loc1_work, priv, local_id, N);
       sycl_fft::private2local<N, Pad>(priv, loc2_work, local_id, N);
       group_barrier(it.get_group());
-      sycl_fft::local2global<Pad, detail::level::WORKGROUP>(it, loc2_work, b_dev_work, N * wg_size);
+      sycl_fft::local2global<Pad, detail::level::WORKGROUP, sg_size>(it, loc2_work, b_dev_work, N * wg_size);
       group_barrier(it.get_group());
       if (local_id == 0) {
         for (std::size_t i = 0; i < N_sentinel_values; i++) {

@@ -43,20 +43,19 @@ namespace sycl_fft {
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
  */
-template <direction dir, int fft_size, int N, int M, typename T>
+template <direction dir, int fft_size, int N, int M, int Subgroup_size, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor) {
-  constexpr int fact_sg_N = detail::factorize_sg(N, SYCLFFT_TARGET_SUBGROUP_SIZE);
+  constexpr int fact_sg_N = detail::factorize_sg(N, Subgroup_size);
   constexpr int fact_wi_N = N / fact_sg_N;
-  constexpr int fact_sg_M = detail::factorize_sg(M, SYCLFFT_TARGET_SUBGROUP_SIZE);
+  constexpr int fact_sg_M = detail::factorize_sg(M, Subgroup_size);
   constexpr int fact_wi_M = M / fact_sg_M;
   constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
   T priv[private_mem_size];
 
   sycl::sub_group sg = it.get_sub_group();
-  constexpr int sg_size = SYCLFFT_TARGET_SUBGROUP_SIZE;
-  constexpr int m_ffts_in_sg = sg_size / fact_sg_M;
-  constexpr int n_ffts_in_sg = sg_size / fact_sg_N;
+  constexpr int m_ffts_in_sg = Subgroup_size / fact_sg_M;
+  constexpr int n_ffts_in_sg = Subgroup_size / fact_sg_N;
   int sg_id = static_cast<int>(sg.get_group_id());
   constexpr int num_sgs = SYCLFFT_SGS_IN_WG;
 
