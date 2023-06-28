@@ -21,8 +21,7 @@
 #ifndef SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
 #define SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
 
-#include "descriptor.hpp"
-#include "enums.hpp"
+#include <sycl_fft.hpp>
 #include "instantiate_fft_tests.hpp"
 #include "number_generators.hpp"
 #include "reference_dft.hpp"

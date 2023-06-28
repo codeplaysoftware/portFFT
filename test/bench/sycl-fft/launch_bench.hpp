@@ -27,8 +27,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include <descriptor.hpp>
-#include <enums.hpp>
+#include <sycl_fft.hpp>
 
 #include "bench_utils.hpp"
 #include "device_number_generator.hpp"

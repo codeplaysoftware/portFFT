@@ -26,5 +26,8 @@
 #include "descriptor.hpp"
 #include "enums.hpp"
 #include "traits.hpp"
+#include "dispatcher/workitem.hpp"
+#include "dispatcher/subgroup.hpp"
+#include "dispatcher/workgroup.hpp"
 
 #endif
