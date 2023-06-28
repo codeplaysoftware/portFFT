@@ -56,13 +56,12 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
 /**
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
- * @tparam dir Direction of the FFT
- * @tparam fft_size Problem size
+ * @tparam Dir Direction of the FFT
+ * @tparam FFTSize Problem size
  * @tparam T Scalar type
  *
  * @param input global input pointer
  * @param output global output pointer
- * @param fft_size given problem size
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to twiddles residing in the local memory
  * @param n_transforms number of fft batch size
@@ -70,38 +69,38 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
-template <direction dir, std::size_t fft_size, int Subgroup_size, typename T>
+template <direction Dir, std::size_t FFTSize, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                           std::size_t n_transforms, sycl::nd_item<1> it,
                                                           const T* twiddles, T scaling_factor) {
   std::size_t num_workgroups = it.get_group_range(0);
   std::size_t wg_id = it.get_group(0);
-  std::size_t max_global_offset = 2 * (n_transforms - 1) * fft_size;
-  std::size_t global_offset = 2 * fft_size * wg_id;
-  std::size_t offset_increment = 2 * fft_size * num_workgroups;
-  constexpr std::size_t N = detail::factorize(fft_size);
-  constexpr std::size_t M = fft_size / N;
+  std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
+  std::size_t global_offset = 2 * FFTSize * wg_id;
+  std::size_t offset_increment = 2 * FFTSize * num_workgroups;
+  constexpr std::size_t N = detail::factorize(FFTSize);
+  constexpr std::size_t M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
 
-  global2local<pad::DONT_PAD, level::WORKGROUP, Subgroup_size>(it, twiddles, loc_twiddles, 2 * (M + N));
+  global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, 2 * (M + N));
 
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
-    global2local<pad::DO_PAD, level::WORKGROUP, Subgroup_size>(it, input, loc, 2 * fft_size, offset);
+    global2local<pad::DO_PAD, level::WORKGROUP, SubgroupSize>(it, input, loc, 2 * FFTSize, offset);
     sycl::group_barrier(it.get_group());
-    wg_dft<dir, fft_size, N, M, Subgroup_size>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
-    local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, Subgroup_size, detail::pad::DO_PAD>(it, loc, output, offset);
+    wg_dft<Dir, FFTSize, N, M, SubgroupSize>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
+    local2global_transposed<N, M, SYCLFFT_SGS_IN_WG, SubgroupSize, detail::pad::DO_PAD>(it, loc, output, offset);
   }
 }
 
 }
 
 template <typename Scalar, domain Domain>
-template <direction dir, detail::transpose transpose_in, int Subgroup_size, typename T_in, typename T_out>
+template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
 sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
   constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
   std::size_t n_transforms = desc.params.number_of_transforms;
   Scalar* twiddles = desc.twiddles_forward;
-  std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, Subgroup_size, desc.n_compute_units);
+  std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
   std::size_t local_elements = num_scalars_in_local_mem(desc);
   return desc.queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(dependencies);
@@ -109,14 +108,14 @@ sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(com
     auto in_acc_or_usm = detail::get_access<const Scalar>(in,cgh);
     auto out_acc_or_usm = detail::get_access<Scalar>(out,cgh);
     sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-    cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, dir, mem, transpose_in, Subgroup_size>>(
-        sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
-    ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(Subgroup_size)]] {
+    cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
+        sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
+    ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
       std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
       switch (fft_size) {
     #define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                    \
       case N:                                                                                                 \
-        detail::workgroup_impl<dir, N, Subgroup_size>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * fft_size)], n_transforms, it, twiddles, scale_factor); \
+        detail::workgroup_impl<Dir, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * N)], n_transforms, it, twiddles, scale_factor); \
         break;
         SYCL_FFT_WG_DISPATCHER_IMPL(256)
         SYCL_FFT_WG_DISPATCHER_IMPL(512)

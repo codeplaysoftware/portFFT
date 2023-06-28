@@ -64,7 +64,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam Subgroup_size size of the subgroup
+ * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
  * @param it nd_item
  * @param global pointer to global memory
@@ -73,7 +73,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::pad Pad, detail::level Level, int Subgroup_size, typename T>
+template <detail::pad Pad, detail::level Level, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,
                                                         std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
@@ -88,10 +88,10 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   std::size_t local_size;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = sg.get_local_linear_id();
-    local_size = static_cast<std::size_t>(Subgroup_size);
+    local_size = static_cast<std::size_t>(SubgroupSize);
   } else {
     local_id = it.get_local_id(0);
-    local_size = static_cast<std::size_t>(Subgroup_size * SYCLFFT_SGS_IN_WG);
+    local_size = static_cast<std::size_t>(SubgroupSize * SYCLFFT_SGS_IN_WG);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -107,14 +107,14 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
-    local_size = Subgroup_size;
+    local_size = SubgroupSize;
     stride = local_size * chunk_size;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
   // Each subgroup loads a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(detail::get_global_multi_ptr(&global[global_offset + i]));
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % Subgroup_size == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
@@ -172,7 +172,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam Subgroup_size size of the subgroup
+ * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
  * @param it nd_item
  * @param local pointer to local memory
@@ -181,7 +181,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::pad Pad, detail::level Level, int Subgroup_size, typename T>
+template <detail::pad Pad, detail::level Level, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, const T* local, T* global,
                                                         std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
@@ -196,10 +196,10 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = sg.get_local_linear_id();
-    local_size = Subgroup_size;
+    local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = Subgroup_size * SYCLFFT_SGS_IN_WG;
+    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -215,14 +215,14 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
-    local_size = Subgroup_size;
+    local_size = SubgroupSize;
     stride = local_size * static_cast<std::size_t>(chunk_size);
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
   // Each subgroup stores a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % Subgroup_size == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
@@ -279,20 +279,20 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * Copies data from local memory to private memory. Each work item gets a chunk
  * of consecutive values from local memory.
  *
- * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param local pointer to local memory
  * @param priv pointer to private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
- * Should be >= num_elems_per_wi
+ * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, detail::pad Pad, typename T>
+template <std::size_t NumElemsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2private(const T* local, T* priv, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](std::size_t i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     priv[i] = local[local_idx];
   });
@@ -302,8 +302,8 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam num_elements_per_wi Elements per workitem
- * @tparam stride Inner most dimension of the reinterpreted matrix
- * @tparam pad Whether data in the local memory is padded or not
+ * @tparam Stride Inner most dimension of the reinterpreted matrix
+ * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T_loc_ptr Pointer to Local memory
  * @tparam T_priv_ptr Pointer to private memory
  *
@@ -312,12 +312,12 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  */
-template <int num_elements_per_wi, int stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
+template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int col_num) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    std::size_t local_idx = detail::pad_local<pad>(
-        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
+    std::size_t local_idx = detail::pad_local<Pad>(
+        static_cast<std::size_t>(2 * Stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
     priv[2 * i] = loc_base_ptr[local_idx];
     priv[2 * i + 1] = loc_base_ptr[local_idx + 1];
   });
@@ -330,7 +330,7 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  * @tparam M Number of Cols
  * @tparam num_subgroups number of subgroups in the workgroup
  * @tparam subgroup_size Size of each subgroup
- * @tparam pad Whether or not to consider local memory as padded
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam loc_ptr pointer type to local memory
  * @tparam global_ptr pointer type to global memory
  *
@@ -339,7 +339,7 @@ __attribute__((always_inline)) inline void local2private_transposed(T_loc_ptr lo
  * @param out pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad pad,
+template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad Pad,
           typename loc_ptr, typename global_ptr>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, loc_ptr loc, global_ptr out,
                                                                    std::size_t offset) {
@@ -347,7 +347,7 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<pad>(2 * M * source_col + 2 * source_row);
+    std::size_t source_index = detail::pad_local<Pad>(2 * M * source_col + 2 * source_row);
     out[offset + 2 * i] = loc[source_index];
     out[offset + 2 * i + 1] = loc[source_index + 1];
   }
@@ -357,8 +357,8 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
- * @tparam stride Inner most dimension of the reinterpreted matrix
- * @tparam pad Whether data in the local memory is padded or not
+ * @tparam Stride Inner most dimension of the reinterpreted matrix
+ * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T_loc_ptr Pointer to Local memory
  * @tparam T_priv_ptr Pointer to private memory
  *
@@ -368,12 +368,12 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @param num_workers Number of threads working for that FFt
  * @param col_num Column number in which the data will be stored
  */
-template <int num_elements_per_wi, int stride, detail::pad pad, typename T_loc_ptr, typename T_priv_ptr>
+template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T_loc_ptr, typename T_priv_ptr>
 __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr loc_base_ptr, T_priv_ptr priv,
                                                                     int thread_id, int num_workers, int col_num) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
-        detail::pad_local<pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
+        detail::pad_local<Pad>(static_cast<std::size_t>(2 * Stride * (i * num_workers + thread_id) + 2 * col_num));
     loc_base_ptr[loc_base_offset] = priv[2 * i];
     loc_base_ptr[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -383,20 +383,20 @@ __attribute__((always_inline)) inline void private2local_transposed(T_loc_ptr lo
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
  *
- * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
  * @param local pointer to local memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
- * Should be >= num_elems_per_wi
+ * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t num_elems_per_wi, detail::pad Pad, typename T>
+template <std::size_t NumElemsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void private2local(const T* priv, T* local, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
-  detail::unrolled_loop<0, num_elems_per_wi, 1>([&](std::size_t i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i);
     local[local_idx] = priv[i];
   });
@@ -406,7 +406,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * Copies data from private memory to local or global memory. Consecutive workitems write
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
- * @tparam num_elems_per_wi Number of elements to copy by each work item
+ * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
@@ -416,7 +416,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * less than the group size)
  * @param destination_offset offset to the destination pointer
  */
-template <int num_elems_per_wi, detail::pad Pad, typename T>
+template <int NumElemsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
                                                             std::size_t workers_in_group,
                                                             std::size_t destination_offset = 0) {
@@ -425,7 +425,7 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
   T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
-  detail::unrolled_loop<0, num_elems_per_wi, 2>([&](int i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElemsPerWI, 2>([&](int i) __attribute__((always_inline)) {
     std::size_t destination_idx =
         detail::pad_local<Pad>(destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group);
     if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store

@@ -58,16 +58,16 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction dir, int N, int stride, typename T>
+template <direction Dir, int N, int Stride, typename T>
 inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
  * Each workitem holds one input and one output complex value.
  *
- * @tparam dir direction of the FFT
+ * @tparam Dir direction of the FFT
  * @tparam N size of the DFT transform
- * @tparam stride stride between workitems working on consecutive values of one
+ * @tparam Stride Stride between workitems working on consecutive values of one
  * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
@@ -76,25 +76,25 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int stride, typename T>
+template <direction Dir, int N, int Stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
-  if constexpr (N == 2 && (stride & (stride - 1)) == 0) {
+  if constexpr (N == 2 && (Stride & (Stride - 1)) == 0) {
     int local_id = static_cast<int>(sg.get_local_linear_id());
-    int idx_out = (local_id / stride) % 2;
+    int idx_out = (local_id / Stride) % 2;
 
     T multi_re = (idx_out & 1) ? T(-1) : T(1);
     T res_real = real * multi_re;
     T res_imag = imag * multi_re;
 
-    res_real += sycl::permute_group_by_xor(sg, real, stride);
-    res_imag += sycl::permute_group_by_xor(sg, imag, stride);
+    res_real += sycl::permute_group_by_xor(sg, real, Stride);
+    res_imag += sycl::permute_group_by_xor(sg, imag, Stride);
 
     real = res_real;
     imag = res_imag;
   } else {
     int local_id = static_cast<int>(sg.get_local_linear_id());
-    int idx_out = (local_id / stride) % N;
-    int fft_start = local_id - idx_out * stride;
+    int idx_out = (local_id / Stride) % N;
+    int fft_start = local_id - idx_out * Stride;
 
     T res_real = 0;
     T res_imag = 0;
@@ -102,11 +102,11 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
       const T multi_im = [&]() __attribute__((always_inline)) {
-        if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
+        if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
         return -twiddle<T>::im[N][idx_in * idx_out % N];
       }
       ();
-      int source_wi_id = fft_start + idx_in * stride;
+      int source_wi_id = fft_start + idx_in * Stride;
 
       T cur_real = sycl::select_from_group(sg, real, source_wi_id);
       T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
@@ -127,7 +127,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  *
  * @tparam N inner - contiguous size on input, outer size on output
  * @tparam M outer size on input, inner - contiguous size on output
- * @tparam stride stride between consecutive values of one rectangle
+ * @tparam Stride Stride between consecutive values of one rectangle
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
@@ -135,14 +135,14 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * one workitem
  * @param sg subgroup
  */
-template <int N, int M, int stride, typename T>
+template <int N, int M, int Stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = static_cast<int>(sg.get_local_linear_id());
-  int index_in_outer_dft = (local_id / stride) % (N * M);
+  int index_in_outer_dft = (local_id / Stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
   int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
-  int fft_start = local_id - index_in_outer_dft * stride;
-  int source_wi_id = fft_start + stride * (k * M + n);
+  int fft_start = local_id - index_in_outer_dft * Stride;
+  int source_wi_id = fft_start + Stride * (k * M + n);
   real = sycl::select_from_group(sg, real, static_cast<std::size_t>(source_wi_id));
   imag = sycl::select_from_group(sg, imag, static_cast<std::size_t>(source_wi_id));
 }
@@ -151,10 +151,10 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * Calculates DFT using Cooley-Tukey FFT algorithm. Size of the problem is N*M.
  * Each workitem holds one input and one output complex value.
  *
- * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N the first factor of the problem size
  * @tparam M the second factor of the problem size
- * @tparam stride stride between workitems working on consecutive values of one
+ * @tparam Stride Stride between workitems working on consecutive values of one
  * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
@@ -163,21 +163,21 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int M, int stride, typename T>
+template <direction Dir, int N, int M, int Stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = static_cast<int>(sg.get_local_linear_id());
-  int index_in_outer_dft = (local_id / stride) % (N * M);
+  int index_in_outer_dft = (local_id / Stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
   int n = index_in_outer_dft / N;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<dir, N, M * stride>(real, imag, sg);
+  cross_sg_dft<Dir, N, M * Stride>(real, imag, sg);
   // transpose
-  cross_sg_transpose<N, M, stride>(real, imag, sg);
+  cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
   const T multi_re = twiddle<T>::re[N * M][k * n];
   const T multi_im = [&]() __attribute__((always_inline)) {
-    if constexpr (dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
+    if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
     return -twiddle<T>::im[N * M][k * n];
   }
   ();
@@ -185,16 +185,16 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;
   // factor M
-  cross_sg_dft<dir, M, N * stride>(real, imag, sg);
+  cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
 }
 
 /**
  * Calculates DFT using FFT algorithm. Each workitem holds one input and one
  * output complex value.
  *
- * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam N Size of the DFT
- * @tparam stride stride between workitems working on consecutive values of one
+ * @tparam Stride Stride between workitems working on consecutive values of one
  * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
@@ -203,13 +203,13 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * one workitem
  * @param sg subgroup
  */
-template <direction dir, int N, int stride, typename T>
+template <direction Dir, int N, int Stride, typename T>
 __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
-    cross_sg_cooley_tukey_dft<dir, N / F0, F0, stride>(real, imag, sg);
+    cross_sg_cooley_tukey_dft<Dir, N / F0, F0, Stride>(real, imag, sg);
   } else {
-    cross_sg_naive_dft<dir, N, stride>(real, imag, sg);
+    cross_sg_naive_dft<Dir, N, Stride>(real, imag, sg);
   }
 }
 
@@ -235,7 +235,7 @@ constexpr int factorize_sg(int N, int sg_size) {
  * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The
  * end result needs to be transposed when storing it to the local memory!
  *
- * @tparam dir direction of the FFT
+ * @tparam Dir direction of the FFT
  * @tparam M number of elements per workitem
  * @tparam N number of workitems in a subgroup that work on one FFT
  * @tparam T type of the scalar used for computations
@@ -244,7 +244,7 @@ constexpr int factorize_sg(int N, int sg_size) {
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  */
-template <direction dir, int M, int N, typename T>
+template <direction Dir, int M, int N, typename T>
 __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
@@ -252,17 +252,17 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    detail::cross_sg_dft<dir, N, 1>(real, imag, sg);
+    detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
 
     T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
     T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
-    if constexpr (dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
+    if constexpr (Dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
     T tmp_real = real * twiddle_real - imag * twiddle_imag;
     imag = real * twiddle_imag + imag * twiddle_real;
     real = tmp_real;
   });
 
-  wi_dft<dir, M, 1, 1>(inout, inout);
+  wi_dft<Dir, M, 1, 1>(inout, inout);
 }
 
 /**
