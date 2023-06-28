@@ -100,19 +100,15 @@ template <direction dir, detail::transpose transpose_in, int Subgroup_size, type
 sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
   constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
   std::size_t n_transforms = desc.params.number_of_transforms;
-  std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
-  std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
   Scalar* twiddles = desc.twiddles_forward;
   std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, Subgroup_size, desc.n_compute_units);
   std::size_t local_elements = num_scalars_in_local_mem(desc);
-  std::size_t twiddle_elements = 2 * (M + N);
   return desc.queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(dependencies);
     cgh.use_kernel_bundle(desc.exec_bundle);
     auto in_acc_or_usm = detail::get_access<const Scalar>(in,cgh);
     auto out_acc_or_usm = detail::get_access<Scalar>(out,cgh);
     sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-    sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
     cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, dir, mem, transpose_in, Subgroup_size>>(
         sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}}, [=
     ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(Subgroup_size)]] {
@@ -120,7 +116,7 @@ sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(com
       switch (fft_size) {
     #define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                    \
       case N:                                                                                                 \
-        detail::workgroup_impl<dir, N, Subgroup_size>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms, it, twiddles, scale_factor); \
+        detail::workgroup_impl<dir, N, Subgroup_size>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * fft_size)], n_transforms, it, twiddles, scale_factor); \
         break;
         SYCL_FFT_WG_DISPATCHER_IMPL(256)
         SYCL_FFT_WG_DISPATCHER_IMPL(512)
@@ -143,7 +139,11 @@ void committed_descriptor<Scalar, Domain>::workgroup_impl::set_spec_constants(co
 
 template <typename Scalar, domain Domain>
 std::size_t committed_descriptor<Scalar, Domain>::workgroup_impl::num_scalars_in_local_mem(committed_descriptor& desc){
-  return detail::pad_local(2 * desc.params.lengths[0]);
+  std::size_t fft_size = desc.params.lengths[0];
+  std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
+  std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
+  // working memory + twiddles for subgroup impl for the two sizes
+  return detail::pad_local(2 * fft_size) + 2 * (M + N);
 }
 
 template <typename Scalar, domain Domain>

@@ -38,9 +38,6 @@ namespace detail {
 
 // kernel names
 template <typename Scalar, domain Domain, direction dir, detail::memory, detail::transpose transpose_in, int sg_size>
-class kernel;
-
-template <typename Scalar, domain Domain, direction dir, detail::memory, detail::transpose transpose_in, int sg_size>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction dir, detail::memory, detail::transpose transpose_in, int sg_size>
 class subgroup_kernel;
@@ -333,20 +330,12 @@ default: \
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    size_t factor1 = detail::factorize(params.lengths[0]);
-    size_t factor2 = params.lengths[0] / factor1;
-    // the local memory required for one fft and sub-fft twiddles
-    std::size_t minimum_local_mem_required =
-        (num_scalars_in_local_mem() + factor1 + factor2) * sizeof(Scalar);
-    if (!detail::fits_in_wi<Scalar>(factor2)) {
-      if (minimum_local_mem_required > local_memory_size) {
-        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                                 " Required: " + std::to_string(minimum_local_mem_required));
-      }
+    std::size_t minimum_local_mem_required =  num_scalars_in_local_mem() * sizeof(Scalar);
+    if (minimum_local_mem_required > local_memory_size) {
+      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
-    //twiddles_forward = detail::calculate_twiddles<Scalar>(queue, params.lengths[0], used_sg_size);
     twiddles_forward = calculate_twiddles();
-    //detail::populate_wg_twiddles<Scalar>(params.lengths[0], used_sg_size, twiddles_forward + 2 * (factor1 + factor2), queue);
   }
 
  public:
