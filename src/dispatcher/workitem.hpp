@@ -129,7 +129,6 @@ sycl::event committed_descriptor<Scalar, Domain>::workitem_impl::run_kernel(comm
     auto in_acc_or_usm = detail::get_access<const Scalar>(in,cgh);
     auto out_acc_or_usm = detail::get_access<Scalar>(out,cgh);
     sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-    //sycl::stream s(1024,1024,cgh);
     cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
         sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
     ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
