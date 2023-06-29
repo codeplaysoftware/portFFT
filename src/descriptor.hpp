@@ -210,6 +210,7 @@ class committed_descriptor {
    */
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
+    factors = {};
     std::size_t fft_size = params.lengths[0];
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
