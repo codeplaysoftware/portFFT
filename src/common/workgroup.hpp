@@ -120,7 +120,6 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
           static_cast<std::size_t>(fact_sg_M), static_cast<std::size_t>(2 * M * sub_batch));
     }
   }
-  sycl::group_barrier(it.get_group());
 }
 
 }  // namespace sycl_fft
