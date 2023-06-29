@@ -191,8 +191,8 @@ Scalar* committed_descriptor<Scalar, Domain>::workgroup_impl::calculate_twiddles
     }
   }
   desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
-  sycl::free(temp_host, desc.queue);
   desc.queue.wait();
+  sycl::free(temp_host, desc.queue);
   return res;
 }
 
