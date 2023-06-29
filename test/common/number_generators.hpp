@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
 #define SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
 
+#include <complex>
 #include <random>
 #include <type_traits>
 
