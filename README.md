@@ -7,8 +7,12 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ## Pre-requisites
 
-* A SYCL implementation such as [DPC++].
-* CMake
+* [DPC++] oneAPI release 2023.1.0
+  * Nightly releases should work but are not tested
+  * Other SYCL implementations are not tested
+* [Level Zero] drivers
+  * OpenCL drivers are not supported
+* CMake 3.16+
 
 ## Getting Started
 
@@ -72,6 +76,7 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 SYCL-FFT is still in early development. The supported configurations are:
 
+* FFT sizes that are a power of 2 only
 * complex to complex transforms
 * single and double precisions
 * forward and backward directions
@@ -82,12 +87,18 @@ SYCL-FFT is still in early development. The supported configurations are:
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
-For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes up to this maximum are supported.
+For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes that are a power of 2 up to this maximum are supported.
 FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `SYCLFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
 
 Any batch size is supported as long as the input and output data fits in global memory.
 
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `SYCLFFT_SUBGROUP_SIZES`.
+
+## Known issues
+
+* Specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
+
+We are investigating other performance issues that affect all the backends.
 
 ## Troubleshooting
 
@@ -107,6 +118,7 @@ welcome! If you have an idea for a new feature or a fix, please get in
 contact.
 
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
+[Level Zero]: https://dgpu-docs.intel.com/technologies/level-zero.html
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
