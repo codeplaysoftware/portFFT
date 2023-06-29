@@ -120,7 +120,7 @@ default: \
      * Sets specialization constant values \
      * \
      * @param desc committed descriptor \
-     * @param in_bundle buntdle to set specilaization constant values on \
+     * @param in_bundle bundle to set specialization constant values on \
      */ \
     static void set_spec_constants(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle); \
     \
@@ -235,7 +235,7 @@ default: \
   }
 
   /**
-   * Sets the implementation depentant specialization constant values.
+   * Sets the implementation dependant specialization constant values.
    * 
    * @param in_bundle kernel bundle to set the specialization constants on
    */
