@@ -24,10 +24,10 @@
 #include "common/transfers.hpp"
 #include "common/workitem.hpp"
 #include "descriptor.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
-#include "dispatcher/workitem.hpp"
 #include "dispatcher/subgroup.hpp"
 #include "dispatcher/workgroup.hpp"
+#include "dispatcher/workitem.hpp"
+#include "enums.hpp"
+#include "traits.hpp"
 
 #endif

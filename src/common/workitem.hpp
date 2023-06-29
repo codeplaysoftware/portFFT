@@ -74,10 +74,8 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
       }();
 
       // multiply in and multi
-      tmp[2 * idx_out + 0] +=
-          in[2 * idx_in * StrideIn] * re_multiplier - in[2 * idx_in * StrideIn + 1] * im_multiplier;
-      tmp[2 * idx_out + 1] +=
-          in[2 * idx_in * StrideIn] * im_multiplier + in[2 * idx_in * StrideIn + 1] * re_multiplier;
+      tmp[2 * idx_out + 0] += in[2 * idx_in * StrideIn] * re_multiplier - in[2 * idx_in * StrideIn + 1] * im_multiplier;
+      tmp[2 * idx_out + 1] += in[2 * idx_in * StrideIn] * im_multiplier + in[2 * idx_in * StrideIn + 1] * re_multiplier;
     });
   });
   unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
