@@ -181,55 +181,25 @@ default: \
    * @tparam SubgroupSize size of the subgroup
    * @param ids vector of kernel ids
    */
-  template<template<typename, domain, direction, detail::memory, detail::transpose, int> class kernel, int SubgroupSize>
+  template<template<typename, domain, direction, detail::memory, detail::transpose, int> class Kernel, int SubgroupSize>
   void get_ids(std::vector<sycl::kernel_id>& ids){
       // if not used, some kernels might be optimized away in AOT compilation and not available here
-      try {
-        ids.push_back(sycl::get_kernel_id<kernel<Scalar, Domain, direction::FORWARD, detail::memory::BUFFER, 
-                                                                detail::transpose::NOT_TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
+      #define SYCL_FFT_GET_ID(DIRECTION,MEMORY,TRANSPOSE) \
+      try { \
+        ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
+      } catch (...) { \
       }
-      try {
-        ids.push_back(sycl::get_kernel_id<kernel<Scalar, Domain, direction::BACKWARD, detail::memory::BUFFER, 
-                                                                detail::transpose::NOT_TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                kernel<Scalar, Domain, direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, SubgroupSize>>());
-      } catch (...) {
-      }
+
+      SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+      SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+
+      #undef SYCL_FFT_GET_ID
   }
 
   /**
