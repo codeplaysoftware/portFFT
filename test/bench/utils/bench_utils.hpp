@@ -42,13 +42,13 @@ inline T_index get_fwd_per_transform(std::vector<T_index> lengths) {
   return std::accumulate(lengths.begin(), lengths.end(), T_index(1), std::multiplies<T_index>());
 }
 
-template <typename forward_type, typename T_index>
+template <typename ForwardType, typename T_index>
 inline T_index get_bwd_per_transform(std::vector<T_index> lengths) {
-  if constexpr (std::is_same_v<forward_type, float> || std::is_same_v<forward_type, double>) {
+  if constexpr (std::is_same_v<ForwardType, float> || std::is_same_v<ForwardType, double>) {
     return std::accumulate(lengths.begin(), lengths.end() - 1, lengths.back() / 2 + 1, std::multiplies<T_index>());
   } else {
-    static_assert(std::is_same_v<forward_type, std::complex<float>> ||
-                  std::is_same_v<forward_type, std::complex<double>>);
+    static_assert(std::is_same_v<ForwardType, std::complex<float>> ||
+                  std::is_same_v<ForwardType, std::complex<double>>);
     return get_fwd_per_transform<T_index>(lengths);
   }
 }
@@ -65,27 +65,27 @@ inline void handle_exception(benchmark::State& state, std::exception& e) {
 /*
  * Compute the reference DFT and compare it with the provided output
  *
- * @tparam forward_type data type for forward domain
- * @tparam backward_type data type for backward domain
+ * @tparam ForwardType data type for forward domain
+ * @tparam BackwardType data type for backward domain
  * @param forward_copy the input that was used
  * @param backward_copy the output that was produced
  * @param length the dimensions of the DFT
  * @param number_of_transforms batch size
  * @param forward_scale scaling applied to the output (backward domain)
  */
-template <typename forward_type, typename backward_type>
-void verify_dft(forward_type* forward_copy, backward_type* backward_copy, std::vector<std::size_t> lengths,
+template <typename ForwardType, typename BackwardType>
+void verify_dft(ForwardType* forward_copy, BackwardType* backward_copy, std::vector<std::size_t> lengths,
                 std::size_t number_of_transforms, double forward_scale) {
   std::size_t fwd_row_elems = lengths.back();
   std::size_t bwd_row_elems = lengths.back();
-  if constexpr (!std::is_same_v<forward_type, backward_type>) {
+  if constexpr (!std::is_same_v<ForwardType, BackwardType>) {
     bwd_row_elems = bwd_row_elems / 2 + 1;
   }
   std::size_t rows = std::accumulate(lengths.begin(), lengths.end() - 1, 1LU, std::multiplies<std::size_t>());
   std::size_t fwd_per_transform = rows * fwd_row_elems;
   std::size_t bwd_per_transform = rows * bwd_row_elems;
 
-  auto reference_buffer = std::make_unique<backward_type[]>(fwd_per_transform);
+  auto reference_buffer = std::make_unique<BackwardType[]>(fwd_per_transform);
   constexpr double comparison_tolerance = 1e-2;
   for (std::size_t t = 0; t < number_of_transforms; ++t) {
     const auto fwd_start = forward_copy + t * fwd_per_transform;

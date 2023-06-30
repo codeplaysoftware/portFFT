@@ -51,8 +51,8 @@ bool exceeds_local_mem_size(sycl::queue& queue, int fft_size) {
   return false;
 }
 
-template <typename type>
-void compare_arrays(std::vector<std::complex<type>> reference_output, std::vector<std::complex<type>> device_output,
+template <typename T>
+void compare_arrays(std::vector<std::complex<T>> reference_output, std::vector<std::complex<T>> device_output,
                     double tol) {
   ASSERT_EQ(reference_output.size(), device_output.size());
   for (size_t i = 0; i < reference_output.size(); i++) {
@@ -61,16 +61,16 @@ void compare_arrays(std::vector<std::complex<type>> reference_output, std::vecto
   }
 }
 
-template <typename type>
-void compare_arrays(std::vector<type> reference_output, std::vector<type> device_output, double tol) {
+template <typename T>
+void compare_arrays(std::vector<T> reference_output, std::vector<T> device_output, double tol) {
   ASSERT_EQ(reference_output.size(), device_output.size());
   for (size_t i = 0; i < reference_output.size(); i++) {
     EXPECT_NEAR(reference_output[i], device_output[i], tol) << "i=" << i;
   }
 }
 
-template <typename deviceSelector>
-std::pair<std::optional<sycl::queue>, std::string> get_queue(deviceSelector selector) {
+template <typename DeviceSelector>
+std::pair<std::optional<sycl::queue>, std::string> get_queue(DeviceSelector selector) {
   try {
     sycl::queue queue(selector);
     return std::make_pair(queue, "");

@@ -27,26 +27,26 @@
 
 using engine = std::ranlux48_base;
 
-template <typename type>
-std::enable_if_t<std::is_floating_point_v<type>> populate_with_random(std::vector<type>& in,
-                                                                      type lowerLimit = type(-1.0),
-                                                                      type higherLimit = type(1.0)) {
+template <typename T>
+std::enable_if_t<std::is_floating_point_v<T>> populate_with_random(std::vector<T>& in,
+                                                                      T lowerLimit = T(-1.0),
+                                                                      T higherLimit = T(1.0)) {
   engine algo(0);
-  std::uniform_real_distribution<type> distribution(lowerLimit, higherLimit);
+  std::uniform_real_distribution<T> distribution(lowerLimit, higherLimit);
 
   for (auto& val : in) {
     val = distribution(algo);
   }
 }
 
-template <typename type>
-void populate_with_random(std::vector<std::complex<type>>& in, type lowerLimit = type(-1.0),
-                          type higherLimit = type(1.0)) {
+template <typename T>
+void populate_with_random(std::vector<std::complex<T>>& in, T lowerLimit = T(-1.0),
+                          T higherLimit = T(1.0)) {
   engine algo(0);
-  std::uniform_real_distribution<type> distribution(lowerLimit, higherLimit);
+  std::uniform_real_distribution<T> distribution(lowerLimit, higherLimit);
 
   for (auto& val : in) {
-    val = std::complex<type>(distribution(algo), distribution(algo));
+    val = std::complex<T>(distribution(algo), distribution(algo));
   }
 }
 

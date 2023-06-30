@@ -37,7 +37,7 @@
  * @param length Vector containing the length in every dimension
  * @param offset memory offset for in and out pointers
  */
-template <sycl_fft::direction dir, typename TypeIn, typename TypeOut>
+template <sycl_fft::direction Dir, typename TypeIn, typename TypeOut>
 void reference_dft(TypeIn* in, TypeOut* out, const std::vector<std::size_t>& length, double scaling_factor = 1.0) {
   long double TWOPI = 2.0l * std::atan(1.0l) * 4.0l;
   std::vector<std::size_t> dims{1, 1, 1};
@@ -54,7 +54,7 @@ void reference_dft(TypeIn* in, TypeOut* out, const std::vector<std::size_t>& len
             for (std::size_t iz = 0; iz < dims[2]; iz++) {
               auto z_factor = static_cast<long double>(iz * oz) / static_cast<long double>(dims[2]);
               auto theta = -1.0 * TWOPI * (x_factor + y_factor + z_factor);
-              if constexpr (dir == sycl_fft::direction::BACKWARD) {
+              if constexpr (Dir == sycl_fft::direction::BACKWARD) {
                 theta = -theta;
               }
               auto element = static_cast<long double>(scaling_factor) *
