@@ -88,10 +88,10 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   std::size_t local_size;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = sg.get_local_linear_id();
-    local_size = static_cast<std::size_t>(SubgroupSize);
+    local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = static_cast<std::size_t>(SubgroupSize * SYCLFFT_SGS_IN_WG);
+    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);

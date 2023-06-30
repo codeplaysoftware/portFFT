@@ -210,7 +210,7 @@ class committed_descriptor {
    */
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
-    factors = {};
+    factors.clear();
     std::size_t fft_size = params.lengths[0];
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
@@ -248,7 +248,8 @@ class committed_descriptor {
    * @param in_bundle kernel bundle to set the specialization constants on
    */
   void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
-      SYCL_FFT_DISPATCH(level, set_spec_constants(*this, in_bundle))}
+    SYCL_FFT_DISPATCH(level, set_spec_constants(*this, in_bundle))
+  }
 
   /**
    * Determine the number of scalars we need to have space for in the local memory.

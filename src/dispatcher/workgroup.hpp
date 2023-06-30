@@ -38,7 +38,7 @@ constexpr static sycl::specialization_id<std::size_t> workgroup_spec_const_fft_s
  * @tparam T type of the scalar used for computations
  * @param n_transforms number of transforms
  * @param subgroup_size size of subgroup used by the compute kernel
- * @param n_compute_units number fo compute units on target device
+ * @param n_compute_units number of compute units on target device
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T>
