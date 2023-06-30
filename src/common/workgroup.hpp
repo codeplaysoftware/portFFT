@@ -82,7 +82,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     sg_dft<Dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
     if (working) {
       private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
-          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
+          priv, loc, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
     }
   }
 
