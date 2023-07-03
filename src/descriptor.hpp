@@ -86,35 +86,26 @@ The computational parts of the implementations are further documented in files w
 /**
  * Struct for dispatching `set_spec_constants()` call.
  */
-template <typename Scalar, domain Domain>
+template <typename Scalar, domain Domain, detail::level lev>
 struct set_spec_constants_struct{
-  template<detail::level lev, typename Dummy>
-  struct inner{
     static void execute(committed_descriptor<Scalar, Domain>& desc,
                                   sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
-  };
 };
 
 /**
  * Struct for dispatching `num_scalars_in_local_mem()` call.
  */
-template <typename Scalar, domain Domain>
+template <typename Scalar, domain Domain, detail::level lev>
 struct num_scalars_in_local_mem_struct{
-  template<detail::level lev, typename Dummy>
-  struct inner{
     static std::size_t execute(committed_descriptor<Scalar, Domain>& desc); 
-  };
 };
 
 /**
  * Struct for dispatching `calculate_twiddles()` call.
  */
-template <typename Scalar, domain Domain>
+template <typename Scalar, domain Domain, detail::level lev>
 struct calculate_twiddles_struct{
-  template<detail::level lev, typename Dummy>
-  struct inner{
     static Scalar* execute(committed_descriptor<Scalar, Domain>& desc); 
-  };
 };
 
 /**
@@ -126,13 +117,10 @@ struct calculate_twiddles_struct{
  * @tparam T_in 
  * @tparam T_out 
  */
-template <typename Scalar, domain Domain, direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+template <typename Scalar, domain Domain, direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out, detail::level lev>
 struct run_kernel_struct{
-  template<detail::level lev, typename Dummy>
-  struct inner{
     static sycl::event execute(committed_descriptor<Scalar, Domain>& desc, const T_in& in, T_out& out, Scalar scale_factor,
                                   const std::vector<sycl::event>& dependencies);
-  };
 };
 
 /**
@@ -159,15 +147,15 @@ class committed_descriptor {
   std::vector<int> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
 
-  template<typename Impl, typename... Args>
+  template<template<typename,auto...> class Impl, typename... TemplateParams, typename... Args>
   auto dispatch(Args&&... args) {
     switch (level) {
       case detail::level::WORKITEM:
-        return Impl::template inner<detail::level::WORKITEM, void>::execute(*this, args...);
+        return Impl<TemplateParams..., detail::level::WORKITEM>::execute(*this, args...);
       case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
+        return Impl<TemplateParams..., detail::level::SUBGROUP>::execute(*this, args...);
       case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
+        return Impl<TemplateParams..., detail::level::WORKGROUP>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }
@@ -250,7 +238,7 @@ class committed_descriptor {
    * @param in_bundle kernel bundle to set the specialization constants on
    */
   void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
-    dispatch<set_spec_constants_struct<Scalar, Domain>>(in_bundle);
+    dispatch<set_spec_constants_struct, Scalar, Domain>(in_bundle);
   }
 
   /**
@@ -259,7 +247,7 @@ class committed_descriptor {
    * @return std::size_t the number of scalars
    */
   std::size_t num_scalars_in_local_mem(){
-    return dispatch<num_scalars_in_local_mem_struct<Scalar, Domain>>();
+    return dispatch<num_scalars_in_local_mem_struct, Scalar, Domain>();
   }
 
   /**
@@ -268,7 +256,7 @@ class committed_descriptor {
    * @return Scalar* USM pointer to the twiddle factors
    */
   Scalar* calculate_twiddles() {
-    return dispatch<calculate_twiddles_struct<Scalar, Domain>>();
+    return dispatch<calculate_twiddles_struct, Scalar, Domain>();
   }
 
   /**
@@ -532,7 +520,7 @@ class committed_descriptor {
   template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
   sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
                          const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Scalar, Domain, Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct, Scalar, Domain, Dir, TransposeIn, SubgroupSize, T_in, T_out>(in, out, scale_factor, dependencies);
   }
 };
 

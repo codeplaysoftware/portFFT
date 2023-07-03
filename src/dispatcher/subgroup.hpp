@@ -188,24 +188,21 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* 
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-void set_spec_constants_struct<Scalar, Domain>::inner<detail::level::SUBGROUP, Dummy>::execute(
+void set_spec_constants_struct<Scalar, Domain, detail::level::SUBGROUP>::execute(
     committed_descriptor<Scalar, Domain>& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
   in_bundle.template set_specialization_constant<detail::factor_wi_spec_const>(desc.factors[0]);
   in_bundle.template set_specialization_constant<detail::factor_sg_spec_const>(desc.factors[1]);
 }
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-std::size_t num_scalars_in_local_mem_struct<Scalar, Domain>::inner<detail::level::SUBGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
+std::size_t num_scalars_in_local_mem_struct<Scalar, Domain, detail::level::SUBGROUP>::execute(committed_descriptor<Scalar, Domain>& desc) {
   int factor_sg = desc.factors[1];
   std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
   return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
 }
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-Scalar* calculate_twiddles_struct<Scalar, Domain>::inner<detail::level::SUBGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
+Scalar* calculate_twiddles_struct<Scalar, Domain, detail::level::SUBGROUP>::execute(committed_descriptor<Scalar, Domain>& desc) {
   int factor_wi = desc.factors[0];
   int factor_sg = desc.factors[1];
   Scalar* res = sycl::malloc_device<Scalar>(desc.params.lengths[0] * 2, desc.queue);
@@ -223,8 +220,7 @@ Scalar* calculate_twiddles_struct<Scalar, Domain>::inner<detail::level::SUBGROUP
 }
 
 template <typename Scalar, domain Domain, direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-template <typename Dummy>
-sycl::event committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::SUBGROUP, Dummy>::execute(
+sycl::event committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out, detail::level::SUBGROUP>::execute(
     committed_descriptor<Scalar, Domain>& desc, const T_in& in, T_out& out, Scalar scale_factor,
     const std::vector<sycl::event>& dependencies) {
   constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
