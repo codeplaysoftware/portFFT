@@ -98,8 +98,9 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
 
 template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(
-    committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+template <typename Dummy>
+sycl::event committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::WORKGROUP, Dummy>::execute(
+    committed_descriptor<Scalar, Domain>& desc, const T_in& in, T_out& out, Scalar scale_factor,
     const std::vector<sycl::event>& dependencies) {
   constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
   std::size_t n_transforms = desc.params.number_of_transforms;
@@ -137,13 +138,15 @@ sycl::event committed_descriptor<Scalar, Domain>::workgroup_impl::run_kernel(
 }
 
 template <typename Scalar, domain Domain>
-void committed_descriptor<Scalar, Domain>::workgroup_impl::set_spec_constants(
-    committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+template <typename Dummy>
+void committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy>::execute(
+    committed_descriptor<Scalar, Domain>& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
   in_bundle.template set_specialization_constant<detail::workgroup_spec_const_fft_size>(desc.params.lengths[0]);
 }
 
 template <typename Scalar, domain Domain>
-std::size_t committed_descriptor<Scalar, Domain>::workgroup_impl::num_scalars_in_local_mem(committed_descriptor& desc) {
+template <typename Dummy>
+std::size_t committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
   std::size_t fft_size = desc.params.lengths[0];
   std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
   std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
@@ -152,7 +155,8 @@ std::size_t committed_descriptor<Scalar, Domain>::workgroup_impl::num_scalars_in
 }
 
 template <typename Scalar, domain Domain>
-Scalar* committed_descriptor<Scalar, Domain>::workgroup_impl::calculate_twiddles(committed_descriptor& desc) {
+template <typename Dummy>
+Scalar* committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
   int factor_wi_N = desc.factors[0];
   int factor_sg_N = desc.factors[1];
   int factor_wi_M = desc.factors[2];

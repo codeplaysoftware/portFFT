@@ -188,9 +188,45 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* 
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
+template <typename Dummy>
+void committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy>::execute(
+    committed_descriptor<Scalar, Domain>& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+  in_bundle.template set_specialization_constant<detail::factor_wi_spec_const>(desc.factors[0]);
+  in_bundle.template set_specialization_constant<detail::factor_sg_spec_const>(desc.factors[1]);
+}
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+std::size_t committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
+  int factor_sg = desc.factors[1];
+  std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
+  return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
+}
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+Scalar* committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy>::execute(committed_descriptor<Scalar, Domain>& desc) {
+  int factor_wi = desc.factors[0];
+  int factor_sg = desc.factors[1];
+  Scalar* res = sycl::malloc_device<Scalar>(desc.params.lengths[0] * 2, desc.queue);
+  sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
+  desc.queue.submit([&](sycl::handler& cgh) {
+    cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
+      int n = static_cast<int>(it.get_id(0));
+      int k = static_cast<int>(it.get_id(1));
+      sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
+    });
+  });
+  desc.queue.wait();  // waiting once here can be better than depending on the event
+                      // for all future calls to compute
+  return res;
+}
+
+template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-sycl::event committed_descriptor<Scalar, Domain>::subgroup_impl::run_kernel(
-    committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+template <typename Dummy>
+sycl::event committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::SUBGROUP, Dummy>::execute(
+    committed_descriptor<Scalar, Domain>& desc, const T_in& in, T_out& out, Scalar scale_factor,
     const std::vector<sycl::event>& dependencies) {
   constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
   std::size_t fft_size = desc.params.lengths[0];
@@ -232,38 +268,6 @@ sycl::event committed_descriptor<Scalar, Domain>::subgroup_impl::run_kernel(
           }
         });
   });
-}
-
-template <typename Scalar, domain Domain>
-void committed_descriptor<Scalar, Domain>::subgroup_impl::set_spec_constants(
-    committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
-  in_bundle.template set_specialization_constant<detail::factor_wi_spec_const>(desc.factors[0]);
-  in_bundle.template set_specialization_constant<detail::factor_sg_spec_const>(desc.factors[1]);
-}
-
-template <typename Scalar, domain Domain>
-std::size_t committed_descriptor<Scalar, Domain>::subgroup_impl::num_scalars_in_local_mem(committed_descriptor& desc) {
-  int factor_sg = desc.factors[1];
-  std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
-  return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
-}
-
-template <typename Scalar, domain Domain>
-Scalar* committed_descriptor<Scalar, Domain>::subgroup_impl::calculate_twiddles(committed_descriptor& desc) {
-  int factor_wi = desc.factors[0];
-  int factor_sg = desc.factors[1];
-  Scalar* res = sycl::malloc_device<Scalar>(desc.params.lengths[0] * 2, desc.queue);
-  sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
-  desc.queue.submit([&](sycl::handler& cgh) {
-    cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
-      int n = static_cast<int>(it.get_id(0));
-      int k = static_cast<int>(it.get_id(1));
-      sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
-    });
-  });
-  desc.queue.wait();  // waiting once here can be better than depending on the event
-                      // for all future calls to compute
-  return res;
 }
 
 }  // namespace sycl_fft
