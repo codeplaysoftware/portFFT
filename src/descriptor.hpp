@@ -49,9 +49,11 @@ class workgroup_kernel;
 
 }  // namespace detail
 
-// forward declaration
+// forward declarations
 template <typename Scalar, domain Domain>
 struct descriptor;
+template <typename Scalar, domain Domain>
+class committed_descriptor;
 
 /*
 Compute functions in the `committed_descriptor` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
@@ -80,6 +82,58 @@ accesses. `workitem_impl` loads one problem per workitem, `subgroup_impl` loads 
 The computational parts of the implementations are further documented in files with their implementations
 `workitem.hpp`, `subgroup.hpp` and `workgroup.hpp`.
 */
+
+/**
+ * Struct for dispatching `set_spec_constants()` call.
+ */
+template <typename Scalar, domain Domain>
+struct set_spec_constants_struct{
+  template<detail::level lev, typename Dummy>
+  struct inner{
+    static void execute(committed_descriptor<Scalar, Domain>& desc,
+                                  sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
+  };
+};
+
+/**
+ * Struct for dispatching `num_scalars_in_local_mem()` call.
+ */
+template <typename Scalar, domain Domain>
+struct num_scalars_in_local_mem_struct{
+  template<detail::level lev, typename Dummy>
+  struct inner{
+    static std::size_t execute(committed_descriptor<Scalar, Domain>& desc); 
+  };
+};
+
+/**
+ * Struct for dispatching `calculate_twiddles()` call.
+ */
+template <typename Scalar, domain Domain>
+struct calculate_twiddles_struct{
+  template<detail::level lev, typename Dummy>
+  struct inner{
+    static Scalar* execute(committed_descriptor<Scalar, Domain>& desc); 
+  };
+};
+
+/**
+ * Struct for dispatching `run_kernel()` call.
+ * 
+ * @tparam Dir 
+ * @tparam TransposeIn 
+ * @tparam SubgroupSize 
+ * @tparam T_in 
+ * @tparam T_out 
+ */
+template <typename Scalar, domain Domain, direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+struct run_kernel_struct{
+  template<detail::level lev, typename Dummy>
+  struct inner{
+    static sycl::event execute(committed_descriptor<Scalar, Domain>& desc, const T_in& in, T_out& out, Scalar scale_factor,
+                                  const std::vector<sycl::event>& dependencies);
+  };
+};
 
 /**
  * A committed descriptor that contains everything that is needed to run FFT.
@@ -189,17 +243,6 @@ class committed_descriptor {
     // TODO global
     throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported!");
   }
-
-  /**
-   * Struct for dispatching `set_spec_constants()` call.
-   */
-  struct set_spec_constants_struct{
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static void execute(committed_descriptor& desc,
-                                    sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
-    };
-  };
   
   /**
    * Sets the implementation dependant specialization constant values.
@@ -207,18 +250,8 @@ class committed_descriptor {
    * @param in_bundle kernel bundle to set the specialization constants on
    */
   void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
-    dispatch<set_spec_constants_struct>(in_bundle);
+    dispatch<set_spec_constants_struct<Scalar, Domain>>(in_bundle);
   }
-
-  /**
-   * Struct for dispatching `num_scalars_in_local_mem()` call.
-   */
-  struct num_scalars_in_local_mem_struct{
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static std::size_t execute(committed_descriptor& desc); 
-    };
-  };
 
   /**
    * Determine the number of scalars we need to have space for in the local memory.
@@ -226,18 +259,8 @@ class committed_descriptor {
    * @return std::size_t the number of scalars
    */
   std::size_t num_scalars_in_local_mem(){
-    return dispatch<num_scalars_in_local_mem_struct>();
+    return dispatch<num_scalars_in_local_mem_struct<Scalar, Domain>>();
   }
-
-  /**
-   * Struct for dispatching `calculate_twiddles()` call.
-   */
-  struct calculate_twiddles_struct{
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static Scalar* execute(committed_descriptor& desc); 
-    };
-  };
 
   /**
    * Calculates twiddle factors for the implementation in use.
@@ -245,7 +268,7 @@ class committed_descriptor {
    * @return Scalar* USM pointer to the twiddle factors
    */
   Scalar* calculate_twiddles() {
-    return dispatch<calculate_twiddles_struct>();
+    return dispatch<calculate_twiddles_struct<Scalar, Domain>>();
   }
 
   /**
@@ -493,24 +516,6 @@ class committed_descriptor {
   }
 
   /**
-   * Struct for dispatching `run_kernel()` call.
-   * 
-   * @tparam Dir 
-   * @tparam TransposeIn 
-   * @tparam SubgroupSize 
-   * @tparam T_in 
-   * @tparam T_out 
-   */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-  struct run_kernel_struct{
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-                                    const std::vector<sycl::event>& dependencies);
-    };
-  };
-
-  /**
    * Common interface to run the kernel called by compute_forward and compute_backward
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
@@ -527,7 +532,7 @@ class committed_descriptor {
   template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
   sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
                          const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct<Scalar, Domain, Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
   }
 };
 
