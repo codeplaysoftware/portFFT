@@ -143,7 +143,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   if constexpr (transpose_in == detail::transpose::TRANSPOSED) {
     id_of_fft_in_kernel = it.get_local_id(0) * it.get_local_range(0);
     n_ffts_in_kernel = it.get_group_range(0) * it.get_local_range(0);
-    rounded_up_n_ffts = -it.get_local_range(0);
+    rounded_up_n_ffts = rounded_up_n_ffts - it.get_local_range(0);
   }
 
   global2local<pad::DONT_PAD, level::WORKGROUP, Subgroup_size>(it, twiddles, loc_twiddles, N_reals_per_wi * factor_sg);
