@@ -353,6 +353,22 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
   }
 }
 
+/**
+ * Loads data from global memory where consecutive items of a problem are separated by stride.
+ * Loads workgroup size equivalent number of consecutive batches from global memory.
+ * 
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ * @tparam glob_ptr Global Pointer
+ * @tparam loc_ptr Local Pointer
+ * @param it Associated iterator
+ * @param global_ptr Pointer to global memory
+ * @param local_ptr Pointer to local memory
+ * @param offset Offset to the global memory
+ * @param num_complex Number of complex values to load per batch
+ * @param stride Stride between each element
+ */
 template <detail::pad pad, detail::level Level, typename T, typename glob_ptr, typename loc_ptr>
 __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, glob_ptr global_ptr,
                                                                    loc_ptr local_ptr, std::size_t offset,
@@ -372,20 +388,6 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
     std::size_t global_index = base_global_offset + 2 * i * stride;
     local_ptr[local_index] = global_ptr[global_index];
     local_ptr[local_index + 1] = global_ptr[global_index + 1];
-  }
-}
-
-template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad Pad,
-          typename loc_ptr, typename global_ptr>
-__attribute__((always_inline)) inline void localtransposed_2globalStrided(sycl::nd_item<1> it, loc_ptr loc,
-                                                                          global_ptr out, std::size_t offset) {
-  constexpr std::size_t num_threads = num_subgroups * subgroup_size;
-  for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
-    std::size_t source_row = i / N;
-    std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<Pad>(2 * M * source_col + 2 * source_row);
-    out[offset + 2 * i * N * M] = loc[source_index];
-    out[offset + 2 * i + N * M] = loc[source_index + 1];
   }
 }
 
