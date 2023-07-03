@@ -116,60 +116,72 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
 
 template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-sycl::event committed_descriptor<Scalar, Domain>::workitem_impl::run_kernel(
-    committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-    const std::vector<sycl::event>& dependencies) {
-  constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
-  std::size_t n_transforms = desc.params.number_of_transforms;
-  std::size_t global_size = detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
-  std::size_t local_elements = num_scalars_in_local_mem(desc);
-  return desc.queue.submit([&](sycl::handler& cgh) {
-    cgh.depends_on(dependencies);
-    cgh.use_kernel_bundle(desc.exec_bundle);
-    auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
-    auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-    sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-    cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
-        sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
-    ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-          std::size_t fft_size = kh.get_specialization_constant<detail::workitem_spec_const_fft_size>();
-          switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                         \
-  case N:                                                                                                      \
-    if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                             \
-      detail::workitem_impl<Dir, TransposeIn, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], \
-                                                               n_transforms, it, scale_factor);                \
-    }                                                                                                          \
-    break;
-            SYCL_FFT_WI_DISPATCHER_IMPL(1)
-            SYCL_FFT_WI_DISPATCHER_IMPL(2)
-            SYCL_FFT_WI_DISPATCHER_IMPL(4)
-            SYCL_FFT_WI_DISPATCHER_IMPL(8)
-            SYCL_FFT_WI_DISPATCHER_IMPL(16)
-            SYCL_FFT_WI_DISPATCHER_IMPL(32)
-        // We compile a limited set of configurations to limit the compilation time
-#undef SYCL_FFT_WI_DISPATCHER_IMPL
-          }
-        });
-  });
-}
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::WORKITEM, Dummy>{
+  static sycl::event execute(
+      committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+      const std::vector<sycl::event>& dependencies) {
+    constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
+    std::size_t n_transforms = desc.params.number_of_transforms;
+    std::size_t global_size = detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
+    std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(desc);
+    return desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(dependencies);
+      cgh.use_kernel_bundle(desc.exec_bundle);
+      auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
+      auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
+      sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+            std::size_t fft_size = kh.get_specialization_constant<detail::workitem_spec_const_fft_size>();
+            switch (fft_size) {
+  #define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                         \
+    case N:                                                                                                      \
+      if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                             \
+        detail::workitem_impl<Dir, TransposeIn, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], \
+                                                                n_transforms, it, scale_factor);                \
+      }                                                                                                          \
+      break;
+              SYCL_FFT_WI_DISPATCHER_IMPL(1)
+              SYCL_FFT_WI_DISPATCHER_IMPL(2)
+              SYCL_FFT_WI_DISPATCHER_IMPL(4)
+              SYCL_FFT_WI_DISPATCHER_IMPL(8)
+              SYCL_FFT_WI_DISPATCHER_IMPL(16)
+              SYCL_FFT_WI_DISPATCHER_IMPL(32)
+          // We compile a limited set of configurations to limit the compilation time
+  #undef SYCL_FFT_WI_DISPATCHER_IMPL
+            }
+          });
+    });
+  }
+};
 
 template <typename Scalar, domain Domain>
-void committed_descriptor<Scalar, Domain>::workitem_impl::set_spec_constants(
-    committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
-  in_bundle.template set_specialization_constant<detail::workitem_spec_const_fft_size>(desc.params.lengths[0]);
-}
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy>{
+  static void execute(
+      committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+    in_bundle.template set_specialization_constant<detail::workitem_spec_const_fft_size>(desc.params.lengths[0]);
+  }
+};
 
 template <typename Scalar, domain Domain>
-std::size_t committed_descriptor<Scalar, Domain>::workitem_impl::num_scalars_in_local_mem(committed_descriptor& desc) {
-  return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
-         SYCLFFT_SGS_IN_WG;
-}
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, Dummy>{
+  static std::size_t execute(committed_descriptor& desc) {
+    return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
+          SYCLFFT_SGS_IN_WG;
+  }
+};
 
 template <typename Scalar, domain Domain>
-Scalar* committed_descriptor<Scalar, Domain>::workitem_impl::calculate_twiddles(committed_descriptor& /*desc*/) {
-  return nullptr;
-}
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy>{
+  static Scalar* execute(committed_descriptor& /*desc*/) {
+    return nullptr;
+  }
+};
 
 }  // namespace sycl_fft
 
