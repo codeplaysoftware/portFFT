@@ -24,6 +24,7 @@
 #include "common/subgroup.hpp"
 #include "common/workitem.hpp"
 #include "enums.hpp"
+#include "general/dispatcher.hpp"
 #include <complex>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -37,13 +38,25 @@ using namespace sycl_fft;
 #define CHECK_QUEUE(queue) \
   if (!queue.first) GTEST_SKIP() << queue.second;
 
-template <typename T>
+template <typename T, bool transpose_in>
 bool exceeds_local_mem_size(sycl::queue& queue, int fft_size) {
   std::size_t local_mem_available = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+  if constexpr (transpose_in == true) {
+    std::size_t local_memory_required =
+        detail::num_scalars_in_local_mem<T>(
+            static_cast<std::size_t>(fft_size * SYCLFFT_SUBGROUP_SIZES * SYCLFFT_SGS_IN_WG), SYCLFFT_SUBGROUP_SIZES) *
+        sizeof(T);
+    if (local_memory_required > local_mem_available) {
+      return true;
+    } else
+      return false;
+  }
   if (!detail::fits_in_wi<T>(fft_size / detail::factorize_sg(fft_size, (SYCLFFT_SUBGROUP_SIZES)))) {
     int N = detail::factorize(fft_size);
     int M = fft_size / N;
-    std::size_t local_mem_required = 2 * sizeof(T) * static_cast<std::size_t>(fft_size + M + N);
+    std::size_t local_mem_required =
+        sizeof(T) * (2 * sizeof(T) * static_cast<std::size_t>(M + N) +
+                     detail::num_scalars_in_local_mem<T>(static_cast<std::size_t>(fft_size), SYCLFFT_SUBGROUP_SIZES));
     if (local_mem_required > local_mem_available) {
       return true;
     }

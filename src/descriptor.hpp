@@ -105,6 +105,7 @@ class committed_descriptor {
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   int used_sg_size;
   Scalar* twiddles_forward;
+  std::size_t local_memory_size;
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants for the first supported subgroup size.
@@ -209,7 +210,7 @@ class committed_descriptor {
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
     size_t factor1 = detail::factorize(params.lengths[0]);
     size_t factor2 = params.lengths[0] / factor1;
     // the local memory required for one fft and sub-fft twiddles
@@ -429,6 +430,14 @@ class committed_descriptor {
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
     const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
+    if constexpr (transpose_in == detail::transpose::TRANSPOSED) {
+      local_elements =
+          detail::num_scalars_in_local_mem<Scalar>(fft_size * SYCLFFT_SGS_IN_WG * Subgroup_size, Subgroup_size);
+      if (local_elements * sizeof(Scalar) > local_memory_size) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 " Required: " + std::to_string(local_elements * sizeof(Scalar)));
+      }
+    }
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(exec_bundle);
@@ -468,6 +477,14 @@ class committed_descriptor {
     std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
     const Scalar* twiddles_ptr = twiddles_forward;
     std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
+    if constexpr (transpose_in == detail::transpose::TRANSPOSED) {
+      local_elements =
+          detail::num_scalars_in_local_mem<Scalar>(fft_size * SYCLFFT_SGS_IN_WG * Subgroup_size, Subgroup_size);
+      if (local_elements * sizeof(Scalar) > local_memory_size) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 " Required: " + std::to_string(local_elements * sizeof(Scalar)));
+      }
+    }
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       sycl::accessor in_acc{in_scalar, cgh, sycl::read_only};
