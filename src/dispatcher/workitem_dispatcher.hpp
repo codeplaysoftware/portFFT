@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DISPATCHER_WORKITEM_HPP
-#define SYCL_FFT_DISPATCHER_WORKITEM_HPP
+#ifndef SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
+#define SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>

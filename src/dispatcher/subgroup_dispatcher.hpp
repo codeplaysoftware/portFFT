@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DISPATCHER_SUBGROUP_HPP
-#define SYCL_FFT_DISPATCHER_SUBGROUP_HPP
+#ifndef SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
+#define SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
