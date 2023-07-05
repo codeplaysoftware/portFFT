@@ -38,6 +38,7 @@ constexpr static sycl::specialization_id<int> factor_sg_spec_const{};
  *
  * @tparam T type of the scalar used for computations
  * @param n_transforms number of transforms
+ * @param factor_sg cross-subgroup factor of the fft size
  * @param subgroup_size size of subgroup used by the compute kernel
  * @param n_compute_units number of compute units on target device
  * @return Number of elements of size T that need to fit into local memory

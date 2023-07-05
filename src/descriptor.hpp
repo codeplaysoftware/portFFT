@@ -194,6 +194,7 @@ class committed_descriptor {
    * Struct for dispatching `set_spec_constants()` call.
    */
   struct set_spec_constants_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template<detail::level lev, typename Dummy>
     struct inner{
       static void execute(committed_descriptor& desc,
@@ -214,6 +215,7 @@ class committed_descriptor {
    * Struct for dispatching `num_scalars_in_local_mem()` call.
    */
   struct num_scalars_in_local_mem_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template<detail::level lev, typename Dummy>
     struct inner{
       static std::size_t execute(committed_descriptor& desc); 
@@ -233,6 +235,7 @@ class committed_descriptor {
    * Struct for dispatching `calculate_twiddles()` call.
    */
   struct calculate_twiddles_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template<detail::level lev, typename Dummy>
     struct inner{
       static Scalar* execute(committed_descriptor& desc); 
@@ -495,14 +498,15 @@ class committed_descriptor {
   /**
    * Struct for dispatching `run_kernel()` call.
    * 
-   * @tparam Dir 
-   * @tparam TransposeIn 
-   * @tparam SubgroupSize 
-   * @tparam T_in 
-   * @tparam T_out 
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam SubgroupSize size of the subgroup
+   * @tparam T_in Type of the input USM pointer or buffer
+   * @tparam T_out Type of the output USM pointer or buffer
    */
   template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
   struct run_kernel_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template<detail::level lev, typename Dummy>
     struct inner{
       static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
