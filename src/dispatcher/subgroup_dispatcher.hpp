@@ -282,4 +282,4 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 
 }  // namespace sycl_fft
 
-#endif
+#endif // SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP

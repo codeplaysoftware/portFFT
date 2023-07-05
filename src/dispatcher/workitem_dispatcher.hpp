@@ -185,4 +185,4 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
 }  // namespace sycl_fft
 
-#endif
+#endif // SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
