@@ -151,6 +151,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
+ * @param factor_sg cross-subgroup factor of the fft size
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
  * @param loc local accessor. Must have enough space for 2*FactorWI*factor_sg*SubgroupSize
