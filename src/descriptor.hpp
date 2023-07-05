@@ -21,8 +21,8 @@
 #ifndef SYCL_FFT_DESCRIPTOR_HPP
 #define SYCL_FFT_DESCRIPTOR_HPP
 
+#include <common/subgroup.hpp>
 #include <enums.hpp>
-#include <general/dispatcher.hpp>
 
 #include <sycl/sycl.hpp>
 
@@ -37,52 +37,48 @@ namespace sycl_fft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in, int sg_size>
-class buffer_kernel;
-template <typename Scalar, domain Domain, direction dir, detail::transpose transpose_in, int sg_size>
-class usm_kernel;
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+          int SubgroupSize>
+class workitem_kernel;
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+          int SubgroupSize>
+class subgroup_kernel;
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+          int SubgroupSize>
+class workgroup_kernel;
+
 }  // namespace detail
 
 // forward declaration
 template <typename Scalar, domain Domain>
 struct descriptor;
 
-// specialization constants
-constexpr static sycl::specialization_id<std::size_t> fft_size_spec_const{};
-
 /*
 Compute functions in the `committed_descriptor` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
-ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. There are two
-overloads of `run_kernel`, one for buffer interfaces and one for USM. `run_kernel` handles differences between forward
-and backward computations, casts the memory (USM or buffers) from complex to scalars and launches the kernel.
+ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. The
+`run_kernel` member function picks appropriate implementation and calls the static `run_kernel of that implementation`.
+The implementation specific `run_kernel` handles differences between forward and backward computations, casts the memory
+(USM or buffers) from complex to scalars and launches the kernel. Each function described in this doc has only one
+templated overload that handles both directions of transforms and buffer and USM memory.
 
-Many of the parameters for the kernel, such as number of workitems launched and the required size of local allocations
-are determined by the helpers `num_scalars_in_local_mem` and `get_global_size` from `dispatcher.hpp`. The kernel calls
-`dispatcher`. From here on, each function has only one templated overload that handles both directions of transforms and
-buffer and USM memory.
+Device functions make no assumptions on the size of a work group or the number of workgroups in a kernel. These numbers
+can be tuned for each device.
 
-`dispatcher` determines which implementation to use for the particular FFT size and calls one of
-the dispatcher functions for the particular implementation: `workitem_dispatcher` or `subgroup_dispatcher`. In case of
-subgroup, it also factors the FFT size into one factor that fits into individual workitem and one that can be done
-across workitems in a subgroup. `dispatcher` and all other device functions make no assumptions on the size of a work
-group or the number of workgroups in a kernel. These numbers can be tuned for each device. TODO: currently we always
-test one subgroup per workgroup, so more may or may not actually work correctly.
+Implementation-specific `run_kernel` function make the size of the FFT that is handled by the individual workitems
+compile time constant. The one for subgroup implementation also calls `cross_sg_dispatcher` that makes the
+cross-subgroup factor of FFT size compile time constant. They do that by using a switch on the FFT size for one
+workitem, before calling `workitem_impl`, `subgroup_impl` or `workgroup_impl` . The `_impl` functions take the FFT size
+for one workitem as a template  parameter. Only the calls that are determined to fit into available registers (depending
+on the value of SYCLFFT_TARGET_REGS_PER_WI macro) are actually instantiated.
 
-Both dispatcher functions are there to make the size of the FFT that is handled by the individual workitems compile time
-constant. `subgroup_dispatcher` also calls `cross_sg_dispatcher` that makes the cross-subgroup factor of FFT size
-compile time constant. They do that by using a switch on the FFT size for one workitem, before calling `workitem_impl`
-or `subgroup_impl` respectively. The `_impl` functions take the FFT size for one workitem as a template parameter. Only
-the calls that are determined to fit into available registers (depending on the value of SYCLFFT_TARGET_REGS_PER_WI
-macro) are actually instantiated.
-
-The `workitem_impl` and `subgroup_impl` functions iterate over the batch of problems, loading data for each first in
+The `_impl` functions iterate over the batch of problems, loading data for each first in
 local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
-accesses. `workitem_impl` loads one problem per workitem and `subgroup_impl` loads one problem per subgroup. After doing
-computations by the calls to `wi_dft` for workitem and `sg_dft` for subgroup the data is written out, going through
-local memory again.
+accesses. `workitem_impl` loads one problem per workitem, `subgroup_impl` loads one problem per subgroup and
+`workgroup_impl` loads one problem per workgroup. After doing computations by the calls to `wi_dft` for workitem,
+`sg_dft` for subgroup and `wg_dft` for workgroup, the data is written out, going through local memory again.
 
-The computational parts of the implementations are further documented in files with their implementations `workitem.hpp`
-and `subgroup.hpp`.
+The computational parts of the implementations are further documented in files with their implementations
+`workitem.hpp`, `subgroup.hpp` and `workgroup.hpp`.
 */
 
 /**
@@ -96,93 +92,196 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
+
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
   std::size_t n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
-  sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   int used_sg_size;
   Scalar* twiddles_forward;
+  detail::level level;
+  std::vector<int> factors;
+  sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
+
+  template<typename Impl, typename... Args>
+  auto dispatch(Args&&... args) {
+    switch (level) {
+      case detail::level::WORKITEM:
+        return Impl::template inner<detail::level::WORKITEM, void>::execute(*this, args...);
+      case detail::level::SUBGROUP:
+        return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
+      case detail::level::WORKGROUP:
+        return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
+      default:
+        throw std::runtime_error("Unimplemented!");
+    }
+  }
+
+  /**
+   * Get kernel ids for the implementation used.
+   *
+   * @tparam kernel which base template for kernel to use
+   * @tparam SubgroupSize size of the subgroup
+   * @param ids vector of kernel ids
+   */
+  template <template <typename, domain, direction, detail::memory, detail::transpose, int> class Kernel,
+            int SubgroupSize>
+  void get_ids(std::vector<sycl::kernel_id>& ids) {
+// if not used, some kernels might be optimized away in AOT compilation and not available here
+#define SYCL_FFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                         \
+  try {                                                                                                       \
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
+  } catch (...) {                                                                                             \
+  }
+
+    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+
+#undef SYCL_FFT_GET_ID
+  }
+
+  /**
+   * Prepares the implementation for the particular problem size. That includes factorizing it and getting ids for the
+   * set of kernels that need to be JIT compiled.
+   *
+   * @tparam SubgroupSize size of the subgroup
+   * @param[out] ids list of kernel ids that need to be JIT compiled
+   * @return detail::level
+   */
+  template <int SubgroupSize>
+  detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
+    factors.clear();
+    std::size_t fft_size = params.lengths[0];
+    if (detail::fits_in_wi<Scalar>(fft_size)) {
+      get_ids<detail::workitem_kernel, SubgroupSize>(ids);
+      return detail::level::WORKITEM;
+    }
+    int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
+    int factor_wi = static_cast<int>(fft_size) / factor_sg;
+    if (detail::fits_in_wi<Scalar>(factor_wi)) {
+      factors.push_back(factor_wi);
+      factors.push_back(factor_sg);
+      get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
+      return detail::level::SUBGROUP;
+    }
+    std::size_t N = detail::factorize(fft_size);
+    std::size_t M = fft_size / N;
+    int factor_sg_N = detail::factorize_sg(static_cast<int>(N), SubgroupSize);
+    int factor_wi_N = static_cast<int>(N) / factor_sg_N;
+    int factor_sg_M = detail::factorize_sg(static_cast<int>(M), SubgroupSize);
+    int factor_wi_M = static_cast<int>(M) / factor_sg_M;
+    if (detail::fits_in_wi<Scalar>(factor_wi_N) && detail::fits_in_wi<Scalar>(factor_wi_M)) {
+      factors.push_back(factor_wi_N);
+      factors.push_back(factor_sg_N);
+      factors.push_back(factor_wi_M);
+      factors.push_back(factor_sg_M);
+      get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
+      return detail::level::WORKGROUP;
+    }
+    // TODO global
+    throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported!");
+  }
+
+  /**
+   * Struct for dispatching `set_spec_constants()` call.
+   */
+  struct set_spec_constants_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template<detail::level lev, typename Dummy>
+    struct inner{
+      static void execute(committed_descriptor& desc,
+                                    sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
+    };
+  };
+  
+  /**
+   * Sets the implementation dependant specialization constant values.
+   *
+   * @param in_bundle kernel bundle to set the specialization constants on
+   */
+  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
+    dispatch<set_spec_constants_struct>(in_bundle);
+  }
+
+  /**
+   * Struct for dispatching `num_scalars_in_local_mem()` call.
+   */
+  struct num_scalars_in_local_mem_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template<detail::level lev, typename Dummy>
+    struct inner{
+      static std::size_t execute(committed_descriptor& desc); 
+    };
+  };
+
+  /**
+   * Determine the number of scalars we need to have space for in the local memory.
+   *
+   * @return std::size_t the number of scalars
+   */
+  std::size_t num_scalars_in_local_mem(){
+    return dispatch<num_scalars_in_local_mem_struct>();
+  }
+
+  /**
+   * Struct for dispatching `calculate_twiddles()` call.
+   */
+  struct calculate_twiddles_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template<detail::level lev, typename Dummy>
+    struct inner{
+      static Scalar* execute(committed_descriptor& desc); 
+    };
+  };
+
+  /**
+   * Calculates twiddle factors for the implementation in use.
+   *
+   * @return Scalar* USM pointer to the twiddle factors
+   */
+  Scalar* calculate_twiddles() {
+    return dispatch<calculate_twiddles_struct>();
+  }
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants for the first supported subgroup size.
    *
-   * @tparam sg_size first subgroup size
-   * @tparam other_sg_sizes other subgroup sizes
+   * @tparam SubgroupSize first subgroup size
+   * @tparam OtherSGSizes other subgroup sizes
    * @return sycl::kernel_bundle<sycl::bundle_state::executable>
    */
-
-  template <int sg_size, int... other_sg_sizes>
+  template <int SubgroupSize, int... OtherSGSizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const() {
     // This function is called from constructor initializer list and it accesses other data members of the class. These
     // are already initialized by the time this is called only if they are declared in the class definition before the
     // member that is initialized by this function.
-    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), sg_size)) {
+    if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       std::vector<sycl::kernel_id> ids;
-      // if not used, some kernels might be optimized away in AOT compilation and not available here
-      try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::FORWARD,
-                                                                detail::transpose::NOT_TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(sycl::get_kernel_id<detail::buffer_kernel<Scalar, Domain, direction::BACKWARD,
-                                                                detail::transpose::NOT_TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::NOT_TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::buffer_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::buffer_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::FORWARD, detail::transpose::TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
-      try {
-        ids.push_back(
-            sycl::get_kernel_id<
-                detail::usm_kernel<Scalar, Domain, direction::BACKWARD, detail::transpose::TRANSPOSED, sg_size>>());
-      } catch (...) {
-      }
+      level = prepare_implementation<SubgroupSize>(ids);
+
       if (sycl::is_compatible(ids, dev)) {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-        in_bundle.template set_specialization_constant<fft_size_spec_const>(params.lengths[0]);
+        set_spec_constants(in_bundle);
+        used_sg_size = SubgroupSize;
         try {
-          used_sg_size = sg_size;
           return sycl::build(in_bundle);
         } catch (std::exception& e) {
-          std::cerr << "Build for subgroup size " << sg_size << " failed with message:\n" << e.what() << std::endl;
+          std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
         }
       }
     }
-    if constexpr (sizeof...(other_sg_sizes) == 0) {
+    if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return build_w_spec_const<other_sg_sizes...>();
+      return build_w_spec_const<OtherSGSizes...>();
     }
   }
 
@@ -193,7 +292,7 @@ class committed_descriptor {
    * @param queue queue to use when enqueueing device work
    */
   committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
-      : params{params},
+      : params(params),
         queue(queue),
         dev(queue.get_device()),
         ctx(queue.get_context()),
@@ -210,21 +309,12 @@ class committed_descriptor {
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    size_t factor1 = detail::factorize(params.lengths[0]);
-    size_t factor2 = params.lengths[0] / factor1;
-    // the local memory required for one fft and sub-fft twiddles
-    std::size_t minimum_local_mem_required =
-        (detail::num_scalars_in_local_mem<Scalar>(params.lengths[0], static_cast<std::size_t>(used_sg_size)) + factor1 +
-         factor2) *
-        sizeof(Scalar);
-    if (!detail::fits_in_wi<Scalar>(factor2)) {
-      if (minimum_local_mem_required > local_memory_size) {
-        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                                 " Required: " + std::to_string(minimum_local_mem_required));
-      }
+    std::size_t minimum_local_mem_required = num_scalars_in_local_mem() * sizeof(Scalar);
+    if (minimum_local_mem_required > local_memory_size) {
+      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                               "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
-    twiddles_forward = detail::calculate_twiddles<Scalar>(queue, params.lengths[0], used_sg_size);
-    detail::populate_wg_twiddles<Scalar>(params.lengths[0], used_sg_size, twiddles_forward + 2 * (factor1 + factor2), queue);
+    twiddles_forward = calculate_twiddles();
   }
 
  public:
@@ -348,7 +438,7 @@ class committed_descriptor {
   /**
    * Dispatches the kernel with the first subgroup size that is supported by the device.
    *
-   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam T_in Type of the input buffer or USM pointer
    * @tparam T_out Type of the output buffer or USM pointer
    * @param in buffer or USM pointer to memory containing input data
@@ -356,32 +446,32 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction dir, typename T_in, typename T_out>
+  template <direction Dir, typename T_in, typename T_out>
   sycl::event dispatch_kernel(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_kernel_helper<dir, T_in, T_out, SYCLFFT_SUBGROUP_SIZES>(in, out, dependencies);
+    return dispatch_kernel_helper<Dir, T_in, T_out, SYCLFFT_SUBGROUP_SIZES>(in, out, dependencies);
   }
 
   /**
    * Helper for dispatching the kernel with the first subgroup size that is supported by the device.
    *
-   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam T_in Type of the input buffer or USM pointer
    * @tparam T_out Type of the output buffer or USM pointer
-   * @tparam sg_size first subgroup size
-   * @tparam other_sg_sizes other subgroup sizes
+   * @tparam SubgroupSize first subgroup size
+   * @tparam OtherSGSizes other subgroup sizes
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction dir, typename T_in, typename T_out, int sg_size, int... other_sg_sizes>
+  template <direction Dir, typename T_in, typename T_out, int SubgroupSize, int... OtherSGSizes>
   sycl::event dispatch_kernel_helper(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
-    if (sg_size == used_sg_size) {
+    if (SubgroupSize == used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
       std::size_t input_distance;
       std::size_t output_distance;
       Scalar scale_factor;
-      if constexpr (dir == direction::FORWARD) {
+      if constexpr (Dir == direction::FORWARD) {
         input_distance = params.forward_distance;
         output_distance = params.backward_distance;
         scale_factor = params.forward_scale;
@@ -391,101 +481,61 @@ class committed_descriptor {
         scale_factor = params.backward_scale;
       }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<dir, detail::transpose::NOT_TRANSPOSED, sg_size>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
       } else if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<dir, detail::transpose::TRANSPOSED, sg_size>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
       } else {
         throw std::runtime_error("Unsupported configuration");
       }
     }
-    if constexpr (sizeof...(other_sg_sizes) == 0) {
+    if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return dispatch_kernel_helper<dir, T_in, T_out, other_sg_sizes...>(in, out, dependencies);
+      return dispatch_kernel_helper<Dir, T_in, T_out, OtherSGSizes...>(in, out, dependencies);
     }
   }
 
   /**
+   * Struct for dispatching `run_kernel()` call.
+   * 
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam SubgroupSize size of the subgroup
+   * @tparam T_in Type of the input USM pointer or buffer
+   * @tparam T_out Type of the output USM pointer or buffer
+   */
+  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+  struct run_kernel_struct{
+     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template<detail::level lev, typename Dummy>
+    struct inner{
+      static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+                                    const std::vector<sycl::event>& dependencies);
+    };
+  };
+
+  /**
    * Common interface to run the kernel called by compute_forward and compute_backward
    *
-   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
-   * @tparam Subgroup_size size of the subgroup
-   * @tparam T_in Type of the input USM pointer
-   * @tparam T_out Type of the output USM pointer
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam SubgroupSize size of the subgroup
+   * @tparam T_in Type of the input USM pointer or buffer
+   * @tparam T_out Type of the output USM pointer or buffer
    * @param in USM pointer to memory containing input data
    * @param out USM pointer to memory containing output data
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction dir, detail::transpose transpose_in, int Subgroup_size, typename T_in, typename T_out>
-  sycl::event run_kernel(const T_in in, T_out out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
-    std::size_t n_transforms = params.number_of_transforms;
-    std::size_t fft_size = params.lengths[0];  // 1d only for now
-    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, Subgroup_size, n_compute_units);
-    auto in_scalar = reinterpret_cast<const Scalar*>(in);
-    auto out_scalar = reinterpret_cast<Scalar*>(out);
-    std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
-    const Scalar* twiddles_ptr = twiddles_forward;
-    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
-    return queue.submit([&](sycl::handler& cgh) {
-      cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(exec_bundle);
-      sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
-      cgh.parallel_for<detail::usm_kernel<Scalar, Domain, dir, transpose_in, Subgroup_size>>(
-          sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
-              [[sycl::reqd_sub_group_size(Subgroup_size)]] {
-                detail::dispatcher<dir, transpose_in, Subgroup_size>(in_scalar, out_scalar, &loc[0], &loc_twiddles[0],
-                                                      kh.get_specialization_constant<fft_size_spec_const>(),
-                                                      n_transforms, it, twiddles_ptr, scale_factor);
-              });
-    });
-  }
-
-  /**
-   * Common interface to dispatch compute called by compute_forward and compute_backward
-   *
-   * @tparam dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam Subgroup_size size of the subgroup
-   * @tparam transpose_in whether input is transposed (interpreting it as a matrix of batch size times FFT size)
-   * @tparam T Type of buffer
-   * @param in buffer containing input data
-   * @param out buffer containing output data
-   * @param scale_factor Value with which the result of the FFT will be multiplied
-   * @param dependencies events that must complete before the computation
-   */
-  template <direction dir, detail::transpose transpose_in, int Subgroup_size, typename T>
-  sycl::event run_kernel(const sycl::buffer<T, 1>& in, sycl::buffer<T, 1>& out, Scalar scale_factor,
+  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+  sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
                          const std::vector<sycl::event>& dependencies) {
-    std::size_t n_transforms = params.number_of_transforms;
-    std::size_t fft_size = params.lengths[0];  // 1d only for now
-    std::size_t global_size = detail::get_global_size<Scalar>(fft_size, n_transforms, Subgroup_size, n_compute_units);
-    auto in_scalar = in.template reinterpret<Scalar, 1>(2 * in.size());
-    auto out_scalar = out.template reinterpret<Scalar, 1>(2 * out.size());
-    std::size_t twiddle_elements = detail::num_scalars_in_twiddles<Scalar>(fft_size, Subgroup_size);
-    const Scalar* twiddles_ptr = twiddles_forward;
-    std::size_t local_elements = detail::num_scalars_in_local_mem<Scalar>(fft_size, Subgroup_size);
-    return queue.submit([&](sycl::handler& cgh) {
-      cgh.depends_on(dependencies);
-      sycl::accessor in_acc{in_scalar, cgh, sycl::read_only};
-      sycl::accessor out_acc{out_scalar, cgh, sycl::write_only};
-      sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
-      cgh.use_kernel_bundle(exec_bundle);
-      cgh.parallel_for<detail::buffer_kernel<Scalar, Domain, dir, transpose_in, Subgroup_size>>(
-          sycl::nd_range<1>{{global_size}, {Subgroup_size * SYCLFFT_SGS_IN_WG}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh)
-              [[sycl::reqd_sub_group_size(Subgroup_size)]] {
-                detail::dispatcher<dir, transpose_in, Subgroup_size>(&in_acc[0], &out_acc[0], &loc[0], &loc_twiddles[0],
-                                                      kh.get_specialization_constant<fft_size_spec_const>(),
-                                                      n_transforms, it, twiddles_ptr, scale_factor);
-              });
-    });
+    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
   }
 };
+
+#undef SYCL_FFT_DISPATCH
 
 /**
  * A descriptor containing FFT problem parameters.

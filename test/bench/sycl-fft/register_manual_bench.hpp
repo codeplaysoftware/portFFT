@@ -157,8 +157,8 @@ std::vector<std::size_t> get_vec_unsigned(const std::string_view& key, std::stri
   return vec;
 }
 
-template <typename ftype, sycl_fft::domain domain>
-void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<ftype, domain>& desc) {
+template <typename FType, sycl_fft::domain Domain>
+void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<FType, Domain>& desc) {
   std::string_view arg = get_arg(arg_map, BATCH);
   if (!arg.empty()) {
     desc.number_of_transforms = get_unsigned("batch", arg);
@@ -186,7 +186,7 @@ void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<ftype, domain>& de
 
   arg = get_arg(arg_map, SCALE);
   if (!arg.empty()) {
-    auto scale = static_cast<ftype>(std::stod(std::string(arg)));
+    auto scale = static_cast<FType>(std::stod(std::string(arg)));
     desc.forward_scale = scale;
     desc.backward_scale = scale;
   }
@@ -210,7 +210,7 @@ void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<ftype, domain>& de
   }
 }
 
-template <typename ftype>
+template <typename FType>
 void register_manual_benchmark(sycl::queue q, sycl::queue profiling_q, const std::string_view& desc_str) {
   using namespace sycl_fft;
   arg_map_t arg_map = get_arg_map(desc_str);
@@ -234,15 +234,15 @@ void register_manual_benchmark(sycl::queue q, sycl::queue profiling_q, const std
     throw bench_error{"'lengths' must be specified"};
   }
 
-  std::string_view ftype_str = typeid(ftype).name();
+  std::string_view ftype_str = typeid(FType).name();
   std::string suffix;
   suffix.append(ftype_str).append(":").append(desc_str);
   if (domain == domain::COMPLEX) {
-    descriptor<ftype, domain::COMPLEX> desc{lengths};
+    descriptor<FType, domain::COMPLEX> desc{lengths};
     fill_descriptor(arg_map, desc);
     register_host_device_benchmark(suffix, q, profiling_q, desc);
   } else if (domain == domain::REAL) {
-    descriptor<ftype, domain::REAL> desc{lengths};
+    descriptor<FType, domain::REAL> desc{lengths};
     fill_descriptor(arg_map, desc);
     register_host_device_benchmark(suffix, q, profiling_q, desc);
   } else {
@@ -301,7 +301,7 @@ void print_help(const std::string_view& name) {
   // clang-format on
 }
 
-template <typename ftype>
+template <typename FType>
 int main_manual_bench(int argc, char** argv) {
   benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
@@ -316,7 +316,7 @@ int main_manual_bench(int argc, char** argv) {
       print_help(argv[0]);
       return 0;
     }
-    register_manual_benchmark<ftype>(q, profiling_q, arg);
+    register_manual_benchmark<FType>(q, profiling_q, arg);
   }
 
   benchmark::RunSpecifiedBenchmarks();

@@ -30,10 +30,11 @@ namespace sycl_fft {
 /**
  * Calculates FFT using Bailey 4 step algorithm.
  *
- * @tparam dir Direction of the FFT
- * @tparam fft_size Problem Size
+ * @tparam Dir Direction of the FFT
+ * @tparam FFTSize Problem Size
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
+ * @tparam SubgroupSize Size of the subgroup
  * @tparam T Scalar Type
  * @tparam T_twiddles_ptr Type of twiddle pointer utilized by subgroup ffts
  *
@@ -43,19 +44,19 @@ namespace sycl_fft {
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
  */
-template <direction dir, int fft_size, int N, int M, int Subgroup_size, typename T>
+template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor) {
-  constexpr int fact_sg_N = detail::factorize_sg(N, Subgroup_size);
+  constexpr int fact_sg_N = detail::factorize_sg(N, SubgroupSize);
   constexpr int fact_wi_N = N / fact_sg_N;
-  constexpr int fact_sg_M = detail::factorize_sg(M, Subgroup_size);
+  constexpr int fact_sg_M = detail::factorize_sg(M, SubgroupSize);
   constexpr int fact_wi_M = M / fact_sg_M;
   constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
   T priv[private_mem_size];
 
   sycl::sub_group sg = it.get_sub_group();
-  constexpr int m_ffts_in_sg = Subgroup_size / fact_sg_M;
-  constexpr int n_ffts_in_sg = Subgroup_size / fact_sg_N;
+  constexpr int m_ffts_in_sg = SubgroupSize / fact_sg_M;
+  constexpr int n_ffts_in_sg = SubgroupSize / fact_sg_N;
   int sg_id = static_cast<int>(sg.get_group_id());
   constexpr int num_sgs = SYCLFFT_SGS_IN_WG;
 
@@ -78,10 +79,10 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
           loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, sub_batch);
     }
-    sg_dft<dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
+    sg_dft<Dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
     if (working) {
       private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
-          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
+          priv, loc, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
     }
   }
 
@@ -98,16 +99,16 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       int twiddle_m_index = (static_cast<int>(sg.get_local_linear_id()) % fact_sg_M) * fact_wi_M + i;
       int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
       T twiddle_real = wg_twiddles[twiddle_index];
-      T twiddle_complex = wg_twiddles[twiddle_index + 1];
-      if constexpr (dir == direction::BACKWARD) {
-        twiddle_complex = -twiddle_complex;
+      T twiddle_imag = wg_twiddles[twiddle_index + 1];
+      if constexpr (Dir == direction::BACKWARD) {
+        twiddle_imag = -twiddle_imag;
       }
       T tmp_real = priv[2 * i];
-      priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_complex;
-      priv[2 * i + 1] = tmp_real * twiddle_complex + priv[2 * i + 1] * twiddle_real;
+      priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_imag;
+      priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
     });
 
-    sg_dft<dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
+    sg_dft<Dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
     detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
       priv[2 * i] *= scaling_factor;
       priv[2 * i + 1] *= scaling_factor;
@@ -119,7 +120,6 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
           static_cast<std::size_t>(fact_sg_M), static_cast<std::size_t>(2 * M * sub_batch));
     }
   }
-  sycl::group_barrier(it.get_group());
 }
 
 }  // namespace sycl_fft
