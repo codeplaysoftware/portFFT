@@ -352,6 +352,42 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
 }
 
 /**
+ * Loads data from global memory where consecutive elements of a problem are separated by stride.
+ * Loads half of workgroup size equivalent number of consecutive batches from global memory.
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam glob_ptr Type of global pointer
+ * @tparam loc_ptr Type of local pointer
+ * @param it Associated nd_item
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad pad, detail::level Level, typename glob_ptr, typename loc_ptr>
+__attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, glob_ptr global_base_ptr,
+                                                                   loc_ptr local_ptr, std::size_t offset,
+                                                                   std::size_t num_complex, std::size_t stride_global,
+                                                                   std::size_t stride_local) {
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+  } else {
+    local_id = it.get_local_id(0);
+  }
+  for (std::size_t i = 0; i < num_complex; i++) {
+    std::size_t local_index = detail::pad_local<pad>(2 * i * stride_local + local_id);
+    std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    local_ptr[local_index] = global_base_ptr[global_index];
+  }
+}
+
+/**
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem

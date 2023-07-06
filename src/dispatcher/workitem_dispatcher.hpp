@@ -124,7 +124,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     std::size_t global_size = detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
-    std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(desc);
+    std::size_t local_elements =
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, TransposeIn, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -168,10 +169,21 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, Dummy>{
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
+    detail::level::WORKITEM, detail::transpose::TRANSPOSED, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
-          SYCLFFT_SGS_IN_WG;
+           SYCLFFT_SGS_IN_WG;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
+    detail::level::WORKITEM, detail::transpose::NOT_TRANSPOSED, Dummy> {
+  static std::size_t execute(committed_descriptor& desc) {
+    return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
+           SYCLFFT_SGS_IN_WG;
   }
 };
 

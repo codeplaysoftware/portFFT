@@ -57,9 +57,7 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
-    GTEST_SKIP();
-  }
+
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_reference_output(num_elements);
@@ -129,9 +127,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
-    GTEST_SKIP();
-  }
+
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_reference_output(num_elements);

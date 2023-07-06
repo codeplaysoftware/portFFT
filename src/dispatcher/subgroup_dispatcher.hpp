@@ -74,7 +74,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, int FactorWI, int FactorSG, int SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, int FactorWI, int FactorSG, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          const T* twiddles, T scaling_factor) {
@@ -101,6 +101,11 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t rounded_up_n_ffts =
       roundUpToMultiple(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
+  if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+    id_of_fft_in_kernel = it.get_group(0) * (it.get_local_range(0) / 2);
+    n_ffts_in_kernel = it.get_group_range(0) * (it.get_local_range(0) / 2);
+  }
+
   global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, N_reals_per_wi * FactorSG);
   sycl::group_barrier(it.get_group());
 
@@ -108,37 +113,68 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     std::size_t n_ffts_worked_on_by_sg = sycl::min(n_transforms - (i - id_of_fft_in_sg), n_ffts_per_sg);
 
-    global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
-                                                             n_reals_per_fft * (i - id_of_fft_in_sg),
-                                                             subgroup_id * n_reals_per_sg);
-
-    sycl::group_barrier(sg);
-    if (working) {
-      local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
-                                                 subgroup_id * n_reals_per_sg);
-    }
-    sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-    unrolled_loop<0, N_reals_per_wi, 2>([&](int i) __attribute__((always_inline)) {
-      priv[i] *= scaling_factor;
-      priv[i + 1] *= scaling_factor;
-    });
-    if constexpr (FactorSG == SubgroupSize) {
-      // in this case we get fully coalesced memory access even without going through local memory
-      // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
-      if (working) {
-        store_transposed<N_reals_per_wi, pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
-                                                        i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
+      constexpr std::size_t max_num_batches_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
+      std::size_t number_of_batches_in_local_mem = [=]() {
+        if ((i + it.get_local_range(0)) < n_transforms)
+          return it.get_local_range(0) / 2;
+        else
+          return (it.get_local_range(0) - 2 * ((i + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+      }();
+      if ((it.get_local_linear_id() / 2) <= (number_of_batches_in_local_mem - 1)) {
+        global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP>(
+            it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+      }
+      sycl::group_barrier(it.get_group());
+      for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < number_of_batches_in_local_mem;
+           sub_batch += SYCLFFT_SGS_IN_WG * n_ffts_per_sg) {
+        // out<<sub_batch<<sycl::endl;
+        local2private_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
+            loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch));
+        sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
+        unrolled_loop<0, N_reals_per_wi, 2>([&](int idx) __attribute__((always_inline)) {
+          priv[idx] *= scaling_factor;
+          priv[idx + 1] *= scaling_factor;
+        });
+        if ((subgroup_local_id < max_wis_working)) {
+          store_transposed<N_reals_per_wi, detail::pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
+                                                                  (i + sub_batch) * n_reals_per_fft);
+        }
       }
     } else {
+      global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+                                                               n_reals_per_fft * (i - id_of_fft_in_sg),
+                                                               subgroup_id * n_reals_per_sg);
+
+      sycl::group_barrier(sg);
       if (working) {
-        store_transposed<N_reals_per_wi, pad::DO_PAD>(priv, loc, id_of_wi_in_fft, FactorSG,
-                                                      subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+        local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
+                                                   subgroup_id * n_reals_per_sg);
       }
-      sycl::group_barrier(sg);
-      local2global<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(
-          it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
-          n_reals_per_fft * (i - id_of_fft_in_sg));
-      sycl::group_barrier(sg);
+      sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
+      unrolled_loop<0, N_reals_per_wi, 2>([&](int i) __attribute__((always_inline)) {
+        priv[i] *= scaling_factor;
+        priv[i + 1] *= scaling_factor;
+      });
+      if constexpr (FactorSG == SubgroupSize) {
+        // in this case we get fully coalesced memory access even without going through local memory
+        // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
+        if (working) {
+          store_transposed<N_reals_per_wi, pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
+                                                          i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+        }
+      } else {
+        if (working) {
+          store_transposed<N_reals_per_wi, pad::DO_PAD>(
+              priv, loc, id_of_wi_in_fft, FactorSG, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+        }
+        sycl::group_barrier(sg);
+        local2global<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(
+            it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
+            n_reals_per_fft * (i - id_of_fft_in_sg));
+        sycl::group_barrier(sg);
+      }
     }
   }
 }
@@ -163,17 +199,17 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, int FactorWI, int SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, int FactorWI, int SubgroupSize, typename T>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T* loc,
                                                         T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
                                                         const T* twiddles, T scaling_factor) {
   switch (factor_sg) {
-#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                      \
-  case M:                                                                                                         \
-    if constexpr (M <= SubgroupSize && !fits_in_wi<T>(M * FactorWI)) {                                            \
-      subgroup_impl<Dir, FactorWI, M, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it, twiddles, \
-                                                    scaling_factor);                                              \
-    }                                                                                                             \
+#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                         \
+  case M:                                                                                                            \
+    if constexpr (M <= SubgroupSize && !fits_in_wi<T>(M * FactorWI)) {                                               \
+      subgroup_impl<Dir, TransposeIn, FactorWI, M, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it, \
+                                                                 twiddles, scaling_factor);                          \
+    }                                                                                                                \
     break;
     // cross-sg size 1 cases are supported by workitem implementation
     SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
@@ -226,7 +262,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     int factor_sg = desc.factors[1];
     std::size_t global_size = detail::get_global_size_subgroup<Scalar>(n_transforms, static_cast<std::size_t>(factor_sg),
                                                                       SubgroupSize, desc.n_compute_units);
-    std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, Dummy>::execute(desc);
+    std::size_t local_elements =
+        num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, TransposeIn, Dummy>::execute(desc);
     std::size_t twiddle_elements = 2 * fft_size;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -241,13 +278,14 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             int factor_wi = kh.get_specialization_constant<detail::factor_wi_spec_const>();
             int factor_sg = kh.get_specialization_constant<detail::factor_sg_spec_const>();
             switch (factor_wi) {
-  #define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                            \
-    case N:                                                                                                            \
-      if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                                   \
-        detail::cross_sg_dispatcher<Dir, N, SubgroupSize>(factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],   \
-                                                          &loc_twiddles[0], n_transforms, it, twiddles, scale_factor); \
-      }                                                                                                                \
-      break;
+#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                              \
+  case N:                                                                                                              \
+    if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                                     \
+      detail::cross_sg_dispatcher<Dir, TransposeIn, N, SubgroupSize>(factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], \
+                                                                     &loc[0], &loc_twiddles[0], n_transforms, it,      \
+                                                                     twiddles, scale_factor);                          \
+    }                                                                                                                  \
+    break;
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
@@ -274,11 +312,22 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP, Dummy>{
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
+    detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     int factor_sg = desc.factors[1];
     std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
     return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
+    detail::level::SUBGROUP, detail::transpose::TRANSPOSED, Dummy> {
+  static std::size_t execute(committed_descriptor& desc) {
+    std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG / 2;
+    return detail::pad_local(2 * desc.params.lengths[0] * num_batches_in_local_mem);
   }
 };
 

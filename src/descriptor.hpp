@@ -119,6 +119,20 @@ class committed_descriptor {
     }
   }
 
+  template <typename Impl, detail::transpose TransposeIn, typename... Args>
+  auto dispatch(Args&&... args) {
+    switch (level) {
+      case detail::level::WORKITEM:
+        return Impl::template inner<detail::level::WORKITEM, TransposeIn, void>::execute(*this, args...);
+      case detail::level::SUBGROUP:
+        return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
+      case detail::level::WORKGROUP:
+        return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
+      default:
+        throw std::runtime_error("Unimplemented!");
+    }
+  }
+
   /**
    * Get kernel ids for the implementation used.
    *
@@ -216,10 +230,10 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct{
      // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static std::size_t execute(committed_descriptor& desc); 
-    };
+     template <detail::level lev, detail::transpose TransposeIn, typename Dummy>
+     struct inner {
+       static std::size_t execute(committed_descriptor& desc);
+     };
   };
 
   /**
@@ -227,8 +241,9 @@ class committed_descriptor {
    *
    * @return std::size_t the number of scalars
    */
-  std::size_t num_scalars_in_local_mem(){
-    return dispatch<num_scalars_in_local_mem_struct>();
+  template <detail::transpose TransposeIn>
+  std::size_t num_scalars_in_local_mem() {
+    return dispatch<num_scalars_in_local_mem_struct, TransposeIn>();
   }
 
   /**
@@ -309,7 +324,12 @@ class committed_descriptor {
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    std::size_t minimum_local_mem_required = num_scalars_in_local_mem() * sizeof(Scalar);
+    std::size_t minimum_local_mem_required;
+    if (params.forward_distance == 1 && params.backward_distance == params.lengths[0]) {
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+    } else {
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
+    }
     if (minimum_local_mem_required > local_memory_size) {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
