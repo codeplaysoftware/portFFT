@@ -22,8 +22,6 @@
 #define SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
 
 #include "instantiate_fft_tests.hpp"
-#include "number_generators.hpp"
-#include "reference_dft.hpp"
 #include "utils.hpp"
 #include <sycl_fft.hpp>
 
@@ -75,6 +73,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
+  std::vector<std::complex<FType>> host_input_transposed;
   std::vector<std::complex<FType>> host_reference_output(num_elements);
   std::vector<std::complex<FType>> buffer(num_elements);
 
@@ -83,9 +82,6 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   if (Place == placement::OUT_OF_PLACE) {
     device_output = sycl::malloc_device<std::complex<FType>>(num_elements, queue);
   }
-  populate_with_random(host_input, FType(-1.0), FType(1.0));
-
-  auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
 
   descriptor<FType, domain::COMPLEX> desc{{params.length}};
   desc.number_of_transforms = params.batch;
@@ -104,6 +100,21 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
     GTEST_SKIP() << potential_committed_descriptor.second;
   }
   auto committed_descriptor = potential_committed_descriptor.first.value();
+
+  auto verifSpec = get_matching_spec(verification_data, desc);
+  if constexpr (Dir == sycl_fft::direction::FORWARD) {
+    host_input = verifSpec.template load_data_time(desc);
+  } else {
+    host_input = verifSpec.template load_data_fourier(desc);
+  }
+  if constexpr (TransposeIn) {
+    host_input_transposed = std::vector<std::complex<FType>>(num_elements);
+    transpose(host_input, host_input_transposed, params.batch, params.length);
+  }
+
+  auto copy_event =
+      queue.copy(TransposeIn ? host_input_transposed.data() : host_input.data(), device_input, num_elements);
+
   auto fft_event = [&]() {
     if constexpr (Place == placement::OUT_OF_PLACE) {
       if constexpr (Dir == direction::FORWARD) {
@@ -120,23 +131,11 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
     }
   }();
 
-  double scaling_factor = Dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
-  std::vector<std::complex<FType>> host_input_transposed;
-  if constexpr (TransposeIn) {
-    host_input_transposed = std::vector<std::complex<FType>>(num_elements);
-    transpose(host_input, host_input_transposed, params.length, params.batch);
-  }
-  for (std::size_t i = 0; i < params.batch; i++) {
-    const auto offset = i * params.length;
-    std::complex<FType>* input_for_reference =
-        (TransposeIn ? host_input_transposed.data() : host_input.data()) + offset;
-    reference_dft<Dir>(input_for_reference, host_reference_output.data() + offset, {params.length}, scaling_factor);
-  }
-
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
              {fft_event});
   queue.wait();
-  compare_arrays(host_reference_output, buffer, 1e-3);
+  verifSpec.verify_dft(desc, buffer, Dir, 1e-3);
+
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
     sycl::free(device_output, queue);
@@ -154,10 +153,9 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   }
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
+  std::vector<std::complex<FType>> host_input_transposed;
   std::vector<std::complex<FType>> host_reference_output(num_elements);
   std::vector<std::complex<FType>> buffer(num_elements);
-
-  populate_with_random(host_input, FType(-1.0), FType(1.0));
 
   descriptor<FType, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
   desc.number_of_transforms = params.batch;
@@ -176,23 +174,22 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     GTEST_SKIP() << potential_committed_descriptor.second;
   }
   auto committed_descriptor = potential_committed_descriptor.first.value();
-  double scaling_factor = Dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
 
-  std::vector<std::complex<FType>> host_input_transposed;
+  auto verifSpec = get_matching_spec(verification_data, desc);
+  if constexpr (Dir == sycl_fft::direction::FORWARD) {
+    host_input = verifSpec.template load_data_time(desc);
+  } else {
+    host_input = verifSpec.template load_data_fourier(desc);
+  }
   if constexpr (TransposeIn) {
     host_input_transposed = std::vector<std::complex<FType>>(num_elements);
-    transpose(host_input, host_input_transposed, params.length, params.batch);
-  }
-  for (std::size_t i = 0; i < params.batch; i++) {
-    const auto offset = i * params.length;
-    std::complex<FType>* input_for_reference =
-        (TransposeIn ? host_input_transposed.data() : host_input.data()) + offset;
-    reference_dft<Dir>(input_for_reference, host_reference_output.data() + offset, {params.length}, scaling_factor);
+    transpose(host_input, host_input_transposed, params.batch, params.length);
   }
 
   {
     sycl::buffer<std::complex<FType>, 1> output_buffer(nullptr, 0);
-    sycl::buffer<std::complex<FType>, 1> input_buffer(host_input.data(), num_elements);
+    sycl::buffer<std::complex<FType>, 1> input_buffer(TransposeIn ? host_input_transposed.data() : host_input.data(),
+                                                      num_elements);
     if (Place == placement::OUT_OF_PLACE) {
       output_buffer = sycl::buffer<std::complex<FType>, 1>(buffer.data(), num_elements);
     }
@@ -210,9 +207,9 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
         committed_descriptor.compute_backward(input_buffer);
       }
     }
-    queue.wait();
+    queue.wait_and_throw();
   }
-  compare_arrays(host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, 1e-3);
+  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, 1e-3);
 }
 
 #endif

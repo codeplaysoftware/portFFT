@@ -45,6 +45,28 @@ if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
     )
 endif()
 
+# Generate test reference data header
+execute_process(
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --header --test --just_list_outputs 
+    OUTPUT_VARIABLE TEST_REFERENCE_DATA_HEADER)
+add_custom_command(
+    OUTPUT ${TEST_REFERENCE_DATA_HEADER}
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --header --test)
+add_custom_target(test_reference_data_header 
+    DEPENDS ${TEST_REFERENCE_DATA_HEADER})
+# We need the directory so the header can be included by the tests.
+get_filename_component(TEST_REFERENCE_DATA_HEADER_DIR ${TEST_REFERENCE_DATA_HEADER} DIRECTORY)
+
+# Generate the actual test reference data
+execute_process(
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --data --test --just_list_outputs 
+    OUTPUT_VARIABLE TEST_REFERENCE_DATA_DATA_FILES)
+add_custom_command(
+    OUTPUT ${TEST_REFERENCE_DATA_DATA_FILES}
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --data --test)
+add_custom_target(test_reference_data_data 
+    DEPENDS ${TEST_REFERENCE_DATA_DATA_FILES})
+
 include(GoogleTest)
 foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
     get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
@@ -64,4 +86,6 @@ foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
     )
     target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
     gtest_discover_tests(${TEST_TARGET} XML_OUTPUT_DIR output DISCOVERY_MODE PRE_TEST)
+    add_dependencies(${TEST_TARGET} test_reference_data_header test_reference_data_data)
+    target_include_directories(${TEST_TARGET} PRIVATE ${TEST_REFERENCE_DATA_HEADER_DIR})
 endforeach()
