@@ -129,7 +129,6 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < number_of_batches_in_local_mem;
            sub_batch += SYCLFFT_SGS_IN_WG * n_ffts_per_sg) {
-        // out<<sub_batch<<sycl::endl;
         local2private_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
             loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch));
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
