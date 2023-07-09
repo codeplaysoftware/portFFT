@@ -38,67 +38,6 @@ using namespace sycl_fft;
 #define CHECK_QUEUE(queue) \
   if (!queue.first) GTEST_SKIP() << queue.second;
 
-/**
- * Calculates the amount of local memory needed for given problem.
- *
- * @tparam T type of the scalar used for computations
- * @param fft_size size of each transform
- * @param Subgroup_size size of subgroup used by the compute kernel
- * @return Number of elements of size T that need to fit into local memory
- */
-template <typename T>
-std::size_t num_scalars_in_local_mem(std::size_t fft_size, std::size_t subgroup_size) {
-  if (sycl_fft::detail::fits_in_wi<T>(fft_size)) {
-    return detail::pad_local(2 * fft_size * subgroup_size) * SYCLFFT_SGS_IN_WG;
-  } else {
-    if (fft_size <= sycl_fft::detail::MAX_FFT_SIZE_WI * subgroup_size) {
-      int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), static_cast<int>(subgroup_size));
-      int fact_wi = static_cast<int>(fft_size) / factor_sg;
-      if (sycl_fft::detail::fits_in_wi<T>(fact_wi)) {
-        std::size_t n_ffts_per_sg = subgroup_size / static_cast<std::size_t>(factor_sg);
-        return detail::pad_local(2 * fft_size * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
-      }
-    } else {
-      return detail::pad_local(2 * fft_size);
-    }
-  }
-  return 0;
-}
-
-template <typename T, bool TransposeIn>
-bool exceeds_local_mem_size(sycl::queue& queue, int fft_size) {
-  std::size_t local_mem_available = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-  if constexpr (TransposeIn) {
-    std::size_t local_memory_required =
-        num_scalars_in_local_mem<T>(static_cast<std::size_t>(fft_size * SYCLFFT_SUBGROUP_SIZES * SYCLFFT_SGS_IN_WG / 2),
-                                    SYCLFFT_SUBGROUP_SIZES) *
-        sizeof(T);
-    if (!detail::fits_in_wi<T>(fft_size / detail::factorize_sg(fft_size, (SYCLFFT_SUBGROUP_SIZES)))) {
-      int N = detail::factorize(fft_size);
-      int M = fft_size / N;
-      local_memory_required += 2 * sizeof(T) * static_cast<std::size_t>(M + N);
-    } else {
-      local_memory_required += 2 * sizeof(T) * static_cast<std::size_t>(fft_size);
-    }
-    if (local_memory_required > local_mem_available) {
-      return true;
-    } else {
-      return false;
-    }
-  }
-  if (!detail::fits_in_wi<T>(fft_size / detail::factorize_sg(fft_size, (SYCLFFT_SUBGROUP_SIZES)))) {
-    int N = detail::factorize(fft_size);
-    int M = fft_size / N;
-    std::size_t local_mem_required =
-        sizeof(T) * (2 * sizeof(T) * static_cast<std::size_t>(M + N) +
-                     num_scalars_in_local_mem<T>(static_cast<std::size_t>(fft_size), SYCLFFT_SUBGROUP_SIZES));
-    if (local_mem_required > local_mem_available) {
-      return true;
-    }
-  }
-  return false;
-}
-
 template <typename T>
 void compare_arrays(std::vector<std::complex<T>> reference_output, std::vector<std::complex<T>> device_output,
                     double tol) {

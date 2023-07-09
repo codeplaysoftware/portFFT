@@ -100,7 +100,7 @@ class committed_descriptor {
   std::size_t n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
   int used_sg_size;
-  Scalar* twiddles_forward;
+  std::shared_ptr<Scalar> twiddles_forward;
   detail::level level;
   std::vector<int> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
@@ -334,7 +334,8 @@ class committed_descriptor {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
-    twiddles_forward = calculate_twiddles();
+    twiddles_forward =
+        std::shared_ptr<Scalar>(calculate_twiddles(), [&](Scalar* ptr) { sycl::free(ptr, this->queue); });
   }
 
  public:
@@ -352,12 +353,7 @@ class committed_descriptor {
   /**
    * Destructor
    */
-  ~committed_descriptor() {
-    queue.wait();
-    if (twiddles_forward != nullptr) {
-      sycl::free(twiddles_forward, queue);
-    }
-  }
+  ~committed_descriptor() { queue.wait(); }
 
   /**
    * Computes in-place forward FFT, working on a buffer.
@@ -450,9 +446,6 @@ class committed_descriptor {
                                const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_kernel<direction::BACKWARD>(in, out, dependencies);
   }
-
-  committed_descriptor& operator=(const committed_descriptor&) = delete;
-  committed_descriptor(const committed_descriptor&) = delete;
 
  private:
   /**

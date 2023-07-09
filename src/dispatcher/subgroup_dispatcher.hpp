@@ -257,7 +257,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n_transforms = desc.params.number_of_transforms;
-    Scalar* twiddles = desc.twiddles_forward;
+    Scalar* twiddles = desc.twiddles_forward.get();
     int factor_sg = desc.factors[1];
     std::size_t global_size = detail::get_global_size_subgroup<Scalar>(n_transforms, static_cast<std::size_t>(factor_sg),
                                                                       SubgroupSize, desc.n_compute_units);

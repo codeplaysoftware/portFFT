@@ -117,7 +117,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
-    Scalar* twiddles = desc.twiddles_forward;
+    Scalar* twiddles = desc.twiddles_forward.get();
+    std::size_t num_batches_in_local_mem = 1;
+    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      num_batches_in_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
+    }
     std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
@@ -132,11 +136,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
             switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                          \
-  case N:                                                                                                       \
-    detail::workgroup_impl<Dir, TransposeIn, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],   \
-                                                              &loc[detail::pad_local(2 * N)], n_transforms, it, \
-                                                              twiddles, scale_factor);                          \
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                             \
+  case N:                                                                                                          \
+    detail::workgroup_impl<Dir, TransposeIn, N, SubgroupSize>(                                                     \
+        &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * N * num_batches_in_local_mem)], \
+        n_transforms, it, twiddles, scale_factor);                                                                 \
     break;
               SYCL_FFT_WG_DISPATCHER_IMPL(256)
               SYCL_FFT_WG_DISPATCHER_IMPL(512)
@@ -182,7 +186,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
     std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
-    std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG;
+    std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG / 2;
     // working memory + twiddles for subgroup impl for the two sizes
     return detail::pad_local(2 * fft_size * num_batches_in_local_mem) + 2 * (M + N);
   }

@@ -53,11 +53,20 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
   }
 }
 
+template <typename Scalar, sycl_fft::domain Domain>
+std::optional<committed_descriptor<Scalar, Domain>> get_committed_descriptor(descriptor<Scalar, Domain>& desc,
+                                                                             sycl::queue& queue) {
+  try {
+    auto committed_descriptor = desc.commit(queue);
+    return committed_descriptor;
+  } catch (std::runtime_error& e) {
+    return std::nullopt;
+  }
+}
+
 // test for out-of-place and in-place ffts.
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
-  ASSERT_TRUE(params.length > 0);
-
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_reference_output(num_elements);
@@ -83,8 +92,12 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
       desc.backward_distance = 1;
     }
   }
-  auto committed_descriptor = desc.commit(queue);
 
+  auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
+  if (!potential_committed_descriptor.has_value()) {
+    GTEST_SKIP() << "Not Enough Local Memory";
+  }
+  auto committed_descriptor = potential_committed_descriptor.value();
   auto fft_event = [&]() {
     if constexpr (Place == placement::OUT_OF_PLACE) {
       if constexpr (Dir == direction::FORWARD) {
@@ -126,8 +139,6 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
-  ASSERT_TRUE(params.length > 0);
-
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_reference_output(num_elements);
@@ -146,7 +157,12 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       desc.backward_distance = 1;
     }
   }
-  auto committed_descriptor = desc.commit(queue);
+
+  auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
+  if (!potential_committed_descriptor.has_value()) {
+    GTEST_SKIP() << "Not Enough Local Memory";
+  }
+  auto committed_descriptor = potential_committed_descriptor.value();
   double scaling_factor = Dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
 
   std::vector<std::complex<FType>> host_input_transposed;
