@@ -334,9 +334,9 @@ class committed_descriptor {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
-    twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [&](Scalar* ptr) {
+    twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
-        sycl::free(ptr, this->queue);
+        sycl::free(ptr, queue);
       }
     });
   }
