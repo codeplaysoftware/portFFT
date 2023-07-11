@@ -106,7 +106,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
         return -twiddle<T>::im[N][idx_in * idx_out % N];
       }
       ();
-      int source_wi_id = fft_start + idx_in * Stride;
+      std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
 
       T cur_real = sycl::select_from_group(sg, real, source_wi_id);
       T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
@@ -221,12 +221,16 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
  * @return the factor below or equal to subgroup size
  */
 constexpr int factorize_sg(int N, int sg_size) {
-  for (int i = sg_size; i > 1; i--) {
-    if (N % i == 0) {
-      return i;
+  if constexpr(SYCLFFT_SLOW_SG_SHUFFLES){
+    return 1;
+  } else{
+    for (int i = sg_size; i > 1; i--) {
+      if (N % i == 0) {
+        return i;
+      }
     }
+    return 1;
   }
-  return 1;
 }
 
 };  // namespace detail
@@ -252,7 +256,9 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
+    if constexpr(N > 1){
+      detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
+    }
 
     T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
     T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];

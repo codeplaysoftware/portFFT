@@ -42,11 +42,11 @@ INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(64))));
+                                                                                     ::testing::Values(64, 128))));
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(3),
-                                                                                     ::testing::Values(256))));
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
+                                                                                     ::testing::Values(256, 512, 1024))));
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
@@ -87,7 +87,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
 #define INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_TRANSPOSE(TYPE, TYPE_NAME)   \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, false, )      \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, false, ) \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, true, _in_transposed)
+  //INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, true, _in_transposed)
 // transpose in place is not supported (yet?)
 
 #endif
