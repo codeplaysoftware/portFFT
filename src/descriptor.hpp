@@ -325,7 +325,7 @@ class committed_descriptor {
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
     std::size_t minimum_local_mem_required;
-    if (params.forward_distance == 1 && params.backward_distance == params.lengths[0]) {
+    if (params.forward_distance == 1 || params.backward_distance == 1) {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
     } else {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);

@@ -337,11 +337,10 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad Pad,
-          typename T>
-__attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, const T* local, T* global,
-                                                                   std::size_t offset) {
-  constexpr std::size_t num_threads = num_subgroups * subgroup_size;
+template <detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
+                                                                   T* local, T* global, std::size_t offset) {
+  std::size_t num_threads = it.get_local_range(0);
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
@@ -367,9 +366,9 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
  */
-template <detail::pad pad, detail::level Level, typename glob_ptr, typename loc_ptr>
-__attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, glob_ptr global_base_ptr,
-                                                                   loc_ptr local_ptr, std::size_t offset,
+template <detail::pad Pad, detail::level Level, typename T>
+__attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, const T* global_base_ptr,
+                                                                   T* local_ptr, std::size_t offset,
                                                                    std::size_t num_complex, std::size_t stride_global,
                                                                    std::size_t stride_local) {
   sycl::sub_group sg = it.get_sub_group();
@@ -381,7 +380,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
     local_id = it.get_local_id(0);
   }
   for (std::size_t i = 0; i < num_complex; i++) {
-    std::size_t local_index = detail::pad_local<pad>(2 * i * stride_local + local_id);
+    std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id);
     std::size_t global_index = offset + local_id + 2 * i * stride_global;
     local_ptr[local_index] = global_base_ptr[global_index];
   }

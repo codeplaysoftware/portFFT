@@ -93,17 +93,19 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t n_reals_per_fft = FactorSG * N_reals_per_wi;
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
   std::size_t id_of_fft_in_sg = subgroup_local_id / FactorSG;
-  std::size_t id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
-  std::size_t n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
   std::size_t id_of_wi_in_fft = subgroup_local_id % FactorSG;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
   std::size_t rounded_up_n_ffts =
       roundUpToMultiple(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
 
+  std::size_t id_of_fft_in_kernel, n_ffts_in_kernel;
   if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
     id_of_fft_in_kernel = it.get_group(0) * (it.get_local_range(0) / 2);
     n_ffts_in_kernel = it.get_group_range(0) * (it.get_local_range(0) / 2);
+  } else {
+    id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
+    n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
   }
 
   global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, N_reals_per_wi * FactorSG);
@@ -122,8 +124,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         else
           return (it.get_local_range(0) - 2 * ((i + (it.get_local_range(0) / 2) - n_transforms))) / 2;
       }();
-      if ((it.get_local_linear_id() / 2) <= (number_of_batches_in_local_mem - 1)) {
-        global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP>(
+      if (it.get_local_linear_id() / 2 <= number_of_batches_in_local_mem - 1) {
+        global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, T>(
             it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(it.get_group());
@@ -136,11 +138,21 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
         });
-        if ((subgroup_local_id < max_wis_working)) {
-          store_transposed<N_reals_per_wi, detail::pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
-                                                                  (i + sub_batch) * n_reals_per_fft);
+        if constexpr (SubgroupSize == FactorSG) {
+          if ((subgroup_local_id < max_wis_working)) {
+            store_transposed<N_reals_per_wi, detail::pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
+                                                                    (i + sub_batch) * n_reals_per_fft);
+          }
+        } else {
+          private2local_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
+              priv, loc, static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch));
         }
       }
+      if constexpr (SubgroupSize != FactorSG) {
+        local2global_transposed<detail::pad::DO_PAD>(it, FactorWI * FactorSG, number_of_batches_in_local_mem, loc,
+                                                     output, i * n_reals_per_fft);
+      }
+      sycl::group_barrier(it.get_group());
     } else {
       global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                                n_reals_per_fft * (i - id_of_fft_in_sg),
@@ -310,23 +322,18 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
-    detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, Dummy> {
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP,
+                                                                                    TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     int factor_sg = desc.factors[1];
     std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
-    return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
-  }
-};
-
-template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
-    detail::level::SUBGROUP, detail::transpose::TRANSPOSED, Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG / 2;
-    return detail::pad_local(2 * desc.params.lengths[0] * num_batches_in_local_mem);
+    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG / 2;
+      return detail::pad_local(2 * desc.params.lengths[0] * num_batches_in_local_mem);
+    } else {
+      return detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg) * SYCLFFT_SGS_IN_WG;
+    }
   }
 };
 

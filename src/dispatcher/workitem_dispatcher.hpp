@@ -168,19 +168,9 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
-    detail::level::WORKITEM, detail::transpose::TRANSPOSED, Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
-           SYCLFFT_SGS_IN_WG;
-  }
-};
-
-template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<
-    detail::level::WORKITEM, detail::transpose::NOT_TRANSPOSED, Dummy> {
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
+                                                                                    TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     return detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size)) *
            SYCLFFT_SGS_IN_WG;
