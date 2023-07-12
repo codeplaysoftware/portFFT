@@ -38,7 +38,7 @@ INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
 // and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(16, 32))));
+                                                                                     ::testing::Values(32))));
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),

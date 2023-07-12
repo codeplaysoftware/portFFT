@@ -77,7 +77,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
 template <direction Dir, detail::transpose TransposeIn, int FactorWI, int FactorSG, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
-                                                         const T* twiddles, T scaling_factor, const sycl::stream& out) {
+                                                         const T* twiddles, T scaling_factor) {
   constexpr int N_reals_per_wi = 2 * FactorWI;
 
   T priv[N_reals_per_wi];
@@ -216,14 +216,13 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 template <direction Dir, detail::transpose TransposeIn, int FactorWI, int SubgroupSize, typename T>
 __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T* loc,
                                                         T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
-                                                        const T* twiddles, T scaling_factor,
-                                                        const sycl::stream& print_out) {
+                                                        const T* twiddles, T scaling_factor) {
   switch (factor_sg) {
 #define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                         \
   case M:                                                                                                            \
     if constexpr (M <= SubgroupSize && !fits_in_wi<T>(M * FactorWI)) {                                               \
       subgroup_impl<Dir, TransposeIn, FactorWI, M, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it, \
-                                                                 twiddles, scaling_factor, print_out);               \
+                                                                 twiddles, scaling_factor);                          \
     }                                                                                                                \
     break;
     // cross-sg size 1 cases are supported by workitem implementation
@@ -281,7 +280,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, TransposeIn, Dummy>::execute(desc);
     std::size_t twiddle_elements = 2 * fft_size;
     return desc.queue.submit([&](sycl::handler& cgh) {
-      sycl::stream print_out(8192 * 2, 8192, cgh);
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
@@ -299,7 +297,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                                     \
       detail::cross_sg_dispatcher<Dir, TransposeIn, N, SubgroupSize>(factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], \
                                                                      &loc[0], &loc_twiddles[0], n_transforms, it,      \
-                                                                     twiddles, scale_factor, print_out);               \
+                                                                     twiddles, scale_factor);                          \
     }                                                                                                                  \
     break;
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
