@@ -81,16 +81,21 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   constexpr std::size_t N = detail::factorize(FFTSize);
   constexpr std::size_t M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
-  constexpr std::size_t num_batches_in_local_mem = [=]() {
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-      return (SubgroupSize * SYCLFFT_SGS_IN_WG) / 2;
-    } else {
-      return 1;
-    }
-  }();
+
+  constexpr std::size_t max_num_batches_in_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
   global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, 2 * (M + N));
 
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
+    std::size_t num_batches_in_local_mem = [=]() {
+      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+        if ((offset + (it.get_local_range(0) / 2)) < n_transforms)
+          return it.get_local_range(0) / 2;
+        else
+          return (it.get_local_range(0) - 2 * ((offset + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+      } else {
+        return 1;
+      }
+    }();
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
       global2local_transposed<pad::DO_PAD, level::WORKGROUP, T>(it, input, loc, 2 * offset, FFTSize, n_transforms,
                                                                 num_batches_in_local_mem);
@@ -98,16 +103,17 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       global2local<pad::DO_PAD, level::WORKGROUP, SubgroupSize>(it, input, loc, 2 * FFTSize, offset);
     }
     sycl::group_barrier(it.get_group());
-    detail::unrolled_loop<0, num_batches_in_local_mem, 1>([&](const std::size_t i) __attribute__((always_inline)) {
+    for (std::size_t i = 0; i < num_batches_in_local_mem; i++) {
       wg_dft<Dir, FFTSize, N, M, SubgroupSize>(loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it, scaling_factor);
       sycl::group_barrier(it.get_group());
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        local2global_transposed<detail::pad::DO_PAD>(it, N * M, num_batches_in_local_mem, loc, output, offset);
+        local2global_transposed<detail::pad::DO_PAD>(it, N * M, num_batches_in_local_mem, max_num_batches_in_local_mem,
+                                                     loc, output, offset);
       } else {
-        local2global_transposed<detail::pad::DO_PAD>(it, N, M, loc, output, offset);
+        local2global_transposed<detail::pad::DO_PAD>(it, N, M, M, loc, output, offset);
       }
       sycl::group_barrier(it.get_group());
-    });
+    }
   }
 }
 

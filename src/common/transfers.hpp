@@ -339,12 +339,13 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  */
 template <detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
-                                                                   T* local, T* global, std::size_t offset) {
+                                                                   std::size_t stride, T* local, T* global,
+                                                                   std::size_t offset) {
   std::size_t num_threads = it.get_local_range(0);
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<Pad>(2 * M * source_col + 2 * source_row);
+    std::size_t source_index = detail::pad_local<Pad>(2 * stride * source_col + 2 * source_row);
     global[offset + 2 * i] = local[source_index];
     global[offset + 2 * i + 1] = local[source_index + 1];
   }
