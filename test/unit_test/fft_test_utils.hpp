@@ -60,6 +60,12 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
     GTEST_SKIP();
   }
+  {
+    std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
+    if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
+      GTEST_SKIP();
+    }
+  }
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_reference_output(num_elements);
@@ -131,6 +137,12 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
     GTEST_SKIP();
+  }
+  {
+    std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
+    if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
+      GTEST_SKIP();
+    }
   }
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
