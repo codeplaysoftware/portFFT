@@ -258,14 +258,15 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
 
     if constexpr(N > 1){
       detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
+      if(idx_of_element_in_wi > 0){
+        T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
+        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
+        if constexpr (Dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
+        T tmp_real = real * twiddle_real - imag * twiddle_imag;
+        imag = real * twiddle_imag + imag * twiddle_real;
+        real = tmp_real;
+        }
     }
-
-    T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
-    T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
-    if constexpr (Dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
-    T tmp_real = real * twiddle_real - imag * twiddle_imag;
-    imag = real * twiddle_imag + imag * twiddle_real;
-    real = tmp_real;
   });
 
   wi_dft<Dir, M, 1, 1>(inout, inout);
