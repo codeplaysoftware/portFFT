@@ -125,14 +125,14 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                                                   &loc[detail::pad_local(2 * N)], n_transforms, it, twiddles, \
                                                   scale_factor);                                              \
       break;
-#if SYCLFFT_SLOW_SG_SHUFFLES==1
+#if SYCLFFT_SLOW_SG_SHUFFLES == 1
               SYCL_FFT_WG_DISPATCHER_IMPL(64)
               SYCL_FFT_WG_DISPATCHER_IMPL(128)
 #endif
               SYCL_FFT_WG_DISPATCHER_IMPL(256)
               SYCL_FFT_WG_DISPATCHER_IMPL(512)
               SYCL_FFT_WG_DISPATCHER_IMPL(1024)
-#if SYCLFFT_SLOW_SG_SHUFFLES==0 //TODO: temporary solution until multiple factors are supported
+#if SYCLFFT_SLOW_SG_SHUFFLES == 0  // TODO: temporary solution until multiple factors are supported
               SYCL_FFT_WG_DISPATCHER_IMPL(2048)
               SYCL_FFT_WG_DISPATCHER_IMPL(4096)
               SYCL_FFT_WG_DISPATCHER_IMPL(8192)

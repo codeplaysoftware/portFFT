@@ -221,9 +221,9 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
  * @return the factor below or equal to subgroup size
  */
 constexpr int factorize_sg(int N, int sg_size) {
-  if constexpr(SYCLFFT_SLOW_SG_SHUFFLES){
+  if constexpr (SYCLFFT_SLOW_SG_SHUFFLES) {
     return 1;
-  } else{
+  } else {
     for (int i = sg_size; i > 1; i--) {
       if (N % i == 0) {
         return i;
@@ -256,16 +256,16 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    if constexpr(N > 1){
+    if constexpr (N > 1) {
       detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
-      if(idx_of_element_in_wi > 0){
+      if (idx_of_element_in_wi > 0) {
         T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
         T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
         if constexpr (Dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
         T tmp_real = real * twiddle_real - imag * twiddle_imag;
         imag = real * twiddle_imag + imag * twiddle_real;
         real = tmp_real;
-        }
+      }
     }
   });
 
