@@ -58,7 +58,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   constexpr int m_ffts_in_sg = SubgroupSize / fact_sg_M;
   constexpr int n_ffts_in_sg = SubgroupSize / fact_sg_N;
   int sg_id = static_cast<int>(sg.get_group_id());
-  constexpr int num_sgs = SYCLFFT_SGS_IN_WG;
+  int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
 
   constexpr int max_working_tid_in_sg_m = m_ffts_in_sg * fact_sg_M;
   constexpr int max_working_tid_in_sg_n = n_ffts_in_sg * fact_sg_N;
