@@ -176,10 +176,16 @@ class verif_data_spec {
    */
   inline std::vector<double> load_file_data(std::size_t start, std::size_t end) {
     std::ifstream dataFile(filePath, std::ios_base::in | std::ios_base::binary);
+    if (!dataFile.good()) {
+      throw std::runtime_error("Could not open reference data file at: " + filePath);
+    }
     std::vector<double> data(end - start);
     dataFile.seekg(std::ios_base::beg);
     dataFile.seekg(static_cast<std::streamoff>(start * sizeof(double)));
     dataFile.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>((end - start) * sizeof(double)));
+    if (!dataFile.good()) {
+      throw std::runtime_error("Failed to read reference data from: " + filePath);
+    }
     return data;
   }
 
