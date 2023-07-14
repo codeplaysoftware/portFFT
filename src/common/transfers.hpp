@@ -356,7 +356,7 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @tparam pad Whether or not to consider padding in local memory
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
- * 
+ *
  * @param it Associated nd_item
  * @param global_base_ptr Global Pointer
  * @param local_ptr Local Pointer

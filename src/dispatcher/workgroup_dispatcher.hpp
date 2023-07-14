@@ -131,9 +131,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
-    std::size_t num_batches_in_local_mem =
-        (TransposeIn == detail::transpose::TRANSPOSED) ? SYCLFFT_SGS_IN_WG * SubgroupSize / 2 : 1;
-
     std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
@@ -148,18 +145,24 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
             switch (fft_size) {
-#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                             \
-  case N:                                                                                                          \
-    detail::workgroup_impl<Dir, TransposeIn, N, SubgroupSize>(                                                     \
-        &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * N * num_batches_in_local_mem)], \
-        n_transforms, it, twiddles, scale_factor);                                                                 \
+#define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                          \
+  case N:                                                                                                       \
+    detail::workgroup_impl<Dir, TransposeIn, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],   \
+                                                              &loc[detail::pad_local(2 * N)], n_transforms, it, \
+                                                              twiddles, scale_factor);                          \
     break;
+#if SYCLFFT_SLOW_SG_SHUFFLES == 1
+              SYCL_FFT_WG_DISPATCHER_IMPL(64)
+              SYCL_FFT_WG_DISPATCHER_IMPL(128)
+#endif
               SYCL_FFT_WG_DISPATCHER_IMPL(256)
               SYCL_FFT_WG_DISPATCHER_IMPL(512)
               SYCL_FFT_WG_DISPATCHER_IMPL(1024)
+#if SYCLFFT_SLOW_SG_SHUFFLES == 0  // TODO: temporary solution until multiple factors are supported
               SYCL_FFT_WG_DISPATCHER_IMPL(2048)
               SYCL_FFT_WG_DISPATCHER_IMPL(4096)
               SYCL_FFT_WG_DISPATCHER_IMPL(8192)
+#endif
           // We compile a limited set of configurations to limit the compilation time
   #undef SYCL_FFT_WG_DISPATCHER_IMPL
             }
