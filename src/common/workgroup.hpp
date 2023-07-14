@@ -73,7 +73,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   int max_n_sg_offset = detail::roundUpToMultiple<int>(M, n_ffts_in_sg) +
                         (static_cast<int>(sg.get_local_linear_id()) >= max_working_tid_in_sg_n);
 
-  for (int sub_batch = n_sg_offset; sub_batch <= max_n_sg_offset; sub_batch += n_sg_increment) {
+  for (int sub_batch = n_sg_offset; sub_batch < max_n_sg_offset; sub_batch += n_sg_increment) {
     bool working = sub_batch < M && static_cast<int>(sg.get_local_linear_id()) < max_working_tid_in_sg_n;
     if (working) {
       local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
@@ -87,7 +87,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   }
 
   sycl::group_barrier(it.get_group());
-  for (int sub_batch = m_sg_offset; sub_batch <= max_m_sg_offset; sub_batch += m_sg_increment) {
+  for (int sub_batch = m_sg_offset; sub_batch < max_m_sg_offset; sub_batch += m_sg_increment) {
     bool working = sub_batch < N && sg.get_local_linear_id() < max_working_tid_in_sg_m;
     if (working) {
       local2private<2 * fact_wi_M, detail::pad::DO_PAD>(
