@@ -120,41 +120,46 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
       std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
       constexpr std::size_t max_num_batches_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
-      std::size_t number_of_batches_in_local_mem = [=]() {
+      std::size_t num_batches_in_local_mem = [=]() {
         if ((i + (it.get_local_range(0) / 2)) < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
           return (it.get_local_range(0) - 2 * ((i + (it.get_local_range(0) / 2) - n_transforms))) / 2;
         }
       }();
-      if (it.get_local_linear_id() / 2 < number_of_batches_in_local_mem) {
+      std::size_t rounded_up_sub_batches = detail::roundUpToMultiple(num_batches_in_local_mem, n_ffts_per_sg);
+
+      if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, T>(
             it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(it.get_group());
-      for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < number_of_batches_in_local_mem;
+      for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
            sub_batch += SYCLFFT_SGS_IN_WG * n_ffts_per_sg) {
-        local2private_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
-            loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch));
+        bool _working = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
+        if (_working) {
+          local2private_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
+              loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch));
+        }
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
         unrolled_loop<0, N_reals_per_wi, 2>([&](int idx) __attribute__((always_inline)) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
         });
         if constexpr (SubgroupSize == FactorSG) {
-          if ((subgroup_local_id < max_wis_working)) {
+          if (_working) {
             store_transposed<N_reals_per_wi, detail::pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
                                                                     (i + sub_batch) * n_reals_per_fft);
           }
         } else {
-          if (subgroup_local_id < max_wis_working) {
+          if (_working) {
             private2local_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
                 priv, loc, static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch));
           }
         }
       }
       if constexpr (SubgroupSize != FactorSG) {
-        local2global_transposed<detail::pad::DO_PAD>(it, FactorWI * FactorSG, number_of_batches_in_local_mem,
+        local2global_transposed<detail::pad::DO_PAD>(it, FactorWI * FactorSG, num_batches_in_local_mem,
                                                      max_num_batches_local_mem, loc, output, i * n_reals_per_fft);
       }
       sycl::group_barrier(it.get_group());
@@ -243,11 +248,9 @@ __attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* 
 
 }  // namespace detail
 
-
-
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy>{
+struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc) {
     int factor_wi = desc.factors[0];
     int factor_sg = desc.factors[1];
@@ -269,17 +272,17 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::SUBGROUP, Dummy>{
-  static sycl::event execute(
-      committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-      const std::vector<sycl::event>& dependencies) {
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in,
+                                                               T_out>::inner<detail::level::SUBGROUP, Dummy> {
+  static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+                             const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
     int factor_sg = desc.factors[1];
-    std::size_t global_size = detail::get_global_size_subgroup<Scalar>(n_transforms, static_cast<std::size_t>(factor_sg),
-                                                                      SubgroupSize, desc.n_compute_units);
+    std::size_t global_size = detail::get_global_size_subgroup<Scalar>(
+        n_transforms, static_cast<std::size_t>(factor_sg), SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, TransposeIn, Dummy>::execute(desc);
     std::size_t twiddle_elements = 2 * fft_size;
@@ -291,8 +294,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             int factor_wi = kh.get_specialization_constant<detail::factor_wi_spec_const>();
             int factor_sg = kh.get_specialization_constant<detail::factor_sg_spec_const>();
             switch (factor_wi) {
@@ -311,7 +314,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
               SYCL_FFT_SG_WI_DISPATCHER_IMPL(32)
           // We compile a limited set of configurations to limit the compilation time
-  #undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
+#undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
             }
           });
     });
@@ -320,9 +323,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy>{
-  static void execute(
-      committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
+  static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     in_bundle.template set_specialization_constant<detail::factor_wi_spec_const>(desc.factors[0]);
     in_bundle.template set_specialization_constant<detail::factor_sg_spec_const>(desc.factors[1]);
   }
@@ -346,4 +348,4 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 
 }  // namespace sycl_fft
 
-#endif // SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
+#endif  // SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
