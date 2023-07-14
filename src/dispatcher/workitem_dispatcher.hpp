@@ -43,7 +43,8 @@ constexpr static sycl::specialization_id<std::size_t> workitem_spec_const_fft_si
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T>
-std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgroup_size, std::size_t num_sgs_per_wg, std::size_t n_compute_units) {
+std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgroup_size, std::size_t num_sgs_per_wg,
+                                     std::size_t n_compute_units) {
   std::size_t maximum_n_sgs = 8 * n_compute_units * 64;
   std::size_t maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   std::size_t wg_size = subgroup_size * num_sgs_per_wg;
@@ -124,7 +125,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
-    std::size_t global_size = detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
+    std::size_t global_size =
+        detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
     std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -171,7 +173,8 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, Dummy>{
   static std::size_t execute(committed_descriptor& desc) {
-    std::size_t num_scalars_per_sg = detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size));
+    std::size_t num_scalars_per_sg =
+        detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size));
     std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
     desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(SYCLFFT_SGS_IN_WG), max_n_sgs);
     return num_scalars_per_sg * desc.num_sgs_per_wg;

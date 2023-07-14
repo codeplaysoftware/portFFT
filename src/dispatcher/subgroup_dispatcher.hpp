@@ -45,8 +45,8 @@ constexpr static sycl::specialization_id<int> factor_sg_spec_const{};
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T>
-std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t factor_sg, std::size_t subgroup_size, std::size_t num_sgs_per_wg,
-                                     std::size_t n_compute_units) {
+std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t factor_sg, std::size_t subgroup_size,
+                                     std::size_t num_sgs_per_wg, std::size_t n_compute_units) {
   std::size_t maximum_n_sgs = 2 * n_compute_units * 64;
   std::size_t maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   std::size_t wg_size = subgroup_size * num_sgs_per_wg;
@@ -225,8 +225,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward;
     int factor_sg = desc.factors[1];
-    std::size_t global_size = detail::get_global_size_subgroup<Scalar>(n_transforms, static_cast<std::size_t>(factor_sg),
-                                                                      SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
+    std::size_t global_size = detail::get_global_size_subgroup<Scalar>(
+        n_transforms, static_cast<std::size_t>(factor_sg), SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
     std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, Dummy>::execute(desc);
     std::size_t twiddle_elements = 2 * fft_size;
     return desc.queue.submit([&](sycl::handler& cgh) {

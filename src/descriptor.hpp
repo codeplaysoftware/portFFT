@@ -225,7 +225,8 @@ class committed_descriptor {
   };
 
   /**
-   * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg` to make the problem fit in the local memory.
+   * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg`
+   * to make the problem fit in the local memory.
    *
    * @return std::size_t the number of scalars
    */

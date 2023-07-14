@@ -337,8 +337,7 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <std::size_t N, std::size_t M, std::size_t subgroup_size, detail::pad Pad,
-          typename T>
+template <std::size_t N, std::size_t M, std::size_t subgroup_size, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, const T* local, T* global,
                                                                    std::size_t offset) {
   std::size_t num_threads = it.get_local_range(0);
