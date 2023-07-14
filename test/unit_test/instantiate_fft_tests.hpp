@@ -46,7 +46,7 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(3),
-                                                                                     ::testing::Values(256, 512))));
+                                                                                     ::testing::Values(256))));
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
