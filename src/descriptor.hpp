@@ -189,7 +189,7 @@ class committed_descriptor {
       return detail::level::WORKGROUP;
     }
     // TODO global
-    throw std::runtime_error("FFT size " + std::to_string(N) + " is not supported!");
+    throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
   }
 
   /**
