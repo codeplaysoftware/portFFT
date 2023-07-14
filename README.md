@@ -13,6 +13,9 @@ SYCL-FFT is in early stages of development and will support more options and opt
 * [Level Zero] drivers
   * OpenCL drivers are not supported
 * CMake 3.16+
+* For tests and verifying benchmarks:
+  * Python
+  * Numpy
 
 ## Getting Started
 
