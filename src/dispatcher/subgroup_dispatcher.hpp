@@ -103,8 +103,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t id_of_fft_in_kernel;
   std::size_t n_ffts_in_kernel;
   if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-    id_of_fft_in_kernel = it.get_group(0) * (it.get_local_range(0) / 2);
-    n_ffts_in_kernel = it.get_group_range(0) * (it.get_local_range(0) / 2);
+    id_of_fft_in_kernel = it.get_group(0) * it.get_local_range(0) / 2;
+    n_ffts_in_kernel = it.get_group_range(0) * it.get_local_range(0) / 2;
   } else {
     id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
     n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
@@ -118,13 +118,15 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     std::size_t n_ffts_worked_on_by_sg = sycl::min(n_transforms - (i - id_of_fft_in_sg), n_ffts_per_sg);
 
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      // codepath taken if input is transposed
+
       std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
       constexpr std::size_t max_num_batches_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
       std::size_t num_batches_in_local_mem = [=]() {
-        if ((i + (it.get_local_range(0) / 2)) < n_transforms) {
+        if (i + (it.get_local_range(0) / 2) < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
-          return (it.get_local_range(0) - 2 * ((i + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+          return (it.get_local_range(0) - 2 * (i + it.get_local_range(0) / 2 - n_transforms)) / 2;
         }
       }();
       std::size_t rounded_up_sub_batches = detail::roundUpToMultiple(num_batches_in_local_mem, n_ffts_per_sg);
@@ -164,6 +166,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       }
       sycl::group_barrier(it.get_group());
     } else {
+      // Codepath taken if input is not transposed
+
       global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                                n_reals_per_fft * (i - id_of_fft_in_sg),
                                                                subgroup_id * n_reals_per_sg);

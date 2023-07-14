@@ -89,10 +89,10 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     std::size_t num_batches_in_local_mem = [=]() {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        if ((offset + (it.get_local_range(0) / 2)) < n_transforms) {
+        if (offset + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
-          return (it.get_local_range(0) - 2 * ((offset + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+          return (it.get_local_range(0) - 2 * (offset + it.get_local_range(0) / 2 - n_transforms)) / 2;
         }
       } else {
         return 1;
