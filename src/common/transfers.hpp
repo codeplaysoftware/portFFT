@@ -91,7 +91,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
+    local_size = it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -100,7 +100,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 #ifdef SYCLFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -199,7 +199,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
+    local_size = it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -208,7 +208,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 #ifdef SYCLFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -337,11 +337,10 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <std::size_t N, std::size_t M, std::size_t num_subgroups, std::size_t subgroup_size, detail::pad Pad,
-          typename T>
+template <std::size_t N, std::size_t M, std::size_t subgroup_size, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, const T* local, T* global,
                                                                    std::size_t offset) {
-  constexpr std::size_t num_threads = num_subgroups * subgroup_size;
+  std::size_t num_threads = it.get_local_range(0);
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;

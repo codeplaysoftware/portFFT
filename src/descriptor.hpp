@@ -104,6 +104,8 @@ class committed_descriptor {
   detail::level level;
   std::vector<int> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
+  std::size_t num_sgs_per_wg;
+  std::size_t local_memory_size;
 
   template<typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
@@ -223,7 +225,8 @@ class committed_descriptor {
   };
 
   /**
-   * Determine the number of scalars we need to have space for in the local memory.
+   * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg`
+   * to make the problem fit in the local memory.
    *
    * @return std::size_t the number of scalars
    */
@@ -300,7 +303,8 @@ class committed_descriptor {
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         // compile the kernels
-        exec_bundle(build_w_spec_const<SYCLFFT_SUBGROUP_SIZES>()) {
+        exec_bundle(build_w_spec_const<SYCLFFT_SUBGROUP_SIZES>()),
+        num_sgs_per_wg(SYCLFFT_SGS_IN_WG) {
     // TODO: check and support all the parameter values
     if (params.lengths.size() != 1) {
       throw std::runtime_error("SYCL-FFT only supports 1D FFT for now");
@@ -308,7 +312,7 @@ class committed_descriptor {
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    std::size_t local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
     std::size_t minimum_local_mem_required = num_scalars_in_local_mem() * sizeof(Scalar);
     if (minimum_local_mem_required > local_memory_size) {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
