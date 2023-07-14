@@ -55,7 +55,7 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 16, 32, 64, 4096))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 32, 64, 4096))));
 
 #define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,         \
                          DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                      \

@@ -324,15 +324,13 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
- *
- * @tparam N Number of Rows
- * @tparam M Number of Cols
- * @tparam num_subgroups number of subgroups in the workgroup
- * @tparam subgroup_size Size of each subgroup
  * @tparam Pad Whether or not to consider local memory as padded
  * @tparam T type of the scalar used for computations
  *
  * @param it Associated nd_item
+ * @param N Number of rows
+ * @param M Number of Cols
+ * @param stride Stride between two contiguous elements in global memory in local memory.
  * @param local pointer to the local memory
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer

@@ -57,6 +57,7 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
  * @tparam Dir Direction of the FFT
+ * @tparam TransposeIn Whether or not the input is transposed
  * @tparam FFTSize Problem size
  * @tparam T Scalar type
  *
@@ -88,10 +89,11 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     std::size_t num_batches_in_local_mem = [=]() {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        if ((offset + (it.get_local_range(0) / 2)) < n_transforms)
+        if ((offset + (it.get_local_range(0) / 2)) < n_transforms) {
           return it.get_local_range(0) / 2;
-        else
+        } else {
           return (it.get_local_range(0) - 2 * ((offset + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+        }
       } else {
         return 1;
       }
@@ -129,10 +131,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
-    std::size_t num_batches_in_local_mem = 1;
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-      num_batches_in_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
-    }
+    std::size_t num_batches_in_local_mem =
+        (TransposeIn == detail::transpose::TRANSPOSED) ? SYCLFFT_SGS_IN_WG * SubgroupSize / 2 : 1;
+
     std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);

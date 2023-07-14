@@ -59,6 +59,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam TransposeIn Whether or not the input is transposed
  * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam SubgroupSize size of the subgroup
@@ -120,12 +121,13 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
       constexpr std::size_t max_num_batches_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
       std::size_t number_of_batches_in_local_mem = [=]() {
-        if ((i + (it.get_local_range(0) / 2)) < n_transforms)
+        if ((i + (it.get_local_range(0) / 2)) < n_transforms) {
           return it.get_local_range(0) / 2;
-        else
+        } else {
           return (it.get_local_range(0) - 2 * ((i + (it.get_local_range(0) / 2) - n_transforms))) / 2;
+        }
       }();
-      if (it.get_local_linear_id() / 2 <= number_of_batches_in_local_mem - 1) {
+      if (it.get_local_linear_id() / 2 < number_of_batches_in_local_mem) {
         global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, T>(
             it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
@@ -145,7 +147,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
                                                                     (i + sub_batch) * n_reals_per_fft);
           }
         } else {
-          if ((subgroup_local_id < max_wis_working)) {
+          if (subgroup_local_id < max_wis_working) {
             private2local_transposed<FactorWI, max_num_batches_local_mem, detail::pad::DO_PAD>(
                 priv, loc, static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch));
           }
@@ -166,6 +168,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         local2private<N_reals_per_wi, pad::DO_PAD>(loc, priv, subgroup_local_id, N_reals_per_wi,
                                                    subgroup_id * n_reals_per_sg);
       }
+      sycl::group_barrier(sg);
+
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
       unrolled_loop<0, N_reals_per_wi, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;

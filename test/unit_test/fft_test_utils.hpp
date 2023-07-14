@@ -57,8 +57,7 @@ template <typename Scalar, sycl_fft::domain Domain>
 std::optional<committed_descriptor<Scalar, Domain>> get_committed_descriptor(descriptor<Scalar, Domain>& desc,
                                                                              sycl::queue& queue) {
   try {
-    auto committed_descriptor = desc.commit(queue);
-    return committed_descriptor;
+    return desc.commit(queue);
   } catch (std::runtime_error& e) {
     return std::nullopt;
   }
