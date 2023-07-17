@@ -54,12 +54,12 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
 }
 
 template <typename Scalar, sycl_fft::domain Domain>
-std::optional<committed_descriptor<Scalar, Domain>> get_committed_descriptor(descriptor<Scalar, Domain>& desc,
-                                                                             sycl::queue& queue) {
+std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_committed_descriptor(
+    descriptor<Scalar, Domain>& desc, sycl::queue& queue) {
   try {
-    return desc.commit(queue);
+    return std::make_pair(desc.commit(queue), "");
   } catch (std::runtime_error& e) {
-    return std::nullopt;
+    return std::make_pair(std::nullopt, e.what());
   }
 }
 
@@ -93,10 +93,10 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
 
   auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
-  if (!potential_committed_descriptor.has_value()) {
-    GTEST_SKIP() << "Not Enough Local Memory";
+  if (!potential_committed_descriptor.first.has_value()) {
+    GTEST_SKIP() << potential_committed_descriptor.second;
   }
-  auto committed_descriptor = potential_committed_descriptor.value();
+  auto committed_descriptor = potential_committed_descriptor.first.value();
   auto fft_event = [&]() {
     if constexpr (Place == placement::OUT_OF_PLACE) {
       if constexpr (Dir == direction::FORWARD) {
@@ -158,10 +158,10 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   }
 
   auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
-  if (!potential_committed_descriptor.has_value()) {
-    GTEST_SKIP() << "Not Enough Local Memory";
+  if (!potential_committed_descriptor.first.has_value()) {
+    GTEST_SKIP() << potential_committed_descriptor.second;
   }
-  auto committed_descriptor = potential_committed_descriptor.value();
+  auto committed_descriptor = potential_committed_descriptor.first.value();
   double scaling_factor = Dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
 
   std::vector<std::complex<FType>> host_input_transposed;
