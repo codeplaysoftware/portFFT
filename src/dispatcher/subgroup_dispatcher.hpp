@@ -125,7 +125,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
       std::size_t max_num_batches_local_mem = n_sgs_in_wg * SubgroupSize / 2;
       std::size_t num_batches_in_local_mem = [=]() {
-        if (i + (it.get_local_range(0) / 2) < n_transforms) {
+        if (i + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
           return n_transforms - i;
