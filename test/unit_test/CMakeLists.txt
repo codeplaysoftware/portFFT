@@ -63,5 +63,5 @@ foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
         Threads::Threads
     )
     target_include_directories(${TEST_TARGET} PRIVATE ${PROJECT_SOURCE_DIR}/test/common)
-    gtest_discover_tests(${TEST_TARGET} DISCOVERY_MODE PRE_TEST)
+    gtest_discover_tests(${TEST_TARGET} XML_OUTPUT_DIR output DISCOVERY_MODE PRE_TEST)
 endforeach()
