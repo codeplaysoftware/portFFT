@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 #define SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 
+#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workgroup.hpp>
@@ -58,6 +59,7 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  *
  * @tparam Dir Direction of the FFT
  * @tparam FFTSize Problem size
+ * @tparam SubgroupSize size of the subgroup
  * @tparam T Scalar type
  *
  * @param input global input pointer
@@ -94,20 +96,57 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   }
 }
 
+/**
+ * Launch specialized subgroup DFT size matching fft_size if one is available.
+ *
+ * @tparam Dir Direction of the FFT
+ * @tparam SubgroupSize size of the subgroup
+ * @tparam T Scalar type
+ * @tparam SizeList The list of sizes that will be specialized.
+ * @param input global input pointer
+ * @param output global output pointer
+ * @param loc Pointer to local memory
+ * @param loc_twiddles pointer to twiddles residing in the local memory
+ * @param n_transforms number of fft batch size
+ * @param it Associated Iterator
+ * @param twiddles Pointer to twiddles residing in the global memory
+ * @param scaling_factor scaling factor applied to the result
+ * @tparam fft_size Problem size
+ */
+template <direction Dir, int SubgroupSize, typename T, typename SizeList>
+__attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+                                                            std::size_t n_transforms, sycl::nd_item<1> it,
+                                                            const T* twiddles, T scaling_factor, std::size_t fft_size) {
+  if constexpr (!SizeList::list_end) {
+    constexpr size_t this_size = SizeList::size;
+    if (fft_size == this_size) {
+      if constexpr (!fits_in_sg<T>(this_size, SubgroupSize)) {
+        workgroup_impl<Dir, this_size, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it, twiddles,
+                                                     scaling_factor);
+      }
+    } else {
+      workgroup_dispatch_impl<Dir, SubgroupSize, T, typename SizeList::child_t>(
+          input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, fft_size);
+    }
+  }
+}
+
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::WORKGROUP, Dummy>{
-  static sycl::event execute(
-      committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-      const std::vector<sycl::event>& dependencies) {
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in,
+                                                               T_out>::inner<detail::level::WORKGROUP, Dummy> {
+  static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+                             const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward;
-    std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
-    std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, Dummy>::execute(desc);
+    std::size_t global_size =
+        detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
+    std::size_t local_elements =
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -118,28 +157,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
           sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
-            switch (fft_size) {
-  #define SYCL_FFT_WG_DISPATCHER_IMPL(N)                                                                       \
-    case N:                                                                                                    \
-      detail::workgroup_impl<Dir, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],             \
-                                                  &loc[detail::pad_local(2 * N)], n_transforms, it, twiddles, \
-                                                  scale_factor);                                              \
-      break;
-#if SYCLFFT_SLOW_SG_SHUFFLES == 1
-              SYCL_FFT_WG_DISPATCHER_IMPL(64)
-              SYCL_FFT_WG_DISPATCHER_IMPL(128)
-#endif
-              SYCL_FFT_WG_DISPATCHER_IMPL(256)
-              SYCL_FFT_WG_DISPATCHER_IMPL(512)
-              SYCL_FFT_WG_DISPATCHER_IMPL(1024)
-#if SYCLFFT_SLOW_SG_SHUFFLES == 0  // TODO: temporary solution until multiple factors are supported
-              SYCL_FFT_WG_DISPATCHER_IMPL(2048)
-              SYCL_FFT_WG_DISPATCHER_IMPL(4096)
-              SYCL_FFT_WG_DISPATCHER_IMPL(8192)
-#endif
-          // We compile a limited set of configurations to limit the compilation time
-  #undef SYCL_FFT_WG_DISPATCHER_IMPL
-            }
+            detail::workgroup_dispatch_impl<Dir, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
+                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * fft_size)], n_transforms, it,
+                twiddles, scale_factor, fft_size);
           });
     });
   }
@@ -147,16 +167,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy>{
-  static void execute(
-      committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
+  static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     in_bundle.template set_specialization_constant<detail::workgroup_spec_const_fft_size>(desc.params.lengths[0]);
   }
 };
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, Dummy>{
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
@@ -168,7 +187,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy>{
+struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc) {
     int factor_wi_N = desc.factors[0];
     int factor_sg_N = desc.factors[1];
@@ -180,19 +199,19 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Scalar* res = sycl::malloc_device<Scalar>(2 * (M + N + fft_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_N), static_cast<std::size_t>(factor_wi_N)}),
-                      [=](sycl::item<2> it) {
-                        int n = static_cast<int>(it.get_id(0));
-                        int k = static_cast<int>(it.get_id(1));
-                        sg_calc_twiddles(factor_sg_N, factor_wi_N, n, k, res + (2 * M));
-                      });
+                       [=](sycl::item<2> it) {
+                         int n = static_cast<int>(it.get_id(0));
+                         int k = static_cast<int>(it.get_id(1));
+                         sg_calc_twiddles(factor_sg_N, factor_wi_N, n, k, res + (2 * M));
+                       });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_M), static_cast<std::size_t>(factor_wi_M)}),
-                      [=](sycl::item<2> it) {
-                        int n = static_cast<int>(it.get_id(0));
-                        int k = static_cast<int>(it.get_id(1));
-                        sg_calc_twiddles(factor_sg_M, factor_wi_M, n, k, res);
-                      });
+                       [=](sycl::item<2> it) {
+                         int n = static_cast<int>(it.get_id(0));
+                         int k = static_cast<int>(it.get_id(1));
+                         sg_calc_twiddles(factor_sg_M, factor_wi_M, n, k, res);
+                       });
     });
     Scalar* global_pointer = res + 2 * (N + M);
     // Copying from pinned memory to device might be faster than from regular allocation
@@ -216,4 +235,4 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
 }  // namespace sycl_fft
 
-#endif // SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
+#endif  // SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP

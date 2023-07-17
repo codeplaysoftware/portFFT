@@ -76,7 +76,6 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 SYCL-FFT is still in early development. The supported configurations are:
 
-* FFT sizes that are a power of 2 only
 * complex to complex transforms
 * single and double precisions
 * forward and backward directions
@@ -87,7 +86,12 @@ SYCL-FFT is still in early development. The supported configurations are:
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `SYCLFFT_TARGET_REGS_PER_WI` is used to calculate the largest FFT that can fit in a workitem.
-For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem. All FFT sizes that are a power of 2 up to this maximum are supported.
+For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem.
+
+The FFT sizes supported in the work-item, sub-group and work-group implementations are set using `SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES`.
+The supported sizes are given as a comma-separated list of values.
+By default, the size of $2^n$ and $2^n \times 3$ are enabled up to a value of 8192.
+
 FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `SYCLFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
 
 Any batch size is supported as long as the input and output data fits in global memory.
