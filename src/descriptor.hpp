@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_DESCRIPTOR_HPP
 #define SYCL_FFT_DESCRIPTOR_HPP
 
+#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
@@ -176,13 +177,18 @@ class committed_descriptor {
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
     factors.clear();
     std::size_t fft_size = params.lengths[0];
+    if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
+      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
+    }
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
       return detail::level::WORKITEM;
     }
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
     int factor_wi = static_cast<int>(fft_size) / factor_sg;
-    if (detail::fits_in_wi<Scalar>(factor_wi)) {
+    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+      // This factorization is duplicated in the dispatch logic on the device.
+      // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
       get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
@@ -199,6 +205,8 @@ class committed_descriptor {
       factors.push_back(factor_sg_N);
       factors.push_back(factor_wi_M);
       factors.push_back(factor_sg_M);
+      // This factorization of N and M is duplicated in the dispatch logic on the device.
+      // The CT and spec constant factors should match.
       get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
       return detail::level::WORKGROUP;
     }

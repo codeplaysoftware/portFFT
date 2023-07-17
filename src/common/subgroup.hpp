@@ -233,6 +233,22 @@ constexpr int factorize_sg(int N, int sg_size) {
   }
 }
 
+/**
+ * Checks whether a problem can be solved with sub-group implementation
+ * without reg spilling.
+ * @tparam Scalar type of the real scalar used for the computation
+ * @tparam T_index Index type
+ * @param N Size of the problem, in complex values
+ * @param sg_size Size of the sub-group
+ * @return true if the problem fits in the registers
+ */
+template <typename Scalar, typename T_index>
+constexpr bool fits_in_sg(T_index N, int sg_size) {
+  int factor_sg = factorize_sg(static_cast<int>(N), sg_size);
+  int factor_wi = static_cast<int>(N) / factor_sg;
+  return fits_in_wi<Scalar>(factor_wi);
+}
+
 };  // namespace detail
 
 /**

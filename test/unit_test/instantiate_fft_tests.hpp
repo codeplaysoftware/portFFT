@@ -32,8 +32,8 @@ class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 33000),
-                                                                                     ::testing::Values(1, 2, 4, 8))));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
 // and configuration
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
@@ -42,20 +42,20 @@ INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(64, 128))));
+                                                                                     ::testing::Values(64, 96, 128))));
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 3), ::testing::Values(256, 512, 1024))));
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3),
-                                                                                     ::testing::Values(2048, 4096))));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(2048, 3072, 4096))));
 
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 16, 32, 64, 4096))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 9, 16, 32, 64, 4096))));
 
 #define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,         \
                          DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                      \

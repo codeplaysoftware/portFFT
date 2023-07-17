@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 #define SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
+#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
@@ -210,49 +211,46 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 }
 
 /**
- * Selects appropriate template instantiation of subgroup implementation for
- * given FactorSG.
+ * Dispatch cross sg implementation for different work-item factorizations.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
+ * @tparam SizeList The list of sizes that will be specialized.
+ * @param factor_wi factor of fft size. How many elements are processed by 1 work-item.
  * @param factor_sg cross-subgroup factor of the fft size
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*FactorWI*factor_sg*SubgroupSize
+ * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*SubgroupSize
  * values
- * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*factor_sg
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param n_transforms number of FFT transforms to do in one call
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, int FactorWI, int SubgroupSize, typename T>
-__attribute__((always_inline)) void cross_sg_dispatcher(int factor_sg, const T* input, T* output, T* loc,
-                                                        T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
-                                                        const T* twiddles, T scaling_factor) {
-  switch (factor_sg) {
-#define SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(M)                                                                         \
-  case M:                                                                                                            \
-    if constexpr (M <= SubgroupSize && !fits_in_wi<T>(M * FactorWI)) {                                               \
-      subgroup_impl<Dir, TransposeIn, FactorWI, M, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it, \
-                                                                 twiddles, scaling_factor);                          \
-    }                                                                                                                \
-    break;
-    // cross-sg size 1 cases are supported by workitem implementation
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(2)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(4)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(8)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(16)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(32)
-    SYCL_FFT_CROSS_SG_DISPATCHER_IMPL(64)
-    // We compile a limited set of configurations to limit the compilation time
-#undef SYCL_FFT_CROSS_SG_DISPATCHER_IMPL
+template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename T, typename SizeList>
+__attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
+                                                           T* loc, T* loc_twiddles, std::size_t n_transforms,
+                                                           sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
+  if constexpr (!SizeList::list_end) {
+    constexpr int this_size = SizeList::size;
+    // This factorization is duplicated in the dispatch logic on the host.
+    // The CT and spec constant factors should match.
+    constexpr int ct_factor_sg = factorize_sg(this_size, SubgroupSize);
+    constexpr int ct_factor_wi = this_size / ct_factor_sg;
+    if (factor_sg * factor_wi == this_size) {
+      if constexpr (!fits_in_wi<T>(this_size) && fits_in_wi<T>(ct_factor_wi) && (ct_factor_sg <= SubgroupSize)) {
+        detail::subgroup_impl<Dir, TransposeIn, ct_factor_wi, ct_factor_sg, SubgroupSize>(
+            input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
+      }
+    } else {
+      subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
+          factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
+    }
   }
 }
-
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
@@ -305,24 +303,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             int factor_wi = kh.get_specialization_constant<detail::factor_wi_spec_const>();
             int factor_sg = kh.get_specialization_constant<detail::factor_sg_spec_const>();
-            switch (factor_wi) {
-#define SYCL_FFT_SG_WI_DISPATCHER_IMPL(N)                                                                              \
-  case N:                                                                                                              \
-    if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                                     \
-      detail::cross_sg_dispatcher<Dir, TransposeIn, N, SubgroupSize>(factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], \
-                                                                     &loc[0], &loc_twiddles[0], n_transforms, it,      \
-                                                                     twiddles, scale_factor);                          \
-    }                                                                                                                  \
-    break;
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(1)
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(2)
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(4)
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(8)
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(16)
-              SYCL_FFT_SG_WI_DISPATCHER_IMPL(32)
-          // We compile a limited set of configurations to limit the compilation time
-#undef SYCL_FFT_SG_WI_DISPATCHER_IMPL
-            }
+            detail::subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
+                factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,
+                it, twiddles, scale_factor);
           });
     });
   }

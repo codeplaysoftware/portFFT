@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 #define SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 
+#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
@@ -114,6 +115,39 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
   }
 }
 
+/**
+ * Launch specialized WI DFT size matching fft_size if one is available.
+ *
+ * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam SubgroupSize size of the subgroup
+ * @tparam SizeList The list of sizes that will be specialized.
+ * @tparam T type of the scalar used for computations
+ * @param input accessor or pointer to global memory containing input data
+ * @param output accessor or pointer to global memory for output data
+ * @param loc local memory pointer. Must have enough space for 2*N*SubgroupSize values
+ * @param n_transforms number of FT transforms to do in one call
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param scaling_factor Scaling factor applied to the result
+ * @param fft_size The size of the FFT.
+ */
+template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename SizeList, typename T>
+__attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
+                                                           sycl::nd_item<1> it, T scaling_factor,
+                                                           std::size_t fft_size) {
+  if constexpr (!SizeList::list_end) {
+    constexpr int this_size = SizeList::size;
+    if (fft_size == this_size) {
+      if constexpr (detail::fits_in_wi<T>(this_size)) {
+        workitem_impl<Dir, TransposeIn, this_size, SubgroupSize>(input, output, loc, n_transforms, it, scaling_factor);
+      }
+    } else {
+      workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, typename SizeList::child_t, T>(
+          input, output, loc, n_transforms, it, scaling_factor, fft_size);
+    }
+  }
+}
+
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
@@ -139,23 +173,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workitem_spec_const_fft_size>();
-            switch (fft_size) {
-#define SYCL_FFT_WI_DISPATCHER_IMPL(N)                                                                         \
-  case N:                                                                                                      \
-    if constexpr (detail::fits_in_wi<Scalar>(N)) {                                                             \
-      detail::workitem_impl<Dir, TransposeIn, N, SubgroupSize>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], \
-                                                               n_transforms, it, scale_factor);                \
-    }                                                                                                          \
-    break;
-              SYCL_FFT_WI_DISPATCHER_IMPL(1)
-              SYCL_FFT_WI_DISPATCHER_IMPL(2)
-              SYCL_FFT_WI_DISPATCHER_IMPL(4)
-              SYCL_FFT_WI_DISPATCHER_IMPL(8)
-              SYCL_FFT_WI_DISPATCHER_IMPL(16)
-              SYCL_FFT_WI_DISPATCHER_IMPL(32)
-          // We compile a limited set of configurations to limit the compilation time
-#undef SYCL_FFT_WI_DISPATCHER_IMPL
-            }
+            detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
+                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, it, scale_factor, fft_size);
           });
     });
   }
