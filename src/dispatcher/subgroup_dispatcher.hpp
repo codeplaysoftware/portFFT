@@ -127,7 +127,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         if (i + (it.get_local_range(0) / 2) < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
-          return (it.get_local_range(0) - 2 * (i + it.get_local_range(0) / 2 - n_transforms)) / 2;
+          return n_transforms - i;
         }
       }();
       std::size_t rounded_up_sub_batches = detail::roundUpToMultiple(num_batches_in_local_mem, n_ffts_per_sg);
