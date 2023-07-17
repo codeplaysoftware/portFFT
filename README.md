@@ -90,7 +90,7 @@ For instance setting it to `128` (resp. `256`) allows to fit a single precision 
 
 The FFT sizes supported in the work-item, sub-group and work-group implementations are set using `SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES`.
 The supported sizes are given as a comma-separated list of values.
-By default, only powers of 2 are supported.
+By default, the size of $2^n$ and $2^n \times 3$ are enabled up to a value of 8192.
 
 FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `SYCLFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
 
