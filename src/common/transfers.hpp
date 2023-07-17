@@ -91,7 +91,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
+    local_size = it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -100,7 +100,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 #ifdef SYCLFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -199,7 +199,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     local_size = SubgroupSize;
   } else {
     local_id = it.get_local_id(0);
-    local_size = SubgroupSize * SYCLFFT_SGS_IN_WG;
+    local_size = it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
@@ -208,7 +208,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 #ifdef SYCLFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, SYCLFFT_SGS_IN_WG);
+    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -311,9 +311,9 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  */
-template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv,
-                                                                    int thread_id, int col_num) {
+template <int num_elements_per_wi, detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
+                                                                    int Stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
         static_cast<std::size_t>(2 * Stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
@@ -399,9 +399,9 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param num_workers Number of threads working for that FFt
  * @param col_num Column number in which the data will be stored
  */
-template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local,
-                                                                    int thread_id, int num_workers, int col_num) {
+template <int num_elements_per_wi, detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
+                                                                    int num_workers, int col_num, int Stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
         detail::pad_local<Pad>(static_cast<std::size_t>(2 * Stride * (i * num_workers + thread_id) + 2 * col_num));
