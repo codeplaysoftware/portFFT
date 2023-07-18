@@ -302,7 +302,6 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam num_elements_per_wi Elements per workitem
- * @tparam Stride Inner most dimension of the reinterpreted matrix
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -310,13 +309,14 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param priv Pointer to private memory
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
+ * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int num_elements_per_wi, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
-                                                                    int Stride) {
+                                                                    int stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * Stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
+        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -389,7 +389,6 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
- * @tparam Stride Inner most dimension of the reinterpreted matrix
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -398,13 +397,14 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param thread_id Id of the working thread for the FFT
  * @param num_workers Number of threads working for that FFt
  * @param col_num Column number in which the data will be stored
+ * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int num_elements_per_wi, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
-                                                                    int num_workers, int col_num, int Stride) {
+                                                                    int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
-        detail::pad_local<Pad>(static_cast<std::size_t>(2 * Stride * (i * num_workers + thread_id) + 2 * col_num));
+        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
