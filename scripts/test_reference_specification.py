@@ -66,13 +66,13 @@ def make_header_spec(file_base):
 def make_data_spec(file_base):
     configs = []
     configs += _gen_configuration_1d(file_base, "workItemTest", "COMPLEX",
-                                     [1, 3, 33000], [1, 2, 4, 8])
+                                     [1, 3, 33000], [1, 2, 3, 4, 8, 9])
     configs += _gen_configuration_1d(file_base, "workItemOrSubgroupTest",
                                      "COMPLEX", [1, 3, 555], [16, 32])
     configs += _gen_configuration_1d(file_base, "SubgroupTest", "COMPLEX",
-                                     [1, 3, 555], [64])
+                                     [1, 3, 555], [64, 96, 128])
     configs += _gen_configuration_1d(file_base, "SubgroupOrWorkgroupTest",
-                                     "COMPLEX", [3], [256])
+                                     "COMPLEX", [3], [256, 512, 1024])
     configs += _gen_configuration_1d(file_base, "WorkgroupTest", "COMPLEX",
-                                     [1, 3], [2048, 4096])
+                                     [1, 3], [2048, 3072, 4096])
     return configs
