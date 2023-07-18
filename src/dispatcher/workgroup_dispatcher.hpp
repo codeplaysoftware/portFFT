@@ -80,12 +80,18 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   std::size_t wg_id = it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
   std::size_t global_offset = 2 * FFTSize * wg_id;
-  std::size_t offset_increment = 2 * FFTSize * num_workgroups;
   constexpr std::size_t N = detail::factorize(FFTSize);
   constexpr std::size_t M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
 
-  constexpr std::size_t max_num_batches_in_local_mem = SYCLFFT_SGS_IN_WG * SubgroupSize / 2;
+  std::size_t max_num_batches_in_local_mem = [=]() {
+    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      return it.get_local_range(0) / 2;
+    } else {
+      return 1;
+    }
+  }();
+  std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
   global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, 2 * (M + N));
 
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
@@ -94,7 +100,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
         if (offset + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
-          return (it.get_local_range(0) - 2 * (offset + it.get_local_range(0) / 2 - n_transforms)) / 2;
+          return n_transforms - offset / (2 * FFTSize);
         }
       } else {
         return 1;
