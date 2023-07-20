@@ -1,9 +1,9 @@
-# SYCL-FFT
+# portFFT
 
 ## Introduction
 
-SYCL-FFT is a library implementing Fast Fourier Transforms using SYCL and C++.
-SYCL-FFT is in early stages of development and will support more options and optimizations in the future.
+portFFT is a library implementing Fast Fourier Transforms using SYCL and C++.
+portFFT is in early stages of development and will support more options and optimizations in the future.
 
 ## Pre-requisites
 
@@ -21,7 +21,7 @@ SYCL-FFT is in early stages of development and will support more options and opt
 
 ### Building with CMake
 
-Clone SYCL-FFT and run the following commands from the cloned repository.
+Clone portFFT and run the following commands from the cloned repository.
 
 Build using DPC++ 2023.1.0 as:
 
@@ -48,7 +48,7 @@ The list of available targets can be found on [DPC++ compiler documentation page
 Some AOT targets do not support double precision.
 To disable the building of tests and benchmarks using double precision, set `-DSYCLFFT_ENABLE_DOUBLE_BUILDS=OFF`.
 
-SYCL-FFT currently requires to set the subgroup size at compile time. Multiple sizes can be set and the first one that is supported by the device will be used. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_SUBGROUP_SIZES=<comma separated list of sizes>`. By default only size 32 is used.
+portFFT currently requires to set the subgroup size at compile time. Multiple sizes can be set and the first one that is supported by the device will be used. Depending on the device used you may need to set the subgroup size with `-DSYCLFFT_SUBGROUP_SIZES=<comma separated list of sizes>`. By default only size 32 is used.
 If you run into the exception with the message `None of the compiled subgroup sizes are supported by the device!` then `DSYCLFFT_SUBGROUP_SIZES` must be set to a different value(s) supported by the device.
 
 ### Tests
@@ -59,7 +59,7 @@ Run the tests from the build folder with:
 ctest
 ```
 
-### SYCL-FFT benchmarks
+### portFFT benchmarks
 
 Run pre-defined benchmarks from the build folder with:
 
@@ -77,7 +77,7 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 ## Supported configurations
 
-SYCL-FFT is still in early development. The supported configurations are:
+portFFT is still in early development. The supported configurations are:
 
 * complex to complex transforms
 * single and double precisions
@@ -103,7 +103,7 @@ By default the library assumes subgroup size of 32 is used. If that is not suppo
 
 ## Known issues
 
-* Specialization constants are currently emulated on Nvidia and AMD backends. SYCL-FFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
+* Specialization constants are currently emulated on Nvidia and AMD backends. portFFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
 
 We are investigating other performance issues that affect all the backends.
 
