@@ -228,6 +228,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize size of the subgroup
+ * @tparam TransposeIn Whether or not the input is transposed
  * @tparam T type of the scalar used for computations
  * @tparam SizeList The list of sizes that will be specialized.
  * @param factor_wi factor of fft size. How many elements are processed by 1 work-item.
