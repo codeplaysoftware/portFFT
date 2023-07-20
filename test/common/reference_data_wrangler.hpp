@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_REFERENCE_DATA_WANGLER_HPP
-#define SYCL_FFT_COMMON_REFERENCE_DATA_WANGLER_HPP
+#ifndef SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
+#define SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
 #include <descriptor.hpp>
 #include <enums.hpp>
@@ -104,7 +104,7 @@ class verif_data_spec {
    * @tparam Domain The domain of the DFT being checked.
    * @param desc The descriptor of the DFT being checked.
    * @param hostOutput The data to be checked. Expects that distance between
-   * batches == the lenght of the DFT.
+   * batches == the length of the DFT.
    * @param dir The DFT direction.
    * @param comparisonTolerance The tolerance for error.
    **/
@@ -263,4 +263,4 @@ verif_data_spec get_matching_spec(const std::vector<verif_data_spec>& verifData,
   throw std::runtime_error("Couldn't find matching specification.");
 }
 
-#endif  // SYCL_FFT_COMMON_REFERENCE_DATA_WANGLER_HPP
+#endif  // SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
