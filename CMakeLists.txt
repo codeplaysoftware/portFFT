@@ -38,6 +38,7 @@ list(APPEND CMAKE_MODULE_PATH
 option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
 option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
+option(SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME "Generate benchmark verification data at build-time" ON)
 option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(SYCLFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 option(SYCLFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)

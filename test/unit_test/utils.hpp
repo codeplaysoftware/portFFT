@@ -31,6 +31,9 @@
 #include <optional>
 #include <random>
 #include <sycl/sycl.hpp>
+// The following file in generated during the build and located at
+// ${BUILD_DIR}/ref_data_include/
+#include <test_reference.hpp>
 
 using namespace std::complex_literals;
 using namespace sycl_fft;

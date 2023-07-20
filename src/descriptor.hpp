@@ -403,6 +403,16 @@ class committed_descriptor {
   }
 
   /**
+   * Computes out-of-place forward FFT, working on buffers.
+   *
+   * @param in buffer containing input data
+   * @param out buffer containing output data
+   */
+  void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
+    throw std::runtime_error("SYCL_FFT: Real to complex FFTs not yet implemented.");
+  }
+
+  /**
    * Compute out of place backward FFT, working on buffers
    *
    * @param in buffer containing input data
@@ -423,6 +433,19 @@ class committed_descriptor {
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     return compute_forward(inout, inout, dependencies);
+  }
+
+  /**
+   * Computes in-place forward FFT, working on USM memory.
+   *
+   * @param inout USM pointer to memory containing input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(Scalar* inout, const std::vector<sycl::event>& dependencies = {}) {
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    return compute_forward(inout, reinterpret_cast<complex_type*>(inout), dependencies);
   }
 
   /**
@@ -447,6 +470,20 @@ class committed_descriptor {
   sycl::event compute_forward(const complex_type* in, complex_type* out,
                               const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_kernel<direction::FORWARD>(in, out, dependencies);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on USM memory.
+   *
+   * @param in USM pointer to memory containing input data
+   * @param out USM pointer to memory containing output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
+                              const std::vector<sycl::event>& /*dependencies*/ = {}) {
+    throw std::runtime_error("SYCL_FFT: Real to complex FFTs not yet implemented.");
+    return {};
   }
 
   /**

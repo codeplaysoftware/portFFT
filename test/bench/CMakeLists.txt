@@ -38,6 +38,36 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googlebenchmark)
 
+if(${SYCLFFT_VERIFY_BENCHMARK})
+    # Generate benchmark reference data header
+    execute_process(
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --header --benchmark --just_list_outputs 
+        OUTPUT_VARIABLE BENCHMARK_REFERENCE_DATA_HEADER)
+    add_custom_command(
+        OUTPUT ${BENCHMARK_REFERENCE_DATA_HEADER}
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --header --benchmark)
+    add_custom_target(benchmark_reference_data_header 
+        DEPENDS ${BENCHMARK_REFERENCE_DATA_HEADER})
+    # We need the directory so the header can be included by the benchmark.
+    get_filename_component(BENCHMARK_REFERENCE_DATA_HEADER_DIR ${BENCHMARK_REFERENCE_DATA_HEADER} DIRECTORY)
+
+    # Generate the actual test reference data
+    execute_process(
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --data --benchmark --just_list_outputs 
+        OUTPUT_VARIABLE BENCHMARK_REFERENCE_DATA_DATA_FILES)
+    add_custom_command(
+        OUTPUT ${BENCHMARK_REFERENCE_DATA_DATA_FILES}
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --data --benchmark)
+    add_custom_target(benchmark_reference_data_data 
+        DEPENDS ${BENCHMARK_REFERENCE_DATA_DATA_FILES})
+        
+    if(NOT SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
+      # Generating the actual benchmark data at build time is not a default thing
+      # It can be generated with "ninja benchmark_reference_data_data"
+      set_target_properties(benchmark_reference_data_data PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+endif()
+
 # Common function to add a benchmark
 set(BENCHMARK_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 function(add_benchmark target source_file)
@@ -56,8 +86,13 @@ function(add_benchmark target source_file)
       ${PROJECT_SOURCE_DIR}/test/bench/utils
       ${SYCLFFT_INCLUDES}
   )
-  if(${SYCLFFT_VERIFY_BENCHMARK})
+  if(SYCLFFT_VERIFY_BENCHMARK)
       target_compile_definitions(${target} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+      target_include_directories(${target} PRIVATE ${BENCHMARK_REFERENCE_DATA_HEADER_DIR})
+      add_dependencies(${target} benchmark_reference_data_header)
+      if(SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
+        add_dependencies(${target} benchmark_reference_data_data)
+      endif()
   endif()
   set_target_properties(${target} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY ${BENCHMARK_BIN_DIR}

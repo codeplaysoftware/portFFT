@@ -50,13 +50,14 @@ template <typename FType, sycl_fft::domain Domain>
 void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc,
                                       std::size_t runs) {
   using complex_type = std::complex<FType>;
+  using forward_t = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, complex_type, FType>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+  forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
   complex_type* out_dev =
       desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
@@ -64,9 +65,9 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
   q.wait();
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  memFill(in_dev, q, num_elements);
-  std::vector<complex_type> host_input(num_elements);
-  q.copy(in_dev, host_input.data(), num_elements).wait();
+  auto verifSpec = get_matching_spec(verification_data, desc);
+  auto host_input = verifSpec.load_data_time(desc);
+  q.copy(host_input.data(), in_dev, num_elements).wait();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   // warmup
@@ -76,8 +77,10 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<std::size_t>{N}, N_transforms, desc.forward_scale);
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+         host_output.data(), num_elements)
+      .wait();
+  verifSpec.verify_dft(desc, host_output, sycl_fft::direction::FORWARD, 1e-2);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
@@ -143,6 +146,7 @@ void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, sycl_ff
 template <typename FType, sycl_fft::domain Domain>
 void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc) {
   using complex_type = std::complex<FType>;
+  using forward_t = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, complex_type, FType>;
   if (!q.has_property<sycl::property::queue::enable_profiling>()) {
     throw std::runtime_error("Queue does not have the profiling property");
   }
@@ -153,18 +157,17 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  complex_type* in_dev = sycl::malloc_device<complex_type>(num_elements, q);
+  forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
   complex_type* out_dev =
       desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
   auto committed = desc.commit(q);
 
   q.wait();
-
 #ifdef SYCLFFT_VERIFY_BENCHMARK
-  memFill(in_dev, q, num_elements);
-  std::vector<complex_type> host_input(num_elements);
-  q.copy(in_dev, host_input.data(), num_elements).wait();
+  auto verifSpec = get_matching_spec(verification_data, desc);
+  auto host_input = verifSpec.load_data_time(desc);
+  q.copy(host_input.data(), in_dev, num_elements).wait();
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   auto compute = [&]() {
@@ -173,10 +176,13 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
   };
   // warmup
   compute().wait();
+
 #ifdef SYCLFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? in_dev : out_dev, host_output.data(), num_elements).wait();
-  verify_dft(host_input.data(), host_output.data(), std::vector<std::size_t>{N}, N_transforms, desc.forward_scale);
+  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+         host_output.data(), num_elements)
+      .wait();
+  verifSpec.verify_dft(desc, host_output, sycl_fft::direction::FORWARD, 1e-2);
 #endif  // SYCLFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
