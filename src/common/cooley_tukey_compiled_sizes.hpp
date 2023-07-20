@@ -43,10 +43,10 @@ struct size_list<Size, OtherSizes...> {
    *  Returns true if a size list contains a particular value.
    *  @param x The value to look for
    **/
-  static constexpr bool has_size(std::size_t x){
+  static constexpr bool has_size(std::size_t x) {
     bool hasSize = x == size;
-    if constexpr(!child_t::list_end){
-        hasSize |= child_t::has_size(x);
+    if constexpr (!child_t::list_end) {
+      hasSize |= child_t::has_size(x);
     }
     return hasSize;
   }

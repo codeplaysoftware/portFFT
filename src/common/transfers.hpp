@@ -302,7 +302,6 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam num_elements_per_wi Elements per workitem
- * @tparam Stride Inner most dimension of the reinterpreted matrix
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -310,13 +309,14 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param priv Pointer to private memory
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
+ * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv,
-                                                                    int thread_id, int col_num) {
+template <int num_elements_per_wi, detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
+                                                                    int stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * Stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
+        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -324,29 +324,64 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
- *
- * @tparam N Number of Rows
- * @tparam M Number of Cols
- * @tparam num_subgroups number of subgroups in the workgroup
- * @tparam subgroup_size Size of each subgroup
  * @tparam Pad Whether or not to consider local memory as padded
  * @tparam T type of the scalar used for computations
  *
  * @param it Associated nd_item
+ * @param N Number of rows
+ * @param M Number of Cols
+ * @param stride Stride between two contiguous elements in global memory in local memory.
  * @param local pointer to the local memory
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <std::size_t N, std::size_t M, std::size_t subgroup_size, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, const T* local, T* global,
+template <detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
+                                                                   std::size_t stride, T* local, T* global,
                                                                    std::size_t offset) {
   std::size_t num_threads = it.get_local_range(0);
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<Pad>(2 * M * source_col + 2 * source_row);
+    std::size_t source_index = detail::pad_local<Pad>(2 * stride * source_col + 2 * source_row);
     global[offset + 2 * i] = local[source_index];
     global[offset + 2 * i + 1] = local[source_index + 1];
+  }
+}
+
+/**
+ * Loads data from global memory where consecutive elements of a problem are separated by stride.
+ * Loads half of workgroup size equivalent number of consecutive batches from global memory.
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ *
+ * @param it Associated nd_item
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad Pad, detail::level Level, typename T>
+__attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, const T* global_base_ptr,
+                                                                   T* local_ptr, std::size_t offset,
+                                                                   std::size_t num_complex, std::size_t stride_global,
+                                                                   std::size_t stride_local) {
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+  } else {
+    local_id = it.get_local_id(0);
+  }
+  for (std::size_t i = 0; i < num_complex; i++) {
+    std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id);
+    std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    local_ptr[local_index] = global_base_ptr[global_index];
   }
 }
 
@@ -354,7 +389,6 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
- * @tparam Stride Inner most dimension of the reinterpreted matrix
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -363,13 +397,14 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @param thread_id Id of the working thread for the FFT
  * @param num_workers Number of threads working for that FFt
  * @param col_num Column number in which the data will be stored
+ * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, int Stride, detail::pad Pad, typename T>
-__attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local,
-                                                                    int thread_id, int num_workers, int col_num) {
+template <int num_elements_per_wi, detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
+                                                                    int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
-        detail::pad_local<Pad>(static_cast<std::size_t>(2 * Stride * (i * num_workers + thread_id) + 2 * col_num));
+        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });

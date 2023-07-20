@@ -76,13 +76,13 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   for (int sub_batch = n_sg_offset; sub_batch < max_n_sg_offset; sub_batch += n_sg_increment) {
     bool working = sub_batch < M && static_cast<int>(sg.get_local_linear_id()) < max_working_tid_in_sg_n;
     if (working) {
-      local2private_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
-          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, sub_batch);
+      local2private_transposed<fact_wi_N, detail::pad::DO_PAD>(
+          loc, priv, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, sub_batch, M);
     }
     sg_dft<Dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
     if (working) {
-      private2local_transposed<fact_wi_N, M, detail::pad::DO_PAD>(
-          priv, loc, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch);
+      private2local_transposed<fact_wi_N, detail::pad::DO_PAD>(
+          priv, loc, static_cast<int>(sg.get_local_linear_id()) % fact_sg_N, fact_sg_N, sub_batch, M);
     }
   }
 

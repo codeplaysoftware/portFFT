@@ -94,6 +94,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     }
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+        // Load directly into registers from global memory as all loads will be fully coalesced.
+        // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, N_reals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
@@ -109,6 +111,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       private2local<N_reals, pad::DO_PAD>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
+    // Store back to global in the same manner irrespective of input data layout, as
+    //  the transposed case is assumed to be used only in OOP scenario.
     local2global<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, loc, output, N_reals * n_working, local_offset,
                                                              N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
@@ -153,15 +157,16 @@ __attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* ou
 template <typename Scalar, domain Domain>
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>::inner<detail::level::WORKITEM, Dummy>{
-  static sycl::event execute(
-      committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-      const std::vector<sycl::event>& dependencies) {
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in,
+                                                               T_out>::inner<detail::level::WORKITEM, Dummy> {
+  static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
+                             const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     std::size_t global_size =
         detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
-    std::size_t local_elements = num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(desc);
+    std::size_t local_elements =
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, TransposeIn, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -169,8 +174,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workitem_spec_const_fft_size>();
             detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, it, scale_factor, fft_size);
@@ -181,16 +186,16 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy>{
-  static void execute(
-      committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
+struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
+  static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     in_bundle.template set_specialization_constant<detail::workitem_spec_const_fft_size>(desc.params.lengths[0]);
   }
 };
 
 template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, Dummy>{
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
+                                                                                    TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     std::size_t num_scalars_per_sg =
         detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size));
@@ -202,12 +207,10 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy>{
-  static Scalar* execute(committed_descriptor& /*desc*/) {
-    return nullptr;
-  }
+struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
+  static Scalar* execute(committed_descriptor& /*desc*/) { return nullptr; }
 };
 
 }  // namespace sycl_fft
 
-#endif // SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
+#endif  // SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP

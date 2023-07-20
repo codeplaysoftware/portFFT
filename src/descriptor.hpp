@@ -21,8 +21,8 @@
 #ifndef SYCL_FFT_DESCRIPTOR_HPP
 #define SYCL_FFT_DESCRIPTOR_HPP
 
-#include <common/subgroup.hpp>
 #include <common/cooley_tukey_compiled_sizes.hpp>
+#include <common/subgroup.hpp>
 #include <enums.hpp>
 
 #include <sycl/sycl.hpp>
@@ -101,7 +101,7 @@ class committed_descriptor {
   std::size_t n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
   int used_sg_size;
-  Scalar* twiddles_forward;
+  std::shared_ptr<Scalar> twiddles_forward;
   detail::level level;
   std::vector<int> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
@@ -117,6 +117,20 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
+      default:
+        throw std::runtime_error("Unimplemented!");
+    }
+  }
+
+  template <typename Impl, detail::transpose TransposeIn, typename... Args>
+  auto dispatch(Args&&... args) {
+    switch (level) {
+      case detail::level::WORKITEM:
+        return Impl::template inner<detail::level::WORKITEM, TransposeIn, void>::execute(*this, args...);
+      case detail::level::SUBGROUP:
+        return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
+      case detail::level::WORKGROUP:
+        return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }
@@ -226,10 +240,10 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct{
      // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static std::size_t execute(committed_descriptor& desc); 
-    };
+     template <detail::level lev, detail::transpose TransposeIn, typename Dummy>
+     struct inner {
+       static std::size_t execute(committed_descriptor& desc);
+     };
   };
 
   /**
@@ -238,8 +252,9 @@ class committed_descriptor {
    *
    * @return std::size_t the number of scalars
    */
-  std::size_t num_scalars_in_local_mem(){
-    return dispatch<num_scalars_in_local_mem_struct>();
+  template <detail::transpose TransposeIn>
+  std::size_t num_scalars_in_local_mem() {
+    return dispatch<num_scalars_in_local_mem_struct, TransposeIn>();
   }
 
   /**
@@ -321,12 +336,21 @@ class committed_descriptor {
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    std::size_t minimum_local_mem_required = num_scalars_in_local_mem() * sizeof(Scalar);
+    std::size_t minimum_local_mem_required;
+    if (params.forward_distance == 1 || params.backward_distance == 1) {
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+    } else {
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
+    }
     if (minimum_local_mem_required > local_memory_size) {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
-    twiddles_forward = calculate_twiddles();
+    twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
+      if (ptr != nullptr) {
+        sycl::free(ptr, queue);
+      }
+    });
   }
 
  public:
@@ -344,12 +368,7 @@ class committed_descriptor {
   /**
    * Destructor
    */
-  ~committed_descriptor() {
-    queue.wait();
-    if (twiddles_forward != nullptr) {
-      sycl::free(twiddles_forward, queue);
-    }
-  }
+  ~committed_descriptor() { queue.wait(); }
 
   /**
    * Computes in-place forward FFT, working on a buffer.
@@ -442,9 +461,6 @@ class committed_descriptor {
                                const std::vector<sycl::event>& dependencies = {}) {
     return dispatch_kernel<direction::BACKWARD>(in, out, dependencies);
   }
-
-  committed_descriptor& operator=(const committed_descriptor&) = delete;
-  committed_descriptor(const committed_descriptor&) = delete;
 
  private:
   /**

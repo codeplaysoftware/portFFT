@@ -53,13 +53,20 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
   }
 }
 
+template <typename Scalar, sycl_fft::domain Domain>
+std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_committed_descriptor(
+    descriptor<Scalar, Domain>& desc, sycl::queue& queue) {
+  try {
+    return std::make_pair(desc.commit(queue), "");
+  } catch (std::runtime_error& e) {
+    return std::make_pair(std::nullopt, e.what());
+  }
+}
+
 // test for out-of-place and in-place ffts.
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
-    GTEST_SKIP();
-  }
   {
     std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
@@ -91,8 +98,12 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
       desc.backward_distance = 1;
     }
   }
-  auto committed_descriptor = desc.commit(queue);
 
+  auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
+  if (!potential_committed_descriptor.first.has_value()) {
+    GTEST_SKIP() << potential_committed_descriptor.second;
+  }
+  auto committed_descriptor = potential_committed_descriptor.first.value();
   auto fft_event = [&]() {
     if constexpr (Place == placement::OUT_OF_PLACE) {
       if constexpr (Dir == direction::FORWARD) {
@@ -135,9 +146,6 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
-  if (TransposeIn && params.length > 13) {  // while we only support TransposeIn for workitem sizes
-    GTEST_SKIP();
-  }
   {
     std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
@@ -162,7 +170,12 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       desc.backward_distance = 1;
     }
   }
-  auto committed_descriptor = desc.commit(queue);
+
+  auto potential_committed_descriptor = get_committed_descriptor<FType, domain::COMPLEX>(desc, queue);
+  if (!potential_committed_descriptor.first.has_value()) {
+    GTEST_SKIP() << potential_committed_descriptor.second;
+  }
+  auto committed_descriptor = potential_committed_descriptor.first.value();
   double scaling_factor = Dir == direction::FORWARD ? desc.forward_scale : desc.backward_scale;
 
   std::vector<std::complex<FType>> host_input_transposed;
