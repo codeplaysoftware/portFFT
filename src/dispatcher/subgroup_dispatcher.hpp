@@ -120,8 +120,16 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     std::size_t n_ffts_worked_on_by_sg = sycl::min(n_transforms - (i - id_of_fft_in_sg), n_ffts_per_sg);
 
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-      // codepath taken if input is transposed
-
+      /**
+       * Codepath taken if the input is transposed
+       * The number of batches that are loaded, is equal to half of the workgroup size.
+       * Each workitem is reposnsible for all of either the real or complex part of the batch being loaded.
+       * The data in local memory is also stored in a transposed manner, so that there are no bank conflicts
+       * while storing the data.
+       * Thus its loaded in a transposed manner and stored in a transposed manner to prevent data overwrites.
+       * Going ahead with the assumption that output will not be stored in a transposed manner(always out of place), it
+       * would need to transpose the final result in local memory and store it to global.
+       */
       std::size_t id_of_fft_in_sub_batch = sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg;
       std::size_t max_num_batches_local_mem = n_sgs_in_wg * SubgroupSize / 2;
       std::size_t num_batches_in_local_mem = [=]() {
@@ -134,6 +142,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       std::size_t rounded_up_sub_batches = detail::roundUpToMultiple(num_batches_in_local_mem, n_ffts_per_sg);
 
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        // load / store in a transposed manner
         global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, T>(
             it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
@@ -142,6 +151,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
            sub_batch += n_sgs_in_wg * n_ffts_per_sg) {
         bool _working = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
         if (_working) {
+          // load from local memory in a transposed manner
           local2private_transposed<FactorWI, detail::pad::DO_PAD>(loc, priv, static_cast<int>(id_of_wi_in_fft),
                                                                   static_cast<int>(sub_batch),
                                                                   static_cast<int>(max_num_batches_local_mem));
@@ -153,11 +163,13 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         });
         if constexpr (SubgroupSize == FactorSG) {
           if (_working) {
+            // Store directly from registers for fully coalesced accesses
             store_transposed<N_reals_per_wi, detail::pad::DONT_PAD>(priv, output, id_of_wi_in_fft, FactorSG,
                                                                     (i + sub_batch) * n_reals_per_fft);
           }
         } else {
           if (_working) {
+            // Store back to local memory only
             private2local_transposed<FactorWI, detail::pad::DO_PAD>(priv, loc, static_cast<int>(id_of_wi_in_fft),
                                                                     FactorSG, static_cast<int>(sub_batch),
                                                                     static_cast<int>(max_num_batches_local_mem));
@@ -165,6 +177,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         }
       }
       if constexpr (SubgroupSize != FactorSG) {
+        // store back all loaded batches at once.
         local2global_transposed<detail::pad::DO_PAD>(it, FactorWI * FactorSG, num_batches_in_local_mem,
                                                      max_num_batches_local_mem, loc, output, i * n_reals_per_fft);
       }
