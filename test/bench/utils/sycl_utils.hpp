@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
-#define SYCL_FFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#ifndef PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#define PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
 
 #include <benchmark/benchmark.h>
 
@@ -76,4 +76,4 @@ void print_device(sycl::queue queue) {
   benchmark::AddCustomContext("Subgroup sizes", subgroup_sizes_str.str());
 }
 
-#endif  // SYCL_FFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#endif  // PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP

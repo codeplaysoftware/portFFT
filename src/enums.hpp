@@ -14,14 +14,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_ENUMS_HPP
-#define SYCL_FFT_ENUMS_HPP
+#ifndef PORTFFT_ENUMS_HPP
+#define PORTFFT_ENUMS_HPP
 
-namespace sycl_fft {
+namespace portfft {
 
 enum class domain { REAL, COMPLEX };
 
@@ -41,6 +41,6 @@ enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
 enum class memory { BUFFER, USM };
 }  // namespace detail
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
 #endif

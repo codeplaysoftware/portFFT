@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
-#define SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
+#ifndef PORTFFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
+#define PORTFFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
 
 #include <complex>
 #include <sycl/sycl.hpp>
@@ -57,4 +57,4 @@ void memFill(T* input, sycl::queue& queue, std::size_t num_elements) {
   queue.wait();
 }
 
-#endif  // SYCL_FFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
+#endif  // PORTFFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP

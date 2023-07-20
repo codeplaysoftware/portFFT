@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
-#define SYCL_FFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
+#ifndef PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
+#define PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
 #include <type_traits>
 

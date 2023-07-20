@@ -14,15 +14,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
-#define SYCL_FFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
+#ifndef PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
+#define PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
 #include <cstdint>
 
-namespace sycl_fft::detail {
+namespace portfft::detail {
 
 /** A list of supported FFT sizes.
  * @tparam Sizes The supported FFT sizes.
@@ -52,8 +52,8 @@ struct size_list<Size, OtherSizes...> {
   }
 };
 
-using cooley_tukey_size_list_t = size_list<SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES>;
+using cooley_tukey_size_list_t = size_list<PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES>;
 
-}  // namespace sycl_fft::detail
+}  // namespace portfft::detail
 
-#endif  // SYCL_FFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
+#endif  // PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP

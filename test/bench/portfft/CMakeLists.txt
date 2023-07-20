@@ -17,7 +17,7 @@
 # *  See the License for the specific language governing permissions and
 # *  limitations under the License.
 # *
-# *  Codeplay's SYCL-FFT
+# *  Codeplay's portFFT
 # *
 # *  @filename CMakeLists.txt
 # *
@@ -37,5 +37,5 @@ foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
     get_filename_component(BENCHMARK_TARGET ${BENCHMARK_FILE} NAME_WE)
     add_benchmark(${BENCHMARK_TARGET} ${BENCHMARK_FILE})
     add_sycl_to_target(TARGET ${BENCHMARK_TARGET})
-    target_link_libraries(${BENCHMARK_TARGET} PRIVATE sycl_fft)
+    target_link_libraries(${BENCHMARK_TARGET} PRIVATE portfft)
 endforeach()

@@ -17,7 +17,7 @@
 # *  See the License for the specific language governing permissions and
 # *  limitations under the License.
 # *
-# *  Codeplay's SYCL-FFT
+# *  Codeplay's portFFT
 # *
 # *  @filename CMakeLists.txt
 # *
@@ -75,11 +75,11 @@ function(add_benchmark target source_file)
   target_link_libraries(${target} PRIVATE
       benchmark::benchmark
       Threads::Threads
-      sycl_fft_warnings
+      portfft_warnings
   )
 
-  # get target include directories from sycl-fft for the direction enum
-  get_target_property(SYCLFFT_INCLUDES sycl_fft INTERFACE_INCLUDE_DIRECTORIES)
+  # get target include directories from portfft for the direction enum
+  get_target_property(SYCLFFT_INCLUDES portfft INTERFACE_INCLUDE_DIRECTORIES)
 
   target_include_directories(${target} PRIVATE
       ${PROJECT_SOURCE_DIR}/test/common
@@ -87,7 +87,7 @@ function(add_benchmark target source_file)
       ${SYCLFFT_INCLUDES}
   )
   if(SYCLFFT_VERIFY_BENCHMARK)
-      target_compile_definitions(${target} PRIVATE SYCLFFT_VERIFY_BENCHMARK)
+      target_compile_definitions(${target} PRIVATE PORTFFT_VERIFY_BENCHMARK)
       target_include_directories(${target} PRIVATE ${BENCHMARK_REFERENCE_DATA_HEADER_DIR})
       add_dependencies(${target} benchmark_reference_data_header)
       if(SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
@@ -99,4 +99,4 @@ function(add_benchmark target source_file)
   )
 endfunction()
 
-add_subdirectory(sycl-fft)
+add_subdirectory(portfft)

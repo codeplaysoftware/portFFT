@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
-#define SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
+#ifndef PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
+#define PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
@@ -28,7 +28,7 @@
 #include <descriptor.hpp>
 #include <enums.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 namespace detail {
 // specialization constants
 constexpr static sycl::specialization_id<std::size_t> workgroup_spec_const_fft_size{};
@@ -47,8 +47,8 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
                                       std::size_t n_compute_units) {
   // TODO should this really be just a copy of workitem's?
   std::size_t maximum_n_sgs = 8 * n_compute_units * 64;
-  std::size_t maximum_n_wgs = maximum_n_sgs / SYCLFFT_SGS_IN_WG;
-  std::size_t wg_size = subgroup_size * SYCLFFT_SGS_IN_WG;
+  std::size_t maximum_n_wgs = maximum_n_sgs / PORTFFT_SGS_IN_WG;
+  std::size_t wg_size = subgroup_size * PORTFFT_SGS_IN_WG;
 
   std::size_t n_wgs_we_can_utilize = divideCeil(n_transforms, wg_size);
   return wg_size * sycl::min(maximum_n_wgs, n_wgs_we_can_utilize);
@@ -188,7 +188,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * SYCLFFT_SGS_IN_WG}}, [=
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
@@ -217,7 +217,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     if (TransposeIn == detail::transpose::TRANSPOSED) {
-      std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * SYCLFFT_SGS_IN_WG / 2;
+      std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
       return detail::pad_local(2 * fft_size * num_batches_in_local_mem) + 2 * (M + N);
     } else {
       return detail::pad_local(2 * fft_size) + 2 * (M + N);
@@ -273,6 +273,6 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
   }
 };
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
-#endif  // SYCL_FFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
+#endif  // PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP

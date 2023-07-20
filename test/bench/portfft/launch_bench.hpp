@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
-#define SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
+#ifndef PORTFFT_BENCH_LAUNCH_BENCH_HPP
+#define PORTFFT_BENCH_LAUNCH_BENCH_HPP
 
 #include <cassert>
 #include <sstream>
@@ -27,7 +27,7 @@
 
 #include <benchmark/benchmark.h>
 
-#include <sycl_fft.hpp>
+#include <portfft.hpp>
 
 #include "bench_utils.hpp"
 #include "device_number_generator.hpp"
@@ -46,11 +46,11 @@
  * @param desc Description of the FFT problem
  * @param runs Number of asynchronous compute in one GBench iteration
  */
-template <typename FType, sycl_fft::domain Domain>
-void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc,
+template <typename FType, portfft::domain Domain>
+void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, portfft::descriptor<FType, Domain> desc,
                                       std::size_t runs) {
   using complex_type = std::complex<FType>;
-  using forward_t = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, complex_type, FType>;
+  using forward_t = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, FType>;
   std::size_t N = desc.get_total_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
@@ -59,29 +59,29 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 
   forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
   complex_type* out_dev =
-      desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+      desc.placement == portfft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
   auto committed = desc.commit(q);
   q.wait();
 
-#ifdef SYCLFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARK
   auto verifSpec = get_matching_spec(verification_data, desc);
   auto host_input = verifSpec.load_data_time(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
-#endif  // SYCLFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARK
 
   // warmup
-  auto event = desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                               : committed.compute_forward(in_dev, out_dev);
+  auto event = desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                              : committed.compute_forward(in_dev, out_dev);
   event.wait();
 
-#ifdef SYCLFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
-  verifSpec.verify_dft(desc, host_output, sycl_fft::direction::FORWARD, 1e-2);
-#endif  // SYCLFFT_VERIFY_BENCHMARK
+  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
+#endif  // PORTFFT_VERIFY_BENCHMARK
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
 
@@ -92,7 +92,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
 
     std::chrono::time_point<std::chrono::high_resolution_clock> start;
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
-    if (desc.placement == sycl_fft::placement::IN_PLACE) {
+    if (desc.placement == portfft::placement::IN_PLACE) {
       start = std::chrono::high_resolution_clock::now();
       dependencies.emplace_back(committed.compute_forward(in_dev));
       for (std::size_t r = 1; r != runs; r += 1) {
@@ -123,8 +123,8 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, sy
  * Separate impl function to handle catching exceptions
  * @see bench_dft_average_host_time_impl
  */
-template <typename FType, sycl_fft::domain Domain>
-void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc) {
+template <typename FType, portfft::domain Domain>
+void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, portfft::descriptor<FType, Domain> desc) {
   try {
     bench_dft_average_host_time_impl(state, q, desc, runs_to_average);
   } catch (std::exception& e) {
@@ -143,10 +143,10 @@ void bench_dft_average_host_time(benchmark::State& state, sycl::queue q, sycl_ff
  * @param q Queue to use, \p enable_profiling property must be set
  * @param desc Description of the FFT problem
  */
-template <typename FType, sycl_fft::domain Domain>
-void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc) {
+template <typename FType, portfft::domain Domain>
+void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft::descriptor<FType, Domain> desc) {
   using complex_type = std::complex<FType>;
-  using forward_t = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, complex_type, FType>;
+  using forward_t = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, FType>;
   if (!q.has_property<sycl::property::queue::enable_profiling>()) {
     throw std::runtime_error("Queue does not have the profiling property");
   }
@@ -159,31 +159,31 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
 
   forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
   complex_type* out_dev =
-      desc.placement == sycl_fft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+      desc.placement == portfft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
 
   auto committed = desc.commit(q);
 
   q.wait();
-#ifdef SYCLFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARK
   auto verifSpec = get_matching_spec(verification_data, desc);
   auto host_input = verifSpec.load_data_time(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
-#endif  // SYCLFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARK
 
   auto compute = [&]() {
-    return desc.placement == sycl_fft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                           : committed.compute_forward(in_dev, out_dev);
+    return desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
+                                                          : committed.compute_forward(in_dev, out_dev);
   };
   // warmup
   compute().wait();
 
-#ifdef SYCLFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARK
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == sycl_fft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
-  verifSpec.verify_dft(desc, host_output, sycl_fft::direction::FORWARD, 1e-2);
-#endif  // SYCLFFT_VERIFY_BENCHMARK
+  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
+#endif  // PORTFFT_VERIFY_BENCHMARK
 
   for (auto _ : state) {
     sycl::event e = compute();
@@ -203,8 +203,8 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, sycl_fft
  * Separate impl function to handle catching exceptions
  * @see bench_dft_device_time_impl
  */
-template <typename FType, sycl_fft::domain Domain>
-void bench_dft_device_time(benchmark::State& state, sycl::queue q, sycl_fft::descriptor<FType, Domain> desc) {
+template <typename FType, portfft::domain Domain>
+void bench_dft_device_time(benchmark::State& state, sycl::queue q, portfft::descriptor<FType, Domain> desc) {
   try {
     bench_dft_device_time_impl(state, q, desc);
   } catch (std::exception& e) {
@@ -223,15 +223,15 @@ void bench_dft_device_time(benchmark::State& state, sycl::queue q, sycl_fft::des
  * @param profiling_q Queue used for profiling the time on the device
  * @param desc Description of the FFT problem
  */
-template <typename FType, sycl_fft::domain Domain>
+template <typename FType, portfft::domain Domain>
 void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sycl::queue profiling_q,
-                                    const sycl_fft::descriptor<FType, Domain>& desc) {
-  static_assert(Domain == sycl_fft::domain::REAL || Domain == sycl_fft::domain::COMPLEX, "Unsupported domain");
+                                    const portfft::descriptor<FType, Domain>& desc) {
+  static_assert(Domain == portfft::domain::REAL || Domain == portfft::domain::COMPLEX, "Unsupported domain");
   static_assert(std::is_same_v<FType, float> || std::is_same_v<FType, double>, "Unsupported precision");
   // Print descriptor's parameters relevant for benchmarks
   // Additional parameters could be added to the suffix if needed
   auto print_desc = [&](std::ostream& name) {
-    name << "d=" << (Domain == sycl_fft::domain::REAL ? "re" : "cpx");
+    name << "d=" << (Domain == portfft::domain::REAL ? "re" : "cpx");
     name << ",prec=" << (std::is_same_v<FType, float> ? "single" : "double");
     name << ",n=[";
     for (std::size_t i = 0; i < desc.lengths.size(); ++i) {
@@ -255,4 +255,4 @@ void register_host_device_benchmark(const std::string& suffix, sycl::queue q, sy
       ->UseManualTime();
 }
 
-#endif  // SYCL_FFT_BENCH_LAUNCH_BENCH_HPP
+#endif  // PORTFFT_BENCH_LAUNCH_BENCH_HPP

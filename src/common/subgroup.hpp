@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_SUBGROUP_HPP
-#define SYCL_FFT_COMMON_SUBGROUP_HPP
+#ifndef PORTFFT_COMMON_SUBGROUP_HPP
+#define PORTFFT_COMMON_SUBGROUP_HPP
 
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
@@ -28,7 +28,7 @@
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 namespace detail {
 
 /*
@@ -221,7 +221,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
  * @return the factor below or equal to subgroup size
  */
 constexpr int factorize_sg(int N, int sg_size) {
-  if constexpr (SYCLFFT_SLOW_SG_SHUFFLES) {
+  if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
     for (int i = sg_size; i > 1; i--) {
@@ -305,6 +305,6 @@ void sg_calc_twiddles(int N, int M, int n, int k, T* sg_twiddles) {
   sg_twiddles[(k + M) * N + n] = twiddle.imag();
 }
 
-};  // namespace sycl_fft
+};  // namespace portfft
 
 #endif

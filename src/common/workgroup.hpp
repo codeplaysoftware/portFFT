@@ -14,18 +14,18 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_WORKGROUP_HPP
-#define SYCL_FFT_COMMON_WORKGROUP_HPP
+#ifndef PORTFFT_COMMON_WORKGROUP_HPP
+#define PORTFFT_COMMON_WORKGROUP_HPP
 
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 
 /**
  * Calculates FFT using Bailey 4 step algorithm.
@@ -122,6 +122,6 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   }
 }
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
 #endif

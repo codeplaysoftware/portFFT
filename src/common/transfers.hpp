@@ -14,31 +14,31 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_TRANSFERS_HPP
-#define SYCL_FFT_COMMON_TRANSFERS_HPP
+#ifndef PORTFFT_COMMON_TRANSFERS_HPP
+#define PORTFFT_COMMON_TRANSFERS_HPP
 
 #include <common/helpers.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
-#ifndef SYCL_FFT_N_LOCAL_BANKS
-#define SYCL_FFT_N_LOCAL_BANKS 32
+#ifndef PORTFFT_N_LOCAL_BANKS
+#define PORTFFT_N_LOCAL_BANKS 32
 #endif
 
-static_assert((SYCLFFT_TARGET_WI_LOAD & (SYCLFFT_TARGET_WI_LOAD - 1)) == 0,
-              "SYCLFFT_TARGET_WI_LOAD should be a power of 2!");
+static_assert((PORTFFT_TARGET_WI_LOAD & (PORTFFT_TARGET_WI_LOAD - 1)) == 0,
+              "PORTFFT_TARGET_WI_LOAD should be a power of 2!");
 
-namespace sycl_fft {
+namespace portfft {
 
 namespace detail {
 
 /**
  * If Pad is true transforms an index into local memory to skip one element for every
- * SYCL_FFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
+ * PORTFFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
  * elements with a stride that is multiple of (or has any common divisor greater than 1 with)
  * the number of local banks. Does nothing if Pad is false.
  *
@@ -51,7 +51,7 @@ namespace detail {
 template <detail::pad Pad = detail::pad::DO_PAD>
 __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx) {
   if constexpr (Pad == detail::pad::DO_PAD) {
-    local_idx += local_idx / static_cast<std::size_t>(SYCL_FFT_N_LOCAL_BANKS);
+    local_idx += local_idx / static_cast<std::size_t>(PORTFFT_N_LOCAL_BANKS);
   }
   return local_idx;
 }
@@ -61,7 +61,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
 /**
  * Copies data from global memory to local memory.
  *
- * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
@@ -79,7 +79,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
                                                         std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
 
@@ -97,7 +97,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#ifdef SYCLFFT_USE_SG_TRANSFERS
+#ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
@@ -114,7 +114,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   // Each subgroup loads a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = sg.load<chunk_size>(detail::get_global_multi_ptr(&global[global_offset + i]));
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
@@ -169,7 +169,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 /**
  * Copies data from local memory to global memory.
  *
- * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local to allow
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
  * strided reads without bank conflicts
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
@@ -187,7 +187,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
                                                         std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = SYCLFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
 
@@ -205,7 +205,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
-#ifdef SYCLFFT_USE_SG_TRANSFERS
+#ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
     std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
@@ -222,7 +222,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   // Each subgroup stores a chunk of `chunk_size * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    if constexpr (SYCL_FFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
@@ -280,7 +280,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param local pointer to local memory
  * @param priv pointer to private memory
@@ -415,7 +415,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
  * @param local pointer to local memory
@@ -438,7 +438,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each SYCL_FFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
  * @param destination pointer to destination - local or global memory
@@ -467,6 +467,6 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
     }
   });
 }
-};  // namespace sycl_fft
+};  // namespace portfft
 
 #endif

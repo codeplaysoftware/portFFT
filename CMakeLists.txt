@@ -17,14 +17,14 @@
 # *  See the License for the specific language governing permissions and
 # *  limitations under the License.
 # *
-# *  Codeplay's SYCL-FFT
+# *  Codeplay's portFFT
 # *
 # *  @filename CMakeLists.txt
 # *
 # **************************************************************************/
 
 cmake_minimum_required(VERSION 3.16...3.26)
-project(sycl-fft VERSION 0.1.0 LANGUAGES CXX)
+project(portFFT VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,30 +56,30 @@ set(SYCLFFT_SRC_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:src>)
 
-add_library(sycl_fft INTERFACE)
-target_include_directories(sycl_fft INTERFACE
+add_library(portfft INTERFACE)
+target_include_directories(portfft INTERFACE
     ${SYCLFFT_INCLUDE_DIR}
     ${SYCLFFT_SRC_DIR}
 )
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_SUBGROUP_SIZES=${SYCLFFT_SUBGROUP_SIZES})
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_TARGET_WI_LOAD=${SYCLFFT_TARGET_WI_LOAD})
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_SGS_IN_WG=${SYCLFFT_SGS_IN_WG})
+target_compile_definitions(portfft INTERFACE PORTFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
+target_compile_definitions(portfft INTERFACE PORTFFT_SUBGROUP_SIZES=${SYCLFFT_SUBGROUP_SIZES})
+target_compile_definitions(portfft INTERFACE PORTFFT_TARGET_WI_LOAD=${SYCLFFT_TARGET_WI_LOAD})
+target_compile_definitions(portfft INTERFACE PORTFFT_SGS_IN_WG=${SYCLFFT_SGS_IN_WG})
 if(${SYCLFFT_USE_SG_TRANSFERS})
-  target_compile_definitions(sycl_fft INTERFACE SYCLFFT_USE_SG_TRANSFERS)
+  target_compile_definitions(portfft INTERFACE PORTFFT_USE_SG_TRANSFERS)
 endif()
 if(${SYCLFFT_SLOW_SG_SHUFFLES})
-  target_compile_definitions(sycl_fft INTERFACE SYCLFFT_SLOW_SG_SHUFFLES=1)
+  target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=1)
 else()
-  target_compile_definitions(sycl_fft INTERFACE SYCLFFT_SLOW_SG_SHUFFLES=0)
+  target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=0)
 endif()
 
-target_compile_options(sycl_fft INTERFACE -fgpu-inline-threshold=1000000)
-target_link_options(sycl_fft INTERFACE -fsycl-device-code-split=per_kernel)
-target_compile_options(sycl_fft INTERFACE -fsycl-device-code-split=per_kernel)
+target_compile_options(portfft INTERFACE -fgpu-inline-threshold=1000000)
+target_link_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
+target_compile_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
 
 include(CMakePackageConfigHelpers)
-set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/sycl_fft-version.cmake")
+set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/portfft-version.cmake")
 write_basic_package_version_file(${version_file}
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY AnyNewerVersion
@@ -91,11 +91,11 @@ if(SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES MATCHES "^[0-9]+(,[0-9]+)*$")
 else()
   message(FATAL_ERROR " Invalid SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES value: " ${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 endif()
-target_compile_definitions(sycl_fft INTERFACE SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES=${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
+target_compile_definitions(portfft INTERFACE PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES=${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 
 include(GNUInstallDirs)
-install(TARGETS sycl_fft
-  EXPORT sycl_fft
+install(TARGETS portfft
+  EXPORT portfft
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -106,24 +106,24 @@ install(
     ${SYCLFFT_INCLUDE_DIR}
     ${SYCLFFT_SRC_DIR}
   DESTINATION ${CMAKE_INSTALL_PREFIX}
-  COMPONENT sycl_fft
+  COMPONENT portfft
   FILES_MATCHING PATTERN "*.hpp"
 )
 
 install(FILES ${version_file} DESTINATION ${CMAKE_INSTALL_PREFIX})
-install(EXPORT sycl_fft
+install(EXPORT portfft
   DESTINATION ${CMAKE_INSTALL_PREFIX}
-  NAMESPACE sycl_fft::
-  FILE sycl_fft-config.cmake
+  NAMESPACE portfft::
+  FILE portfft-config.cmake
 )
 
-export(EXPORT sycl_fft
-  NAMESPACE sycl_fft::
-  FILE sycl_fft-config.cmake
+export(EXPORT portfft
+  NAMESPACE portfft::
+  FILE portfft-config.cmake
 )
 
-add_library(sycl_fft_warnings INTERFACE)
-target_compile_options(sycl_fft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
+add_library(portfft_warnings INTERFACE)
+target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
 
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()

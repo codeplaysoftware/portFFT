@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DESCRIPTOR_HPP
-#define SYCL_FFT_DESCRIPTOR_HPP
+#ifndef PORTFFT_DESCRIPTOR_HPP
+#define PORTFFT_DESCRIPTOR_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/subgroup.hpp>
@@ -33,7 +33,7 @@
 #include <numeric>
 #include <vector>
 
-namespace sycl_fft {
+namespace portfft {
 
 namespace detail {
 
@@ -70,7 +70,7 @@ compile time constant. The one for subgroup implementation also calls `cross_sg_
 cross-subgroup factor of FFT size compile time constant. They do that by using a switch on the FFT size for one
 workitem, before calling `workitem_impl`, `subgroup_impl` or `workgroup_impl` . The `_impl` functions take the FFT size
 for one workitem as a template  parameter. Only the calls that are determined to fit into available registers (depending
-on the value of SYCLFFT_TARGET_REGS_PER_WI macro) are actually instantiated.
+on the value of PORTFFT_TARGET_REGS_PER_WI macro) are actually instantiated.
 
 The `_impl` functions iterate over the batch of problems, loading data for each first in
 local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
@@ -147,22 +147,22 @@ class committed_descriptor {
             int SubgroupSize>
   void get_ids(std::vector<sycl::kernel_id>& ids) {
 // if not used, some kernels might be optimized away in AOT compilation and not available here
-#define SYCL_FFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                         \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                          \
   try {                                                                                                       \
     ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
   } catch (...) {                                                                                             \
   }
 
-    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-    SYCL_FFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
 
-#undef SYCL_FFT_GET_ID
+#undef PORTFFT_GET_ID
   }
 
   /**
@@ -326,11 +326,11 @@ class committed_descriptor {
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         // compile the kernels
-        exec_bundle(build_w_spec_const<SYCLFFT_SUBGROUP_SIZES>()),
-        num_sgs_per_wg(SYCLFFT_SGS_IN_WG) {
+        exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
+        num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
     // TODO: check and support all the parameter values
     if (params.lengths.size() != 1) {
-      throw std::runtime_error("SYCL-FFT only supports 1D FFT for now");
+      throw std::runtime_error("portFFT only supports 1D FFT for now");
     }
 
     // get some properties we will use for tuning
@@ -513,7 +513,7 @@ class committed_descriptor {
    */
   template <direction Dir, typename T_in, typename T_out>
   sycl::event dispatch_kernel(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_kernel_helper<Dir, T_in, T_out, SYCLFFT_SUBGROUP_SIZES>(in, out, dependencies);
+    return dispatch_kernel_helper<Dir, T_in, T_out, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies);
   }
 
   /**
@@ -600,7 +600,7 @@ class committed_descriptor {
   }
 };
 
-#undef SYCL_FFT_DISPATCH
+#undef PORTFFT_DISPATCH
 
 /**
  * A descriptor containing FFT problem parameters.
@@ -649,6 +649,6 @@ struct descriptor {
   }
 };
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
 #endif
