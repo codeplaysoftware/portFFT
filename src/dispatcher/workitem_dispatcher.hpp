@@ -94,6 +94,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     }
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+        // Load directly into registers from global memory as all loads will be fully coalesced.
+        // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, N_reals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
@@ -109,6 +111,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       private2local<N_reals, pad::DO_PAD>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
+    // Store back to global in the same manner irrespective of input data layout, as
+    //  the transposed case is assumed to be used only in OOP scenario.
     local2global<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, loc, output, N_reals * n_working, local_offset,
                                                              N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);

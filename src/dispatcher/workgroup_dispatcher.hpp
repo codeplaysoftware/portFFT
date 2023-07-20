@@ -107,6 +107,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       }
     }();
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      // Load in a transposed manner, similar to subgroup impl.
       global2local_transposed<pad::DO_PAD, level::WORKGROUP, T>(it, input, loc, 2 * offset, FFTSize, n_transforms,
                                                                 num_batches_in_local_mem);
     } else {
@@ -117,6 +118,9 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       wg_dft<Dir, FFTSize, N, M, SubgroupSize>(loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it, scaling_factor);
       sycl::group_barrier(it.get_group());
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+        // Once all batches in local memory have been processed, store all of them back to global memory in one go
+        // Viewing it as a rectangle of height as problem size and length as the number of batches in local memory
+        // Which needs to read in a transposed manner and stored in a contiguous one.
         local2global_transposed<detail::pad::DO_PAD>(it, N * M, num_batches_in_local_mem, max_num_batches_in_local_mem,
                                                      loc, output, offset);
       } else {

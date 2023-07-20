@@ -123,10 +123,10 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       /**
        * Codepath taken if the input is transposed
        * The number of batches that are loaded, is equal to half of the workgroup size.
-       * Each workitem is reposnsible for all of either the real or complex part of the batch being loaded.
+       * Each workitem is responsible for all of either the real or complex part of the batch being loaded.
        * The data in local memory is also stored in a transposed manner, so that there are no bank conflicts
        * while storing the data.
-       * Thus its loaded in a transposed manner and stored in a transposed manner to prevent data overwrites.
+       * Thus it is loaded in a transposed manner and stored in a transposed manner to prevent data overwrites.
        * Going ahead with the assumption that output will not be stored in a transposed manner(always out of place), it
        * would need to transpose the final result in local memory and store it to global.
        */
