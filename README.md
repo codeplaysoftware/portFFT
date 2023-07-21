@@ -83,8 +83,11 @@ portFFT is still in early development. The supported configurations are:
 * single and double precisions
 * forward and backward directions
 * in-place and out-of-place transforms
+  * Note that portFFT can allocate scratch memory to support in-place transforms or for other optimisations.
 * USM and buffer containers
 * batched transforms
+* Arbitrary strides
+* Arbitrary distances (stride used for the batch)
 * 1D transforms only
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.

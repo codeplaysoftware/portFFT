@@ -31,12 +31,26 @@ enum class placement { IN_PLACE, OUT_OF_PLACE };
 
 enum class direction { FORWARD, BACKWARD };
 
+/** Return the opposite direction.
+ * Useful to get the output of descriptor::get_strides, descriptor::get_distance, or similar functions.
+ * @param dir Direction
+ */
+direction inv(direction dir) { return dir == direction::FORWARD ? direction::BACKWARD : direction::FORWARD; }
+
 namespace detail {
 enum class pad { DO_PAD, DONT_PAD };
 
 enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 
-enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
+enum class layout {
+  /// Packed layout represents default strides and distance using row major layout
+  PACKED,
+  /// Unpacked layout represents arbitrary strides or distance
+  UNPACKED,
+  /// Transpose is a special case of unpacked with distance=1 stride=[0, batch_size] which can be better optimized than
+  /// the general case
+  TRANSPOSED
+};
 
 enum class memory { BUFFER, USM };
 }  // namespace detail

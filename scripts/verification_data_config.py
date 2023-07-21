@@ -39,7 +39,7 @@ class ValidationDataConfig:
         self.file_path = Path(self.file_path)
         # Confirm a sensible batch count.
         if not self.batch > 0:
-            raise Exception("--batch argument must be +ve. Value was " +
+            raise Exception("--batch argument must be positive. Value was " +
                             str(self.batch))
         # Confirm a meaningful transform_type
         if not (self.transform_type == "REAL"

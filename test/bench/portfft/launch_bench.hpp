@@ -21,7 +21,6 @@
 #ifndef PORTFFT_BENCH_LAUNCH_BENCH_HPP
 #define PORTFFT_BENCH_LAUNCH_BENCH_HPP
 
-#include <cassert>
 #include <sstream>
 #include <type_traits>
 
@@ -32,6 +31,7 @@
 #include "bench_utils.hpp"
 #include "device_number_generator.hpp"
 #include "ops_estimate.hpp"
+#include "reference_data_wrangler.hpp"
 
 /**
  * Main function to run benchmarks and measure the time spent on the host.
@@ -51,7 +51,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
                                       std::size_t runs) {
   using complex_type = std::complex<FType>;
   using forward_t = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, FType>;
-  std::size_t N = desc.get_total_length();
+  std::size_t N = desc.get_flattened_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
@@ -66,7 +66,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
 
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto verifSpec = get_matching_spec(verification_data, desc);
-  auto host_input = verifSpec.load_data_time(desc);
+  auto host_input = verifSpec.load_input_data(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
@@ -151,7 +151,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
     throw std::runtime_error("Queue does not have the profiling property");
   }
 
-  std::size_t N = desc.get_total_length();
+  std::size_t N = desc.get_flattened_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
@@ -166,7 +166,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   q.wait();
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto verifSpec = get_matching_spec(verification_data, desc);
-  auto host_input = verifSpec.load_data_time(desc);
+  auto host_input = verifSpec.load_input_data(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 

@@ -28,9 +28,8 @@
 using engine = std::ranlux48_base;
 
 template <typename T>
-std::enable_if_t<std::is_floating_point_v<T>> populate_with_random(std::vector<T>& in,
-                                                                      T lowerLimit = T(-1.0),
-                                                                      T higherLimit = T(1.0)) {
+std::enable_if_t<std::is_floating_point_v<T>> populate_with_random(std::vector<T>& in, T lowerLimit = T(-1.0),
+                                                                   T higherLimit = T(1.0)) {
   engine algo(0);
   std::uniform_real_distribution<T> distribution(lowerLimit, higherLimit);
 
@@ -40,8 +39,7 @@ std::enable_if_t<std::is_floating_point_v<T>> populate_with_random(std::vector<T
 }
 
 template <typename T>
-void populate_with_random(std::vector<std::complex<T>>& in, T lowerLimit = T(-1.0),
-                          T higherLimit = T(1.0)) {
+void populate_with_random(std::vector<std::complex<T>>& in, T lowerLimit = T(-1.0), T higherLimit = T(1.0)) {
   engine algo(0);
   std::uniform_real_distribution<T> distribution(lowerLimit, higherLimit);
 

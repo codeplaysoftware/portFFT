@@ -20,4 +20,5 @@
 
 #include "instantiate_fft_tests.hpp"
 
-INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_TRANSPOSE(float, Float)
+INSTANTIATE_TESTS(float, Float)
+INSTANTIATE_INVALID_TESTS()

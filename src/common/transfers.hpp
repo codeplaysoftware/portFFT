@@ -56,6 +56,42 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
   return local_idx;
 }
 
+/**
+ * Apply stride and distance to an index
+ *
+ * @tparam ElemSize Number of real values that must remain contiguous despite the stride.
+ * @param idx Index
+ * @param offset Offset in number of reals
+ * @param batch_id Batch used for the distance
+ * @param distance Batch stride in number of reals
+ * @param stride Offset in number of reals used to access the next element
+ */
+template <std::size_t ElemSize>
+__attribute__((always_inline)) inline std::size_t get_with_stride_and_distance(std::size_t idx, std::size_t offset,
+                                                                               std::size_t batch_id,
+                                                                               std::size_t distance,
+                                                                               std::size_t stride) {
+  return offset + batch_id * distance + (idx / ElemSize) * stride + idx % ElemSize;
+}
+
+template <detail::level Level, int SubgroupSize>
+__attribute__((always_inline)) inline std::pair<std::size_t, std::size_t> get_local_id_and_size(sycl::nd_item<1> it) {
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
+                "Only implemented for subgroup and workgroup levels!");
+
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+  std::size_t local_size;
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+    local_size = SubgroupSize;
+  } else {
+    local_id = it.get_local_id(0);
+    local_size = it.get_local_range(0);
+  }
+  return {local_id, local_size};
+}
+
 }  // namespace detail
 
 /**
@@ -77,25 +113,13 @@ template <detail::pad Pad, detail::level Level, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,
                                                         std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
-  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
-                "Only implemented for subgroup and workgroup levels!");
+  auto [local_id, local_size] = detail::get_local_id_and_size<Level, SubgroupSize>(it);
   constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
 
-  sycl::sub_group sg = it.get_sub_group();
-  std::size_t local_id;
-  std::size_t local_size;
-  if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
-    local_size = SubgroupSize;
-  } else {
-    local_id = it.get_local_id(0);
-    local_size = it.get_local_range(0);
-  }
-
-  std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
-  std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
+  std::size_t chunk_stride = local_size * static_cast<std::size_t>(chunk_size);
+  std::size_t rounded_down_num_elems = (total_num_elems / chunk_stride) * chunk_stride;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
@@ -108,11 +132,11 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
     local_size = SubgroupSize;
-    stride = local_size * chunk_size;
-    rounded_down_num_elems = (total_num_elems / stride) * stride;
+    chunk_stride = local_size * chunk_size;
+    rounded_down_num_elems = (total_num_elems / chunk_stride) * chunk_stride;
   }
   // Each subgroup loads a chunk of `chunk_size * local_size` elements.
-  for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
+  for (std::size_t i = 0; i < rounded_down_num_elems; i += chunk_stride) {
     T_vec loaded = sg.load<chunk_size>(detail::get_global_multi_ptr(&global[global_offset + i]));
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
@@ -142,7 +166,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   global_offset += unaligned_elements;
 
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
-  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += chunk_stride) {
     T_vec loaded;
     loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
     detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
@@ -167,6 +191,63 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 }
 
 /**
+ * Copies data from global memory to local memory with support for stride and distance.
+ *
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
+ * strided reads without bank conflicts
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam SubgroupSize size of the subgroup
+ * @tparam ElemSize Size of an element when copying data (i.e. 1 is scalar, 2 is complex). Only relevant if
+ * global_stride is not ElemSize.
+ * @tparam T type of the scalar used for computations
+ * @param it nd_item
+ * @param global pointer to global memory
+ * @param local pointer to local memory
+ * @param batch_size number of batches to copy
+ * @param num_reals number of real values to copy in a batch
+ * @param global_offset offset to the global pointer
+ * @param local_offset offset to the local pointer
+ * @param global_stride stride used when reading from global memory. Values other than ElemSize disable optimizations.
+ * @param global_distance distance used when reading from global memory. Values other than num_reals disable
+ * optimizations.
+ */
+template <detail::pad Pad, detail::level Level, int SubgroupSize, std::size_t ElemSize = 2, typename T>
+__attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,
+                                                        std::size_t batch_size, std::size_t num_reals,
+                                                        std::size_t global_offset, std::size_t local_offset,
+                                                        std::size_t global_stride, std::size_t global_distance) {
+  if (global_stride == ElemSize && global_distance == num_reals) {
+    global2local<Pad, Level, SubgroupSize>(it, global, local, batch_size * num_reals, global_offset, local_offset);
+    return;
+  }
+
+  auto [local_id, local_size] = detail::get_local_id_and_size<Level, SubgroupSize>(it);
+  // Number of chunks that can be copied using all the workitem in the subgroup or workgroup
+  std::size_t chunk_size = num_reals / local_size;
+
+  // Each workitem in the subgroup or workgroup load from the same batch.
+  // This is not optimised if num_reals < local_size.
+  for (std::size_t batch_id = 0; batch_id < batch_size; ++batch_id) {
+    std::size_t local_distance = batch_id * num_reals;
+    for (std::size_t j = 0; j < chunk_size; j++) {
+      std::size_t idx = local_id * chunk_size + j;
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + idx + local_distance);
+      std::size_t global_idx =
+          detail::get_with_stride_and_distance<ElemSize>(idx, global_offset, batch_id, global_distance, global_stride);
+      local[local_idx] = global[global_idx];
+    }
+    // Less than group size elements remain. Each workitem loads at most one.
+    std::size_t last_idx = chunk_size * local_size + local_id;
+    if (last_idx < num_reals) {
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + last_idx + local_distance);
+      std::size_t global_idx = detail::get_with_stride_and_distance<ElemSize>(last_idx, global_offset, batch_id,
+                                                                              global_distance, global_stride);
+      local[local_idx] = global[global_idx];
+    }
+  }
+}
+
+/**
  * Copies data from local memory to global memory.
  *
  * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
@@ -185,22 +266,10 @@ template <detail::pad Pad, detail::level Level, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, const T* local, T* global,
                                                         std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
-  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
-                "Only implemented for subgroup and workgroup levels!");
+  auto [local_id, local_size] = detail::get_local_id_and_size<Level, SubgroupSize>(it);
   constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
-
-  sycl::sub_group sg = it.get_sub_group();
-  std::size_t local_size;
-  std::size_t local_id;
-  if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
-    local_size = SubgroupSize;
-  } else {
-    local_id = it.get_local_id(0);
-    local_size = it.get_local_range(0);
-  }
 
   std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
@@ -276,6 +345,63 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 }
 
 /**
+ * Copies data from local memory to global memory with support for stride and distance
+ *
+ * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
+ * strided reads without bank conflicts
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam SubgroupSize size of the subgroup
+ * @tparam ElemSize Size of an element when copying data (i.e. 1 is scalar, 2 is complex). Only relevant if
+ * global_stride is not ElemSize.
+ * @tparam T type of the scalar used for computations
+ * @param it nd_item
+ * @param local pointer to local memory
+ * @param global pointer to global memory
+ * @param batch_size number of batches to copy
+ * @param num_reals number of real values to copy in a batch
+ * @param local_offset offset to the local pointer
+ * @param global_offset offset to the global pointer
+ * @param global_stride stride used when writing to global memory. Values other than ElemSize disable optimizations.
+ * @param global_distance distance used when writing to global memory. Values other than num_reals disable
+ * optimizations.
+ */
+template <detail::pad Pad, detail::level Level, int SubgroupSize, std::size_t ElemSize = 2, typename T>
+__attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, const T* local, T* global,
+                                                        std::size_t batch_size, std::size_t num_reals,
+                                                        std::size_t local_offset, std::size_t global_offset,
+                                                        std::size_t global_stride, std::size_t global_distance) {
+  if (global_stride == ElemSize && global_distance == num_reals) {
+    local2global<Pad, Level, SubgroupSize>(it, local, global, batch_size * num_reals, local_offset, global_offset);
+    return;
+  }
+
+  auto [local_id, local_size] = detail::get_local_id_and_size<Level, SubgroupSize>(it);
+  // Number of chunks that can be copied using all the workitem in the subgroup or workgroup
+  std::size_t chunk_size = num_reals / local_size;
+
+  // Each workitem in the subgroup or workgroup load from the same batch.
+  // This is not optimised if num_reals < local_size.
+  for (std::size_t batch_id = 0; batch_id < batch_size; ++batch_id) {
+    std::size_t local_distance = batch_id * num_reals;
+    for (std::size_t j = 0; j < chunk_size; j++) {
+      std::size_t idx = local_id * chunk_size + j;
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + idx + local_distance);
+      std::size_t global_idx =
+          detail::get_with_stride_and_distance<ElemSize>(idx, global_offset, batch_id, global_distance, global_stride);
+      global[global_idx] = local[local_idx];
+    }
+    // Less than group size elements remain. Each workitem loads at most one.
+    std::size_t last_idx = chunk_size * local_size + local_id;
+    if (last_idx < num_reals) {
+      std::size_t local_idx = detail::pad_local<Pad>(local_offset + last_idx + local_distance);
+      std::size_t global_idx = detail::get_with_stride_and_distance<ElemSize>(last_idx, global_offset, batch_id,
+                                                                              global_distance, global_stride);
+      global[global_idx] = local[local_idx];
+    }
+  }
+}
+
+/**
  * Copies data from local memory to private memory. Each work item gets a chunk
  * of consecutive values from local memory.
  *
@@ -325,27 +451,31 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
  * @tparam Pad Whether or not to consider local memory as padded
+ * @tparam ElemSize Size of an element when copying data (i.e. 1 is scalar, 2 is complex). Only relevant if
+ * global_stride is not ElemSize.
  * @tparam T type of the scalar used for computations
  *
  * @param it Associated nd_item
  * @param N Number of rows
  * @param M Number of Cols
- * @param stride Stride between two contiguous elements in global memory in local memory.
+ * @param local_stride Stride between two contiguous elements in local memory.
  * @param local pointer to the local memory
  * @param global pointer to the global memory
- * @param offset offset to the global memory pointer
+ * @param global_offset offset to the global memory pointer
+ * @param global_stride Stride between two contiguous elements in global memory.
  */
-template <detail::pad Pad, typename T>
+template <detail::pad Pad, std::size_t ElemSize = 2, typename T>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
-                                                                   std::size_t stride, T* local, T* global,
-                                                                   std::size_t offset) {
+                                                                   std::size_t local_stride, T* local, T* global,
+                                                                   std::size_t global_offset,
+                                                                   std::size_t global_stride = ElemSize) {
   std::size_t num_threads = it.get_local_range(0);
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<Pad>(2 * stride * source_col + 2 * source_row);
-    global[offset + 2 * i] = local[source_index];
-    global[offset + 2 * i + 1] = local[source_index + 1];
+    std::size_t source_index = detail::pad_local<Pad>(2 * local_stride * source_col + 2 * source_row);
+    global[global_offset + (2 * i) / ElemSize * global_stride + (2 * i) % ElemSize] = local[source_index];
+    global[global_offset + (2 * i + 1) / ElemSize * global_stride + (2 * i + 1) % ElemSize] = local[source_index + 1];
   }
 }
 

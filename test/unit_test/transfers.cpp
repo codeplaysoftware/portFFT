@@ -19,8 +19,8 @@
  **************************************************************************/
 
 #include "common/transfers.hpp"
+#include "fft_test_utils.hpp"
 #include "number_generators.hpp"
-#include "utils.hpp"
 
 #include <gtest/gtest.h>
 

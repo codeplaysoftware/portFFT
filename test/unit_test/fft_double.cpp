@@ -20,4 +20,4 @@
 
 #include "instantiate_fft_tests.hpp"
 
-INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_TRANSPOSE(double, Double)
+INSTANTIATE_TESTS(double, Double)

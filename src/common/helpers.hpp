@@ -108,6 +108,19 @@ auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
 }
 
+/// Deleter for usm pointers to use with std::shared_ptr.
+struct free_usm {
+  sycl::queue queue;
+  explicit free_usm(sycl::queue q) : queue(q) {}
+
+  template <typename T>
+  void operator()(T* ptr) {
+    if (ptr != nullptr) {
+      sycl::free(ptr, queue);
+    }
+  }
+};
+
 };  // namespace portfft::detail
 
 #endif

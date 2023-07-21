@@ -29,8 +29,12 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
+
+#include "utils.hpp"
 
 /**
  * Represents a verification data file, with information on the DFT represented, and the path at which to find the file.
@@ -41,49 +45,66 @@ class verif_data_spec {
   /**
    * Constructor. Should only be needed by the python scripts that generate the reference data.
    */
-  verif_data_spec(std::vector<std::size_t> dftSize, std::size_t batch, std::string filePath, portfft::domain domain)
-      : dftSize(dftSize), batch(batch), filePath(filePath), domain(domain){};
+  verif_data_spec(const std::vector<std::size_t>& dftSize, std::size_t maxBatch, std::string filePath,
+                  portfft::domain domain)
+      : dftSize(dftSize), maxBatch(maxBatch), filePath(filePath), domain(domain){};
 
   // The DFT real size - aka. portfft::descriptor::lengths
   std::vector<std::size_t> dftSize;
   // The number of transforms per compute call.
-  std::size_t batch;
+  std::size_t maxBatch;
   // The path where the reference data is to be found.
   std::string filePath;
   // FFT domain
   portfft::domain domain;
 
-  /** Load time-domain data from the reference file.
+  /** Load input data from the reference file.
    *
    * @tparam The Scalar type of the DFT
    * @tparam The Domain of the DFT
    * @param desc The descriptor that this data will be used for with.
-   * @return Linearised time-domain data with batches equal to the descriptor.
+   * @param dir Direction of the DFT.
+   * @return Packed input data with batches equal to the descriptor.
    **/
   template <typename Scalar, portfft::domain Domain>
-  auto load_data_time(portfft::descriptor<Scalar, Domain>& desc) {
+  auto load_input_data(const portfft::descriptor<Scalar, Domain>& desc, portfft::direction dir) {
     using elem_t = std::conditional_t<Domain == portfft::domain::COMPLEX, std::complex<Scalar>, Scalar>;
-    if (Domain != domain) {
-      std::string errorStr = "Tried to read data as incorrect type. ";
-      errorStr = errorStr + "Ref data is for " + (domain == portfft::domain::COMPLEX ? "COMPLEX" : "REAL") + " domain.";
-      throw std::runtime_error(errorStr);
+    check_descriptor(desc);
+    const bool isForward = dir == portfft::direction::FORWARD;
+    auto rawInputPackedData =
+        isForward ? load_time_data(desc.number_of_transforms) : load_fourier_data(desc.number_of_transforms);
+    auto packedData = cast_data<elem_t>(rawInputPackedData);
+    std::size_t expectedPackedSize = desc.number_of_transforms * prod_vec(isForward ? dftSize : fourier_domain_dims());
+    if (packedData.size() != expectedPackedSize) {
+      throw std::runtime_error("Unexpected number of input elements");
     }
-    auto rawInputData = load_input_data(desc.number_of_transforms);
-    auto data = cast_data<elem_t>(rawInputData);
-    return data;
+
+    if (!portfft::detail::has_default_strides_and_distance(desc, dir)) {
+      return unpack_data(packedData, desc, dir);
+    }
+    return packedData;
   }
 
-  /** Load fourier-domain data from the reference file (computed from time-domain data with scale=1).
+  /** Load output data from the reference file (computed from time-domain data with scale=1).
    *
    * @tparam The Scalar type of the DFT
    * @tparam The Domain of the DFT
    * @param desc The descriptor that this data will be used for with.
-   * @return Linearised fourier-domain data with batches equal to the descriptor.
+   * @param dir Direction of the DFT.
+   * @return Packed output data with batches equal to the descriptor.
    **/
   template <typename Scalar, portfft::domain Domain>
-  std::vector<std::complex<Scalar>> load_data_fourier(portfft::descriptor<Scalar, Domain>& desc) {
-    auto rawInputData = load_output_data(desc.number_of_transforms);
+  std::vector<std::complex<Scalar>> load_output_data(const portfft::descriptor<Scalar, Domain>& desc,
+                                                     portfft::direction dir) {
+    check_descriptor(desc);
+    const bool isForward = dir == portfft::direction::FORWARD;
+    auto rawInputData =
+        isForward ? load_fourier_data(desc.number_of_transforms) : load_time_data(desc.number_of_transforms);
     auto data = cast_data<std::complex<Scalar>>(rawInputData);
+    std::size_t expectedPackedSize = desc.number_of_transforms * prod_vec(isForward ? fourier_domain_dims() : dftSize);
+    if (data.size() != expectedPackedSize) {
+      throw std::runtime_error("Unexpected number of input elements");
+    }
     return data;
   }
 
@@ -102,49 +123,44 @@ class verif_data_spec {
    * @tparam Scalar The scalar type of the DFT being checked.
    * @tparam Domain The domain of the DFT being checked.
    * @param desc The descriptor of the DFT being checked.
-   * @param hostOutput The data to be checked. Expects that distance between
-   * batches == the length of the DFT.
+   * @param hostOutput The data to be checked.
    * @param dir The DFT direction.
    * @param comparisonTolerance The tolerance for error.
    **/
   template <typename ElemT, typename Scalar, portfft::domain Domain>
-  void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
-                  const double comparisonTolerance) {
-    if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
-      throw std::runtime_error("Can't use this verification data to verify this DFT!");
-    }
-    using complex_type = std::complex<Scalar>;
-    using forward_type = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, Scalar>;
+  void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vector<ElemT>& hostOutput,
+                  portfft::direction dir, const double comparisonTolerance) {
+    check_descriptor(desc);
+
     const bool isForward = dir == portfft::direction::FORWARD;
+    bool unpackOutput = !portfft::detail::has_default_strides_and_distance(
+        desc, isForward ? portfft::direction::BACKWARD : portfft::direction::FORWARD);
+    std::vector<ElemT> packedOutput;
+    if (unpackOutput) {
+      packedOutput = pack_data(hostOutput, desc, inv(dir));
+    }
+    auto& actualOutput = unpackOutput ? packedOutput : hostOutput;
+
     std::size_t descBatches = desc.number_of_transforms;
     auto dataShape = isForward ? dftSize : fourier_domain_dims();
-    std::size_t dftLen = std::accumulate(dataShape.cbegin(), dataShape.cend(), std::size_t(1), std::multiplies<>());
+    std::size_t dftLen = prod_vec(dataShape);
     // Division by DFT len is required since the reference forward transform has
     // scale factor 1, so inverting with also scale factor 1 would be out by a
     // multiple of dftLen. This scaling is applied to the reference data.
     auto scaling = isForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dftLen);
-    if (isForward) {
-      auto referenceData = load_data_fourier(desc);
-      if constexpr (std::is_same_v<complex_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
-      } else {
-        throw std::runtime_error("Expected real input data type for forward dft verification.");
-      }
-    } else {
-      auto referenceData = load_data_time(desc);
-      if constexpr (std::is_same_v<forward_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
-      } else {
-        throw std::runtime_error("Expected complex input data type for backward dft verification.");
-      }
+    auto referenceData = load_output_data(desc, dir);
+    if (referenceData.size() != actualOutput.size()) {
+      std::cerr << "Mismatching reference output size=" << referenceData.size()
+                << " and actual output size=" << actualOutput.size() << std::endl;
+      throw std::runtime_error("Verification Failed");
     }
+    compare_arrays(referenceData.data(), actualOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
   }
 
  private:
   // The number of doubles in the input data.
-  inline std::size_t input_double_count() {
-    return batch * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-           (domain == portfft::domain::COMPLEX ? 2 : 1);
+  inline std::size_t input_double_count(std::size_t batch) {
+    return batch * prod_vec(dftSize) * (domain == portfft::domain::COMPLEX ? 2 : 1);
   }
 
   // Cast double data read from file to [float, complex<float>, double, complex<double>]
@@ -189,32 +205,21 @@ class verif_data_spec {
   }
 
   /** Load time-domain data from the input file to a double vector.
-   * @param batchCount The number of batches to read in.
+   * @param batch The number of batches to read in.
    */
-  inline std::vector<double> load_input_data(std::size_t batchCount) {
-    if (batchCount > batch) {
-      throw std::runtime_error("Requested more batches than promised by specification.");
-    }
-    return load_file_data(
-        0, batchCount * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-               (domain == portfft::domain::COMPLEX ? 2 : 1));
-  }
+  inline std::vector<double> load_time_data(std::size_t batch) { return load_file_data(0, input_double_count(batch)); }
 
   /** Load fourier-domain data from the input file to a double vector.
-   * @param batchCount The number of batches to read in.
+   * @param batch The number of batches to read in.
    */
-  inline std::vector<double> load_output_data(std::size_t batchCount) {
-    if (batchCount > batch) {
-      throw std::runtime_error("Requested more batches than promised by specification.");
-    }
-    auto inCount = input_double_count();
-    auto fourierSize = fourier_domain_dims();
-    std::size_t outputDoubleCount =
-        batchCount * std::accumulate(fourierSize.cbegin(), fourierSize.cend(), std::size_t(1), std::multiplies<>()) * 2;
+  inline std::vector<double> load_fourier_data(std::size_t batch) {
+    auto inCount = input_double_count(maxBatch);
+    auto fourierSizes = fourier_domain_dims();
+    std::size_t outputDoubleCount = batch * prod_vec(fourierSizes) * 2;
     return load_file_data(inCount, inCount + outputDoubleCount);
   }
 
-  /** Compare data, throwing std::runime_error and printing a message if out of spec.
+  /** Compare data, throwing std::runtime_error and printing a message if out of spec.
    * @tparam ElemT The element type of the data to compare
    * @tparam ScaleT The type of the reference data scale value.
    * @param referenceData The source of truth
@@ -225,8 +230,8 @@ class verif_data_spec {
    * @param comparisonTolerance The allowable difference before throwing.
    */
   template <typename ElemT, typename ScaleT>
-  void compare_arrays(ElemT* referenceData, ElemT* generatedData, std::size_t dftLen, std::size_t batchComparisons,
-                      ScaleT scaling, double comparisonTolerance) {
+  void compare_arrays(const ElemT* referenceData, const ElemT* generatedData, std::size_t dftLen,
+                      std::size_t batchComparisons, ScaleT scaling, double comparisonTolerance) {
     for (std::size_t t = 0; t < batchComparisons; ++t) {
       const ElemT* thisBatchRef = referenceData + dftLen * t;
       const ElemT* thisBatchComputed = generatedData + dftLen * t;
@@ -243,6 +248,36 @@ class verif_data_spec {
       }
     }
   }
+
+  /** Check that the user descriptor matches with the loaded file.
+   * Helper function for @link load_input_data and @link load_output_data.
+   * @tparam Domain User requested domain
+   */
+  template <typename Scalar, portfft::domain Domain>
+  void check_descriptor(const portfft::descriptor<Scalar, Domain>& desc) {
+    if (Domain != domain) {
+      auto get_domain_str = [](portfft::domain d) { return d == portfft::domain::COMPLEX ? "COMPLEX" : "REAL"; };
+      std::stringstream ss;
+      ss << "Mismatching domain, expected " << get_domain_str(domain);
+      ss << " but descriptor uses " << get_domain_str(Domain) << " domain.";
+      throw std::runtime_error(ss.str());
+    }
+    if (desc.lengths != dftSize) {
+      std::stringstream ss;
+      ss << "Mismatching lengths, expected ";
+      print_vec(ss, dftSize);
+      ss << " but descriptor uses ";
+      print_vec(ss, desc.lengths);
+      ss << " domain.";
+      throw std::runtime_error(ss.str());
+    }
+    if (desc.number_of_transforms > maxBatch) {
+      std::stringstream ss;
+      ss << "Too large number of transforms, reference data only supports up to " << maxBatch
+         << " batches but descriptor requires " << desc.number_of_transforms;
+      throw std::runtime_error(ss.str());
+    }
+  }
 };
 
 /** Find a verif_data_spec that can be used to check an DFT described by a portfft::descriptor.
@@ -255,7 +290,7 @@ template <typename Scalar, portfft::domain Domain>
 verif_data_spec get_matching_spec(const std::vector<verif_data_spec>& verifData,
                                   portfft::descriptor<Scalar, Domain>& desc) {
   for (auto& spec : verifData) {
-    if ((desc.lengths == spec.dftSize) && (desc.number_of_transforms <= spec.batch) && (Domain == spec.domain)) {
+    if ((desc.lengths == spec.dftSize) && (desc.number_of_transforms <= spec.maxBatch) && (Domain == spec.domain)) {
       return spec;
     }
   }
