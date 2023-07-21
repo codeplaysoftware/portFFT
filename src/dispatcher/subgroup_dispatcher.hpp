@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
-#define SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
+#ifndef PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
+#define PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
@@ -28,7 +28,7 @@
 #include <descriptor.hpp>
 #include <enums.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 namespace detail {
 // specialization constants
 constexpr static sycl::specialization_id<int> factor_wi_spec_const{};
@@ -344,7 +344,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       std::size_t padded_fft_bytes = detail::pad_local(2 * desc.params.lengths[0]) * sizeof(Scalar);
       std::size_t max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
       std::size_t batches_per_sg = static_cast<std::size_t>(desc.used_sg_size) / 2;
-      std::size_t num_sgs_required = std::min(static_cast<std::size_t>(SYCLFFT_SGS_IN_WG),
+      std::size_t num_sgs_required = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG),
                                               std::max(1ul, max_batches_in_local_mem / batches_per_sg));
       desc.num_sgs_per_wg = num_sgs_required;
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * desc.num_sgs_per_wg / 2;
@@ -354,12 +354,12 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
       std::size_t num_scalars_per_sg = detail::pad_local(2 * desc.params.lengths[0] * n_ffts_per_sg);
       std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
-      desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(SYCLFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
+      desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
       return num_scalars_per_sg * desc.num_sgs_per_wg;
     }
   }
 };
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
-#endif  // SYCL_FFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
+#endif  // PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP

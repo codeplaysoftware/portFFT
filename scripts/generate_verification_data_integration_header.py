@@ -14,7 +14,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  ************************************************************************"""
 from pathlib import Path
@@ -26,8 +26,8 @@ template_begins = """
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_{include_guard_str}_HPP
-#define SYCL_FFT_{include_guard_str}_HPP
+#ifndef PORTFFT_{include_guard_str}_HPP
+#define PORTFFT_{include_guard_str}_HPP
 #include "reference_data_wrangler.hpp"
 
 const std::vector<verif_data_spec> verification_data({{
@@ -69,8 +69,8 @@ def generate_header_string(config_dicts, output_file_path, header_guard_name):
                 "[", "").replace("]", "")
             batch_string = str(d["batch"])
             file_string = str(d["file_path"])
-            domain_bool = "sycl_fft::domain::COMPLEX" if d[
-                "transform_type"] == "COMPLEX" else "sycl_fft::domain::REAL"
+            domain_bool = "portfft::domain::COMPLEX" if d[
+                "transform_type"] == "COMPLEX" else "portfft::domain::REAL"
             f.write(
                 template_per_item.format(dft_sizes_str=dftSizesStr,
                                          batch_str=batch_string,

@@ -14,7 +14,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  *  A tool to generate FFT reference data and headers detailing this data.
  *
@@ -29,7 +29,7 @@ import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--build_path",
-                        help="The path of the build directory for SYCL-FFT",
+                        help="The path of the build directory for portFFT",
                         required=True)
     parser.add_argument("--verbose", help="Verbose", action='store_true')
     parser.add_argument("--data",

@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
-#define SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
+#ifndef PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
+#define PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
@@ -28,7 +28,7 @@
 #include <descriptor.hpp>
 #include <enums.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 namespace detail {
 // specialization constants
 constexpr static sycl::specialization_id<std::size_t> workitem_spec_const_fft_size{};
@@ -200,7 +200,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     std::size_t num_scalars_per_sg =
         detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size));
     std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
-    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(SYCLFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
+    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
     return num_scalars_per_sg * desc.num_sgs_per_wg;
   }
 };
@@ -211,6 +211,6 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
   static Scalar* execute(committed_descriptor& /*desc*/) { return nullptr; }
 };
 
-}  // namespace sycl_fft
+}  // namespace portfft
 
-#endif  // SYCL_FFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
+#endif  // PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP

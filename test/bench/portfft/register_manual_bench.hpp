@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
-#define SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
+#ifndef PORTFFT_BENCH_REGISTER_MANUAL_BENCH_HPP
+#define PORTFFT_BENCH_REGISTER_MANUAL_BENCH_HPP
 
 #include <iomanip>
 #include <iostream>
@@ -157,8 +157,8 @@ std::vector<std::size_t> get_vec_unsigned(const std::string_view& key, std::stri
   return vec;
 }
 
-template <typename FType, sycl_fft::domain Domain>
-void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<FType, Domain>& desc) {
+template <typename FType, portfft::domain Domain>
+void fill_descriptor(arg_map_t& arg_map, portfft::descriptor<FType, Domain>& desc) {
   std::string_view arg = get_arg(arg_map, BATCH);
   if (!arg.empty()) {
     desc.number_of_transforms = get_unsigned("batch", arg);
@@ -193,18 +193,18 @@ void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<FType, Domain>& de
 
   arg = get_arg(arg_map, STORAGE);
   if (arg == "complex" || arg == "cpx") {
-    desc.complex_storage = sycl_fft::complex_storage::COMPLEX;
+    desc.complex_storage = portfft::complex_storage::COMPLEX;
   } else if (arg == "real_real" || arg == "rr") {
-    desc.complex_storage = sycl_fft::complex_storage::REAL_REAL;
+    desc.complex_storage = portfft::complex_storage::REAL_REAL;
   } else if (!arg.empty()) {
     throw invalid_value{"storage", arg};
   }
 
   arg = get_arg(arg_map, PLACEMENT);
   if (arg == "in_place" || arg == "ip") {
-    desc.placement = sycl_fft::placement::IN_PLACE;
+    desc.placement = portfft::placement::IN_PLACE;
   } else if (arg == "out_of_place" || arg == "oop") {
-    desc.placement = sycl_fft::placement::OUT_OF_PLACE;
+    desc.placement = portfft::placement::OUT_OF_PLACE;
   } else if (!arg.empty()) {
     throw invalid_value{"placement", arg};
   }
@@ -212,7 +212,7 @@ void fill_descriptor(arg_map_t& arg_map, sycl_fft::descriptor<FType, Domain>& de
 
 template <typename FType>
 void register_manual_benchmark(sycl::queue q, sycl::queue profiling_q, const std::string_view& desc_str) {
-  using namespace sycl_fft;
+  using namespace portfft;
   arg_map_t arg_map = get_arg_map(desc_str);
 
   // Set the domain and lengths first to create the descriptor
@@ -324,4 +324,4 @@ int main_manual_bench(int argc, char** argv) {
   return 0;
 }
 
-#endif  // SYCL_FFT_BENCH_REGISTER_MANUAL_BENCH_HPP
+#endif  // PORTFFT_BENCH_REGISTER_MANUAL_BENCH_HPP

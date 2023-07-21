@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
-#define SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
+#ifndef PORTFFT_COMMON_NUMBER_GENERATORS_HPP
+#define PORTFFT_COMMON_NUMBER_GENERATORS_HPP
 
 #include <complex>
 #include <random>
@@ -50,4 +50,4 @@ void populate_with_random(std::vector<std::complex<T>>& in, T lowerLimit = T(-1.
   }
 }
 
-#endif  // SYCL_FFT_COMMON_NUMBER_GENERATORS_HPP
+#endif  // PORTFFT_COMMON_NUMBER_GENERATORS_HPP

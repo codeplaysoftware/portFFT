@@ -17,7 +17,7 @@
 # *  See the License for the specific language governing permissions and
 # *  limitations under the License.
 # *
-# *  Codeplay's SYCL-FFT
+# *  Codeplay's portFFT
 # *
 # *  @filename CMakeLists.txt
 # *
@@ -79,8 +79,8 @@ foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
     target_link_libraries(
         ${TEST_TARGET}
         PRIVATE
-        sycl_fft
-        sycl_fft_warnings
+        portfft
+        portfft_warnings
         GTest::gtest_main
         Threads::Threads
     )

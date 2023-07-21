@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # (C) Codeplay Software Ltd
-#     SYCL-FFT source code formatting script
+#     portFFT source code formatting script
 #
-#     NB: SYCL-FFT uses clang-format 11.
+#     NB: portFFT uses clang-format 11.
 #
 
 set -euo pipefail

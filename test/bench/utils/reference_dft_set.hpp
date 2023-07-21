@@ -17,8 +17,8 @@
  *  A set of common reference DFT benchmarks.
  *
  **************************************************************************/
-#ifndef SYCL_FFT_REFERENCE_DFT_SET_HPP
-#define SYCL_FFT_REFERENCE_DFT_SET_HPP
+#ifndef PORTFFT_REFERENCE_DFT_SET_HPP
+#define PORTFFT_REFERENCE_DFT_SET_HPP
 
 /**
  * A common set of reference benchmarks. To use, two macros must be defined:
@@ -48,7 +48,7 @@
 // 10. large       real    1D fits in global memory Cooley-Tukey   (batch=2*1024      N=128*1024)
 // 11. small       real    3D                                      (batch=1024        N=64x64x64)
 //
-// Configurations must match with the ones in test/bench/sycl-fft/launch_bench.hpp
+// Configurations must match with the ones in test/bench/portfft/launch_bench.hpp
 // clang-format on
 
 /**
@@ -116,4 +116,4 @@ void register_real_float_benchmark_set(std::string prefix, Args&&... args) {
   // clang-format on
 }
 
-#endif  // SYCL_FFT_REFERENCE_DFT_SET_HPP
+#endif  // PORTFFT_REFERENCE_DFT_SET_HPP

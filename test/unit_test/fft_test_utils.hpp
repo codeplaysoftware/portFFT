@@ -14,21 +14,21 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
-#define SYCL_FFT_UNIT_TEST_FFT_TEST_UTILS
+#ifndef PORTFFT_UNIT_TEST_FFT_TEST_UTILS
+#define PORTFFT_UNIT_TEST_FFT_TEST_UTILS
 
 #include "instantiate_fft_tests.hpp"
 #include "utils.hpp"
-#include <sycl_fft.hpp>
+#include <portfft.hpp>
 
 #include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
 
-using namespace sycl_fft;
+using namespace portfft;
 
 using param_tuple = std::tuple<std::size_t, std::size_t>;
 
@@ -51,7 +51,7 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
   }
 }
 
-template <typename Scalar, sycl_fft::domain Domain>
+template <typename Scalar, portfft::domain Domain>
 std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_committed_descriptor(
     descriptor<Scalar, Domain>& desc, sycl::queue& queue) {
   try {
@@ -66,7 +66,7 @@ template <typename FType, placement Place, direction Dir, bool TransposeIn = fal
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
-    std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
+    std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
       GTEST_SKIP();
     }
@@ -102,7 +102,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   auto committed_descriptor = potential_committed_descriptor.first.value();
 
   auto verifSpec = get_matching_spec(verification_data, desc);
-  if constexpr (Dir == sycl_fft::direction::FORWARD) {
+  if constexpr (Dir == portfft::direction::FORWARD) {
     host_input = verifSpec.template load_data_time(desc);
   } else {
     host_input = verifSpec.template load_data_fourier(desc);
@@ -146,7 +146,7 @@ template <typename FType, placement Place, direction Dir, bool TransposeIn = fal
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
-    std::vector<std::size_t> instantiated_sizes{SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
+    std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
       GTEST_SKIP();
     }
@@ -176,7 +176,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   auto committed_descriptor = potential_committed_descriptor.first.value();
 
   auto verifSpec = get_matching_spec(verification_data, desc);
-  if constexpr (Dir == sycl_fft::direction::FORWARD) {
+  if constexpr (Dir == portfft::direction::FORWARD) {
     host_input = verifSpec.template load_data_time(desc);
   } else {
     host_input = verifSpec.template load_data_fourier(desc);

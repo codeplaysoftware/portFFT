@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
-#define SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#ifndef PORTFFT_BENCH_OPS_ESTIMATE_HPP
+#define PORTFFT_BENCH_OPS_ESTIMATE_HPP
 
 #include <cmath>
 
@@ -49,4 +49,4 @@ inline std::size_t global_mem_transactions(std::size_t batches, std::size_t num_
   return batches * (sizeof(TypeIn) * num_in + sizeof(TypeOut) * num_out);
 }
 
-#endif  // SYCL_FFT_BENCH_OPS_ESTIMATE_HPP
+#endif  // PORTFFT_BENCH_OPS_ESTIMATE_HPP

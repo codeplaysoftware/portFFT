@@ -14,19 +14,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_WORKITEM_HPP
-#define SYCL_FFT_COMMON_WORKITEM_HPP
+#ifndef PORTFFT_COMMON_WORKITEM_HPP
+#define PORTFFT_COMMON_WORKITEM_HPP
 
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
-namespace sycl_fft {
+namespace portfft {
 
 // forward declaration
 template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
@@ -169,7 +169,7 @@ template <typename Scalar, typename T_index>
 constexpr bool fits_in_wi(T_index N) {
   T_index N_complex = N + wi_temps(N);
   T_index complex_size = 2 * sizeof(Scalar);
-  T_index register_space = SYCLFFT_TARGET_REGS_PER_WI * 4;
+  T_index register_space = PORTFFT_TARGET_REGS_PER_WI * 4;
   return N_complex * complex_size <= register_space;
 }
 
@@ -204,6 +204,6 @@ __attribute__((always_inline)) inline void wi_dft(const T* in, T* out) {
   }
 }
 
-};  // namespace sycl_fft
+};  // namespace portfft
 
 #endif

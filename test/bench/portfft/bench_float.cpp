@@ -14,7 +14,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
@@ -26,10 +26,10 @@
 template <typename T>
 void bench_dft(sycl::queue q, sycl::queue profiling_q, const std::string& suffix,
                const std::vector<std::size_t>& lengths, std::size_t batch) {
-  using ftype = typename sycl_fft::get_real<T>::type;
-  constexpr sycl_fft::domain domain = sycl_fft::get_domain<T>::value;
+  using ftype = typename portfft::get_real<T>::type;
+  constexpr portfft::domain domain = portfft::get_domain<T>::value;
 
-  sycl_fft::descriptor<ftype, domain> desc(lengths);
+  portfft::descriptor<ftype, domain> desc(lengths);
   desc.number_of_transforms = batch;
 
   register_host_device_benchmark(suffix, q, profiling_q, desc);
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
   print_device(q);
 
   // Benchmark configurations must match with the ones in test/bench/utils/reference_dft_set.hpp
-  // Configurations are progressively added as SYCL-FFT supports more of them.
+  // Configurations are progressively added as portFFT supports more of them.
   bench_dft<std::complex<ftype>>(q, profiling_q, "small_1d", {16}, 8 * 1024 * 1024);
   bench_dft<std::complex<ftype>>(q, profiling_q, "medium_small_1d", {256}, 512 * 1024);
   bench_dft<std::complex<ftype>>(q, profiling_q, "medium_large_1d", {4096}, 32 * 1024);

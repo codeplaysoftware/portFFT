@@ -14,17 +14,17 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_HELPERS_HPP
-#define SYCL_FFT_COMMON_HELPERS_HPP
+#ifndef PORTFFT_COMMON_HELPERS_HPP
+#define PORTFFT_COMMON_HELPERS_HPP
 
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
-namespace sycl_fft::detail {
+namespace portfft::detail {
 
 /**
  * Implements a loop that will be fully unrolled.
@@ -108,6 +108,6 @@ auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
 }
 
-};  // namespace sycl_fft::detail
+};  // namespace portfft::detail
 
 #endif

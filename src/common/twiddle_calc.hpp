@@ -14,17 +14,17 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_TWIDDLE_CALC_HPP
-#define SYCL_FFT_COMMON_TWIDDLE_CALC_HPP
+#ifndef PORTFFT_COMMON_TWIDDLE_CALC_HPP
+#define PORTFFT_COMMON_TWIDDLE_CALC_HPP
 
 #include <cmath>
 #include <complex>
 
-namespace sycl_fft {
+namespace portfft {
 namespace detail {
 
 /**
@@ -42,6 +42,6 @@ std::complex<T> calculate_twiddle(T_index n, T_index total) {
 }
 
 }  // namespace detail
-}  // namespace sycl_fft
+}  // namespace portfft
 
 #endif

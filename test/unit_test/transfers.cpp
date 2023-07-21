@@ -14,7 +14,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
@@ -25,8 +25,8 @@
 #include <gtest/gtest.h>
 
 constexpr int N = 4;
-constexpr int sg_size = (SYCLFFT_SUBGROUP_SIZES);  // turn the list into the last value using commma operator
-constexpr int wg_size = sg_size * SYCLFFT_SGS_IN_WG;
+constexpr int sg_size = (PORTFFT_SUBGROUP_SIZES);  // turn the list into the last value using commma operator
+constexpr int wg_size = sg_size * PORTFFT_SGS_IN_WG;
 constexpr int N_sentinel_values = 64;
 using ftype = float;
 constexpr ftype sentinel_a = -999;
@@ -34,10 +34,10 @@ constexpr ftype sentinel_b = -888;
 constexpr ftype sentinel_loc1 = -777;
 constexpr ftype sentinel_loc2 = -666;
 
-template <sycl_fft::detail::pad Pad>
+template <portfft::detail::pad Pad>
 class test_transfers_kernel;
 
-template <sycl_fft::detail::pad Pad>
+template <portfft::detail::pad Pad>
 void test() {
   std::vector<ftype> a, b;
   a.resize(N * wg_size);
@@ -62,7 +62,7 @@ void test() {
   q.fill(b_dev, sentinel_b, N * wg_size + 2 * N_sentinel_values);
   q.wait();
 
-  std::size_t padded_local_size = sycl_fft::detail::pad_local<Pad>(N * wg_size);
+  std::size_t padded_local_size = portfft::detail::pad_local<Pad>(N * wg_size);
 
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
@@ -80,12 +80,12 @@ void test() {
         }
       }
       group_barrier(it.get_group());
-      sycl_fft::global2local<Pad, detail::level::WORKGROUP, sg_size>(it, a_dev_work, loc1_work, N * wg_size);
+      portfft::global2local<Pad, detail::level::WORKGROUP, sg_size>(it, a_dev_work, loc1_work, N * wg_size);
       group_barrier(it.get_group());
-      sycl_fft::local2private<N, Pad>(loc1_work, priv, local_id, N);
-      sycl_fft::private2local<N, Pad>(priv, loc2_work, local_id, N);
+      portfft::local2private<N, Pad>(loc1_work, priv, local_id, N);
+      portfft::private2local<N, Pad>(priv, loc2_work, local_id, N);
       group_barrier(it.get_group());
-      sycl_fft::local2global<Pad, detail::level::WORKGROUP, sg_size>(it, loc2_work, b_dev_work, N * wg_size);
+      portfft::local2global<Pad, detail::level::WORKGROUP, sg_size>(it, loc2_work, b_dev_work, N * wg_size);
       group_barrier(it.get_group());
       if (local_id == 0) {
         for (std::size_t i = 0; i < N_sentinel_values; i++) {
@@ -128,6 +128,6 @@ void test() {
   sycl::free(sentinels_loc2_dev, q);
 }
 
-TEST(transfers, unpadded) { test<sycl_fft::detail::pad::DONT_PAD>(); }
+TEST(transfers, unpadded) { test<portfft::detail::pad::DONT_PAD>(); }
 
-TEST(transfers, padded) { test<sycl_fft::detail::pad::DO_PAD>(); }
+TEST(transfers, padded) { test<portfft::detail::pad::DO_PAD>(); }

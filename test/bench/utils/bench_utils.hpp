@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCLFFT_BENCH_BENCH_UTILS_HPP
-#define SYCLFFT_BENCH_BENCH_UTILS_HPP
+#ifndef PORTFFT_BENCH_BENCH_UTILS_HPP
+#define PORTFFT_BENCH_BENCH_UTILS_HPP
 
 #include <cmath>
 #include <functional>
@@ -31,11 +31,11 @@
 
 #include "enums.hpp"
 
-#ifdef SYCLFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARK
 // The following file in generated during the build and located at
 // ${BUILD_DIR}/ref_data_include/
 #include <benchmark_reference.hpp>
-#endif  // SYCLFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARK
 
 /**
  * number of runs to do when doing an average of many host runs.
@@ -51,4 +51,4 @@ inline void handle_exception(benchmark::State& state, std::exception& e) {
   state.SkipWithError(msg.c_str());
 }
 
-#endif  // SYCLFFT_BENCH_BENCH_UTILS_HPP
+#endif  // PORTFFT_BENCH_BENCH_UTILS_HPP

@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_UNIT_TEST_UTILS_HPP
-#define SYCL_FFT_UNIT_TEST_UTILS_HPP
+#ifndef PORTFFT_UNIT_TEST_UTILS_HPP
+#define PORTFFT_UNIT_TEST_UTILS_HPP
 
 #include "common/subgroup.hpp"
 #include "common/transfers.hpp"
@@ -36,7 +36,7 @@
 #include <test_reference.hpp>
 
 using namespace std::complex_literals;
-using namespace sycl_fft;
+using namespace portfft;
 
 #define CHECK_QUEUE(queue) \
   if (!queue.first) GTEST_SKIP() << queue.second;

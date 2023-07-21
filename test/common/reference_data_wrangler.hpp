@@ -14,12 +14,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's SYCL-FFT
+ *  Codeplay's portFFT
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
-#define SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
+#ifndef PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
+#define PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
 #include <descriptor.hpp>
 #include <enums.hpp>
@@ -41,17 +41,17 @@ class verif_data_spec {
   /**
    * Constructor. Should only be needed by the python scripts that generate the reference data.
    */
-  verif_data_spec(std::vector<std::size_t> dftSize, std::size_t batch, std::string filePath, sycl_fft::domain domain)
+  verif_data_spec(std::vector<std::size_t> dftSize, std::size_t batch, std::string filePath, portfft::domain domain)
       : dftSize(dftSize), batch(batch), filePath(filePath), domain(domain){};
 
-  // The DFT real size - aka. sycl_fft::descriptor::lengths
+  // The DFT real size - aka. portfft::descriptor::lengths
   std::vector<std::size_t> dftSize;
   // The number of transforms per compute call.
   std::size_t batch;
   // The path where the reference data is to be found.
   std::string filePath;
   // FFT domain
-  sycl_fft::domain domain;
+  portfft::domain domain;
 
   /** Load time-domain data from the reference file.
    *
@@ -60,13 +60,12 @@ class verif_data_spec {
    * @param desc The descriptor that this data will be used for with.
    * @return Linearised time-domain data with batches equal to the descriptor.
    **/
-  template <typename Scalar, sycl_fft::domain Domain>
-  auto load_data_time(sycl_fft::descriptor<Scalar, Domain>& desc) {
-    using elem_t = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, std::complex<Scalar>, Scalar>;
+  template <typename Scalar, portfft::domain Domain>
+  auto load_data_time(portfft::descriptor<Scalar, Domain>& desc) {
+    using elem_t = std::conditional_t<Domain == portfft::domain::COMPLEX, std::complex<Scalar>, Scalar>;
     if (Domain != domain) {
       std::string errorStr = "Tried to read data as incorrect type. ";
-      errorStr =
-          errorStr + "Ref data is for " + (domain == sycl_fft::domain::COMPLEX ? "COMPLEX" : "REAL") + " domain.";
+      errorStr = errorStr + "Ref data is for " + (domain == portfft::domain::COMPLEX ? "COMPLEX" : "REAL") + " domain.";
       throw std::runtime_error(errorStr);
     }
     auto rawInputData = load_input_data(desc.number_of_transforms);
@@ -81,8 +80,8 @@ class verif_data_spec {
    * @param desc The descriptor that this data will be used for with.
    * @return Linearised fourier-domain data with batches equal to the descriptor.
    **/
-  template <typename Scalar, sycl_fft::domain Domain>
-  std::vector<std::complex<Scalar>> load_data_fourier(sycl_fft::descriptor<Scalar, Domain>& desc) {
+  template <typename Scalar, portfft::domain Domain>
+  std::vector<std::complex<Scalar>> load_data_fourier(portfft::descriptor<Scalar, Domain>& desc) {
     auto rawInputData = load_output_data(desc.number_of_transforms);
     auto data = cast_data<std::complex<Scalar>>(rawInputData);
     return data;
@@ -92,7 +91,7 @@ class verif_data_spec {
    **/
   inline std::vector<std::size_t> fourier_domain_dims() {
     auto res = dftSize;
-    if (domain == sycl_fft::domain::REAL) {
+    if (domain == portfft::domain::REAL) {
       res.back() = (res.back() / 2 + 1) * 2;
     }
     return res;
@@ -108,15 +107,15 @@ class verif_data_spec {
    * @param dir The DFT direction.
    * @param comparisonTolerance The tolerance for error.
    **/
-  template <typename ElemT, typename Scalar, sycl_fft::domain Domain>
-  void verify_dft(sycl_fft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, sycl_fft::direction dir,
+  template <typename ElemT, typename Scalar, portfft::domain Domain>
+  void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
                   const double comparisonTolerance) {
     if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
       throw std::runtime_error("Can't use this verification data to verify this DFT!");
     }
     using complex_type = std::complex<Scalar>;
-    using forward_type = std::conditional_t<Domain == sycl_fft::domain::COMPLEX, complex_type, Scalar>;
-    const bool isForward = dir == sycl_fft::direction::FORWARD;
+    using forward_type = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, Scalar>;
+    const bool isForward = dir == portfft::direction::FORWARD;
     std::size_t descBatches = desc.number_of_transforms;
     auto dataShape = isForward ? dftSize : fourier_domain_dims();
     std::size_t dftLen = std::accumulate(dataShape.cbegin(), dataShape.cend(), std::size_t(1), std::multiplies<>());
@@ -145,7 +144,7 @@ class verif_data_spec {
   // The number of doubles in the input data.
   inline std::size_t input_double_count() {
     return batch * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-           (domain == sycl_fft::domain::COMPLEX ? 2 : 1);
+           (domain == portfft::domain::COMPLEX ? 2 : 1);
   }
 
   // Cast double data read from file to [float, complex<float>, double, complex<double>]
@@ -198,7 +197,7 @@ class verif_data_spec {
     }
     return load_file_data(
         0, batchCount * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-               (domain == sycl_fft::domain::COMPLEX ? 2 : 1));
+               (domain == portfft::domain::COMPLEX ? 2 : 1));
   }
 
   /** Load fourier-domain data from the input file to a double vector.
@@ -246,15 +245,15 @@ class verif_data_spec {
   }
 };
 
-/** Find a verif_data_spec that can be used to check an DFT described by a sycl_fft::descriptor.
+/** Find a verif_data_spec that can be used to check an DFT described by a portfft::descriptor.
  * @tparam Scalar The descriptor scalar type.
  * @tparam Domain The descriptor domain.
  * @param verifData The generated verification data array - usually named "verification_data"
  * @param desc The descriptor we want data relevant for.
  */
-template <typename Scalar, sycl_fft::domain Domain>
+template <typename Scalar, portfft::domain Domain>
 verif_data_spec get_matching_spec(const std::vector<verif_data_spec>& verifData,
-                                  sycl_fft::descriptor<Scalar, Domain>& desc) {
+                                  portfft::descriptor<Scalar, Domain>& desc) {
   for (auto& spec : verifData) {
     if ((desc.lengths == spec.dftSize) && (desc.number_of_transforms <= spec.batch) && (Domain == spec.domain)) {
       return spec;
@@ -263,4 +262,4 @@ verif_data_spec get_matching_spec(const std::vector<verif_data_spec>& verifData,
   throw std::runtime_error("Couldn't find matching specification.");
 }
 
-#endif  // SYCL_FFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
+#endif  // PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
