@@ -29,8 +29,8 @@
 #define PORTFFT_N_LOCAL_BANKS 32
 #endif
 
-static_assert((PORTFFT_TARGET_WI_LOAD & (PORTFFT_TARGET_WI_LOAD - 1)) == 0,
-              "PORTFFT_TARGET_WI_LOAD should be a power of 2!");
+static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
+              "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
 
 namespace portfft {
 
@@ -79,7 +79,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
                                                         std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
 
@@ -187,7 +187,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
                                                         std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
+  constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
   constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
   using T_vec = sycl::vec<T, chunk_size>;
 

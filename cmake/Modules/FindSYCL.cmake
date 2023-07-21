@@ -39,7 +39,7 @@ if(IntelSYCL_FOUND)
       "${multi_value_args}"
       ${ARGN}
     )
-    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
+    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
     target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     endfunction()

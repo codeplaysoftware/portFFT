@@ -23,15 +23,15 @@
 # *
 # **************************************************************************/
 
-if(${SYCLFFT_BUILD_TESTS} OR ${SYCLFFT_BUILD_BENCHMARKS})
+if(${PORTFFT_BUILD_TESTS} OR ${PORTFFT_BUILD_BENCHMARKS})
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads REQUIRED)
 endif()
 
-if(${SYCLFFT_BUILD_TESTS})
+if(${PORTFFT_BUILD_TESTS})
   add_subdirectory(unit_test)
 endif()
 
-if(${SYCLFFT_BUILD_BENCHMARKS})
+if(${PORTFFT_BUILD_BENCHMARKS})
   add_subdirectory(bench)
 endif()

@@ -64,24 +64,24 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
   auto committed = desc.commit(q);
   q.wait();
 
-#ifdef PORTFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARKS
   auto verifSpec = get_matching_spec(verification_data, desc);
   auto host_input = verifSpec.load_data_time(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
-#endif  // PORTFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARKS
 
   // warmup
   auto event = desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
                                                               : committed.compute_forward(in_dev, out_dev);
   event.wait();
 
-#ifdef PORTFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARKS
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
   verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
-#endif  // PORTFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARKS
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
 
@@ -164,11 +164,11 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   auto committed = desc.commit(q);
 
   q.wait();
-#ifdef PORTFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARKS
   auto verifSpec = get_matching_spec(verification_data, desc);
   auto host_input = verifSpec.load_data_time(desc);
   q.copy(host_input.data(), in_dev, num_elements).wait();
-#endif  // PORTFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARKS
 
   auto compute = [&]() {
     return desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
@@ -177,13 +177,13 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   // warmup
   compute().wait();
 
-#ifdef PORTFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARKS
   std::vector<complex_type> host_output(num_elements);
   q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
   verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
-#endif  // PORTFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARKS
 
   for (auto _ : state) {
     sycl::event e = compute();

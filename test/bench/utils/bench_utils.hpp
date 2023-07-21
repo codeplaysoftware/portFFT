@@ -31,11 +31,11 @@
 
 #include "enums.hpp"
 
-#ifdef PORTFFT_VERIFY_BENCHMARK
+#ifdef PORTFFT_VERIFY_BENCHMARKS
 // The following file in generated during the build and located at
 // ${BUILD_DIR}/ref_data_include/
 #include <benchmark_reference.hpp>
-#endif  // PORTFFT_VERIFY_BENCHMARK
+#endif  // PORTFFT_VERIFY_BENCHMARKS
 
 /**
  * number of runs to do when doing an average of many host runs.
