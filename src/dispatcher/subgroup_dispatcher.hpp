@@ -112,7 +112,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
   }
 
-  global2local<pad::DONT_PAD, level::WORKGROUP, SubgroupSize>(it, twiddles, loc_twiddles, NRealsPerWi * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD>(it, twiddles, loc_twiddles, NRealsPerWi * FactorSG);
   sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
@@ -143,7 +143,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         // load / store in a transposed manner
-        global2local_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, T>(
+        global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, 1, T>(
             it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(it.get_group());
@@ -185,7 +185,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     } else {
       // Codepath taken if input is not transposed
 
-      global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
                                                                n_reals_per_fft * (i - id_of_fft_in_sg),
                                                                subgroup_id * n_reals_per_sg);
 
@@ -214,7 +214,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
                                                      subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
         sycl::group_barrier(sg);
-        local2global<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(
+        local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD>(
             it, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
             n_reals_per_fft * (i - id_of_fft_in_sg));
         sycl::group_barrier(sg);
