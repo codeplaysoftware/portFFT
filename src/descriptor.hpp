@@ -93,6 +93,8 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
+  template<typename , domain , detail::transpose , detail::level>
+  friend std::size_t num_scalars_in_local_mem_impl(committed_descriptor<Scalar, Domain> desc, std::size_t fft_size);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -108,7 +110,7 @@ class committed_descriptor {
   std::size_t num_sgs_per_wg;
   std::size_t local_memory_size;
 
-  template<typename Impl, typename... Args>
+  template <typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
     switch (level) {
       case detail::level::WORKITEM:
@@ -117,8 +119,10 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
-      default:
-        throw std::runtime_error("Unimplemented!");
+      //case detail::level::DEVICE:
+      //  return Impl::template inner<detail::level::DEVICE, void>::execute(*this, args...);
+      default :
+        throw std::runtime_error("Not Implemented");
     }
   }
 
@@ -131,8 +135,10 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
-      default:
-        throw std::runtime_error("Unimplemented!");
+      //case detail::level::DEVICE:
+      //  return Impl::template inner<detail::level::DEVICE, TransposeIn, void>::execute(*this, args...);
+      default :
+        throw std::runtime_error("Not Implemented");
     }
   }
 
@@ -238,12 +244,12 @@ class committed_descriptor {
   /**
    * Struct for dispatching `num_scalars_in_local_mem()` call.
    */
-  struct num_scalars_in_local_mem_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-     template <detail::level lev, detail::transpose TransposeIn, typename Dummy>
-     struct inner {
-       static std::size_t execute(committed_descriptor& desc);
-     };
+  struct num_scalars_in_local_mem_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level lev, detail::transpose TransposeIn, typename Dummy, typename ...params>
+    struct inner {
+      static std::size_t execute(committed_descriptor& desc, params...);
+    };
   };
 
   /**
@@ -648,6 +654,9 @@ struct descriptor {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
 };
+
+  //template<typename Scalar, domain Domain, detail::transpose , detail::level>
+  //std::size_t num_scalars_in_local_mem_impl(committed_descriptor<Scalar, Domain> desc, std::size_t fft_size);
 
 }  // namespace portfft
 
