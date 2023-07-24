@@ -343,9 +343,9 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
   for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    std::size_t source_index = detail::pad_local<Pad>(2 * stride * source_col + 2 * source_row);
-    global[offset + 2 * i] = local[source_index];
-    global[offset + 2 * i + 1] = local[source_index + 1];
+    std::size_t source_index = detail::pad_local<Pad>(2 * (stride * source_col + source_row));
+    sycl::vec<T, 2> v{local[source_index], local[source_index + 1]};
+    *reinterpret_cast<sycl::vec<T, 2>*>(&global[offset + 2 * i]) = v;
   }
 }
 
