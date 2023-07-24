@@ -97,9 +97,10 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
       int twiddle_n_index = sub_batch;
       int twiddle_m_index = (static_cast<int>(sg.get_local_linear_id()) % FactSgM) * FactWiM + i;
-      int twiddle_index = 2 * M * twiddle_n_index + (2 * twiddle_m_index);
-      T twiddle_real = wg_twiddles[twiddle_index];
-      T twiddle_imag = wg_twiddles[twiddle_index + 1];
+      int twiddle_index = M * twiddle_n_index + twiddle_m_index;
+      sycl::vec<T, 2> twiddles = reinterpret_cast<const sycl::vec<T, 2>*>(wg_twiddles)[twiddle_index];
+      T twiddle_real = twiddles[0];
+      T twiddle_imag = twiddles[1];
       if constexpr (Dir == direction::BACKWARD) {
         twiddle_imag = -twiddle_imag;
       }
