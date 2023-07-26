@@ -93,7 +93,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     }
   }();
   std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD>(it, twiddles, loc_twiddles, 2 * (M + N));
+  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, 2 * (M + N));
 
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {

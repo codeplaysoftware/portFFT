@@ -51,8 +51,7 @@ namespace detail {
  * @return transformed local_idx
  */
 template <detail::pad Pad = detail::pad::DO_PAD>
-__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx,
-                                                            std::size_t bank_groups_per_pad = 1) {
+__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx, std::size_t bank_groups_per_pad) {
   if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_groups_per_pad);
   }
@@ -77,7 +76,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,
                                                         std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
@@ -187,7 +186,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, const T* local, T* global,
                                                         std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
@@ -297,7 +296,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void local2private(const T* local, T* priv, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
@@ -320,7 +319,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <int num_elements_per_wi, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
@@ -345,7 +344,7 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  * @param global pointer to the global memory
  * @param offset offset to the global memory pointer
  */
-template <detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
                                                                    std::size_t stride, T* local, T* global,
                                                                    std::size_t offset) {
@@ -376,7 +375,7 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
  */
-template <detail::level Level, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <detail::level Level, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, const T* global_base_ptr,
                                                                    T* local_ptr, std::size_t offset,
                                                                    std::size_t num_complex, std::size_t stride_global,
@@ -411,7 +410,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int NumElementsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
@@ -437,7 +436,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void private2local(const T* priv, T* local, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
@@ -461,7 +460,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * less than the group size)
  * @param destination_offset offset to the destination pointer
  */
-template <int NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad = 1, typename T>
+template <int NumElemsPerWI, detail::pad Pad, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
                                                             std::size_t workers_in_group,
                                                             std::size_t destination_offset = 0) {
