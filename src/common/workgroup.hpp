@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_WORKGROUP_HPP
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
+#include <common/device.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
@@ -44,9 +45,10 @@ namespace portfft {
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
  */
-template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, typename T>
+template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, bool ApplyLoadCallback = false,
+          bool ApplyStoreCallback = true, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
-                                                  T scaling_factor) {
+                                                  T scaling_factor, T* callback_data_array = nullptr) {
   constexpr int fact_sg_N = detail::factorize_sg(N, SubgroupSize);
   constexpr int fact_wi_N = N / fact_sg_N;
   constexpr int fact_sg_M = detail::factorize_sg(M, SubgroupSize);
@@ -109,11 +111,18 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     });
 
     sg_dft<Dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
-    detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
-      priv[2 * i] *= scaling_factor;
-      priv[2 * i + 1] *= scaling_factor;
-    });
-
+    if constexpr (ApplyStoreCallback) {
+      detail::unrolled_loop<0, factor_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::pointwise_multiply(priv, callback_data_array, i,
+                                   (static_cast<int>(sg.get_local_linear_id()) % fact_sg_M) * fact_wi_M + i);
+      });
+    }
+    if constexpr (!ApplyStoreCallback) {
+      detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
+        priv[2 * i] *= scaling_factor;
+        priv[2 * i + 1] *= scaling_factor;
+      });
+    }
     if (working) {
       store_transposed<2 * fact_wi_M, detail::pad::DO_PAD>(
           priv, loc, sg.get_local_linear_id() % static_cast<std::size_t>(fact_sg_M),

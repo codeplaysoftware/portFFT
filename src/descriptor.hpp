@@ -24,12 +24,13 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
-
 #include <sycl/sycl.hpp>
+#include <utils.hpp>
 
 #include <complex>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -39,14 +40,21 @@ namespace detail {
 
 // kernel names
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+          detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize,
+          int kernel_id = 0>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+          detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize,
+          int kernel_id = 0>
 class subgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+          detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize,
+          int kernel_id = 0>
 class workgroup_kernel;
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+          detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize,
+          int kernel_id = 0>
+class device_kernel;
 
 }  // namespace detail
 
@@ -93,8 +101,6 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
-  template<typename , domain , detail::transpose , detail::level>
-  friend std::size_t num_scalars_in_local_mem_impl(committed_descriptor<Scalar, Domain> desc, std::size_t fft_size);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -104,11 +110,17 @@ class committed_descriptor {
   std::vector<std::size_t> supported_sg_sizes;
   int used_sg_size;
   std::shared_ptr<Scalar> twiddles_forward;
+  std::shared_ptr<Scalar> scratch;
   detail::level level;
   std::vector<int> factors;
+  std::vector<detail::level> levels;
+  std::vector<std::size_t> local_mem_per_factor;
+  std::vector<std::pair<sycl::range<1>, sycl::range<1>>> launch_configurations;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   std::size_t num_sgs_per_wg;
   std::size_t local_memory_size;
+  std::size_t l2_cache_size;
+  std::size_t num_batches_in_l2;
 
   template <typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
@@ -119,10 +131,8 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
-      //case detail::level::DEVICE:
-      //  return Impl::template inner<detail::level::DEVICE, void>::execute(*this, args...);
-      default :
-        throw std::runtime_error("Not Implemented");
+      case detail::level::DEVICE:
+        return Impl::template inner<detail::level::DEVICE, void>::execute(*this, args...);
     }
   }
 
@@ -135,40 +145,9 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
-      //case detail::level::DEVICE:
-      //  return Impl::template inner<detail::level::DEVICE, TransposeIn, void>::execute(*this, args...);
-      default :
-        throw std::runtime_error("Not Implemented");
+      case detail::level::DEVICE:
+        return Impl::template inner<detail::level::DEVICE, TransposeIn, void>::execute(*this, args...);
     }
-  }
-
-  /**
-   * Get kernel ids for the implementation used.
-   *
-   * @tparam kernel which base template for kernel to use
-   * @tparam SubgroupSize size of the subgroup
-   * @param ids vector of kernel ids
-   */
-  template <template <typename, domain, direction, detail::memory, detail::transpose, int> class Kernel,
-            int SubgroupSize>
-  void get_ids(std::vector<sycl::kernel_id>& ids) {
-// if not used, some kernels might be optimized away in AOT compilation and not available here
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                          \
-  try {                                                                                                       \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
-  } catch (...) {                                                                                             \
-  }
-
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-
-#undef PORTFFT_GET_ID
   }
 
   /**
@@ -187,7 +166,7 @@ class committed_descriptor {
       throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
     }
     if (detail::fits_in_wi<Scalar>(fft_size)) {
-      get_ids<detail::workitem_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKITEM;
     }
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
@@ -197,7 +176,7 @@ class committed_descriptor {
       // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
-      get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
     std::size_t N = detail::factorize(fft_size);
@@ -206,18 +185,79 @@ class committed_descriptor {
     int factor_wi_N = static_cast<int>(N) / factor_sg_N;
     int factor_sg_M = detail::factorize_sg(static_cast<int>(M), SubgroupSize);
     int factor_wi_M = static_cast<int>(M) / factor_sg_M;
-    if (detail::fits_in_wi<Scalar>(factor_wi_N) && detail::fits_in_wi<Scalar>(factor_wi_M)) {
+    std::size_t total_local_mem_usage = 2 * (fft_size + N + M) * sizeof(Scalar);
+    if (detail::fits_in_wi<Scalar>(factor_wi_N) && detail::fits_in_wi<Scalar>(factor_wi_M) &&
+        (total_local_mem_usage <= local_memory_size)) {
       factors.push_back(factor_wi_N);
       factors.push_back(factor_sg_N);
       factors.push_back(factor_wi_M);
       factors.push_back(factor_sg_M);
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
-      get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKGROUP;
+    } else {
+      // Global impl is designed to completely rely on already optimized lower level
+      // Implementations. Majority of the performance gains for global implementation will come from the way
+      // the input is factored, currently its heuristically set to prefer subgroup impl. mainly because of lower
+      // number of sub batches generated
+      std::function<void(std::size_t)> factorize_input = [&](std::size_t input_size) {
+        constexpr int kernel_id = 0;
+        auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
+          if (detail::fits_in_wi<Scalar>(size))
+            return true;
+          else
+            return detail::fits_in_sg<Scalar>(size, SubgroupSize) && [=, this]() {
+              if (transposed_in)
+                return local_memory_size >=
+                       num_scalars_in_local_mem_struct::template inner<
+                           detail::level::SUBGROUP, detail::transpose::TRANSPOSED, void>::execute(*this);
+              else
+                return local_memory_size >=
+                       num_scalars_in_local_mem_struct::template inner<
+                           detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, void>::execute(*this);
+            }() && !PORTFFT_SLOW_SG_SHUFFLES;
+        };
+
+        auto select_impl = [&](std::size_t input_size) -> void {
+          if (detail::fits_in_wi<Scalar>(input_size)) {
+            levels.push_back(detail::level::WORKITEM);
+            detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+            return;
+          }
+          if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
+            levels.push_back(detail::level::SUBGROUP);
+            detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+            return;
+          }
+        };
+        if (fits_in_target_level(input_size)) {
+          factors.push_back(static_cast<int>(input_size));
+          select_impl(input_size);
+          return;
+        }
+        std::size_t fact_1 = detail::factorize(input_size);
+        if (fits_in_target_level(fact_1)) {
+          factors.push_back(static_cast<int>(fact_1));
+          select_impl(fact_1);
+        } else {
+          factorize_input(fact_1);
+        }
+        factorize_input(input_size / fact_1);
+        return;
+      };
+
+      factorize_input(fft_size);
+      std::size_t num_twiddles = 0;
+      for (auto iter = factors.begin(); iter + 1 != factors.end(); iter++) {
+        num_twiddles += *iter * std::accumulate(iter + 1, factors.end(), 1, std::multiplies<std::size_t>()) * 2;
+      }
+      num_batches_in_l2 =
+          std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
+                   std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
+                                                             (2 * sizeof(Scalar) * params.lengths[0])));
+      return detail::level::DEVICE;
     }
-    // TODO global
-    throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
   }
 
   /**
@@ -246,9 +286,16 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template <detail::level lev, detail::transpose TransposeIn, typename Dummy, typename ...params>
+    template <detail::level lev, detail::transpose TransposeIn, typename Dummy, typename... params>
     struct inner {
       static std::size_t execute(committed_descriptor& desc, params...);
+    };
+  };
+
+  struct num_scalars_in_local_mem_impl_struct {
+    template <detail::level Level, detail::transpose TransposeIn, typename Dummy>
+    struct inner {
+      static std::size_t execute(committed_descriptor& desc, std::size_t fft_size);
     };
   };
 
@@ -297,6 +344,7 @@ class committed_descriptor {
     // member that is initialized by this function.
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       std::vector<sycl::kernel_id> ids;
+      used_sg_size = SubgroupSize;
       level = prepare_implementation<SubgroupSize>(ids);
 
       if (sycl::is_compatible(ids, dev)) {
@@ -331,6 +379,7 @@ class committed_descriptor {
         // get some properties we will use for tunning
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
+        local_memory_size(dev.get_info<sycl::info::device::local_mem_size>()),
         // compile the kernels
         exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
@@ -341,22 +390,18 @@ class committed_descriptor {
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    std::size_t minimum_local_mem_required;
-    if (params.forward_distance == 1 || params.backward_distance == 1) {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
-    } else {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
-    }
-    if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                               "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
-    }
+    l2_cache_size = queue.get_device().get_info<sycl::info::device::global_mem_cache_size>();
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);
       }
     });
+    scratch = std::shared_ptr<Scalar>(
+        sycl::malloc_device<Scalar>(params.lengths[0] * params.number_of_transforms, queue), [queue](Scalar* ptr) {
+          if (ptr != nullptr) {
+            sycl::free(ptr, queue);
+          }
+        });
   }
 
  public:
@@ -552,9 +597,11 @@ class committed_descriptor {
         scale_factor = params.backward_scale;
       }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
       } else if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
       } else {
         throw std::runtime_error("Unsupported configuration");
       }
@@ -575,9 +622,10 @@ class committed_descriptor {
    * @tparam T_in Type of the input USM pointer or buffer
    * @tparam T_out Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-  struct run_kernel_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+  template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize,
+            bool ApplyLoadCallback, bool ApplyStoreCallback, typename T_in, typename T_out>
+  struct run_kernel_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template<detail::level lev, typename Dummy>
     struct inner{
       static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
@@ -599,10 +647,13 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+  template <direction Dir, detail::transpose TransposeIn,
+            detail::transpose TransposeOut = detail::transpose::NOT_TRANSPOSED, int SubgroupSize,
+            bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T_in, typename T_out>
   sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
                          const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize, ApplyLoadCallback,
+                                      ApplyStoreCallback, T_in, T_out>>(in, out, scale_factor, dependencies);
   }
 };
 
@@ -654,9 +705,6 @@ struct descriptor {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
 };
-
-  //template<typename Scalar, domain Domain, detail::transpose , detail::level>
-  //std::size_t num_scalars_in_local_mem_impl(committed_descriptor<Scalar, Domain> desc, std::size_t fft_size);
 
 }  // namespace portfft
 

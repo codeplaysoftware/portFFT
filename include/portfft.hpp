@@ -24,6 +24,7 @@
 #include "common/transfers.hpp"
 #include "common/workitem.hpp"
 #include "descriptor.hpp"
+#include "dispatcher/device_dispatcher.hpp"
 #include "dispatcher/subgroup_dispatcher.hpp"
 #include "dispatcher/workgroup_dispatcher.hpp"
 #include "dispatcher/workitem_dispatcher.hpp"

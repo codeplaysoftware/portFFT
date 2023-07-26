@@ -72,10 +72,12 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, std::size_t FFTSize, int SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, std::size_t FFTSize,
+          int SubgroupSize, bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
 __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                           std::size_t n_transforms, sycl::nd_item<1> it,
-                                                          const T* twiddles, T scaling_factor) {
+                                                          const T* twiddles, T scaling_factor,
+                                                          T* callback_data_array = nullptr) {
   std::size_t num_workgroups = it.get_group_range(0);
   std::size_t wg_id = it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
@@ -115,16 +117,21 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     }
     sycl::group_barrier(it.get_group());
     for (std::size_t i = 0; i < num_batches_in_local_mem; i++) {
-      wg_dft<Dir, FFTSize, N, M, SubgroupSize>(loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it, scaling_factor);
+      wg_dft<Dir, FFTSize, N, M, SubgroupSize, ApplyLoadCallback, ApplyStoreCallback>(
+          loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it, scaling_factor, callback_data_array);
       sycl::group_barrier(it.get_group());
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (TransposeIn == detail::transpose::TRANSPOSED && TransposeOut == detail::transpose::NOT_TRANSPOSED) {
         // Once all batches in local memory have been processed, store all of them back to global memory in one go
         // Viewing it as a rectangle of height as problem size and length as the number of batches in local memory
         // Which needs to read in a transposed manner and stored in a contiguous one.
         local2global_transposed<detail::pad::DO_PAD>(it, N * M, num_batches_in_local_mem, max_num_batches_in_local_mem,
                                                      loc, output, offset);
       } else {
-        local2global_transposed<detail::pad::DO_PAD>(it, N, M, M, loc, output, offset);
+        if constexpr (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+          local2global_transposed<detail::pad::DO_PAD>(it, N, M, M, loc, output, offset);
+        } else {
+          local2global<detail::pad::DO_PAD, detail::level::WORKGROUP>(it, loc, output, 2 * FFTSize, 0, offset);
+        }
       }
       sycl::group_barrier(it.get_group());
     }
@@ -148,20 +155,23 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size
  */
-template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T, typename SizeList>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize,
+          typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
 __attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                             std::size_t n_transforms, sycl::nd_item<1> it,
-                                                            const T* twiddles, T scaling_factor, std::size_t fft_size) {
+                                                            const T* twiddles, T scaling_factor, std::size_t fft_size,
+                                                            T* callback_data_array = nullptr) {
   if constexpr (!SizeList::list_end) {
     constexpr size_t this_size = SizeList::size;
     if (fft_size == this_size) {
       if constexpr (!fits_in_sg<T>(this_size, SubgroupSize)) {
-        workgroup_impl<Dir, TransposeIn, this_size, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it,
-                                                                  twiddles, scaling_factor);
+        workgroup_impl<Dir, TransposeIn, TransposeOut, this_size, SubgroupSize, ApplyLoadCallback, ApplyStoreCallback>(
+            input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, callback_data_array);
       }
     } else {
-      workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
-          input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, fft_size);
+      workgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, SubgroupSize, typename SizeList::child_t,
+                              ApplyLoadCallback, ApplyStoreCallback, T>(
+          input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, fft_size, callback_data_array);
     }
   }
 }
@@ -169,16 +179,19 @@ __attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* o
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize,
+          bool ApplyLoadCallback, bool ApplyStoreCallback, typename T_in, typename T_out>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize,
+                                                               ApplyLoadCallback, ApplyStoreCallback, T_in,
                                                                T_out>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
-    std::size_t global_size = detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
+    std::size_t global_size =
+        detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -187,13 +200,16 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, mem, TransposeIn, TransposeOut, ApplyLoadCallback,
+                                                ApplyStoreCallback, SubgroupSize, 0>>(
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
-            detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[detail::pad_local(2 * fft_size)], n_transforms, it,
-                twiddles, scale_factor, fft_size);
+            detail::workgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, SubgroupSize,
+                                            detail::cooley_tukey_size_list_t, ApplyLoadCallback, ApplyStoreCallback,
+                                            Scalar>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
+                                                    &loc[detail::pad_local(2 * fft_size)], n_transforms, it, twiddles,
+                                                    scale_factor, fft_size);
           });
     });
   }
@@ -208,11 +224,10 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <typename detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
-                                                                                    TransposeIn, Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    std::size_t fft_size = desc.params.lengths[0];
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::WORKGROUP,
+                                                                                         TransposeIn, Dummy> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
     std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
     std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
@@ -222,6 +237,26 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     } else {
       return detail::pad_local(2 * fft_size) + 2 * (M + N);
     }
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
+                                                                                    TransposeIn, Dummy, std::size_t> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(
+        desc, fft_size);
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
+                                                                                    TransposeIn, Dummy> {
+  static std::size_t execute(committed_descriptor& desc) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(
+        desc, desc.params.lengths[0]);
   }
 };
 
