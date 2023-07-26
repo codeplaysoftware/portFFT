@@ -38,7 +38,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googlebenchmark)
 
-if(${SYCLFFT_VERIFY_BENCHMARK})
+if(PORTFFT_VERIFY_BENCHMARKS)
     # Generate benchmark reference data header
     execute_process(
         COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_reference_data.py --build_path=${CMAKE_BINARY_DIR} --header --benchmark --just_list_outputs 
@@ -61,7 +61,7 @@ if(${SYCLFFT_VERIFY_BENCHMARK})
     add_custom_target(benchmark_reference_data_data 
         DEPENDS ${BENCHMARK_REFERENCE_DATA_DATA_FILES})
         
-    if(NOT SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
+    if(NOT PORTFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
       # Generating the actual benchmark data at build time is not a default thing
       # It can be generated with "ninja benchmark_reference_data_data"
       set_target_properties(benchmark_reference_data_data PROPERTIES EXCLUDE_FROM_ALL TRUE)
@@ -79,18 +79,18 @@ function(add_benchmark target source_file)
   )
 
   # get target include directories from portfft for the direction enum
-  get_target_property(SYCLFFT_INCLUDES portfft INTERFACE_INCLUDE_DIRECTORIES)
+  get_target_property(PORTFFT_INCLUDES portfft INTERFACE_INCLUDE_DIRECTORIES)
 
   target_include_directories(${target} PRIVATE
       ${PROJECT_SOURCE_DIR}/test/common
       ${PROJECT_SOURCE_DIR}/test/bench/utils
-      ${SYCLFFT_INCLUDES}
+      ${PORTFFT_INCLUDES}
   )
-  if(SYCLFFT_VERIFY_BENCHMARK)
-      target_compile_definitions(${target} PRIVATE PORTFFT_VERIFY_BENCHMARK)
+  if(PORTFFT_VERIFY_BENCHMARKS)
+      target_compile_definitions(${target} PRIVATE PORTFFT_VERIFY_BENCHMARKS)
       target_include_directories(${target} PRIVATE ${BENCHMARK_REFERENCE_DATA_HEADER_DIR})
       add_dependencies(${target} benchmark_reference_data_header)
-      if(SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
+      if(PORTFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME)
         add_dependencies(${target} benchmark_reference_data_data)
       endif()
   endif()

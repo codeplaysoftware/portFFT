@@ -169,7 +169,7 @@ template <typename Scalar, typename T_index>
 constexpr bool fits_in_wi(T_index N) {
   T_index N_complex = N + wi_temps(N);
   T_index complex_size = 2 * sizeof(Scalar);
-  T_index register_space = PORTFFT_TARGET_REGS_PER_WI * 4;
+  T_index register_space = PORTFFT_REGISTERS_PER_WI * 4;
   return N_complex * complex_size <= register_space;
 }
 

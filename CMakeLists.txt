@@ -35,40 +35,40 @@ list(APPEND CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules
 )
 
-option(SYCLFFT_BUILD_TESTS "Whether to enable building tests" OFF)
-option(SYCLFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
-option(SYCLFFT_VERIFY_BENCHMARK "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
-option(SYCLFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME "Generate benchmark verification data at build-time" ON)
-option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
-option(SYCLFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
-option(SYCLFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
-set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
-set(SYCLFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
-set(SYCLFFT_TARGET_WI_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
-set(SYCLFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
-set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
-set(SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
+option(PORTFFT_BUILD_TESTS "Whether to enable building tests" OFF)
+option(PORTFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
+option(PORTFFT_VERIFY_BENCHMARKS "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
+option(PORTFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME "Generate benchmark verification data at build-time" ON)
+option(PORTFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
+option(PORTFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
+option(PORTFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
+set(PORTFFT_REGISTERS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
+set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
+set(PORTFFT_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
+set(PORTFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
+set(PORTFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
+set(PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
 
-set(SYCLFFT_INCLUDE_DIR
+set(PORTFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-set(SYCLFFT_SRC_DIR
+set(PORTFFT_SRC_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:src>)
 
 add_library(portfft INTERFACE)
 target_include_directories(portfft INTERFACE
-    ${SYCLFFT_INCLUDE_DIR}
-    ${SYCLFFT_SRC_DIR}
+    ${PORTFFT_INCLUDE_DIR}
+    ${PORTFFT_SRC_DIR}
 )
-target_compile_definitions(portfft INTERFACE PORTFFT_TARGET_REGS_PER_WI=${SYCLFFT_TARGET_REGS_PER_WI})
-target_compile_definitions(portfft INTERFACE PORTFFT_SUBGROUP_SIZES=${SYCLFFT_SUBGROUP_SIZES})
-target_compile_definitions(portfft INTERFACE PORTFFT_TARGET_WI_LOAD=${SYCLFFT_TARGET_WI_LOAD})
-target_compile_definitions(portfft INTERFACE PORTFFT_SGS_IN_WG=${SYCLFFT_SGS_IN_WG})
-if(${SYCLFFT_USE_SG_TRANSFERS})
+target_compile_definitions(portfft INTERFACE PORTFFT_REGISTERS_PER_WI=${PORTFFT_REGISTERS_PER_WI})
+target_compile_definitions(portfft INTERFACE PORTFFT_SUBGROUP_SIZES=${PORTFFT_SUBGROUP_SIZES})
+target_compile_definitions(portfft INTERFACE PORTFFT_VEC_LOAD_BYTES=${PORTFFT_VEC_LOAD_BYTES})
+target_compile_definitions(portfft INTERFACE PORTFFT_SGS_IN_WG=${PORTFFT_SGS_IN_WG})
+if(${PORTFFT_USE_SG_TRANSFERS})
   target_compile_definitions(portfft INTERFACE PORTFFT_USE_SG_TRANSFERS)
 endif()
-if(${SYCLFFT_SLOW_SG_SHUFFLES})
+if(${PORTFFT_SLOW_SG_SHUFFLES})
   target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=1)
 else()
   target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=0)
@@ -86,12 +86,12 @@ write_basic_package_version_file(${version_file}
 )
 
 # Check that the following is a comma separated list.
-if(SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES MATCHES "^[0-9]+(,[0-9]+)*$")
-  message(STATUS "Building with Cooley-Tukey config: " ${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
+if(PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES MATCHES "^[0-9]+(,[0-9]+)*$")
+  message(STATUS "Building with Cooley-Tukey config: " ${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 else()
-  message(FATAL_ERROR " Invalid SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES value: " ${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
+  message(FATAL_ERROR " Invalid PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES value: " ${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 endif()
-target_compile_definitions(portfft INTERFACE PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES=${SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
+target_compile_definitions(portfft INTERFACE PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES=${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 
 include(GNUInstallDirs)
 install(TARGETS portfft
@@ -103,8 +103,8 @@ install(TARGETS portfft
 
 install(
   DIRECTORY
-    ${SYCLFFT_INCLUDE_DIR}
-    ${SYCLFFT_SRC_DIR}
+    ${PORTFFT_INCLUDE_DIR}
+    ${PORTFFT_SRC_DIR}
   DESTINATION ${CMAKE_INSTALL_PREFIX}
   COMPONENT portfft
   FILES_MATCHING PATTERN "*.hpp"
@@ -125,7 +125,7 @@ export(EXPORT portfft
 add_library(portfft_warnings INTERFACE)
 target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
 
-if(${SYCLFFT_BUILD_TESTS})
+if(${PORTFFT_BUILD_TESTS})
   enable_testing()
 endif()
 
