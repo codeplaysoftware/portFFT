@@ -201,53 +201,37 @@ class committed_descriptor {
       // Implementations. Majority of the performance gains for global implementation will come from the way
       // the input is factored, currently its heuristically set to prefer subgroup impl. mainly because of lower
       // number of sub batches generated
-      std::function<void(std::size_t)> factorize_input = [&](std::size_t input_size) {
-        constexpr int kernel_id = 0;
-        auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
-          if (detail::fits_in_wi<Scalar>(size))
-            return true;
-          else
-            return detail::fits_in_sg<Scalar>(size, SubgroupSize) && [=, this]() {
-              if (transposed_in)
-                return local_memory_size >=
-                       num_scalars_in_local_mem_struct::template inner<
-                           detail::level::SUBGROUP, detail::transpose::TRANSPOSED, void>::execute(*this);
-              else
-                return local_memory_size >=
-                       num_scalars_in_local_mem_struct::template inner<
-                           detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, void>::execute(*this);
-            }() && !PORTFFT_SLOW_SG_SHUFFLES;
-        };
-
-        auto select_impl = [&](std::size_t input_size) -> void {
-          if (detail::fits_in_wi<Scalar>(input_size)) {
-            levels.push_back(detail::level::WORKITEM);
-            detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
-            return;
-          }
-          if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
-            levels.push_back(detail::level::SUBGROUP);
-            detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
-            return;
-          }
-        };
-        if (fits_in_target_level(input_size)) {
-          factors.push_back(static_cast<int>(input_size));
-          select_impl(input_size);
-          return;
-        }
-        std::size_t fact_1 = detail::factorize(input_size);
-        if (fits_in_target_level(fact_1)) {
-          factors.push_back(static_cast<int>(fact_1));
-          select_impl(fact_1);
-        } else {
-          factorize_input(fact_1);
-        }
-        factorize_input(input_size / fact_1);
-        return;
+      auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
+        if (detail::fits_in_wi<Scalar>(size))
+          return true;
+        else
+          return detail::fits_in_sg<Scalar>(size, SubgroupSize) && [=, this]() {
+            if (transposed_in)
+              return local_memory_size >=
+                     num_scalars_in_local_mem_struct::template inner<
+                         detail::level::SUBGROUP, detail::transpose::TRANSPOSED, void>::execute(*this);
+            else
+              return local_memory_size >=
+                     num_scalars_in_local_mem_struct::template inner<
+                         detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, void>::execute(*this);
+          }() && !PORTFFT_SLOW_SG_SHUFFLES;
       };
 
-      factorize_input(fft_size);
+      auto select_impl = [&]<int kernel_id>(std::size_t input_size) -> void {
+        if (detail::fits_in_wi<Scalar>(input_size)) {
+          levels.push_back(detail::level::WORKITEM);
+          detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+          return;
+        }
+        if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
+          levels.push_back(detail::level::SUBGROUP);
+          detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+          return;
+        }
+      };
+
+      detail::factorize_input_struct<0, decltype(fits_in_target_level), decltype(select_impl)>::execute(
+          params.lengths[0], fits_in_target_level, select_impl);
       std::size_t num_twiddles = 0;
       for (auto iter = factors.begin(); iter + 1 != factors.end(); iter++) {
         num_twiddles += *iter * std::accumulate(iter + 1, factors.end(), 1, std::multiplies<std::size_t>()) * 2;

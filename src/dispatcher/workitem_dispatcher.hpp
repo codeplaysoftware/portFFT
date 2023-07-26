@@ -129,8 +129,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
                                                                N_reals * (i - subgroup_local_id));
     } else {
       detail::unrolled_loop<0, N_reals, 2>([&](const std::size_t j) {
-        using T_vec = sycl::vec<T, 2>;
-        reinterpret_cast<T_vec*>(&output[i * 2 + j * n_transforms]) = reinterpret_cast<T_vec*>(&priv[j]);
+        output[i * 2 + j * n_transforms] = priv[j];
+        output[i * 2 + (j + 1) * n_transforms] = priv[j + 1];
       });
     }
     sycl::group_barrier(sg);

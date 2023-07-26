@@ -112,7 +112,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
 
     sg_dft<Dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
     if constexpr (ApplyStoreCallback) {
-      detail::unrolled_loop<0, factor_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
         detail::pointwise_multiply(priv, callback_data_array, i,
                                    (static_cast<int>(sg.get_local_linear_id()) % fact_sg_M) * fact_wi_M + i);
       });

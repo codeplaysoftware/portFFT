@@ -248,7 +248,6 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     }
     }
 }
-}
 
 /**
  * Dispatch cross sg implementation for different work-item factorizations.
@@ -284,7 +283,7 @@ __attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int fa
     constexpr int ct_factor_sg = detail::factorize_sg(this_size, SubgroupSize);
     constexpr int ct_factor_wi = this_size / ct_factor_sg;
     if (factor_sg * factor_wi == this_size) {
-      if constexpr (!fits_in_wi<T>(this_size) && fits_in_wi<T>(ct_factor_wi) && (ct_factor_sg <= SubgroupSize)) {
+      if constexpr (!detail::fits_in_wi<T>(this_size) && detail::fits_in_wi<T>(ct_factor_wi) && (ct_factor_sg <= SubgroupSize)) {
         detail::subgroup_impl<Dir, TransposeIn, TransposeOut, ct_factor_wi, ct_factor_sg, SubgroupSize,
                               ApplyLoadCallback, ApplyStoreCallback>(input, output, loc, loc_twiddles, n_transforms, it,
                                                                      twiddles, scaling_factor, callback_data_array);

@@ -39,7 +39,7 @@ namespace detail {
  * @param scale_index index for the array which will hold multiplicative values
  */
 template <typename T>
-__attribute__((always_inline)) inline void pointwise_multiply(T* priv, const T* scales, std::size_t priv_index,
+__attribute__((always_inline)) inline void pointwise_multiply(T* priv,  T* scales, std::size_t priv_index,
                                                               std::size_t scale_index) {
   using T_vec = sycl::vec<T, 2>;  // Assmuing complex inputs for now
   const T_vec complex_scale_value = reinterpret_cast<T_vec*>(scales)[scale_index];
