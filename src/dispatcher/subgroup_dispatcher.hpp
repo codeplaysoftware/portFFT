@@ -22,7 +22,7 @@
 #define PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
-#include <common/device.hpp>
+#include <common/global.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
@@ -161,8 +161,10 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
         if constexpr (ApplyStoreCallback) {
-          detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) {
-            detail::pointwise_multiply(priv, callback_data_array, i, id_of_wi_in_fft * FactorWI + i);
+          std::size_t twiddles_base_offset = i * n_reals_per_fft;
+          detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int j) __attribute__((always_inline)) {
+            detail::pointwise_multiply(priv, callback_data_array, j,
+                                       twiddles_base_offset + id_of_wi_in_fft * FactorWI + j);
           });
         }
         if constexpr (!ApplyStoreCallback) {
@@ -212,8 +214,10 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       sycl::group_barrier(sg);
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
       if constexpr (ApplyStoreCallback) {
-        detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int i) __attribute__((always_inline)) {
-          detail::pointwise_multiply(priv, callback_data_array, i, id_of_wi_in_fft * FactorWI + i);
+        std::size_t twiddles_base_offset = i * n_reals_per_fft;
+        detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int j) __attribute__((always_inline)) {
+          detail::pointwise_multiply(priv, callback_data_array, j,
+                                     twiddles_base_offset + id_of_wi_in_fft * FactorWI + j);
         });
       }
       if constexpr (!ApplyStoreCallback) {
@@ -246,7 +250,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       }
       sycl::group_barrier(sg);
     }
-    }
+  }
 }
 
 /**
@@ -283,7 +287,8 @@ __attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int fa
     constexpr int ct_factor_sg = detail::factorize_sg(this_size, SubgroupSize);
     constexpr int ct_factor_wi = this_size / ct_factor_sg;
     if (factor_sg * factor_wi == this_size) {
-      if constexpr (!detail::fits_in_wi<T>(this_size) && detail::fits_in_wi<T>(ct_factor_wi) && (ct_factor_sg <= SubgroupSize)) {
+      if constexpr (!detail::fits_in_wi<T>(this_size) && detail::fits_in_wi<T>(ct_factor_wi) &&
+                    (ct_factor_sg <= SubgroupSize)) {
         detail::subgroup_impl<Dir, TransposeIn, TransposeOut, ct_factor_wi, ct_factor_sg, SubgroupSize,
                               ApplyLoadCallback, ApplyStoreCallback>(input, output, loc, loc_twiddles, n_transforms, it,
                                                                      twiddles, scaling_factor, callback_data_array);

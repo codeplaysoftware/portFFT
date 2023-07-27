@@ -166,30 +166,26 @@ void get_ids(std::vector<sycl::kernel_id>& ids) {
 
 template <int kernel_id, typename F, typename G>
 struct factorize_input_struct {
-    static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
-      if (fits_in_target_level(input_size)) {
-        select_impl.template operator()<kernel_id>(input_size);
-        return;
-      }
-      std::size_t fact_1 = detail::factorize(input_size);
-      if (fits_in_target_level(fact_1)) {
-        select_impl.template operator()<kernel_id>(fact_1);
-      } else {
-        execute(fact_1, fits_in_target_level, select_impl);
-      }
-
-     factorize_input_struct<kernel_id + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
+  static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
+    if (fits_in_target_level(input_size)) {
+      select_impl.template operator()<kernel_id>(input_size);
+      return;
     }
+    std::size_t fact_1 = detail::factorize(input_size);
+    if (fits_in_target_level(fact_1)) {
+      select_impl.template operator()<kernel_id>(fact_1);
+    } else {
+      execute(fact_1, fits_in_target_level, select_impl);
+    }
+
+    factorize_input_struct<kernel_id + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
+  }
 };
 
 template <typename F, typename G>
-struct  factorize_input_struct<64, F, G>
-{
-    static void execute(std::size_t , F , G ) {
-      return;
-    }
+struct factorize_input_struct<64, F, G> {
+  static void execute(std::size_t, F, G) { return; }
 };
-
 
 }  // namespace detail
 }  // namespace portfft

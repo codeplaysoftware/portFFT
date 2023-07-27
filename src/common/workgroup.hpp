@@ -21,7 +21,7 @@
 #ifndef PORTFFT_COMMON_WORKGROUP_HPP
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
-#include <common/device.hpp>
+#include <common/global.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>

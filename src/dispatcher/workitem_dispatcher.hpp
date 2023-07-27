@@ -22,7 +22,7 @@
 #define PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
-#include <common/device.hpp>
+#include <common/global.hpp>
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
@@ -108,15 +108,16 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       if constexpr (ApplyStoreCallback) {
-        detail::unrolled_loop<0, N_reals, 2>([&](const int i) __attribute__((always_inline)) {
-          detail::pointwise_multiply(priv, callback_data_array, i, i);
+        std::size_t twiddle_base_offset = 2 * i * N_reals;
+        detail::unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
+          detail::pointwise_multiply(priv, callback_data_array, j, twiddle_base_offset + j);
         });
       }
       // hacky way so as to not use another template parameter.
       if constexpr (!ApplyStoreCallback) {
-        unrolled_loop<0, N_reals, 2>([&](int i) __attribute__((always_inline)) {
-          priv[i] *= scaling_factor;
-          priv[i + 1] *= scaling_factor;
+        unrolled_loop<0, N_reals, 2>([&](int j) __attribute__((always_inline)) {
+          priv[j] *= scaling_factor;
+          priv[j + 1] *= scaling_factor;
         });
       }
       private2local<N_reals, pad::DO_PAD>(priv, loc, subgroup_local_id, N_reals, local_offset);
@@ -129,8 +130,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
                                                                N_reals * (i - subgroup_local_id));
     } else {
       detail::unrolled_loop<0, N_reals, 2>([&](const std::size_t j) {
-        output[i * 2 + j * n_transforms] = priv[j];
-        output[i * 2 + (j + 1) * n_transforms] = priv[j + 1];
+        reinterpret_cast<T_vec*>(output)[i * 2 + j * n_transforms] = reinterpret_cast<T_vec*>(priv)[j];
       });
     }
     sycl::group_barrier(sg);
@@ -154,7 +154,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  * @param fft_size The size of the FFT.
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, std::size_t SubgroupSize,
-          typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
+          typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = false, typename T>
 __attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                            sycl::nd_item<1> it, T scaling_factor, std::size_t fft_size,
                                                            T* callback_data_array = nullptr) {

@@ -54,7 +54,7 @@ class workgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize,
           int kernel_id = 0>
-class device_kernel;
+class global_kernel;
 
 }  // namespace detail
 
@@ -131,8 +131,8 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
-      case detail::level::DEVICE:
-        return Impl::template inner<detail::level::DEVICE, void>::execute(*this, args...);
+      case detail::level::GLOBAL:
+        return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);
     }
   }
 
@@ -145,8 +145,8 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
-      case detail::level::DEVICE:
-        return Impl::template inner<detail::level::DEVICE, TransposeIn, void>::execute(*this, args...);
+      case detail::level::GLOBAL:
+        return Impl::template inner<detail::level::GLOBAL, TransposeIn, void>::execute(*this, args...);
     }
   }
 
@@ -172,7 +172,7 @@ class committed_descriptor {
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
     int factor_wi = static_cast<int>(fft_size) / factor_sg;
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
-      // This factorization is duplicated in the dispatch logic on the device.
+      // This factorization is duplicated in the dispatch logic on the GLOBAL.
       // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
@@ -240,7 +240,7 @@ class committed_descriptor {
           std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
                    std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
                                                              (2 * sizeof(Scalar) * params.lengths[0])));
-      return detail::level::DEVICE;
+      return detail::level::GLOBAL;
     }
   }
 

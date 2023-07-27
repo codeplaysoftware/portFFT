@@ -34,7 +34,7 @@ enum class direction { FORWARD, BACKWARD };
 namespace detail {
 enum class pad { DO_PAD, DONT_PAD };
 
-enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
+enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
 
 enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
 

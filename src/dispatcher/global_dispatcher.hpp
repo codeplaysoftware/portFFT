@@ -72,7 +72,7 @@ std::pair<sycl::range<1>, sycl::range<1>> get_launch_configuration(level Level, 
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::DEVICE, Dummy> {
+struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
   static Scalar* execute(committed_descriptor& desc) {
     // first calculate space for Intermediate twiddles
     //  Then iff level is subgroup, calculate twiddles required for subgroup.
@@ -169,7 +169,7 @@ template <direction Dir, detail::transpose TransposeIn, detail::transpose Transp
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize,
                                                                ApplyLoadCallback, ApplyStoreCallback, T_in,
-                                                               T_out>::inner<detail::level::DEVICE, Dummy> {
+                                                               T_out>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
     // TODO:: A better solution to this will be to use a virtual function table, or construct a map.
@@ -180,7 +180,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     sycl::event Event;
     std::size_t problem_size = desc.params.lengths[0];
     constexpr detail::memory mem = std::is_pointer<T_out>::value ? detail::memory::USM : detail::memory::BUFFER;
-    num_scalars_in_local_mem_struct::template inner<detail::level::DEVICE, TransposeIn, Dummy>::execute(desc);
+    num_scalars_in_local_mem_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(desc);
     std::size_t local_mem_twiddles_initial_offset = 0;
     for (auto iter = desc.factors.begin(); iter + 1 != desc.factors.end(); iter++) {
       local_mem_twiddles_initial_offset +=
@@ -273,7 +273,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 
 template <typename Scalar, domain Domain>
 template <detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::DEVICE,
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::GLOBAL,
                                                                                          TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
     auto get_local_mem_usage_per_level = [](committed_descriptor<Scalar, Domain> committed_descriptor,
@@ -346,17 +346,17 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
 
 template <typename Scalar, domain Domain>
 template <detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::DEVICE, TransposeIn,
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, TransposeIn,
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
-    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::DEVICE, TransposeIn, Dummy>::execute(
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(
         desc, desc.params.lengths[0]);
   }
 };
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::DEVICE, Dummy> {
+struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
   static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) { ; }
 };
 
