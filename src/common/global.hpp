@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_COMMON_DEVICE_HPP
-#define PORTFFT_COMMON_DEVICE_HPP
+#ifndef PORTFFT_COMMON_GLOBAL_HPP
+#define PORTFFT_COMMON_GLOBAL_HPP
 
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>

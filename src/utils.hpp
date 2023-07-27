@@ -48,121 +48,59 @@ void get_ids(std::vector<sycl::kernel_id>& ids) {
   } catch (...) {                                                                                            \
   }
   // TODO: A better way to do this instead of a long list of all possibilities
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, false)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, false, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                 true, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED,
-                 detail::transpose::TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, true)
-  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED,
-                 detail::transpose::NOT_TRANSPOSED, true, true)
+  // clang-format off
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, false, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, false)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, false, true)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
+  PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
 #undef PORTFFT_GET_ID
+// clang-format on
 }
-
-// template <int kernel_id, typename F, typename G>
-// inline void factorize_input(std::size_t input_size, F fits_in_target_level, G select_impl) {
-
-//   if (fits_in_target_level(input_size)) {
-//     select_impl.template operator()<kernel_id>(input_size);
-//     return;
-//   }
-//   std::size_t fact_1 = detail::factorize(input_size);
-//   if (fits_in_target_level(fact_1)) {
-//     select_impl.template operator()<kernel_id>(fact_1);
-//   } else {
-//     factorize_input<kernel_id>(fact_1, fits_in_target_level, select_impl);
-//   }
-
-//   factorize_input<kernel_id + 1>(input_size / fact_1, fits_in_target_level, select_impl);
-// }
 
 template <int kernel_id, typename F, typename G>
 struct factorize_input_struct {

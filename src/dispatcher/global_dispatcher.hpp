@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_DISPATCHER_DEVICE_DISPATCHER_HPP
-#define PORTFFT_DISPATCHER_DEVICE_DISPATCHER_HPP
+#ifndef PORTFFT_DISPATCHER_GLOBAL_DISPATCHER_HPP
+#define PORTFFT_DISPATCHER_GLOBAL_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
