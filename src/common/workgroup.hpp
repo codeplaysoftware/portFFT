@@ -70,6 +70,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   constexpr int fact_wi_M = M / fact_sg_M;    // the number of values held in by a work-item in a column subgroup dft
   constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
   T priv[private_mem_size];
+  const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
 
   sycl::sub_group sg = it.get_sub_group();
   {  // column ffts
@@ -85,7 +86,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % fact_sg_N;
 
     const int column_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
-    constexpr int column_step = PORTFFT_SGS_IN_WG * ffts_per_sg;
+    const int column_step = num_sgs * ffts_per_sg;
     int column_end = M;
     if constexpr (excess_sgs) {
       // sg_dft uses subgroup operations, so all subgroups must enter the loop
@@ -125,8 +126,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     // id of the work-item in the fft
     const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % fact_sg_M;
 
-    int row_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
-    constexpr int row_step = PORTFFT_SGS_IN_WG * ffts_per_sg;
+    const int row_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
+    const int row_step = num_sgs * ffts_per_sg;
     int row_end = N;
     if constexpr (excess_sgs) {
       row_end += ffts_per_sg;
