@@ -87,10 +87,12 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
 
     const int column_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
     const int column_step = num_sgs * ffts_per_sg;
-    int column_end = M;
+    int column_end;
     if constexpr (excess_sgs) {
       // sg_dft uses subgroup operations, so all subgroups must enter the loop
-      column_end += ffts_per_sg;
+      column_end = detail::roundUpToMultiple(M, ffts_per_sg);
+    } else {
+      column_end = M;
     }
 
     for (int column = column_begin; column < column_end; column += column_step) {
@@ -128,9 +130,11 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
 
     const int row_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
     const int row_step = num_sgs * ffts_per_sg;
-    int row_end = N;
+    int row_end;
     if constexpr (excess_sgs) {
-      row_end += ffts_per_sg;
+      row_end = detail::roundUpToMultiple(N, ffts_per_sg);
+    } else {
+      row_end = N;
     }
 
     for (int row = row_begin; row < row_end; row += row_step) {
