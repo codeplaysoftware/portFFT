@@ -45,13 +45,11 @@ constexpr static sycl::specialization_id<std::size_t> WorkgroupSpecConstFftSize{
 template <typename T>
 std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subgroup_size,
                                       std::size_t n_compute_units) {
-  // TODO should this really be just a copy of workitem's?
   std::size_t maximum_n_sgs = 8 * n_compute_units * 64;
   std::size_t maximum_n_wgs = maximum_n_sgs / PORTFFT_SGS_IN_WG;
   std::size_t wg_size = subgroup_size * PORTFFT_SGS_IN_WG;
 
-  std::size_t n_wgs_we_can_utilize = divide_ceil(n_transforms, wg_size);
-  return wg_size * sycl::min(maximum_n_wgs, n_wgs_we_can_utilize);
+  return wg_size * sycl::min(maximum_n_wgs, n_transforms);
 }
 
 /**
