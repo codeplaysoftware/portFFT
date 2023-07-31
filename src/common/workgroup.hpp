@@ -92,10 +92,16 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     const int column_step = num_sgs * ffts_per_sg;
     int column_end;
     if constexpr (excess_sgs) {
-      // sg_dft uses subgroup operations, so all subgroups must enter the loop
+      // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
+      // it is safe to increase column_end for all work-items since they are all taking steps of ffts_per_sg anyway
       column_end = detail::roundUpToMultiple(M, ffts_per_sg);
     } else {
       column_end = M;
+    }
+
+    if constexpr (excess_wis) {
+      // also allow these work-items to enter the loop, without making other work-items do another loop.
+      column_end += (fft_in_subgroup == ffts_per_sg) ? 1 : 0;
     }
 
     for (int column = column_begin; column < column_end; column += column_step) {
@@ -135,9 +141,16 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     const int row_step = num_sgs * ffts_per_sg;
     int row_end;
     if constexpr (excess_sgs) {
+      // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
+      // it is safe to increase column_end for all work-items since they are all taking steps of ffts_per_sg anyway
       row_end = detail::roundUpToMultiple(N, ffts_per_sg);
     } else {
       row_end = N;
+    }
+
+    if constexpr (excess_wis) {
+      // also allow these work-items to enter the loop, without making other work-items do another loop.
+      row_end += (fft_in_subgroup == ffts_per_sg) ? 1 : 0;
     }
 
     for (int row = row_begin; row < row_end; row += row_step) {
