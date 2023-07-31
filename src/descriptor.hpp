@@ -111,6 +111,7 @@ class committed_descriptor {
   int used_sg_size;
   std::shared_ptr<Scalar> twiddles_forward;
   std::shared_ptr<Scalar> scratch;
+  std::shared_ptr<int> dev_factors;
   detail::level level;
   std::vector<int> factors;
   std::vector<detail::level> levels;
@@ -220,12 +221,12 @@ class committed_descriptor {
       auto select_impl = [&]<int kernel_id>(std::size_t input_size) -> void {
         if (detail::fits_in_wi<Scalar>(input_size)) {
           levels.push_back(detail::level::WORKITEM);
-          detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+          detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
           return;
         }
         if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
           levels.push_back(detail::level::SUBGROUP);
-          detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
+          detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>(ids);
           return;
         }
       };
@@ -234,12 +235,15 @@ class committed_descriptor {
           params.lengths[0], fits_in_target_level, select_impl);
       std::size_t num_twiddles = 0;
       for (auto iter = factors.begin(); iter + 1 != factors.end(); iter++) {
-        num_twiddles += *iter * std::accumulate(iter + 1, factors.end(), 1, std::multiplies<std::size_t>()) * 2;
+        auto batches_at_level = std::accumulate(iter + 1, factors.end(), 1, std::multiplies<std::size_t>());
+        factors.push_back(batches_at_level);
+        num_twiddles += *iter * batches_at_level * 2;
       }
       num_batches_in_l2 =
           std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
                    std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
                                                              (2 * sizeof(Scalar) * params.lengths[0])));
+      queue.copy(dev_factors.get(), factors.data(), factors.size()).wait();
       return detail::level::GLOBAL;
     }
   }
@@ -247,21 +251,20 @@ class committed_descriptor {
   /**
    * Struct for dispatching `set_spec_constants()` call.
    */
-  struct set_spec_constants_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static void execute(committed_descriptor& desc,
-                                    sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
+  struct set_spec_constants_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level lev, typename Dummy>
+    struct inner {
+      static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
     };
   };
-  
+
   /**
    * Sets the implementation dependant specialization constant values.
    *
    * @param in_bundle kernel bundle to set the specialization constants on
    */
-  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
+  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     dispatch<set_spec_constants_struct>(in_bundle);
   }
 
@@ -297,11 +300,11 @@ class committed_descriptor {
   /**
    * Struct for dispatching `calculate_twiddles()` call.
    */
-  struct calculate_twiddles_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static Scalar* execute(committed_descriptor& desc); 
+  struct calculate_twiddles_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level lev, typename Dummy>
+    struct inner {
+      static Scalar* execute(committed_descriptor& desc);
     };
   };
 
@@ -310,9 +313,7 @@ class committed_descriptor {
    *
    * @return Scalar* USM pointer to the twiddle factors
    */
-  Scalar* calculate_twiddles() {
-    return dispatch<calculate_twiddles_struct>();
-  }
+  Scalar* calculate_twiddles() { return dispatch<calculate_twiddles_struct>(); }
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants for the first supported subgroup size.
@@ -331,7 +332,7 @@ class committed_descriptor {
       used_sg_size = SubgroupSize;
       level = prepare_implementation<SubgroupSize>(ids);
 
-      if (sycl::is_compatible(ids, dev)) {
+      /*if (sycl::is_compatible(ids, dev)) {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
         set_spec_constants(in_bundle);
         used_sg_size = SubgroupSize;
@@ -340,7 +341,7 @@ class committed_descriptor {
         } catch (std::exception& e) {
           std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
         }
-      }
+      }*/
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
@@ -361,10 +362,9 @@ class committed_descriptor {
         dev(queue.get_device()),
         ctx(queue.get_context()),
         // get some properties we will use for tunning
+        local_memory_size(dev.get_info<sycl::info::device::local_mem_size>()),
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
-        local_memory_size(dev.get_info<sycl::info::device::local_mem_size>()),
-        // compile the kernels
         exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
     // TODO: check and support all the parameter values
@@ -386,6 +386,12 @@ class committed_descriptor {
             sycl::free(ptr, queue);
           }
         });
+
+    dev_factors = std::shared_ptr<int>(sycl::malloc_device<int>(factors.size(), queue), [queue](int* ptr) {
+      if (ptr != nullptr) {
+        sycl::free(ptr, queue);
+      }
+    });
   }
 
  public:
@@ -599,7 +605,7 @@ class committed_descriptor {
 
   /**
    * Struct for dispatching `run_kernel()` call.
-   * 
+   *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam SubgroupSize size of the subgroup
@@ -610,10 +616,10 @@ class committed_descriptor {
             bool ApplyLoadCallback, bool ApplyStoreCallback, typename T_in, typename T_out>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
+    template <detail::level lev, typename Dummy>
+    struct inner {
       static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-                                    const std::vector<sycl::event>& dependencies);
+                                 const std::vector<sycl::event>& dependencies);
     };
   };
 

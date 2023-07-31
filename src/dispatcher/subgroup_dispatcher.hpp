@@ -83,9 +83,8 @@ template <direction Dir, detail::transpose TransposeIn, detail::transpose Transp
 __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          const T* twiddles, T scaling_factor,
-                                                         T* callback_data_array = nullptr) {
+                                                         const T* callback_data_array = nullptr) {
   constexpr int N_reals_per_wi = 2 * FactorWI;
-  using T_vec = sycl::vec<T, 2>;
   T priv[N_reals_per_wi];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
@@ -162,7 +161,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
         if constexpr (ApplyStoreCallback) {
           std::size_t twiddles_base_offset = i * n_reals_per_fft;
-          detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int j) __attribute__((always_inline)) {
+          detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const std::size_t j) __attribute__((always_inline)) {
             detail::pointwise_multiply(priv, callback_data_array, j,
                                        twiddles_base_offset + id_of_wi_in_fft * FactorWI + j);
           });
@@ -215,7 +214,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
       if constexpr (ApplyStoreCallback) {
         std::size_t twiddles_base_offset = i * n_reals_per_fft;
-        detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const int j) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, N_reals_per_wi, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           detail::pointwise_multiply(priv, callback_data_array, j,
                                      twiddles_base_offset + id_of_wi_in_fft * FactorWI + j);
         });
@@ -279,7 +278,7 @@ template <direction Dir, detail::transpose TransposeIn, detail::transpose Transp
 __attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
                                                            T* loc, T* loc_twiddles, std::size_t n_transforms,
                                                            sycl::nd_item<1> it, const T* twiddles, T scaling_factor,
-                                                           T* callback_data_array = nullptr) {
+                                                           const T* callback_data_array = nullptr) {
   if constexpr (!SizeList::list_end) {
     constexpr int this_size = SizeList::size;
     // This factorization is duplicated in the dispatch logic on the host.

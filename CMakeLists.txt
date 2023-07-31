@@ -43,12 +43,12 @@ option(SYCLFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using 
 option(SYCLFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 option(SYCLFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
 set(SYCLFFT_TARGET_REGS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
-set(SYCLFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
+set(SYCLFFT_SUBGROUP_SIZES 32,16,8 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
 set(SYCLFFT_TARGET_WI_LOAD 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(SYCLFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(SYCLFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 set(SYCLFFT_MAX_CONCURRENT_KERNELS 128 CACHE STRING "Maximum number of resident kernels kernels supported on target device")
-set(SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
+set(SYCLFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192, 32768, 65536" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
 
 set(SYCLFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -125,7 +125,7 @@ export(EXPORT portfft
 )
 
 add_library(portfft_warnings INTERFACE)
-target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
+target_compile_options(portfft_warnings INTERFACE -Wno-everything)
 
 if(${SYCLFFT_BUILD_TESTS})
   enable_testing()

@@ -39,13 +39,13 @@ namespace detail {
  * @param scale_index index for the array which will hold multiplicative values
  */
 template <typename T>
-__attribute__((always_inline)) inline void pointwise_multiply(T* priv, T* scales, std::size_t priv_index,
+__attribute__((always_inline)) inline void pointwise_multiply(T* priv, const T* scales, std::size_t priv_index,
                                                               std::size_t scale_index) {
   using T_vec = sycl::vec<T, 2>;  // Assmuing complex inputs for now
-  const T_vec complex_scale_value = reinterpret_cast<T_vec*>(scales)[scale_index];
+  const T_vec complex_scale_value = reinterpret_cast<const T_vec*>(scales)[scale_index];
   T tmp_real = priv[priv_index];
   priv[priv_index] = tmp_real * complex_scale_value[0] - priv[priv_index + 1] * complex_scale_value[1];
-  priv[priv_index] = tmp_real * complex_scale_value[1] + priv[priv_index] * complex_scale_value[0];
+  priv[priv_index] = tmp_real * complex_scale_value[1] + priv[priv_index + 1] * complex_scale_value[0];
 }
 }  // namespace detail
 }  // namespace portfft

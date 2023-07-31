@@ -99,7 +99,7 @@ void get_ids(std::vector<sycl::kernel_id>& ids) {
   PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
   PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
 #undef PORTFFT_GET_ID
-// clang-format on
+  // clang-format on
 }
 
 template <int kernel_id, typename F, typename G>

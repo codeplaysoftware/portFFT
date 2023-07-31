@@ -75,7 +75,7 @@ template <direction Dir, detail::transpose TransposeIn, detail::transpose Transp
           bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor,
-                                                         T* callback_data_array = nullptr) {
+                                                         const T* callback_data_array = nullptr) {
   constexpr std::size_t N_reals = 2 * N;
   using T_vec = sycl::vec<T, 2>;
   T priv[N_reals];
@@ -109,7 +109,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       wi_dft<Dir, N, 1, 1>(priv, priv);
       if constexpr (ApplyStoreCallback) {
         std::size_t twiddle_base_offset = 2 * i * N_reals;
-        detail::unrolled_loop<0, N_reals, 2>([&](const int j) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, N_reals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           detail::pointwise_multiply(priv, callback_data_array, j, twiddle_base_offset + j);
         });
       }
@@ -157,7 +157,7 @@ template <direction Dir, detail::transpose TransposeIn, detail::transpose Transp
           typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = false, typename T>
 __attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                            sycl::nd_item<1> it, T scaling_factor, std::size_t fft_size,
-                                                           T* callback_data_array = nullptr) {
+                                                           const T* callback_data_array = nullptr) {
   if constexpr (!SizeList::list_end) {
     constexpr int this_size = SizeList::size;
     if (fft_size == this_size) {
