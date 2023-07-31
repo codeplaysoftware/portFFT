@@ -62,12 +62,15 @@ constexpr std::size_t bank_groups_per_pad_wg(std::size_t row_size) {
 template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankGroupsPerPad, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor) {
-  constexpr int fact_sg_N =
-      detail::factorize_sg(N, SubgroupSize);  // the number of work-items involved in every row subgroup fft
-  constexpr int fact_wi_N = N / fact_sg_N;    // the number of values held in by a work-item in a row subgroup dft
-  constexpr int fact_sg_M =
-      detail::factorize_sg(M, SubgroupSize);  // the number of work-items involved in every column subgroup fft
-  constexpr int fact_wi_M = M / fact_sg_M;    // the number of values held in by a work-item in a column subgroup dft
+  // the number of work-items involved in every row subgroup fft
+  constexpr int fact_sg_N = detail::factorize_sg(N, SubgroupSize);
+  // the number of values held in by a work-item in a row subgroup dft
+  constexpr int fact_wi_N = N / fact_sg_N;
+  // the number of work-items involved in every column subgroup fft
+  constexpr int fact_sg_M = detail::factorize_sg(M, SubgroupSize);
+  // the number of values held in by a work-item in a column subgroup dft
+  constexpr int fact_wi_M = M / fact_sg_M;
+
   constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
   T priv[private_mem_size];
   const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
