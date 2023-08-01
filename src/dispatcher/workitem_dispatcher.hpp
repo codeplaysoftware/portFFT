@@ -82,15 +82,15 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
   std::size_t global_size = it.get_global_range(0);
   std::size_t subgroup_id = sg.get_group_id();
   std::size_t local_offset = NReals * SubgroupSize * subgroup_id;
-  constexpr std::size_t bank_groups_per_pad = 1;
+  constexpr std::size_t bank_lines_per_pad = 1;
 
   for (std::size_t i = global_id; i < round_up_to_multiple(n_transforms, SubgroupSize); i += global_size) {
     bool working = i < n_transforms;
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
 
     if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, bank_groups_per_pad>(it, input, loc, NReals * n_working,
-                                                               NReals * (i - subgroup_local_id), local_offset);
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, bank_lines_per_pad>(
+          it, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
       sycl::group_barrier(sg);
     }
     if (working) {
@@ -102,20 +102,20 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
-        local2private<NReals, pad::DO_PAD, bank_groups_per_pad>(loc, priv, subgroup_local_id, NReals, local_offset);
+        local2private<N_reals, pad::DO_PAD, bank_lines_per_pad>(loc, priv, subgroup_local_id, N_reals, local_offset);
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
-      private2local<NReals, pad::DO_PAD, bank_groups_per_pad >(priv, loc, subgroup_local_id, NReals, local_offset);
+      private2local<N_reals, pad::DO_PAD, bank_lines_per_pad>(priv, loc, subgroup_local_id, N_reals, local_offset);
     }
     sycl::group_barrier(sg);
     // Store back to global in the same manner irrespective of input data layout, as
     //  the transposed case is assumed to be used only in OOP scenario.
-    local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, bank_groups_per_pad>(it, loc, output, NReals * n_working, local_offset,
-                                                             NReals * (i - subgroup_local_id));
+    local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, bank_lines_per_pad>(
+        it, loc, output, N_reals * n_working, local_offset, N_reals * (i - subgroup_local_id));
     sycl::group_barrier(sg);
   }
 }

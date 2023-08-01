@@ -28,23 +28,21 @@
 namespace portfft {
 
 /**
- * Calculate the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory, specifically for
- * reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are 64 complex
- * elements in a row, then the consecutive values in the same column are 128 floats apart. There are 32 banks, each the
- * size of a float, so we only want a padding float every 128/32=4 groups to read along the column without bank
- * conflicts.
+ * Calculate the number of groups or bank lines of PORTFFT_N_LOCAL_BANKS between each padding in local memory,
+ * specifically for reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are
+ * 64 complex elements in a row, then the consecutive values in the same column are 128 floats apart. There are 32
+ * banks, each the size of a float, so we only want a padding float every 128/32=4 bank lines to read along the column
+ * without bank conflicts.
  *
- * @param row_size the size in bytes of the row.
+ * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
  * @return constexpr std::size_t the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
-constexpr std::size_t bank_groups_per_pad_wg(std::size_t row_size) {
-  // 2*row_size is the number of floats between each successive read for the column dfts
-  const auto elements = 2 * row_size;
-  constexpr std::size_t bank_group_size = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
-  if (elements % bank_group_size == 0) {
-    return elements / bank_group_size;
+constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
+  constexpr std::size_t bank_line_size = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
+  if (row_size % bank_line_size == 0) {
+    return row_size / bank_line_size;
   }
-  // There is room for improvement here. E.G if row_size was half of bank_group_size then maybe you would still want 1
+  // There is room for improvement here. E.G if row_size was half of bank_line_size then maybe you would still want 1
   // pad every bank group.
   return 0;
 }
@@ -57,7 +55,7 @@ constexpr std::size_t bank_groups_per_pad_wg(std::size_t row_size) {
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
  * @tparam SubgroupSize Size of the subgroup
- * @tparam BankGroupsPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T Scalar Type
  *
  * @param loc local accessor containing the input
@@ -66,7 +64,7 @@ constexpr std::size_t bank_groups_per_pad_wg(std::size_t row_size) {
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
  */
-template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankGroupsPerPad, typename T>
+template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor) {
   // the number of work-items involved in every row subgroup fft
@@ -120,12 +118,12 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
       }
       if (working) {
-        local2private_transposed<fact_wi_N, detail::pad::DO_PAD, BankGroupsPerPad>(loc, priv, fft_local_id, column, M);
+        local2private_transposed<fact_wi_N, detail::pad::DO_PAD, BankLinesPerPad>(loc, priv, fft_local_id, column, M);
       }
       sg_dft<Dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
       if (working) {
-        private2local_transposed<fact_wi_N, detail::pad::DO_PAD, BankGroupsPerPad>(priv, loc, fft_local_id, fact_sg_N,
-                                                                                   column, M);
+        private2local_transposed<fact_wi_N, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, fft_local_id, fact_sg_N,
+                                                                                  column, M);
       }
     }
   }
@@ -169,7 +167,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
       }
       if (working) {
-        local2private<2 * fact_wi_M, detail::pad::DO_PAD, BankGroupsPerPad>(
+        local2private<2 * fact_wi_M, detail::pad::DO_PAD, BankLinesPerPad>(
             loc, priv, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(2 * fact_wi_M),
             static_cast<std::size_t>(2 * M * row));
       }
@@ -194,7 +192,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       });
 
       if (working) {
-        store_transposed<2 * fact_wi_M, detail::pad::DO_PAD, BankGroupsPerPad>(
+        store_transposed<2 * fact_wi_M, detail::pad::DO_PAD, BankLinesPerPad>(
             priv, loc, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(fact_sg_M),
             static_cast<std::size_t>(2 * M * row));
       }
