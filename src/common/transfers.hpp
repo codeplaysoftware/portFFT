@@ -108,19 +108,19 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
     local_size = SubgroupSize;
-    stride = local_size * chunk_size;
+    stride = local_size * ChunkSize;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup loads a chunk of `chunk_size * local_size` elements.
+  // Each subgroup loads a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec loaded = sg.load<chunk_size>(detail::get_global_multi_ptr(&global[global_offset + i]));
+    T_vec loaded = sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset + i]));
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         local[local_idx] = loaded[j];
@@ -141,7 +141,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
 
-  // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
+  // Each workitem loads a chunk of `ChunkSize` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
@@ -151,15 +151,15 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     });
   }
 #endif
-  // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
-  std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
-  for (std::size_t j = 0; j < last_chunk_size; j++) {
+  // We can not load `ChunkSize`-sized chunks anymore, so we load the largest we can - `last_ChunkSize`-sized one
+  std::size_t last_ChunkSize = (total_num_elems - rounded_down_num_elems) / local_size;
+  for (std::size_t j = 0; j < last_ChunkSize; j++) {
     std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
-    local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j];
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_ChunkSize + j);
+    local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_ChunkSize + j];
   }
   // Less than group size elements remain. Each workitem loads at most one.
-  std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
+  std::size_t my_last_idx = rounded_down_num_elems + last_ChunkSize * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     local[local_idx] = global[global_offset + my_last_idx];
@@ -216,19 +216,19 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
     local_size = SubgroupSize;
-    stride = local_size * static_cast<std::size_t>(chunk_size);
+    stride = local_size * static_cast<std::size_t>(ChunkSize);
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup stores a chunk of `chunk_size * local_size` elements.
+  // Each subgroup stores a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         to_store[j] = local[local_idx];
@@ -250,7 +250,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
 
-  // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
+  // Each workitem stores a chunk of `ChunkSize` consecutive elements. Chunks stored by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
     detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
@@ -260,15 +260,15 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     to_store.store(0, detail::get_global_multi_ptr(&global[global_offset + i]));
   }
 #endif
-  // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
-  std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
-  for (std::size_t j = 0; j < last_chunk_size; j++) {
+  // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_ChunkSize`-sized one
+  std::size_t last_ChunkSize = (total_num_elems - rounded_down_num_elems) / local_size;
+  for (std::size_t j = 0; j < last_ChunkSize; j++) {
     std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
-    global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j] = local[local_idx];
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_ChunkSize + j);
+    global[global_offset + rounded_down_num_elems + local_id * last_ChunkSize + j] = local[local_idx];
   }
   // Less than group size elements remain. Each workitem stores at most one.
-  std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
+  std::size_t my_last_idx = rounded_down_num_elems + last_ChunkSize * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     global[global_offset + my_last_idx] = local[local_idx];
