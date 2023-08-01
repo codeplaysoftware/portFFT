@@ -30,14 +30,14 @@ namespace detail {
 /**
  * Calculates a twiddle factor.
  * @tparam T floating point type to use
- * @tparam T_index Index type
+ * @tparam TIndex Index type
  * @param n which twiddle factor to calculate
  * @param total total number of twiddles
  */
-template <typename T, typename T_index>
-std::complex<T> calculate_twiddle(T_index n, T_index total) {
-  constexpr T MINUS_TWO_PI = static_cast<T>(-2 * M_PI);
-  T theta = MINUS_TWO_PI * static_cast<T>(n) / static_cast<T>(total);
+template <typename T, typename TIndex>
+std::complex<T> calculate_twiddle(TIndex n, TIndex total) {
+  constexpr T MinusTwoPi = static_cast<T>(-2 * M_PI);
+  T theta = MinusTwoPi * static_cast<T>(n) / static_cast<T>(total);
   return {sycl::cos(theta), sycl::sin(theta)};
 }
 

@@ -194,17 +194,17 @@ class committed_descriptor {
       get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
-    std::size_t N = detail::factorize(fft_size);
-    std::size_t M = fft_size / N;
-    int factor_sg_N = detail::factorize_sg(static_cast<int>(N), SubgroupSize);
-    int factor_wi_N = static_cast<int>(N) / factor_sg_N;
-    int factor_sg_M = detail::factorize_sg(static_cast<int>(M), SubgroupSize);
-    int factor_wi_M = static_cast<int>(M) / factor_sg_M;
-    if (detail::fits_in_wi<Scalar>(factor_wi_N) && detail::fits_in_wi<Scalar>(factor_wi_M)) {
-      factors.push_back(factor_wi_N);
-      factors.push_back(factor_sg_N);
-      factors.push_back(factor_wi_M);
-      factors.push_back(factor_sg_M);
+    std::size_t n = detail::factorize(fft_size);
+    std::size_t m = fft_size / n;
+    int factor_sg_n = detail::factorize_sg(static_cast<int>(n), SubgroupSize);
+    int factor_wi_n = static_cast<int>(n) / factor_sg_n;
+    int factor_sg_m = detail::factorize_sg(static_cast<int>(m), SubgroupSize);
+    int factor_wi_m = static_cast<int>(m) / factor_sg_m;
+    if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
+      factors.push_back(factor_wi_n);
+      factors.push_back(factor_sg_n);
+      factors.push_back(factor_wi_m);
+      factors.push_back(factor_sg_m);
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
       get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
@@ -219,11 +219,10 @@ class committed_descriptor {
    */
   struct set_spec_constants_struct{
      // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static void execute(committed_descriptor& desc,
-                                    sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
-    };
+     template <detail::level Lev, typename Dummy>
+     struct inner {
+       static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
+     };
   };
   
   /**
@@ -240,7 +239,7 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct{
      // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-     template <detail::level lev, detail::transpose TransposeIn, typename Dummy>
+     template <detail::level Lev, detail::transpose TransposeIn, typename Dummy>
      struct inner {
        static std::size_t execute(committed_descriptor& desc);
      };
@@ -262,10 +261,10 @@ class committed_descriptor {
    */
   struct calculate_twiddles_struct{
      // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static Scalar* execute(committed_descriptor& desc); 
-    };
+     template <detail::level Lev, typename Dummy>
+     struct inner {
+       static Scalar* execute(committed_descriptor& desc);
+     };
   };
 
   /**
@@ -363,7 +362,7 @@ class committed_descriptor {
   /**
    * Alias for `Domain`.
    */
-  static constexpr domain domain_value = Domain;
+  static constexpr domain DomainValue = Domain;
 
   /**
    * Destructor
@@ -504,24 +503,24 @@ class committed_descriptor {
    * Dispatches the kernel with the first subgroup size that is supported by the device.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam T_in Type of the input buffer or USM pointer
-   * @tparam T_out Type of the output buffer or USM pointer
+   * @tparam TIn Type of the input buffer or USM pointer
+   * @tparam TOut Type of the output buffer or USM pointer
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, typename T_in, typename T_out>
-  sycl::event dispatch_kernel(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_kernel_helper<Dir, T_in, T_out, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies);
+  template <direction Dir, typename TIn, typename TOut>
+  sycl::event dispatch_kernel(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
+    return dispatch_kernel_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies);
   }
 
   /**
    * Helper for dispatching the kernel with the first subgroup size that is supported by the device.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam T_in Type of the input buffer or USM pointer
-   * @tparam T_out Type of the output buffer or USM pointer
+   * @tparam TIn Type of the input buffer or USM pointer
+   * @tparam TOut Type of the output buffer or USM pointer
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
    * @param in buffer or USM pointer to memory containing input data
@@ -529,8 +528,8 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, typename T_in, typename T_out, int SubgroupSize, int... OtherSGSizes>
-  sycl::event dispatch_kernel_helper(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
+  template <direction Dir, typename TIn, typename TOut, int SubgroupSize, int... OtherSGSizes>
+  sycl::event dispatch_kernel_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
     if (SubgroupSize == used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
       std::size_t input_distance;
@@ -547,35 +546,35 @@ class committed_descriptor {
       }
       if (input_distance == fft_size && output_distance == fft_size) {
         return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
-      } else if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
-      } else {
-        throw std::runtime_error("Unsupported configuration");
       }
+      if (input_distance == 1 && output_distance == fft_size && in != out) {
+        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+      }
+      throw std::runtime_error("Unsupported configuration");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return dispatch_kernel_helper<Dir, T_in, T_out, OtherSGSizes...>(in, out, dependencies);
+      return dispatch_kernel_helper<Dir, TIn, TOut, OtherSGSizes...>(in, out, dependencies);
     }
   }
 
   /**
    * Struct for dispatching `run_kernel()` call.
-   * 
+   *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam SubgroupSize size of the subgroup
-   * @tparam T_in Type of the input USM pointer or buffer
-   * @tparam T_out Type of the output USM pointer or buffer
+   * @tparam TIn Type of the input USM pointer or buffer
+   * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-  struct run_kernel_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template<detail::level lev, typename Dummy>
-    struct inner{
-      static sycl::event execute(committed_descriptor& desc, const T_in& in, T_out& out, Scalar scale_factor,
-                                    const std::vector<sycl::event>& dependencies);
+  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename TIn, typename TOut>
+  struct run_kernel_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level Lev, typename Dummy>
+    struct inner {
+      static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
+                                 const std::vector<sycl::event>& dependencies);
     };
   };
 
@@ -585,18 +584,17 @@ class committed_descriptor {
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam SubgroupSize size of the subgroup
-   * @tparam T_in Type of the input USM pointer or buffer
-   * @tparam T_out Type of the output USM pointer or buffer
+   * @tparam TIn Type of the input USM pointer or buffer
+   * @tparam TOut Type of the output USM pointer or buffer
    * @param in USM pointer to memory containing input data
    * @param out USM pointer to memory containing output data
    * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T_in, typename T_out>
-  sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
-                         const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, T_in, T_out>>(in, out, scale_factor, dependencies);
+  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename TIn, typename TOut>
+  sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
+    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, TIn, TOut>>(in, out, scale_factor, dependencies);
   }
 };
 

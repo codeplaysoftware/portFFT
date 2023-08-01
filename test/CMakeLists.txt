@@ -30,8 +30,13 @@ endif()
 
 if(${PORTFFT_BUILD_TESTS})
   add_subdirectory(unit_test)
+  if(${PORTFFT_CLANG_TIDY})
+    add_subdirectory(clang_tidy)
+  endif()
 endif()
 
 if(${PORTFFT_BUILD_BENCHMARKS})
   add_subdirectory(bench)
 endif()
+
+

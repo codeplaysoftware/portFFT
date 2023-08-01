@@ -79,9 +79,9 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
                                                         std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
-  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  using T_vec = sycl::vec<T, chunk_size>;
+  constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
+  constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
+  using T_vec = sycl::vec<T, ChunkSize>;
 
   sycl::sub_group sg = it.get_sub_group();
   std::size_t local_id;
@@ -94,13 +94,13 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     local_size = it.get_local_range(0);
   }
 
-  std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
+  std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
+    std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -130,7 +130,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 #else
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(
-      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+      detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // load the first few unaligned elements
@@ -142,10 +142,10 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   global_offset += unaligned_elements;
 
   // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
-  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+  for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j));
       local[local_idx] = loaded[j];
     });
@@ -187,9 +187,9 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
                                                         std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
-  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  using T_vec = sycl::vec<T, chunk_size>;
+  constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
+  constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
+  using T_vec = sycl::vec<T, ChunkSize>;
 
   sycl::sub_group sg = it.get_sub_group();
   std::size_t local_size;
@@ -202,13 +202,13 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     local_size = it.get_local_range(0);
   }
 
-  std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
+  std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
+    std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -239,7 +239,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 #else
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(
-      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+      detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // store the first few unaligned elements
@@ -251,9 +251,9 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   global_offset += unaligned_elements;
 
   // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
-  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+  for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j));
       to_store[j] = local[local_idx];
     });
@@ -301,7 +301,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
 /**
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
- * @tparam num_elements_per_wi Elements per workitem
+ * @tparam NumElementsPerWI Elements per workitem
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -311,14 +311,14 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
-  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
-    priv[2 * i] = local[local_idx];
-    priv[2 * i + 1] = local[local_idx + 1];
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
+    std::size_t local_idx =
+        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num));
+    priv[2L * i] = local[local_idx];
+    priv[2L * i + 1] = local[local_idx + 1];
   });
 }
 
@@ -388,7 +388,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
 /**
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
- * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
+ * @tparam NumElementsPerWI Elements per workitem
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -399,14 +399,14 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
-  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
-        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
-    local[loc_base_offset] = priv[2 * i];
-    local[loc_base_offset + 1] = priv[2 * i + 1];
+        detail::pad_local<Pad>(static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num));
+    local[loc_base_offset] = priv[2L * i];
+    local[loc_base_offset + 1] = priv[2L * i + 1];
   });
 }
 
@@ -451,8 +451,8 @@ template <int NumElemsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
                                                             std::size_t workers_in_group,
                                                             std::size_t destination_offset = 0) {
-  constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
-  using T_vec = sycl::vec<T, vec_size>;
+  constexpr int VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
+  using T_vec = sycl::vec<T, VecSize>;
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
   T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 

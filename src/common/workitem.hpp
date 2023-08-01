@@ -35,7 +35,7 @@ inline void wi_dft(const T* in, T* out);
 namespace detail {
 
 // Maximum size of an FFT that can fit in the workitem implementation
-static constexpr std::size_t MAX_FFT_SIZE_WI = 56;
+static constexpr std::size_t MaxFftSizeWi = 56;
 
 /*
 `wi_dft` calculates a DFT by a workitem on values that are already loaded into its private memory.
@@ -67,10 +67,12 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
     tmp[2 * idx_out + 1] = 0;
     unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
-      auto re_multiplier = twiddle<T>::re[N][idx_in * idx_out % N];
+      auto re_multiplier = twiddle<T>::Re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
-        if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
-        return -twiddle<T>::im[N][idx_in * idx_out % N];
+        if constexpr (Dir == direction::FORWARD) {
+          return twiddle<T>::Im[N][idx_in * idx_out % N];
+        }
+        return -twiddle<T>::Im[N][idx_in * idx_out % N];
       }();
 
       // multiply in and multi
@@ -105,10 +107,12 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
   unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<Dir, N, M * StrideIn, 1>(in + 2 * i * StrideIn, tmp_buffer + 2 * i * N);
     unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
-      auto re_multiplier = twiddle<T>::re[N * M][i * j];
+      auto re_multiplier = twiddle<T>::Re[N * M][i * j];
       auto im_multiplier = [&]() {
-        if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N * M][i * j];
-        return -twiddle<T>::im[N * M][i * j];
+        if constexpr (Dir == direction::FORWARD) {
+          return twiddle<T>::Im[N * M][i * j];
+        }
+        return -twiddle<T>::Im[N * M][i * j];
       }();
       T tmp_val = tmp_buffer[2 * i * N + 2 * j] * re_multiplier - tmp_buffer[2 * i * N + 2 * j + 1] * im_multiplier;
       tmp_buffer[2 * i * N + 2 * j + 1] =
@@ -123,14 +127,14 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
 
 /**
  * Factorizes a number into two roughly equal factors.
- * @tparam T_index Index type
+ * @tparam TIndex Index type
  * @param N the number to factorize
  * @return the smaller of the factors
  */
-template <typename T_index>
-constexpr T_index factorize(T_index N) {
-  T_index res = 1;
-  for (T_index i = 2; i * i <= N; i++) {
+template <typename TIndex>
+constexpr TIndex factorize(TIndex N) {
+  TIndex res = 1;
+  for (TIndex i = 2; i * i <= N; i++) {
     if (N % i == 0) {
       res = i;
     }
@@ -142,18 +146,18 @@ constexpr T_index factorize(T_index N) {
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
  * @param N size of the FFT problem
- * @tparam T_index Index type
+ * @tparam TIndex Index type
  * @return Number of temporary complex values
  */
-template <typename T_index>
-constexpr T_index wi_temps(T_index N) {
-  T_index F0 = factorize(N);
-  T_index F1 = N / F0;
-  if (F0 < 2 || F1 < 2) {
+template <typename TIndex>
+constexpr TIndex wi_temps(TIndex N) {
+  TIndex f0 = factorize(N);
+  TIndex f1 = N / f0;
+  if (f0 < 2 || f1 < 2) {
     return N;
   }
-  T_index a = wi_temps(F0);
-  T_index b = wi_temps(F1);
+  TIndex a = wi_temps(f0);
+  TIndex b = wi_temps(f1);
   return (a > b ? a : b) + N;
 }
 
@@ -161,16 +165,16 @@ constexpr T_index wi_temps(T_index N) {
  * Checks whether a problem can be solved with workitem implementation without
  * registers spilling.
  * @tparam Scalar type of the real scalar used for the computation
- * @tparam T_index Index type
+ * @tparam TIndex Index type
  * @param N Size of the problem, in complex values
  * @return true if the problem fits in the registers
  */
-template <typename Scalar, typename T_index>
-constexpr bool fits_in_wi(T_index N) {
-  T_index N_complex = N + wi_temps(N);
-  T_index complex_size = 2 * sizeof(Scalar);
-  T_index register_space = PORTFFT_REGISTERS_PER_WI * 4;
-  return N_complex * complex_size <= register_space;
+template <typename Scalar, typename TIndex>
+constexpr bool fits_in_wi(TIndex N) {
+  TIndex n_complex = N + wi_temps(N);
+  TIndex complex_size = 2 * sizeof(Scalar);
+  TIndex register_space = PORTFFT_REGISTERS_PER_WI * 4;
+  return n_complex * complex_size <= register_space;
 }
 
 };  // namespace detail

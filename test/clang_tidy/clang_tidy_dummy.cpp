@@ -14,41 +14,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Codeplay's portFFT
+ *  Codeplay's SYCL-FFT
  *
  **************************************************************************/
 
-#ifndef PORTFFT_TRAITS_HPP
-#define PORTFFT_TRAITS_HPP
+#include <portfft.hpp>
+#include <sycl/sycl.hpp>
 
-#include "enums.hpp"
-
-#include <complex>
-
-namespace portfft {
-
-template <typename T>
-struct get_real {
-  using type = T;
-};
-
-template <typename T>
-struct get_real<std::complex<T>> {
-  using type = T;
-};
-
-template <typename T>
-struct get_domain {
-  // NOLINTNEXTLINE
-  static constexpr domain value = domain::REAL;
-};
-
-template <typename T>
-struct get_domain<std::complex<T>> {
-  // NOLINTNEXTLINE
-  static constexpr domain value = domain::COMPLEX;
-};
-
-}  // namespace portfft
-
-#endif
+int main() {
+  portfft::descriptor<float, portfft::domain::COMPLEX> desc{{2}};
+  return 0;
+}

@@ -100,10 +100,12 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_imag = 0;
 
     unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
-      const T multi_re = twiddle<T>::re[N][idx_in * idx_out % N];
+      const T multi_re = twiddle<T>::Re[N][idx_in * idx_out % N];
       const T multi_im = [&]() __attribute__((always_inline)) {
-        if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N][idx_in * idx_out % N];
-        return -twiddle<T>::im[N][idx_in * idx_out % N];
+        if constexpr (Dir == direction::FORWARD) {
+          return twiddle<T>::Im[N][idx_in * idx_out % N];
+        }
+        return -twiddle<T>::Im[N][idx_in * idx_out % N];
       }
       ();
       std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
@@ -175,10 +177,12 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   // transpose
   cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
-  const T multi_re = twiddle<T>::re[N * M][k * n];
+  const T multi_re = twiddle<T>::Re[N * M][k * n];
   const T multi_im = [&]() __attribute__((always_inline)) {
-    if constexpr (Dir == direction::FORWARD) return twiddle<T>::im[N * M][k * n];
-    return -twiddle<T>::im[N * M][k * n];
+    if constexpr (Dir == direction::FORWARD) {
+      return twiddle<T>::Im[N * M][k * n];
+    }
+    return -twiddle<T>::Im[N * M][k * n];
   }
   ();
   T tmp_real = real * multi_re - imag * multi_im;
@@ -237,13 +241,13 @@ constexpr int factorize_sg(int N, int sg_size) {
  * Checks whether a problem can be solved with sub-group implementation
  * without reg spilling.
  * @tparam Scalar type of the real scalar used for the computation
- * @tparam T_index Index type
+ * @tparam TIndex Index type
  * @param N Size of the problem, in complex values
  * @param sg_size Size of the sub-group
  * @return true if the problem fits in the registers
  */
-template <typename Scalar, typename T_index>
-constexpr bool fits_in_sg(T_index N, int sg_size) {
+template <typename Scalar, typename TIndex>
+constexpr bool fits_in_sg(TIndex N, int sg_size) {
   int factor_sg = factorize_sg(static_cast<int>(N), sg_size);
   int factor_wi = static_cast<int>(N) / factor_sg;
   return fits_in_wi<Scalar>(factor_wi);
@@ -269,15 +273,17 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
   detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
-    T& real = inout[2 * idx_of_element_in_wi];
-    T& imag = inout[2 * idx_of_element_in_wi + 1];
+    T& real = inout[2L * idx_of_element_in_wi];
+    T& imag = inout[2L * idx_of_element_in_wi + 1];
 
     if constexpr (N > 1) {
       detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
       if (idx_of_element_in_wi > 0) {
         T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
         T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
-        if constexpr (Dir == direction::BACKWARD) twiddle_imag = -twiddle_imag;
+        if constexpr (Dir == direction::BACKWARD) {
+          twiddle_imag = -twiddle_imag;
+        }
         T tmp_real = real * twiddle_real - imag * twiddle_imag;
         imag = real * twiddle_imag + imag * twiddle_real;
         real = tmp_real;
