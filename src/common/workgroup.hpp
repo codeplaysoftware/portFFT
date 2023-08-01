@@ -28,18 +28,25 @@
 namespace portfft {
 
 /**
- * Calculate the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
- * e.g. If there are 64 elements in a row, then the column values are 128 float apart.
- * There are 32 banks, each the size of a float, so we only want a padding float every 128/32=4 groups to read along the
- * column with without bank conflicts.
+ * Calculate the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory, specifically for
+ * reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are 64 complex
+ * elements in a row, then the consecutive values in the same column are 128 floats apart. There are 32 banks, each the
+ * size of a float, so we only want a padding float every 128/32=4 groups to read along the column without bank
+ * conflicts.
  *
- * @param row_size the number of complex values in a row
+ * @param row_size the size in bytes of the row.
  * @return constexpr std::size_t the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
 constexpr std::size_t bank_groups_per_pad_wg(std::size_t row_size) {
   // 2*row_size is the number of floats between each successive read for the column dfts
-  // we only need 1 pad for each of those
-  return (2 * row_size) / PORTFFT_N_LOCAL_BANKS;
+  const auto elements = 2 * row_size;
+  constexpr std::size_t bank_group_size = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
+  if (elements % bank_group_size == 0) {
+    return elements / bank_group_size;
+  }
+  // There is room for improvement here. E.G if row_size was half of bank_group_size then maybe you would still want 1
+  // pad every bank group.
+  return 0;
 }
 
 /**

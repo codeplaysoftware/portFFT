@@ -81,7 +81,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   constexpr std::size_t N = detail::factorize(FFTSize);
   constexpr std::size_t M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
-  constexpr std::size_t BankGroupsPerPad = bank_groups_per_pad_wg(M);
+  constexpr std::size_t BankGroupsPerPad = bank_groups_per_pad_wg(sizeof(T) * M);
 
   std::size_t max_num_batches_in_local_mem = [=]() {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
@@ -178,7 +178,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
     const std::size_t bank_groups_per_pad =
-        bank_groups_per_pad_wg(static_cast<std::size_t>(desc.factors[2] * desc.factors[3]));
+        bank_groups_per_pad_wg(sizeof(Scalar) * static_cast<std::size_t>(desc.factors[2] * desc.factors[3]));
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -217,9 +217,9 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     // working memory + twiddles for subgroup impl for the two sizes
     if (TransposeIn == detail::transpose::TRANSPOSED) {
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
-      return detail::pad_local(2 * fft_size * num_batches_in_local_mem, bank_groups_per_pad_wg(M)) + 2 * (m + n);
+      return detail::pad_local(2 * fft_size * num_batches_in_local_mem, bank_groups_per_pad_wg(sizeof(Scalar)*M)) + 2 * (m + n);
     }
-    return detail::pad_local(2 * fft_size, bank_groups_per_pad_wg(M)) + 2 * (m + n);
+    return detail::pad_local(2 * fft_size, bank_groups_per_pad_wg(sizeof(Scalar)*M)) + 2 * (m + n);
   }
 };
 
