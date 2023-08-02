@@ -17,7 +17,7 @@
 # *  See the License for the specific language governing permissions and
 # *  limitations under the License.
 # *
-# *  Codeplay's SYCL-FFT
+# *  Codeplay's portFFT
 # *
 # *  @filename CMakeLists.txt
 # *

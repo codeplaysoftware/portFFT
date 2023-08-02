@@ -42,7 +42,7 @@ option(PORTFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME "Generate benchmark verifi
 option(PORTFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(PORTFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 option(PORTFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
-option(PORTFFT_CLANG_TIDY "Enable clang-tidy checks on SYCL-FFT source when building tests" ON)
+option(PORTFFT_CLANG_TIDY "Enable clang-tidy checks on portFFT source when building tests" ON)
 option(PORTFFT_CLANG_TIDY_AUTOFIX "Attempt to fix defects found by clang-tidy" OFF)
 set(PORTFFT_REGISTERS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
