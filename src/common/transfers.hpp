@@ -151,15 +151,15 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     });
   }
 #endif
-  // We can not load `ChunkSize`-sized chunks anymore, so we load the largest we can - `last_ChunkSize`-sized one
-  std::size_t last_ChunkSize = (total_num_elems - rounded_down_num_elems) / local_size;
-  for (std::size_t j = 0; j < last_ChunkSize; j++) {
+  // We can not load `ChunkSize`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
+  std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
+  for (std::size_t j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_ChunkSize + j);
-    local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_ChunkSize + j];
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
+    local[local_idx] = global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j];
   }
   // Less than group size elements remain. Each workitem loads at most one.
-  std::size_t my_last_idx = rounded_down_num_elems + last_ChunkSize * local_size + local_id;
+  std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     local[local_idx] = global[global_offset + my_last_idx];
@@ -260,15 +260,15 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     to_store.store(0, detail::get_global_multi_ptr(&global[global_offset + i]));
   }
 #endif
-  // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_ChunkSize`-sized one
-  std::size_t last_ChunkSize = (total_num_elems - rounded_down_num_elems) / local_size;
-  for (std::size_t j = 0; j < last_ChunkSize; j++) {
+  // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
+  std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
+  for (std::size_t j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_ChunkSize + j);
-    global[global_offset + rounded_down_num_elems + local_id * last_ChunkSize + j] = local[local_idx];
+        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j);
+    global[global_offset + rounded_down_num_elems + local_id * last_chunk_size + j] = local[local_idx];
   }
   // Less than group size elements remain. Each workitem stores at most one.
-  std::size_t my_last_idx = rounded_down_num_elems + last_ChunkSize * local_size + local_id;
+  std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx);
     global[global_offset + my_last_idx] = local[local_idx];
