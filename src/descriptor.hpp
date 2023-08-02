@@ -111,9 +111,11 @@ class committed_descriptor {
   int used_sg_size;
   std::shared_ptr<Scalar> twiddles_forward;
   std::shared_ptr<Scalar> scratch;
+  std::shared_ptr<Scalar> scratch2;
   std::shared_ptr<int> dev_factors;
   detail::level level;
   std::vector<int> factors;
+  std::vector<int> sub_batches;
   std::vector<detail::level> levels;
   std::vector<std::size_t> local_mem_per_factor;
   std::vector<std::pair<sycl::range<1>, sycl::range<1>>> launch_configurations;
@@ -236,14 +238,15 @@ class committed_descriptor {
       std::size_t num_twiddles = 0;
       for (auto iter = factors.begin(); iter + 1 != factors.end(); iter++) {
         auto batches_at_level = std::accumulate(iter + 1, factors.end(), 1, std::multiplies<std::size_t>());
-        factors.push_back(batches_at_level);
+        sub_batches.push_back(batches_at_level);
         num_twiddles += *iter * batches_at_level * 2;
       }
       num_batches_in_l2 =
           std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
                    std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
                                                              (2 * sizeof(Scalar) * params.lengths[0])));
-      queue.copy(dev_factors.get(), factors.data(), factors.size()).wait();
+      queue.copy(factors.data(), dev_factors.get(), factors.size()).wait();
+      queue.copy(sub_batches.data(), dev_factors.get() + factors.size(), sub_batches.size()).wait();
       return detail::level::GLOBAL;
     }
   }
@@ -387,11 +390,19 @@ class committed_descriptor {
           }
         });
 
-    dev_factors = std::shared_ptr<int>(sycl::malloc_device<int>(factors.size(), queue), [queue](int* ptr) {
-      if (ptr != nullptr) {
-        sycl::free(ptr, queue);
-      }
-    });
+    scratch2 = std::shared_ptr<Scalar>(
+        sycl::malloc_device<Scalar>(params.lengths[0] * params.number_of_transforms, queue), [queue](Scalar* ptr) {
+          if (ptr != nullptr) {
+            sycl::free(ptr, queue);
+          }
+        });
+
+    dev_factors =
+        std::shared_ptr<int>(sycl::malloc_device<int>(factors.size() + sub_batches.size(), queue), [queue](int* ptr) {
+          if (ptr != nullptr) {
+            sycl::free(ptr, queue);
+          }
+        });
   }
 
  public:
