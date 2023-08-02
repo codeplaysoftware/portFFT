@@ -162,21 +162,22 @@ struct dispatch_level_struct {
       return Event;
     }
     if (kernel_id == num_factors - 2) {
-      return dispatch_level_struct<kernel_id + 1, Scalar, Domain, Dir, mem, detail::transpose::NOT_TRANSPOSED,
-                                   detail::transpose::NOT_TRANSPOSED, false, false,
-                                   SubgroupSize>::execute(input, output, twiddles_ptr, dev_factors_and_batches,
-                                                          intermediate_twiddle_offset, local_mem_offset,
-                                                          num_concurrent_batches, scale_factor, factors, Levels,
-                                                          local_mem_per_factor, launch_configurations, queue);
+      dispatch_level_struct<kernel_id + 1, Scalar, Domain, Dir, mem, detail::transpose::NOT_TRANSPOSED,
+                            detail::transpose::NOT_TRANSPOSED, false, false,
+                            SubgroupSize>::execute(input, output, twiddles_ptr, dev_factors_and_batches,
+                                                   intermediate_twiddle_offset, local_mem_offset,
+                                                   num_concurrent_batches, scale_factor, factors, Levels,
+                                                   local_mem_per_factor, launch_configurations, queue);
     } else {
-      return dispatch_level_struct<kernel_id + 1, Scalar, Domain, Dir, mem, detail::transpose::TRANSPOSED,
-                                   detail::transpose::TRANSPOSED, false, true,
-                                   SubgroupSize>::execute(input, output, twiddles_ptr, dev_factors_and_batches,
-                                                          intermediate_twiddle_offset, local_mem_offset,
-                                                          num_concurrent_batches, scale_factor, factors, Levels,
-                                                          local_mem_per_factor, launch_configurations, queue);
+      dispatch_level_struct<kernel_id + 1, Scalar, Domain, Dir, mem, detail::transpose::TRANSPOSED,
+                            detail::transpose::TRANSPOSED, false, true,
+                            SubgroupSize>::execute(input, output, twiddles_ptr, dev_factors_and_batches,
+                                                   intermediate_twiddle_offset, local_mem_offset,
+                                                   num_concurrent_batches, scale_factor, factors, Levels,
+                                                   local_mem_per_factor, launch_configurations, queue);
     }
   }
+}
 };
 
 template <typename Scalar, domain Domain, direction Dir, detail::memory mem, detail::transpose TransposeIn,

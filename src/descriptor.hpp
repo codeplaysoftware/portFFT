@@ -332,7 +332,7 @@ class committed_descriptor {
       used_sg_size = SubgroupSize;
       level = prepare_implementation<SubgroupSize>(ids);
 
-      /*if (sycl::is_compatible(ids, dev)) {
+      if (sycl::is_compatible(ids, dev)) {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
         set_spec_constants(in_bundle);
         used_sg_size = SubgroupSize;
@@ -341,7 +341,7 @@ class committed_descriptor {
         } catch (std::exception& e) {
           std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
         }
-      }*/
+      }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
@@ -639,7 +639,7 @@ class committed_descriptor {
    */
   template <direction Dir, detail::transpose TransposeIn,
             detail::transpose TransposeOut = detail::transpose::NOT_TRANSPOSED, int SubgroupSize,
-            bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T_in, typename T_out>
+            bool ApplyLoadCallback = false, bool ApplyStoreCallback = false, typename T_in, typename T_out>
   sycl::event run_kernel(const T_in& in, T_out& out, Scalar scale_factor,
                          const std::vector<sycl::event>& dependencies) {
     return dispatch<run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize, ApplyLoadCallback,

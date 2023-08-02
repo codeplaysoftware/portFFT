@@ -56,6 +56,77 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
   return local_idx;
 }
 
+/**
+ * Implements subgroup level matrix transpose
+ *
+ * @tparam T
+ * @tparam SubgroupSize
+ *
+ * @param N Number of rows, also number of threads in subgroup participating in shuffle. Should not exceed subgroup
+ * size.
+ * @param M Number of columns, also equivalent to the number of elements per thread. Should be less than N
+ */
+template <typename T, int SubgroupSize>
+__attribute__((always_inline)) inline void subgroup_transpose(int N, int M, T* priv, sycl::sub_group sg) {
+  // TODO: Try to reduce the number of modulo operations as they have high latency.
+  //  This ideally should be done by the compiler after obtaining the spec constant values N and M when they are a power
+  //  of 2. Also, specialize for square matrices
+  T scratch_array[SubgroupSize];
+  int id_of_thread_in_matrix = sg.get_local_linear_id() % N;
+  int current_lane = sg.get_local_linear_id() % SubgroupSize;
+  int matrix_start_lane = (sg.get_local_linear_id() - id_of_thread_in_matrix) % SubgroupSize;
+  int lane_id_relative_to_start = id_of_thread_in_matrix % N;  // view as if subgroup size is N
+
+  for (int idx = 0; idx < M; idx++) {
+    int absolute_target_lane =
+        ((lane_id_relative_to_start + idx) % M) * (N / M) + (lane_id_relative_to_start / M) + matrix_start_lane;
+    int relative_target_address = ((M - idx) + (current_lane / (N / M))) % M;
+    int store_address = (current_lane + idx) % M;
+    T& real_value = priv[relative_target_address];
+    T& complex_value = priv[relative_target_address + 1];
+    scratch_array[store_address] = sycl::select_from_group(sg, real_value, absolute_target_lane);
+    scratch_array[store_address + 1] = sycl::select_from_group(sg, complex_value, absolute_target_lane);
+  }
+  sycl::group_barrier(sg);
+
+  for (int i = 0; i < 2 * M; i++) {
+    priv[i] = scratch_array[i];
+  }
+}
+
+template <typename T, std::size_t SubgroupSize>
+__attribute__((always_inline)) inline void generic_transpose(std::size_t N, std::size_t M, T* input, T* output,
+                                                             sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
+  using T_vec = sycl::vec<T, 2>;
+  std::size_t rounded_up_N = detail::roundUpToMultiple(N, SubgroupSize);
+  std::size_t rounded_up_M = detail::roundUpToMultiple(M, SubgroupSize);
+  for (std::size_t tile_y = it.get_group(1); tile_y < rounded_up_N; tile_y += it.get_group_range(1)) {
+    for (std::size_t tile_x = it.get_group(0); tile_x < rounded_up_M; tile_x += it.get_group_range(0)) {
+      std::size_t tile_id_y = tile_y * SubgroupSize;
+      std::size_t tile_id_x = tile_x * SubgroupSize;
+
+      std::size_t i = tile_id_y + it.get_local_id(1);
+      std::size_t j = tile_id_x + it.get_local_id(0);
+
+      if (i < N && j < M) {
+        // TODO: This should be a vector read
+        loc[it.get_local_id(0)][it.get_local_id(1)] = input[i * M + j];
+        loc[it.get_local_id(0)][it.get_local_id(1) + 1] = input[i * M + j + 1];
+      }
+      sycl::group_barrier(it.get_group());
+
+      std::size_t i_transposed = tile_id_x + it.get_local_id(1);
+      std::size_t j_transposed = tile_id_y + it.get_local_id(0);
+
+      if (j_transposed < N && i_transposed < M) {
+        output[i_transposed * N + j_transposed] = loc[it.get_local_id(1)][it.get_local_id(0)];
+        output[i_transposed * N + j_transposed + 1] = loc[it.get_local_id(1)][it.get_local_id(0) + 1];
+      }
+      sycl::group_barrier(it.get_group());  // TODO: This barrier should not required, use double buffering
+    }
+  }
+}
+
 }  // namespace detail
 
 /**
@@ -467,6 +538,44 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
     }
   });
 }
+
+template <typename T, int SubgroupSize>
+__attribute__((always_inline)) inline void subgroup_transpose_driver(T* input, T* output, int rows, int columns,
+                                                                     std::size_t batch, std::size_t batch_stride,
+                                                                     std::size_t sub_batch,
+                                                                     std::size_t sub_batch_stride,
+                                                                     sycl::nd_item<1> it) {
+  using T_vec = sycl::vec<T, 2>;
+  std::size_t num_sgs_in_wg = it.get_local_range(0) / SubgroupSize;
+  std::size_t num_sgs_in_kernel = it.get_global_range(0) * num_sgs_in_wg;
+  std::size_t sg_id_in_kernel =
+      it.get_local_id(0) * num_sgs_in_wg + it.get_local_linear_id() / static_cast<std::size_t>(SubgroupSize);
+  std::size_t num_sub_batches_in_sg = SubgroupSize / rows;
+  std::size_t rounded_up_n_batches = detail::roundUpToMultiple(batch * sub_batch, num_sub_batches_in_sg);
+  sycl::sub_group sg = it.get_sub_group();
+
+  T priv[SubgroupSize];
+
+  for (std::size_t num_subgroup = sg_id_in_kernel; num_subgroup < rounded_up_n_batches;
+       num_subgroup += num_sgs_in_kernel * num_sub_batches_in_sg) {
+    // Directly read into private memory, as reads will be coalesced.
+    std::size_t batch_id = (num_subgroup / sub_batch) % batch;
+    std::size_t sub_batch_id = (num_subgroup % sub_batch) + sg.get_local_linear_id() / rows;
+    std::size_t id_of_thread_in_matrix = sg.get_local_linear_id() % rows;
+    bool working = sg.get_local_linear_id() < (rows * num_sub_batches_in_sg);
+    for (std::size_t i = 0; i < columns; i++) {
+      reinterpret_cast<T_vec*>(priv)[i] = reinterpret_cast<T_vec*>(
+          input)[batch_id * batch_stride + sub_batch_id * sub_batch_stride + id_of_thread_in_matrix * columns + i];
+    }
+    detail::subgroup_transpose<SubgroupSize>(rows, columns, priv, sg);
+    for (std::size_t i = 0; i < columns; i++) {
+      reinterpret_cast<T_vec*>(
+          output)[batch_id * batch_stride + sub_batch_id * sub_batch_stride + id_of_thread_in_matrix * columns + i] =
+          reinterpret_cast<T_vec*>(priv)[i];
+    }
+  }
+}
+
 };  // namespace portfft
 
 #endif

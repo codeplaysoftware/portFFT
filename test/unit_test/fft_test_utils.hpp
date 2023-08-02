@@ -68,7 +68,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   {
     std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
-      GTEST_SKIP();
+      GTEST_SKIP() << "Skipping Tests due to size not being present in optimized size list";
     }
   }
   auto num_elements = params.batch * params.length;
@@ -148,7 +148,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   {
     std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
-      GTEST_SKIP();
+      GTEST_SKIP() << "Skipping Tests due to size not being present in optimized size list";
     }
   }
   auto num_elements = params.batch * params.length;
