@@ -73,7 +73,7 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor) {
-  constexpr std::size_t NReals = 2L * N;
+  constexpr std::size_t NReals = 2 * N;
 
   T priv[NReals];
   sycl::sub_group sg = it.get_sub_group();

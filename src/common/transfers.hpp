@@ -317,8 +317,8 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx =
         detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num));
-    priv[2L * i] = local[local_idx];
-    priv[2L * i + 1] = local[local_idx + 1];
+    priv[2 * i] = local[local_idx];
+    priv[2 * i + 1] = local[local_idx + 1];
   });
 }
 
@@ -405,8 +405,8 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
         detail::pad_local<Pad>(static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num));
-    local[loc_base_offset] = priv[2L * i];
-    local[loc_base_offset + 1] = priv[2L * i + 1];
+    local[loc_base_offset] = priv[2 * i];
+    local[loc_base_offset + 1] = priv[2 * i + 1];
   });
 }
 

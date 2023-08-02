@@ -273,8 +273,8 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
   detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
-    T& real = inout[2L * idx_of_element_in_wi];
-    T& imag = inout[2L * idx_of_element_in_wi + 1];
+    T& real = inout[2 * idx_of_element_in_wi];
+    T& imag = inout[2 * idx_of_element_in_wi + 1];
 
     if constexpr (N > 1) {
       detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
