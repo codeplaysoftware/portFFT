@@ -33,12 +33,10 @@ target_link_libraries(
     portfft
     portfft_warnings
 )
-add_custom_target(clang_tidy_config DEPENDS ${CMAKE_SOURCE_DIR}/test/clang_tidy/.clang-tidy)
-add_dependencies(clang_tidy_dummy clang_tidy_config)
 
 # setup clang-tidy command from executable + options
 get_filename_component(CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
-set(CLANG_TIDY_COMMAND "${CXX_COMPILER_DIR}/../bin-llvm/clang-tidy;--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/test/clang_tidy/.clang-tidy")
+set(CLANG_TIDY_COMMAND "${CXX_COMPILER_DIR}/../bin-llvm/clang-tidy;--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
 if(PORTFFT_CLANG_TIDY_AUTOFIX)
     list(APPEND CLANG_TIDY_COMMAND "--fix")
 endif()
