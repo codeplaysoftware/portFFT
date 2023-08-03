@@ -79,7 +79,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int FactorWI, int FactorSG,
-          int SubgroupSize, bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
+          int SubgroupSize, bool ApplyLoadCallback = false, bool ApplyStoreCallback = false, typename T>
 __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          const T* twiddles, T scaling_factor,
@@ -274,7 +274,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, std::size_t SubgroupSize,
-          typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = true, typename T>
+          typename SizeList, bool ApplyLoadCallback = false, bool ApplyStoreCallback = false, typename T>
 __attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
                                                            T* loc, T* loc_twiddles, std::size_t n_transforms,
                                                            sycl::nd_item<1> it, const T* twiddles, T scaling_factor,

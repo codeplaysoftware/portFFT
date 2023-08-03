@@ -251,7 +251,7 @@ struct dispatch_level_struct<0, Scalar, Domain, Dir, mem, TransposeIn, Transpose
                                        ApplyStoreCallback, SubgroupSize, 0>>(
             sycl::nd_range<1>(global_size, local_size), [=](sycl::nd_item<1> it) {
               // really missing constant memory support here.
-              global2local<pad::DONT_PAD, detail::level::WORKGROUP, SubgroupSize>(it, input, loc, 2 * num_factors);
+              global2local<pad::DONT_PAD, detail::level::WORKGROUP, SubgroupSize>(it, dev_factors_and_batches, &loc_factors[0], 2 * num_factors);
               sycl::group_barrier(it.get_group());
               switch (Level) {
                 case detail::level::WORKITEM:
@@ -316,10 +316,13 @@ template <typename Scalar, domain Domain, direction Dir, detail::memory mem, det
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, int SubgroupSize>
 struct dispatch_level_struct<33, Scalar, Domain, Dir, mem, TransposeIn, TransposeOut, ApplyLoadCallback,
                              ApplyStoreCallback, SubgroupSize> {
-  static sycl::event execute(Scalar*, Scalar*, const Scalar*, const int*, std::size_t, std::size_t, std::size_t, Scalar,
-                             std::vector<int>&, std::vector<int>&, std::vector<detail::level>&,
-                             std::vector<std::size_t>, std::vector<std::pair<sycl::range<1>, sycl::range<1>>>,
-                             sycl::queue&) {
+  static sycl::event execute(Scalar* , Scalar* , Scalar* , const Scalar* ,
+                             const int* , std::size_t ,
+                             std::size_t , std::size_t , Scalar ,
+                             std::vector<int>& , std::vector<int>& ,
+                             std::vector<detail::level>& , std::vector<std::size_t> ,
+                             std::vector<std::pair<sycl::range<1>, sycl::range<1>>> ,
+                             sycl::queue& ) {
     sycl::event Event;
     return Event;
   }

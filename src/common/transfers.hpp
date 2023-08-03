@@ -94,9 +94,9 @@ __attribute__((always_inline)) inline void subgroup_transpose(int N, int M, T* p
   }
 }
 
-template <typename T, std::size_t SubgroupSize>
+template <std::size_t SubgroupSize, typename T>
 __attribute__((always_inline)) inline void generic_transpose(std::size_t N, std::size_t M, T* input, T* output,
-                                                             sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
+                                                             const sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
   using T_vec = sycl::vec<T, 2>;
   std::size_t rounded_up_N = detail::roundUpToMultiple(N, SubgroupSize);
   std::size_t rounded_up_M = detail::roundUpToMultiple(M, SubgroupSize);
