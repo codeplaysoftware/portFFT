@@ -53,6 +53,10 @@ If you run into the exception with the message `None of the compiled subgroup si
 
 ### Tests
 
+Tests are build if the CMake setting `PORTFFT_BUILD_TESTS` is set to `ON`.
+Additionally, this enables `clang-tidy` checks if `PORTFFT_CLANG_TIDY` is at its default value of `ON`.
+Automatic fixing of some `clang-tidy` warnings can be enabled by setting `PORTFFT_CLANG_TIDY_AUTOFIX` to `ON`.
+
 Run the tests from the build folder with:
 
 ```shell
