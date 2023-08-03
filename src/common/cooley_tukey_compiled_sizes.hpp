@@ -30,25 +30,25 @@ namespace portfft::detail {
 template <std::size_t... Sizes>
 struct size_list {
   // Specialization only used for zero size Sizes parameter pack.
-  static constexpr bool list_end = true;
+  static constexpr bool ListEnd = true;
 };
 
-template <std::size_t Size, std::size_t... OtherSizes>
-struct size_list<Size, OtherSizes...> {
+template <std::size_t ThisSize, std::size_t... OtherSizes>
+struct size_list<ThisSize, OtherSizes...> {
   using child_t = size_list<OtherSizes...>;
-  static constexpr bool list_end = false;
-  static constexpr std::size_t size = Size;
+  static constexpr bool ListEnd = false;
+  static constexpr std::size_t Size = ThisSize;
 
   /**
    *  Returns true if a size list contains a particular value.
    *  @param x The value to look for
    **/
   static constexpr bool has_size(std::size_t x) {
-    bool hasSize = x == size;
-    if constexpr (!child_t::list_end) {
-      hasSize |= child_t::has_size(x);
+    bool has_size = x == Size;
+    if constexpr (!child_t::ListEnd) {
+      has_size |= child_t::has_size(x);
     }
-    return hasSize;
+    return has_size;
   }
 };
 
