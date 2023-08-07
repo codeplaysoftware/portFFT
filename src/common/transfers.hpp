@@ -34,8 +34,8 @@ static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
 
 /*
 To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the size of
-memory that exactly fits all of the bank in local memory once. e.g. The NVIDIA Ampere architecture has 32 banks in local
-memory (shared memory in CUDA terms), each 32 bits. In this case we define a "bank line" as 128 8-bit bytes.
+memory that exactly fits all of the banks in local memory once. e.g. The NVIDIA Ampere architecture has 32 banks in
+local memory (shared memory in CUDA terms), each 32 bits. In this case we define a "bank line" as 128 8-bit bytes.
 */
 
 namespace portfft {
@@ -52,7 +52,7 @@ namespace detail {
  *
  * @tparam Pad whether to do padding
  * @param local_idx index to transform
- * @param bank_lines_per_pad A padding space will be added after `bank_lines_per_pad` groups of
+ * @param bank_lines_per_pad A padding space will be added after every `bank_lines_per_pad` groups of
  * `PORTFFT_N_LOCAL_BANKS` banks.
  * @return transformed local_idx
  */
@@ -71,8 +71,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local to allow
- * strided reads without bank conflicts
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param it nd_item
@@ -181,8 +180,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad whether to skip each BankLinesPerPad*PORTFFT_N_LOCAL_BANKS element in local to allow
- * strided reads without bank conflicts
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param it nd_item
@@ -292,7 +290,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param local pointer to local memory
@@ -315,7 +313,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether data in the local memory is padded or not
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -325,12 +323,12 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int NumElementsPerWi, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
-  detail::unrolled_loop<0, NumElementsPerWi, 1>([&](const int i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWi + i) + 2 * col_num), BankLinesPerPad);
+        static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num), BankLinesPerPad);
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -368,7 +366,7 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * Loads data from global memory where consecutive elements of a problem are separated by stride.
  * Loads half of workgroup size equivalent number of consecutive batches from global memory.
  *
- * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
@@ -405,7 +403,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether data in the local memory is padded or not
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -421,7 +419,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset = detail::pad_local<Pad>(
-        static_cast<size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
+        static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -432,7 +430,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
@@ -456,7 +454,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad whether to skip each PORTFFT_N_LOCAL_BANKS element in local avoiding bank conflicts
+ * @tparam Pad Whether or not to consider local memory as padded
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory

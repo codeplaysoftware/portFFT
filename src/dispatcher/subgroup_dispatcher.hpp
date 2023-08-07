@@ -81,9 +81,9 @@ template <direction Dir, detail::transpose TransposeIn, int FactorWI, int Factor
 __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, sycl::nd_item<1> it,
                                                          const T* twiddles, T scaling_factor) {
-  constexpr int NRealsPerWi = 2 * FactorWI;
+  constexpr int NRealsPerWI = 2 * FactorWI;
 
-  T priv[NRealsPerWi];
+  T priv[NRealsPerWI];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_id = sg.get_group_id();
@@ -93,7 +93,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
   std::size_t n_ffts_per_sg = SubgroupSize / FactorSG;
   std::size_t max_wis_working = n_ffts_per_sg * FactorSG;
-  std::size_t n_reals_per_fft = FactorSG * NRealsPerWi;
+  std::size_t n_reals_per_fft = FactorSG * NRealsPerWI;
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
   std::size_t id_of_fft_in_sg = subgroup_local_id / FactorSG;
   std::size_t id_of_wi_in_fft = subgroup_local_id % FactorSG;
@@ -114,7 +114,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
   constexpr std::size_t BankLinesPerPad = 1;
 
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, NRealsPerWi * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, NRealsPerWI * FactorSG);
   sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
@@ -159,14 +159,14 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
               static_cast<int>(max_num_batches_local_mem));
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-        unrolled_loop<0, NRealsPerWi, 2>([&](int idx) __attribute__((always_inline)) {
+        unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
         });
         if constexpr (SubgroupSize == FactorSG) {
           if (working_inner) {
             // Store directly from registers for fully coalesced accesses
-            store_transposed<NRealsPerWi, detail::pad::DONT_PAD, 0>(priv, output, id_of_wi_in_fft, FactorSG,
+            store_transposed<NRealsPerWI, detail::pad::DONT_PAD, 0>(priv, output, id_of_wi_in_fft, FactorSG,
                                                                     (i + sub_batch) * n_reals_per_fft);
           }
         } else {
@@ -194,13 +194,13 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
       sycl::group_barrier(sg);
       if (working) {
-        local2private<NRealsPerWi, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NRealsPerWi,
+        local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NRealsPerWI,
                                                                  subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(sg);
 
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-      unrolled_loop<0, NRealsPerWi, 2>([&](int i) __attribute__((always_inline)) {
+      unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
@@ -208,12 +208,12 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         // in this case we get fully coalesced memory access even without going through local memory
         // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
         if (working) {
-          store_transposed<NRealsPerWi, pad::DONT_PAD, BankLinesPerPad>(
+          store_transposed<NRealsPerWI, pad::DONT_PAD, BankLinesPerPad>(
               priv, output, id_of_wi_in_fft, FactorSG, i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
       } else {
         if (working) {
-          store_transposed<NRealsPerWi, pad::DO_PAD, BankLinesPerPad>(
+          store_transposed<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(
               priv, loc, id_of_wi_in_fft, FactorSG, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
         sycl::group_barrier(sg);

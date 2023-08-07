@@ -76,45 +76,45 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   // the number of values held in by a work-item in a column subgroup dft
   constexpr int FactWiM = M / FactSgM;
 
-  constexpr int PrivateMemSize = FactWiN > FactWiM ? 2 * FactWiN : 2 * FactWiM;
+  constexpr int PrivateMemSize = FactWiM > FactWiN ? 2 * FactWiM : 2 * FactWiN;
   T priv[PrivateMemSize];
   const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
 
   sycl::sub_group sg = it.get_sub_group();
   {  // column ffts
-    constexpr int FFTsPerSg = SubgroupSize / FactSgN;
-    constexpr bool ExcessSgs = M % FFTsPerSg > 0;
-    constexpr bool ExcessWis = SubgroupSize % FactSgN > 0;
+    constexpr int FFTsPerSG = SubgroupSize / FactSgN;
+    constexpr bool ExcessWIs = SubgroupSize % FactSgN > 0;
+    constexpr bool ExcessSGs = M % FFTsPerSG > 0;
 
     // only needed when there are excess work-items
-    constexpr std::size_t MaxWorkingTidInSg = FFTsPerSg * FactSgN;
+    constexpr std::size_t MaxWorkingTidInSg = FFTsPerSG * FactSgN;
 
     const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / FactSgN;
     // id of the work-item in the fft
     const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % FactSgN;
 
-    const int column_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSg + fft_in_subgroup;
-    const int column_step = num_sgs * FFTsPerSg;
+    const int column_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSG + fft_in_subgroup;
+    const int column_step = num_sgs * FFTsPerSG;
     int column_end;
-    if constexpr (ExcessSgs) {
+    if constexpr (ExcessSGs) {
       // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
-      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSg anyway
-      column_end = detail::round_up_to_multiple(M, FFTsPerSg);
+      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSG anyway
+      column_end = detail::round_up_to_multiple(M, FFTsPerSG);
     } else {
       column_end = M;
     }
 
-    if constexpr (ExcessWis) {
+    if constexpr (ExcessWIs) {
       // also allow these work-items to enter the loop, without making other work-items do another loop.
-      column_end += (fft_in_subgroup == FFTsPerSg) ? 1 : 0;
+      column_end += (fft_in_subgroup == FFTsPerSG) ? 1 : 0;
     }
 
     for (int column = column_begin; column < column_end; column += column_step) {
       bool working = true;
-      if constexpr (ExcessSgs) {
+      if constexpr (ExcessSGs) {
         working = column < M;
       }
-      if constexpr (ExcessWis) {
+      if constexpr (ExcessWIs) {
         working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
@@ -131,39 +131,39 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   sycl::group_barrier(it.get_group());
 
   {  // row ffts
-    constexpr int FFTsPerSg = SubgroupSize / FactSgM;
-    constexpr bool ExcessSgs = M % FFTsPerSg > 0;
-    constexpr bool ExcessWis = SubgroupSize % FactSgM > 0;
+    constexpr int FFTsPerSG = SubgroupSize / FactSgM;
+    constexpr bool ExcessWIs = SubgroupSize % FactSgM > 0;
+    constexpr bool ExcessSGs = N % FFTsPerSG > 0;
 
     // only needed when there are excess work-items
-    constexpr int MaxWorkingTidInSg = FFTsPerSg * FactSgM;
+    constexpr int MaxWorkingTidInSg = FFTsPerSG * FactSgM;
 
     const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / FactSgM;
     // id of the work-item in the fft
     const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % FactSgM;
 
-    const int row_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSg + fft_in_subgroup;
-    const int row_step = num_sgs * FFTsPerSg;
+    const int row_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSG + fft_in_subgroup;
+    const int row_step = num_sgs * FFTsPerSG;
     int row_end;
-    if constexpr (ExcessSgs) {
+    if constexpr (ExcessSGs) {
       // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
-      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSg anyway
-      row_end = detail::round_up_to_multiple(N, FFTsPerSg);
+      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSG anyway
+      row_end = detail::round_up_to_multiple(N, FFTsPerSG);
     } else {
       row_end = N;
     }
 
-    if constexpr (ExcessWis) {
+    if constexpr (ExcessWIs) {
       // also allow these work-items to enter the loop, without making other work-items do another loop.
-      row_end += (fft_in_subgroup == FFTsPerSg) ? 1 : 0;
+      row_end += (fft_in_subgroup == FFTsPerSG) ? 1 : 0;
     }
 
     for (int row = row_begin; row < row_end; row += row_step) {
       bool working = true;
-      if constexpr (ExcessSgs) {
+      if constexpr (ExcessSGs) {
         working = row < N;
       }
-      if constexpr (ExcessWis) {
+      if constexpr (ExcessWIs) {
         working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
