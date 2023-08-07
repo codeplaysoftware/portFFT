@@ -38,11 +38,11 @@ namespace portfft {
  * @return constexpr std::size_t the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
 constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
-  constexpr std::size_t bank_line_size = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
-  if (row_size % bank_line_size == 0) {
-    return row_size / bank_line_size;
+  constexpr std::size_t BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
+  if (row_size % BankLineSize == 0) {
+    return row_size / BankLineSize;
   }
-  // There is room for improvement here. E.G if row_size was half of bank_line_size then maybe you would still want 1
+  // There is room for improvement here. E.G if row_size was half of BankLineSize then maybe you would still want 1
   // pad every bank group.
   return 0;
 }
@@ -68,62 +68,62 @@ template <direction Dir, int FFTSize, int N, int M, int SubgroupSize, std::size_
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor) {
   // the number of work-items involved in every row subgroup fft
-  constexpr int fact_sg_N = detail::factorize_sg(N, SubgroupSize);
+  constexpr int FactSgN = detail::factorize_sg(N, SubgroupSize);
   // the number of values held in by a work-item in a row subgroup dft
-  constexpr int fact_wi_N = N / fact_sg_N;
+  constexpr int FactWiN = N / FactSgN;
   // the number of work-items involved in every column subgroup fft
-  constexpr int fact_sg_M = detail::factorize_sg(M, SubgroupSize);
+  constexpr int FactSgM = detail::factorize_sg(M, SubgroupSize);
   // the number of values held in by a work-item in a column subgroup dft
-  constexpr int fact_wi_M = M / fact_sg_M;
+  constexpr int FactWiM = M / FactSgM;
 
-  constexpr int private_mem_size = fact_wi_M > fact_wi_N ? 2 * fact_wi_M : 2 * fact_wi_N;
-  T priv[private_mem_size];
+  constexpr int PrivateMemSize = FactWiN > FactWiM ? 2 * FactWiN : 2 * FactWiM;
+  T priv[PrivateMemSize];
   const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
 
   sycl::sub_group sg = it.get_sub_group();
   {  // column ffts
-    constexpr int ffts_per_sg = SubgroupSize / fact_sg_N;
-    constexpr bool excess_sgs = M % ffts_per_sg > 0;
-    constexpr bool excess_wis = SubgroupSize % fact_sg_N > 0;
+    constexpr int FFTsPerSg = SubgroupSize / FactSgN;
+    constexpr bool ExcessSgs = M % FFTsPerSg > 0;
+    constexpr bool ExcessWis = SubgroupSize % FactSgN > 0;
 
     // only needed when there are excess work-items
-    constexpr std::size_t max_working_tid_in_sg = ffts_per_sg * fact_sg_N;
+    constexpr std::size_t MaxWorkingTidInSg = FFTsPerSg * FactSgN;
 
-    const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / fact_sg_N;
+    const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / FactSgN;
     // id of the work-item in the fft
-    const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % fact_sg_N;
+    const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % FactSgN;
 
-    const int column_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
-    const int column_step = num_sgs * ffts_per_sg;
+    const int column_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSg + fft_in_subgroup;
+    const int column_step = num_sgs * FFTsPerSg;
     int column_end;
-    if constexpr (excess_sgs) {
+    if constexpr (ExcessSgs) {
       // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
-      // it is safe to increase column_end for all work-items since they are all taking steps of ffts_per_sg anyway
-      column_end = detail::roundUpToMultiple(M, ffts_per_sg);
+      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSg anyway
+      column_end = detail::round_up_to_multiple(M, FFTsPerSg);
     } else {
       column_end = M;
     }
 
-    if constexpr (excess_wis) {
+    if constexpr (ExcessWis) {
       // also allow these work-items to enter the loop, without making other work-items do another loop.
-      column_end += (fft_in_subgroup == ffts_per_sg) ? 1 : 0;
+      column_end += (fft_in_subgroup == FFTsPerSg) ? 1 : 0;
     }
 
     for (int column = column_begin; column < column_end; column += column_step) {
       bool working = true;
-      if constexpr (excess_sgs) {
+      if constexpr (ExcessSgs) {
         working = column < M;
       }
-      if constexpr (excess_wis) {
-        working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
+      if constexpr (ExcessWis) {
+        working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
-        local2private_transposed<fact_wi_N, detail::pad::DO_PAD, BankLinesPerPad>(loc, priv, fft_local_id, column, M);
+        local2private_transposed<FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(loc, priv, fft_local_id, column, M);
       }
-      sg_dft<Dir, fact_wi_N, fact_sg_N>(priv, sg, loc_twiddles + (2 * M));
+      sg_dft<Dir, FactWiM, FactSgN>(priv, sg, loc_twiddles + (2 * M));
       if (working) {
-        private2local_transposed<fact_wi_N, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, fft_local_id, fact_sg_N,
-                                                                                  column, M);
+        private2local_transposed<FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, fft_local_id, FactSgN,
+                                                                                column, M);
       }
     }
   }
@@ -131,48 +131,48 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   sycl::group_barrier(it.get_group());
 
   {  // row ffts
-    constexpr int ffts_per_sg = SubgroupSize / fact_sg_M;
-    constexpr bool excess_sgs = M % ffts_per_sg > 0;
-    constexpr bool excess_wis = SubgroupSize % fact_sg_M > 0;
+    constexpr int FFTsPerSg = SubgroupSize / FactSgM;
+    constexpr bool ExcessSgs = M % FFTsPerSg > 0;
+    constexpr bool ExcessWis = SubgroupSize % FactSgM > 0;
 
     // only needed when there are excess work-items
-    constexpr int max_working_tid_in_sg = ffts_per_sg * fact_sg_M;
+    constexpr int MaxWorkingTidInSg = FFTsPerSg * FactSgM;
 
-    const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / fact_sg_M;
+    const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / FactSgM;
     // id of the work-item in the fft
-    const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % fact_sg_M;
+    const int fft_local_id = static_cast<int>(sg.get_local_linear_id()) % FactSgM;
 
-    const int row_begin = static_cast<int>(sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
-    const int row_step = num_sgs * ffts_per_sg;
+    const int row_begin = static_cast<int>(sg.get_group_id()) * FFTsPerSg + fft_in_subgroup;
+    const int row_step = num_sgs * FFTsPerSg;
     int row_end;
-    if constexpr (excess_sgs) {
+    if constexpr (ExcessSgs) {
       // sg_dft uses subgroup operations, so all of the subgroup must enter the loop
-      // it is safe to increase column_end for all work-items since they are all taking steps of ffts_per_sg anyway
-      row_end = detail::roundUpToMultiple(N, ffts_per_sg);
+      // it is safe to increase column_end for all work-items since they are all taking steps of FFTsPerSg anyway
+      row_end = detail::round_up_to_multiple(N, FFTsPerSg);
     } else {
       row_end = N;
     }
 
-    if constexpr (excess_wis) {
+    if constexpr (ExcessWis) {
       // also allow these work-items to enter the loop, without making other work-items do another loop.
-      row_end += (fft_in_subgroup == ffts_per_sg) ? 1 : 0;
+      row_end += (fft_in_subgroup == FFTsPerSg) ? 1 : 0;
     }
 
     for (int row = row_begin; row < row_end; row += row_step) {
       bool working = true;
-      if constexpr (excess_sgs) {
+      if constexpr (ExcessSgs) {
         working = row < N;
       }
-      if constexpr (excess_wis) {
-        working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
+      if constexpr (ExcessWis) {
+        working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
-        local2private<2 * fact_wi_M, detail::pad::DO_PAD, BankLinesPerPad>(
-            loc, priv, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(2 * fact_wi_M),
+        local2private<2 * FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(
+            loc, priv, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(2 * FactWiM),
             static_cast<std::size_t>(2 * M * row));
       }
-      detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
-        int element = fft_local_id * fact_wi_M + i;
+      detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
+        int element = fft_local_id * FactWiM + i;
         int twiddle_index = M * row + element;
         sycl::vec<T, 2> twiddles = reinterpret_cast<const sycl::vec<T, 2>*>(wg_twiddles)[twiddle_index];
         T twiddle_real = twiddles[0];
@@ -185,15 +185,15 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
       });
 
-      sg_dft<Dir, fact_wi_M, fact_sg_M>(priv, sg, loc_twiddles);
-      detail::unrolled_loop<0, fact_wi_M, 1>([&](const int i) __attribute__((always_inline)) {
+      sg_dft<Dir, FactWiM, FactSgM>(priv, sg, loc_twiddles);
+      detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
         priv[2 * i] *= scaling_factor;
         priv[2 * i + 1] *= scaling_factor;
       });
 
       if (working) {
-        store_transposed<2 * fact_wi_M, detail::pad::DO_PAD, BankLinesPerPad>(
-            priv, loc, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(fact_sg_M),
+        store_transposed<2 * FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(
+            priv, loc, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(FactSgM),
             static_cast<std::size_t>(2 * M * row));
       }
     }

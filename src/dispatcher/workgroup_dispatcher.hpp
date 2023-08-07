@@ -99,6 +99,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
         if (offset + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         }
+        return n_transforms - offset / (2 * FFTSize);
       }();
       // Load in a transposed manner, similar to subgroup impl.
       global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * offset, FFTSize,
@@ -217,9 +218,10 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     // working memory + twiddles for subgroup impl for the two sizes
     if (TransposeIn == detail::transpose::TRANSPOSED) {
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
-      return detail::pad_local(2 * fft_size * num_batches_in_local_mem, bank_groups_per_pad_wg(2*sizeof(Scalar)*M)) + 2 * (m + n);
+      return detail::pad_local(2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad_wg(2 * sizeof(Scalar) * m)) +
+             2 * (m + n);
     }
-    return detail::pad_local(2 * fft_size, bank_groups_per_pad_wg(2*sizeof(Scalar)*M)) + 2 * (m + n);
+    return detail::pad_local(2 * fft_size, bank_lines_per_pad_wg(2 * sizeof(Scalar) * m)) + 2 * (m + n);
   }
 };
 

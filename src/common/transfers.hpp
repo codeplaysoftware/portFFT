@@ -130,7 +130,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
         sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(
             local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
         local[local_idx] = loaded[j];
@@ -155,7 +155,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       local[local_idx] = loaded[j];
     });
@@ -240,7 +240,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
         to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(
             local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
         to_store[j] = local[local_idx];
@@ -265,7 +265,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   // Each workitem stores a chunk of `ChunkSize` consecutive elements. Chunks stored by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       to_store[j] = local[local_idx];
     });
@@ -325,12 +325,12 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+template <int NumElementsPerWi, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElementsPerWi, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num), BankLinesPerPad);
+        static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWi + i) + 2 * col_num), BankLinesPerPad);
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -421,7 +421,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num), BankLinesPerPad);
+        static_cast<size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
