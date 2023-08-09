@@ -35,12 +35,12 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-set(SYCLFFT_UNIT_TESTS
+set(PORTFFT_UNIT_TESTS
     fft_float.cpp
     transfers.cpp
 )
-if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
-    list(APPEND SYCLFFT_UNIT_TESTS
+if(PORTFFT_ENABLE_DOUBLE_BUILDS)
+    list(APPEND PORTFFT_UNIT_TESTS
         fft_double.cpp
     )
 endif()
@@ -68,7 +68,7 @@ add_custom_target(test_reference_data_data
     DEPENDS ${TEST_REFERENCE_DATA_DATA_FILES})
 
 include(GoogleTest)
-foreach(UNIT_TEST_FILE ${SYCLFFT_UNIT_TESTS})
+foreach(UNIT_TEST_FILE ${PORTFFT_UNIT_TESTS})
     get_filename_component(FILE_NAME ${UNIT_TEST_FILE} NAME_WE)
     set(TEST_TARGET "test_${FILE_NAME}")
     add_executable(

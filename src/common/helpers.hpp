@@ -51,7 +51,7 @@ void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
  * @return rounded-up quotient
  */
 template <typename T>
-inline T divideCeil(T dividend, T divisor) {
+inline T divide_ceil(T dividend, T divisor) {
   return (dividend + divisor - 1) / divisor;
 }
 
@@ -63,8 +63,8 @@ inline T divideCeil(T dividend, T divisor) {
  * @return rounded-up value
  */
 template <typename T>
-inline T roundUpToMultiple(T value, T factor) {
-  return divideCeil(value, factor) * factor;
+inline T round_up_to_multiple(T value, T factor) {
+  return divide_ceil(value, factor) * factor;
 }
 
 /**
@@ -93,19 +93,39 @@ inline auto get_local_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
-template <typename T, typename T_src>
-T* get_access(T_src* ptr, sycl::handler&) {
+template <typename T, typename TSrc>
+T* get_access(TSrc* ptr, sycl::handler&) {
   return reinterpret_cast<T*>(ptr);
 }
 
-template <typename T, typename T_src, std::enable_if_t<std::is_const<T>::value>* = nullptr>
-auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh) {
+template <typename T, typename TSrc, std::enable_if_t<std::is_const<T>::value>* = nullptr>
+auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::read>(cgh);
 }
 
-template <typename T, typename T_src, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
-auto get_access(const sycl::buffer<T_src, 1>& buf, sycl::handler& cgh) {
+template <typename T, typename TSrc, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
+auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
+}
+
+/**
+ * Generic pointwise multiplication function, which multiplies inplace with values from another array.
+ *
+ * @tparam T Type of scalar
+ *
+ * @param priv array which will be multiplied
+ * @param scales values with which it will be multiplied with
+ * @param priv_index Index for private array
+ * @param scale_index index for the array which will hold multiplicative values
+ */
+template <typename T>
+__attribute__((always_inline)) inline void pointwise_multiply(T* priv, const T* scales, std::size_t priv_index,
+                                                              std::size_t scale_index) {
+  using T_vec = sycl::vec<T, 2>;  // Assmuing complex inputs for now
+  const T_vec complex_scale_value = reinterpret_cast<const T_vec*>(scales)[scale_index];
+  T tmp_real = priv[priv_index];
+  priv[priv_index] = tmp_real * complex_scale_value[0] - priv[priv_index + 1] * complex_scale_value[1];
+  priv[priv_index + 1] = tmp_real * complex_scale_value[1] + priv[priv_index + 1] * complex_scale_value[0];
 }
 
 };  // namespace portfft::detail

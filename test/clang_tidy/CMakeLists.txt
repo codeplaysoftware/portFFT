@@ -23,36 +23,26 @@
 # *
 # **************************************************************************/
 
+# Clang-tidy needs to have a compilation data-base to work on, so we
+# need a dummy project.
+add_executable(clang_tidy_dummy clang_tidy_dummy.cpp)
+add_sycl_to_target(TARGET clang_tidy_dummy)
+target_link_libraries(
+    clang_tidy_dummy
+    PRIVATE
+    portfft
+    portfft_warnings
+)
 
-include_guard()
-
-# Try to find a DPC++ release
-# (reqrs source /opt/intel/oneapi/compilers/2023.1.0/env/vars.sh)
-find_package(IntelSYCL QUIET)
-if(IntelSYCL_FOUND)
-    function(add_sycl_to_target)
-    set(options)
-    set(one_value_args TARGET)
-    cmake_parse_arguments(ARG
-      "${options}"
-      "${one_value_args}"
-      "${multi_value_args}"
-      ${ARGN}
-    )
-    set(COMPILE_FLAGS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda")
-    target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
-    endfunction()
+# setup clang-tidy command from executable + options
+get_filename_component(CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+set(CLANG_TIDY_COMMAND "${CXX_COMPILER_DIR}/../bin-llvm/clang-tidy;--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+if(PORTFFT_CLANG_TIDY_AUTOFIX)
+    list(APPEND CLANG_TIDY_COMMAND "--fix")
 endif()
 
-# Try to find DPC++ (nightly or manually set compiler path)
-if(NOT IntelSYCL_FOUND)
-    find_package(DPCPP QUIET)
-endif()
+message(STATUS "Clang-tidy command: ${CLANG_TIDY_COMMAND}")
 
-if(NOT IntelSYCL_FOUND AND NOT DPCPP_FOUND)
-  # Display warnings
-  find_package(IntelSYCL)
-  find_package(DPCPP)
-  message(FATAL_ERROR "No SYCL implementation found")
-endif()
+# set CXX_CLANG_TIDY property after defining the target
+set_target_properties(clang_tidy_dummy PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_COMMAND}")
+

@@ -45,9 +45,9 @@ struct twiddle {{
   // workitem on current GPUs
 
   // clang-format off
-static constexpr T re[{size}][{size}] = {{ {real_forward} }};
+static constexpr T Re[{size}][{size}] = {{ {real_forward} }};
 
-static constexpr T im[{size}][{size}] = {{ {imag_forward} }};
+static constexpr T Im[{size}][{size}] = {{ {imag_forward} }};
   // clang-format on
 }};
 }}  // namespace portfft::detail

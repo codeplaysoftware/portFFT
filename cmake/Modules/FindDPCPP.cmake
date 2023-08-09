@@ -45,8 +45,8 @@ if(DPCPP_FOUND AND NOT TARGET DPCPP::DPCPP)
   set(CMAKE_CXX_STANDARD 17)
   add_library(DPCPP::DPCPP INTERFACE IMPORTED)
   set_target_properties(DPCPP::DPCPP PROPERTIES
-    INTERFACE_COMPILE_OPTIONS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
-    INTERFACE_LINK_OPTIONS "-fsycl;-fsycl-targets=${SYCLFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
+    INTERFACE_COMPILE_OPTIONS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
+    INTERFACE_LINK_OPTIONS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
     INTERFACE_LINK_LIBRARIES ${DPCPP_LIB}
     INTERFACE_INCLUDE_DIRECTORIES "${DPCPP_BIN_DIR}/../include/sycl;${DPCPP_BIN_DIR}/../include")
 endif()

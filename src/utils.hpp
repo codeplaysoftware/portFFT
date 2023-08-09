@@ -38,13 +38,14 @@ namespace detail {
 template <
     template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, int, int>
     class Kernel,
-    typename Scalar, domain Domain, int SubgroupSize, int kernel_id = 0>
-void get_ids(std::vector<sycl::kernel_id>& ids) {
+    typename Scalar, domain Domain, int SubgroupSize, int KernelID = 0>
+std::vector<sycl::kernel_id> get_ids() {
+  std::vector<sycl::kernel_id> ids;
 // if not used, some kernels might be optimized away in AOT compilation and not available here
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_CALLBACK, STORE_CALLBACK)        \
   try {                                                                                                      \
     ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, \
-                                             LOAD_CALLBACK, STORE_CALLBACK, SubgroupSize, kernel_id>>());    \
+                                             LOAD_CALLBACK, STORE_CALLBACK, SubgroupSize, KernelID>>());     \
   } catch (...) {                                                                                            \
   }
   // TODO: A better way to do this instead of a long list of all possibilities
@@ -100,6 +101,7 @@ void get_ids(std::vector<sycl::kernel_id>& ids) {
   PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, true, true)
 #undef PORTFFT_GET_ID
   // clang-format on
+  return ids;
 }
 
 template <int kernel_id, typename F, typename G>
@@ -122,7 +124,7 @@ struct factorize_input_struct {
 
 template <typename F, typename G>
 struct factorize_input_struct<64, F, G> {
-  static void execute(std::size_t, F, G) { return; }
+  static void execute(std::size_t, F, G) {}
 };
 
 }  // namespace detail

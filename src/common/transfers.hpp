@@ -29,8 +29,8 @@
 #define PORTFFT_N_LOCAL_BANKS 32
 #endif
 
-static_assert((PORTFFT_TARGET_WI_LOAD & (PORTFFT_TARGET_WI_LOAD - 1)) == 0,
-              "PORTFFT_TARGET_WI_LOAD should be a power of 2!");
+static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
+              "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
 
 namespace portfft {
 
@@ -56,62 +56,51 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
   return local_idx;
 }
 
-/**
- * Implements subgroup level matrix transpose
- *
- * @tparam T
- * @tparam SubgroupSize
- *
- * @param N Number of rows, also number of threads in subgroup participating in shuffle. Should not exceed subgroup
- * size.
- * @param M Number of columns, also equivalent to the number of elements per thread. Should be less than N
- */
-template <typename T, int SubgroupSize>
-__attribute__((always_inline)) inline void subgroup_transpose(int N, int M, T* priv, sycl::sub_group sg) {
-  // TODO: Try to reduce the number of modulo operations as they have high latency.
-  //  This ideally should be done by the compiler after obtaining the spec constant values N and M when they are a power
-  //  of 2. Also, specialize for square matrices
-  T scratch_array[SubgroupSize];
-  int id_of_thread_in_matrix = sg.get_local_linear_id() % N;
-  int current_lane = sg.get_local_linear_id() % SubgroupSize;
-  int matrix_start_lane = (sg.get_local_linear_id() - id_of_thread_in_matrix) % SubgroupSize;
-  int lane_id_relative_to_start = id_of_thread_in_matrix % N;  // view as if subgroup size is N
+template <int SubgroupSize, typename T>
+__attribute__((always_inline)) inline void subgroup_transpose(T* priv, int threads_per_matrix,
+                                                              int num_complex_per_thread, sycl::sub_group sg) {
+  T scratch[2 * SubgroupSize];
 
-  for (int idx = 0; idx < M; idx++) {
-    int absolute_target_lane =
-        ((lane_id_relative_to_start + idx) % M) * (N / M) + (lane_id_relative_to_start / M) + matrix_start_lane;
-    int relative_target_address = ((M - idx) + (current_lane / (N / M))) % M;
-    int store_address = (current_lane + idx) % M;
-    T& real_value = priv[relative_target_address];
-    T& complex_value = priv[relative_target_address + 1];
-    scratch_array[store_address] = sycl::select_from_group(sg, real_value, absolute_target_lane);
-    scratch_array[store_address + 1] = sycl::select_from_group(sg, complex_value, absolute_target_lane);
+  int current_lane = static_cast<int>(sg.get_local_linear_id());
+  int id_of_thread_in_matrix = static_cast<int>(sg.get_local_linear_id()) % threads_per_matrix;
+  int matrix_start_lane = current_lane - id_of_thread_in_matrix;
+  int lane_id_relative_to_batch = id_of_thread_in_matrix % threads_per_matrix;
+
+  for (int i = 0; i < num_complex_per_thread; i++) {
+    int target_lane_id =
+        ((lane_id_relative_to_batch + i) % num_complex_per_thread) * (threads_per_matrix / num_complex_per_thread) +
+        (lane_id_relative_to_batch / num_complex_per_thread) + matrix_start_lane;
+    int target_address =
+        ((num_complex_per_thread - i) + (current_lane / (threads_per_matrix / num_complex_per_thread))) %
+        num_complex_per_thread;
+    int store_address = (current_lane + i) % i;
+    T& real_value = priv[target_address];
+    T& complex_value = priv[target_address + 1];
+    scratch[store_address] = sycl::select_from_group(sg, real_value, target_lane_id);
+    scratch[store_address + 1] = sycl::select_from_group(sg, complex_value, target_lane_id);
   }
-  sycl::group_barrier(sg);
-
-  for (int i = 0; i < 2 * M; i++) {
-    priv[i] = scratch_array[i];
+  for (int i = 0; i < 2 * num_complex_per_thread; i++) {
+    priv[i] = scratch[i];
   }
 }
 
-template <std::size_t SubgroupSize, typename T>
-__attribute__((always_inline)) inline void generic_transpose(std::size_t N, std::size_t M, T* input, T* output,
-                                                             const sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
+template <typename T>
+__attribute__((always_inline)) inline void generic_transpose(std::size_t N, std::size_t M, std::size_t tile_size,
+                                                             T* input, T* output, const sycl::local_accessor<T, 2>& loc,
+                                                             sycl::nd_item<2> it) {
   using T_vec = sycl::vec<T, 2>;
-  std::size_t rounded_up_N = detail::roundUpToMultiple(N, SubgroupSize);
-  std::size_t rounded_up_M = detail::roundUpToMultiple(M, SubgroupSize);
+  std::size_t rounded_up_N = round_up_to_multiple(N, tile_size);
+  std::size_t rounded_up_M = round_up_to_multiple(M, tile_size);
   for (std::size_t tile_y = it.get_group(1); tile_y < rounded_up_N; tile_y += it.get_group_range(1)) {
     for (std::size_t tile_x = it.get_group(0); tile_x < rounded_up_M; tile_x += it.get_group_range(0)) {
-      std::size_t tile_id_y = tile_y * SubgroupSize;
-      std::size_t tile_id_x = tile_x * SubgroupSize;
+      std::size_t tile_id_y = tile_y * tile_size;
+      std::size_t tile_id_x = tile_x * tile_size;
 
       std::size_t i = tile_id_y + it.get_local_id(1);
       std::size_t j = tile_id_x + it.get_local_id(0);
 
       if (i < N && j < M) {
-        // TODO: This should be a vector read
-        loc[it.get_local_id(0)][it.get_local_id(1)] = input[i * M + j];
-        loc[it.get_local_id(0)][it.get_local_id(1) + 1] = input[i * M + j + 1];
+        reinterpret_cast<T_vec*>(&loc[it.get_local_id(0)])[2 * it.get_local_id(1)] = input[i * M + 2 * j];
       }
       sycl::group_barrier(it.get_group());
 
@@ -119,8 +108,8 @@ __attribute__((always_inline)) inline void generic_transpose(std::size_t N, std:
       std::size_t j_transposed = tile_id_y + it.get_local_id(0);
 
       if (j_transposed < N && i_transposed < M) {
-        output[i_transposed * N + j_transposed] = loc[it.get_local_id(1)][it.get_local_id(0)];
-        output[i_transposed * N + j_transposed + 1] = loc[it.get_local_id(1)][it.get_local_id(0) + 1];
+        reinterpret_cast<T_vec*>(output)[i_transposed * N + 2 * j_transposed] =
+            reinterpret_cast<T_vec*>(&loc[it.get_local_id(1)])[2 * it.get_local_id(0)];
       }
       sycl::group_barrier(it.get_group());  // TODO: This barrier should not required, use double buffering
     }
@@ -150,9 +139,9 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
                                                         std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
-  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  using T_vec = sycl::vec<T, chunk_size>;
+  constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
+  constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
+  using T_vec = sycl::vec<T, ChunkSize>;
 
   sycl::sub_group sg = it.get_sub_group();
   std::size_t local_id;
@@ -165,13 +154,13 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     local_size = it.get_local_range(0);
   }
 
-  std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
+  std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
+    std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -179,19 +168,19 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
     local_size = SubgroupSize;
-    stride = local_size * chunk_size;
+    stride = local_size * ChunkSize;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup loads a chunk of `chunk_size * local_size` elements.
+  // Each subgroup loads a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec loaded = sg.load<chunk_size>(detail::get_global_multi_ptr(&global[global_offset + i]));
+    T_vec loaded = sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset + i]));
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         local[local_idx] = loaded[j];
@@ -201,7 +190,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 #else
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(
-      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+      detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // load the first few unaligned elements
@@ -212,17 +201,17 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
 
-  // Each workitem loads a chunk of `chunk_size` consecutive elements. Chunks loaded by a group are consecutive.
-  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+  // Each workitem loads a chunk of `ChunkSize` consecutive elements. Chunks loaded by a group are consecutive.
+  for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j));
       local[local_idx] = loaded[j];
     });
   }
 #endif
-  // We can not load `chunk_size`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
+  // We can not load `ChunkSize`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (std::size_t j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
@@ -258,9 +247,9 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
                                                         std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
-  constexpr int chunk_size_raw = PORTFFT_TARGET_WI_LOAD / sizeof(T);
-  constexpr int chunk_size = chunk_size_raw < 1 ? 1 : chunk_size_raw;
-  using T_vec = sycl::vec<T, chunk_size>;
+  constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
+  constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
+  using T_vec = sycl::vec<T, ChunkSize>;
 
   sycl::sub_group sg = it.get_sub_group();
   std::size_t local_size;
@@ -273,13 +262,13 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     local_size = it.get_local_range(0);
   }
 
-  std::size_t stride = local_size * static_cast<std::size_t>(chunk_size);
+  std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
   std::size_t rounded_down_num_elems = (total_num_elems / stride) * stride;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
     std::size_t subgroup_id = sg.get_group_id();
-    std::size_t elems_per_sg = detail::divideCeil<std::size_t>(total_num_elems, local_size / SubgroupSize);
+    std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
@@ -287,19 +276,19 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
     local_id = sg.get_local_linear_id();
     local_size = SubgroupSize;
-    stride = local_size * static_cast<std::size_t>(chunk_size);
+    stride = local_size * static_cast<std::size_t>(ChunkSize);
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
-  // Each subgroup stores a chunk of `chunk_size * local_size` elements.
+  // Each subgroup stores a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size);
         to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
-      detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size + local_id);
         to_store[j] = local[local_idx];
@@ -310,7 +299,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 #else
   const T* global_ptr = &global[global_offset];
   const T* global_aligned_ptr = reinterpret_cast<const T*>(
-      detail::roundUpToMultiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
+      detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(T_vec)));
   std::size_t unaligned_elements = static_cast<std::size_t>(global_aligned_ptr - global_ptr);
 
   // store the first few unaligned elements
@@ -321,17 +310,17 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
 
-  // Each workitem stores a chunk of `chunk_size` consecutive elements. Chunks stored by a group are consecutive.
-  for (std::size_t i = local_id * chunk_size; i < rounded_down_num_elems; i += stride) {
+  // Each workitem stores a chunk of `ChunkSize` consecutive elements. Chunks stored by a group are consecutive.
+  for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    detail::unrolled_loop<0, chunk_size, 1>([&](int j) __attribute__((always_inline)) {
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j));
       to_store[j] = local[local_idx];
     });
     to_store.store(0, detail::get_global_multi_ptr(&global[global_offset + i]));
   }
 #endif
-  // We can not store `chunk_size`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
+  // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (std::size_t j = 0; j < last_chunk_size; j++) {
     std::size_t local_idx =
@@ -372,7 +361,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
 /**
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
- * @tparam num_elements_per_wi Elements per workitem
+ * @tparam NumElementsPerWI Elements per workitem
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -382,12 +371,12 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
-  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
-    std::size_t local_idx = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2 * stride * (thread_id * num_elements_per_wi + i) + 2 * col_num));
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
+    std::size_t local_idx =
+        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num));
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -457,9 +446,46 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
 }
 
 /**
+ * Stores data to global memory where consecutive elements of a problem are separated by stride.
+ * Stores half of workgroup size equivalent number of consecutive batches to global memory.
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ *
+ * @param it Associated nd_item
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad Pad, detail::level Level, typename T>
+__attribute__((always_inline)) inline void local_transposed2_global_transposed(sycl::nd_item<1> it, T* global_base_ptr,
+                                                                               T* local_ptr, std::size_t offset,
+                                                                               std::size_t num_complex,
+                                                                               std::size_t stride_global,
+                                                                               std::size_t stride_local) {
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+  } else {
+    local_id = it.get_local_id(0);
+  }
+  for (std::size_t i = 0; i < num_complex; i++) {
+    std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id);
+    std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    global_base_ptr[global_index] = local_ptr[local_index];
+  }
+}
+
+/**
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
- * @tparam num_elements_per_wi num_elements_per_wi Elements per workitem
+ * @tparam NumElementsPerWI Elements per workitem
  * @tparam Pad Whether data in the local memory is padded or not
  * @tparam T type of the scalar used for computations
  *
@@ -470,12 +496,12 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int num_elements_per_wi, detail::pad Pad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
-  detail::unrolled_loop<0, num_elements_per_wi, 1>([&](const int i) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset =
-        detail::pad_local<Pad>(static_cast<std::size_t>(2 * stride * (i * num_workers + thread_id) + 2 * col_num));
+        detail::pad_local<Pad>(static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num));
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -521,9 +547,10 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
 template <int NumElemsPerWI, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
                                                             std::size_t workers_in_group,
+                                                            std::size_t destination_stride,
                                                             std::size_t destination_offset = 0) {
-  constexpr int vec_size = 2;  // each workitem stores 2 consecutive values (= one complex value)
-  using T_vec = sycl::vec<T, vec_size>;
+  constexpr int VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
+  using T_vec = sycl::vec<T, VecSize>;
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
   T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
@@ -538,44 +565,6 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
     }
   });
 }
-
-template <typename T, int SubgroupSize>
-__attribute__((always_inline)) inline void subgroup_transpose_driver(T* input, T* output, int rows, int columns,
-                                                                     std::size_t batch, std::size_t batch_stride,
-                                                                     std::size_t sub_batch,
-                                                                     std::size_t sub_batch_stride,
-                                                                     sycl::nd_item<1> it) {
-  using T_vec = sycl::vec<T, 2>;
-  std::size_t num_sgs_in_wg = it.get_local_range(0) / SubgroupSize;
-  std::size_t num_sgs_in_kernel = it.get_global_range(0) * num_sgs_in_wg;
-  std::size_t sg_id_in_kernel =
-      it.get_local_id(0) * num_sgs_in_wg + it.get_local_linear_id() / static_cast<std::size_t>(SubgroupSize);
-  std::size_t num_sub_batches_in_sg = SubgroupSize / rows;
-  std::size_t rounded_up_n_batches = detail::roundUpToMultiple(batch * sub_batch, num_sub_batches_in_sg);
-  sycl::sub_group sg = it.get_sub_group();
-
-  T priv[SubgroupSize];
-
-  for (std::size_t num_subgroup = sg_id_in_kernel; num_subgroup < rounded_up_n_batches;
-       num_subgroup += num_sgs_in_kernel * num_sub_batches_in_sg) {
-    // Directly read into private memory, as reads will be coalesced.
-    std::size_t batch_id = (num_subgroup / sub_batch) % batch;
-    std::size_t sub_batch_id = (num_subgroup % sub_batch) + sg.get_local_linear_id() / rows;
-    std::size_t id_of_thread_in_matrix = sg.get_local_linear_id() % rows;
-    bool working = sg.get_local_linear_id() < (rows * num_sub_batches_in_sg);
-    for (std::size_t i = 0; i < columns; i++) {
-      reinterpret_cast<T_vec*>(priv)[i] = reinterpret_cast<T_vec*>(
-          input)[batch_id * batch_stride + sub_batch_id * sub_batch_stride + id_of_thread_in_matrix * columns + i];
-    }
-    detail::subgroup_transpose<SubgroupSize>(rows, columns, priv, sg);
-    for (std::size_t i = 0; i < columns; i++) {
-      reinterpret_cast<T_vec*>(
-          output)[batch_id * batch_stride + sub_batch_id * sub_batch_stride + id_of_thread_in_matrix * columns + i] =
-          reinterpret_cast<T_vec*>(priv)[i];
-    }
-  }
-}
-
 };  // namespace portfft
 
 #endif
