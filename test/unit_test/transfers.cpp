@@ -34,10 +34,10 @@ constexpr ftype sentinel_b = -888;
 constexpr ftype sentinel_loc1 = -777;
 constexpr ftype sentinel_loc2 = -666;
 
-template <portfft::detail::pad Pad>
+template <portfft::detail::pad Pad, std::size_t BankGroupsPerPad>
 class test_transfers_kernel;
 
-template <portfft::detail::pad Pad>
+template <portfft::detail::pad Pad, std::size_t BankGroupsPerPad>
 void test() {
   std::vector<ftype> a, b;
   a.resize(N * wg_size);
@@ -62,42 +62,45 @@ void test() {
   q.fill(b_dev, sentinel_b, N * wg_size + 2 * N_sentinel_values);
   q.wait();
 
-  std::size_t padded_local_size = portfft::detail::pad_local<Pad>(N * wg_size);
+  std::size_t padded_local_size = portfft::detail::pad_local<Pad>(N * wg_size, BankGroupsPerPad);
 
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
     sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2 * N_sentinel_values, h);
-    h.parallel_for<test_transfers_kernel<Pad>>(sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
-      std::size_t local_id = it.get_group().get_local_linear_id();
+    h.parallel_for<test_transfers_kernel<Pad, BankGroupsPerPad>>(
+        sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
+          std::size_t local_id = it.get_group().get_local_linear_id();
 
-      ftype priv[N];
-      ftype* loc1_work = &loc1[N_sentinel_values];
-      ftype* loc2_work = &loc2[N_sentinel_values];
-      if (local_id == 0) {
-        for (std::size_t i = 0; i < padded_local_size + 2 * N_sentinel_values; i++) {
-          loc1[i] = sentinel_loc1;
-          loc2[i] = sentinel_loc2;
-        }
-      }
-      group_barrier(it.get_group());
-      portfft::global2local<Pad, detail::level::WORKGROUP, sg_size>(it, a_dev_work, loc1_work, N * wg_size);
-      group_barrier(it.get_group());
-      portfft::local2private<N, Pad>(loc1_work, priv, local_id, N);
-      portfft::private2local<N, Pad>(priv, loc2_work, local_id, N);
-      group_barrier(it.get_group());
-      portfft::local2global<Pad, detail::level::WORKGROUP, sg_size>(it, loc2_work, b_dev_work, N * wg_size);
-      group_barrier(it.get_group());
-      if (local_id == 0) {
-        for (std::size_t i = 0; i < N_sentinel_values; i++) {
-          sentinels_loc1_dev[i] = loc1[i];
-          sentinels_loc2_dev[i] = loc2[i];
-        }
-        for (std::size_t i = 0; i < N_sentinel_values; i++) {
-          sentinels_loc1_dev[N_sentinel_values + i] = loc1[padded_local_size + N_sentinel_values + i];
-          sentinels_loc2_dev[N_sentinel_values + i] = loc2[padded_local_size + N_sentinel_values + i];
-        }
-      }
-    });
+          ftype priv[N];
+          ftype* loc1_work = &loc1[N_sentinel_values];
+          ftype* loc2_work = &loc2[N_sentinel_values];
+          if (local_id == 0) {
+            for (std::size_t i = 0; i < padded_local_size + 2 * N_sentinel_values; i++) {
+              loc1[i] = sentinel_loc1;
+              loc2[i] = sentinel_loc2;
+            }
+          }
+          group_barrier(it.get_group());
+          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, a_dev_work, loc1_work,
+                                                                                          N * wg_size);
+          group_barrier(it.get_group());
+          portfft::local2private<N, Pad, BankGroupsPerPad>(loc1_work, priv, local_id, N);
+          portfft::private2local<N, Pad, BankGroupsPerPad>(priv, loc2_work, local_id, N);
+          group_barrier(it.get_group());
+          portfft::local2global<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, loc2_work, b_dev_work,
+                                                                                          N * wg_size);
+          group_barrier(it.get_group());
+          if (local_id == 0) {
+            for (std::size_t i = 0; i < N_sentinel_values; i++) {
+              sentinels_loc1_dev[i] = loc1[i];
+              sentinels_loc2_dev[i] = loc2[i];
+            }
+            for (std::size_t i = 0; i < N_sentinel_values; i++) {
+              sentinels_loc1_dev[N_sentinel_values + i] = loc1[padded_local_size + N_sentinel_values + i];
+              sentinels_loc2_dev[N_sentinel_values + i] = loc2[padded_local_size + N_sentinel_values + i];
+            }
+          }
+        });
   });
 
   q.wait();
@@ -128,6 +131,8 @@ void test() {
   sycl::free(sentinels_loc2_dev, q);
 }
 
-TEST(transfers, unpadded) { test<portfft::detail::pad::DONT_PAD>(); }
+TEST(transfers, unpadded) { test<portfft::detail::pad::DONT_PAD, 0>(); }
 
-TEST(transfers, padded) { test<portfft::detail::pad::DO_PAD>(); }
+TEST(transfers, padded1) { test<portfft::detail::pad::DO_PAD, 1>(); }
+TEST(transfers, padded3) { test<portfft::detail::pad::DO_PAD, 3>(); }
+TEST(transfers, padded4) { test<portfft::detail::pad::DO_PAD, 4>(); }
