@@ -111,7 +111,6 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       }
     };
 
-    // Debatable use of pinned memory
     auto memory_for_twiddles = calc_total_mem_for_twiddles();
     Scalar* host_twiddles_ptr = sycl::malloc_host<Scalar>(memory_for_twiddles, desc.queue);
     Scalar* device_twiddles_ptr = sycl::malloc_device<Scalar>(memory_for_twiddles, desc.queue);
@@ -239,7 +238,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
           throw std::logic_error("Invalid factor level");
       }
     };
-    if (desc.factors.empty()) {
+    if (desc.local_mem_per_factor.empty()) {
       bool transposed = true;
       for (std::size_t i = 0; i < desc.factors.size(); i++) {
         if (i == desc.factors.size() - 1) {
@@ -249,17 +248,20 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
         detail::level Level = desc.levels[i];
         desc.local_mem_per_factor.push_back(get_local_mem_usage_per_level(desc, factor, Level, transposed));
       }
-      return 0;
-      // For now, just let this reside here, refactor later
       int index = 0;
       desc.launch_configurations.clear();
       for (detail::level Level : desc.levels) {
         std::size_t fft_size = desc.factors[index];
         std::size_t batch_size =
             std::accumulate(desc.factors.begin() + index, desc.factors.end(), 1, std::multiplies<std::size_t>());
+        if (index == desc.factors.size() - 1) {
+          batch_size = desc.factors[index - 1];
+        }
         desc.launch_configurations.push_back(
             detail::get_launch_configuration(Level, fft_size, batch_size, desc.n_compute_units, desc.used_sg_size));
+        index++;
       }
+      return 0;
     } else {
       return 0;
     }

@@ -123,6 +123,7 @@ class committed_descriptor {
   detail::level level;
   std::vector<std::size_t> factors;
   std::vector<std::size_t> sub_batches;
+  std::vector<std::size_t> inclusive_scan;
   std::vector<detail::level> levels;
   std::vector<std::size_t> local_mem_per_factor;
   std::vector<std::pair<sycl::range<1>, sycl::range<1>>> launch_configurations;
@@ -231,11 +232,13 @@ class committed_descriptor {
         if (detail::fits_in_wi<Scalar>(input_size)) {
           levels.push_back(detail::level::WORKITEM);
           ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>());
+          factors.push_back(input_size);
           return;
         }
         if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
           levels.push_back(detail::level::SUBGROUP);
           ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>());
+          factors.push_back(input_size);
           return;
         }
       };
@@ -259,9 +262,6 @@ class committed_descriptor {
       for (std::size_t i = 1; i < factors.size(); i++) {
         inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
       }
-      queue.copy(factors.data(), dev_factors.get(), factors.size()).wait();
-      queue.copy(sub_batches.data(), dev_factors.get() + factors.size(), sub_batches.size()).wait();
-      queue.copy(inclusive_scan.data(), dev_factors.get() + 2 * factors.size(), inclusive_scan.size()).wait();
       return detail::level::GLOBAL;
     }
   }
@@ -367,13 +367,13 @@ class committed_descriptor {
     // member that is initialized by this function.
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
-    set_spec_constants(input_bundles);
     level = prepare_implementation<SubgroupSize>(ids);
     for (auto kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
       }
     }
+    set_spec_constants(input_bundles);
     for (auto in_bundle : input_bundles) {
       exec_bundle.push_back(build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(in_bundle));
     }
@@ -422,6 +422,12 @@ class committed_descriptor {
                                                    sycl::free(ptr, queue);
                                                  }
                                                });
+    if (level == detail::level::GLOBAL) {
+      queue.copy(factors.data(), dev_factors.get(), factors.size());
+      queue.copy(sub_batches.data(), dev_factors.get() + factors.size(), sub_batches.size());
+      queue.copy(inclusive_scan.data(), dev_factors.get() + 2 * factors.size(), inclusive_scan.size());
+      queue.wait();
+    }
   }
 
  public:
