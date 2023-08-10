@@ -399,6 +399,13 @@ class committed_descriptor {
       throw std::runtime_error("portFFT only supports 1D FFT for now");
     }
     build_w_spec_const<PORTFFT_SUBGROUP_SIZES>();
+    if (params.forward_distance == 1 || params.backward_distance == 1) {
+      std::size_t local_memory_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+      if (local_memory_required > local_memory_size) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 "B. Required: " + std::to_string(local_memory_required) + "B.");
+      }
+    }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);

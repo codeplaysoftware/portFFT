@@ -42,10 +42,10 @@ template <
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
 // if not used, some kernels might be optimized away in AOT compilation and not available here
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_CALLBACK, STORE_CALLBACK)        \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER)        \
   try {                                                                                                      \
     ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, \
-                                             LOAD_CALLBACK, STORE_CALLBACK, SubgroupSize, KernelID>>());     \
+                                             LOAD_MODIFIER, STORE_MODIFIER, SubgroupSize, KernelID>>());     \
   } catch (...) {                                                                                            \
   }
   // TODO: A better way to do this instead of a long list of all possibilities
@@ -115,9 +115,8 @@ struct factorize_input_struct {
     if (fits_in_target_level(fact_1)) {
       select_impl.template operator()<kernel_id>(fact_1);
     } else {
-      execute(fact_1, fits_in_target_level, select_impl);
+      factorize_input_struct<kernel_id, F, G>::execute(fact_1, fits_in_target_level, select_impl);
     }
-
     factorize_input_struct<kernel_id + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
 };
