@@ -103,20 +103,22 @@ std::vector<sycl::kernel_id> get_ids() {
   // clang-format on
   return ids;
 }
-
 template <int kernel_id, typename F, typename G>
 struct factorize_input_struct {
   static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
+    std::size_t fact_1 = input_size;
     if (fits_in_target_level(input_size)) {
       select_impl.template operator()<kernel_id>(input_size);
       return;
-    }
-    std::size_t fact_1 = detail::factorize(input_size);
-    if (fits_in_target_level(fact_1)) {
-      select_impl.template operator()<kernel_id>(fact_1);
     } else {
-      factorize_input_struct<kernel_id, F, G>::execute(fact_1, fits_in_target_level, select_impl);
+      if ((detail::factorize(fact_1) == 1)) {
+        throw std::runtime_error("Large prime sized factors are not supported at the moment");
+      }
+      do {
+        fact_1 = detail::factorize(fact_1);
+      } while (!fits_in_target_level(fact_1));
     }
+    select_impl.template operator()<kernel_id>(fact_1);
     factorize_input_struct<kernel_id + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
 };
