@@ -609,56 +609,56 @@ class committed_descriptor {
 template <typename Scalar, domain Domain>
 struct descriptor {
   /**
-   * @brief The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
+   * The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
    */
   std::vector<std::size_t> lengths;
   /**
-   * @brief A scaling factor applied to the output of forward transforms. Default value is 1.
+   * A scaling factor applied to the output of forward transforms. Default value is 1.
    */
   Scalar forward_scale = 1;
   /**
-   * @brief A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
+   * A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
    * product of the lengths.
    * NB a forward transform followed by a backward transform with both forward_scale and
    * backward_scale set to 1 will result in the data being scaled by the product of the lengths.
    */
   Scalar backward_scale = 1;
   /**
-   * @brief The number of transforms or batches that will be solved with each call to compute_xxxward. Default value
+   * The number of transforms or batches that will be solved with each call to compute_xxxward. Default value
    * is 1.
    */
   std::size_t number_of_transforms = 1;
   /**
-   * @brief The data layout of complex values. Default value is complex_storage::COMPLEX. complex_storage::COMPLEX
+   * The data layout of complex values. Default value is complex_storage::COMPLEX. complex_storage::COMPLEX
    * indicates that the real and imaginary part of a complex number is contiguous i.e an Array of Structures.
    * complex_storage::REAL_REAL indicates that all the real values are contiguous and all the imaginary values are
    * contiguous i.e. a Structure of Arrays. Only complex_storage::COMPLEX is supported.
    */
   complex_storage complex_storage = complex_storage::COMPLEX;
   /**
-   * @brief Indicates if the memory address of the output pointer is the same as the input pointer. Default value is
+   * Indicates if the memory address of the output pointer is the same as the input pointer. Default value is
    * placement::OUT_OF_PLACE. When placement::OUT_OF_PLACE is used, only the out of place compute_xxxward functions can
    * be used and the memory pointed to by the input pointer and the memory pointed to by the output pointer must not
    * overlap at all. When placement::IN_PLACE is used, only the in-place compute_xxxward functions can be used.
    */
   placement placement = placement::OUT_OF_PLACE;
   /**
-   * @brief The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
+   * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
    * {number_of_transforms} is supported.
    */
   std::vector<std::size_t> forward_strides;
   /**
-   * @brief The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
+   * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
    * forward_strides.
    */
   std::vector<std::size_t> backward_strides;
   /**
-   * @brief The number of elements between the first value of each transform in the forward domain. The default value is
+   * The number of elements between the first value of each transform in the forward domain. The default value is
    * lengths[0]. Must be either 1 or lengths[0].
    */
   std::size_t forward_distance = 1;
   /**
-   * @brief The number of elements between the first value of each transform in the backward domain. The default value
+   * The number of elements between the first value of each transform in the backward domain. The default value
    * is lengths[0]. Must be either 1 or lengths[0].
    */
   std::size_t backward_distance = 1;
