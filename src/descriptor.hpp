@@ -644,7 +644,7 @@ struct descriptor {
   placement placement = placement::OUT_OF_PLACE;
   /**
    * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
-   * {number_of_transforms} is supported.
+   * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
    */
   std::vector<std::size_t> forward_strides;
   /**
@@ -654,12 +654,12 @@ struct descriptor {
   std::vector<std::size_t> backward_strides;
   /**
    * The number of elements between the first value of each transform in the forward domain. The default value is
-   * lengths[0]. Must be either 1 or lengths[0].
+   * lengths[0]. Must be either 1 or lengths[0]. Exactly one of `forward_strides` and `forward_distance` must be 1.
    */
   std::size_t forward_distance = 1;
   /**
    * The number of elements between the first value of each transform in the backward domain. The default value
-   * is lengths[0]. Must be either 1 or lengths[0].
+   * is lengths[0]. Must be the same as forward_distance.
    */
   std::size_t backward_distance = 1;
   // TODO: add TRANSPOSE, WORKSPACE and ORDERING if we determine they make sense
