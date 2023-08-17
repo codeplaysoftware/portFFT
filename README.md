@@ -7,7 +7,7 @@ portFFT is in early stages of development and will support more options and opti
 
 ## Pre-requisites
 
-* [DPC++] oneAPI release 2023.1.0
+* [DPC++] oneAPI release 2023.2.0
   * Nightly releases should work but are not tested
   * Other SYCL implementations are not tested
 * [Level Zero] drivers
@@ -23,11 +23,11 @@ portFFT is in early stages of development and will support more options and opti
 
 Clone portFFT and run the following commands from the cloned repository.
 
-Build using DPC++ 2023.1.0 as:
+Build using DPC++ 2023.2.0 as:
 
 ```shell
-source /opt/intel/oneapi/compiler/2023.1.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.1.0/linux/bin-llvm/clang -DPORTFFT_BUILD_TESTS=ON -DPORTFFT_BUILD_BENCHMARKS=ON
+source /opt/intel/oneapi/compiler/2023.2.0/env/vars.sh
+cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2023.2.0/linux/bin-llvm/clang++ -DCMAKE_C_COMPILER=/opt/intel/oneapi/compiler/2023.2.0/linux/bin-llvm/clang -DPORTFFT_BUILD_TESTS=ON -DPORTFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
