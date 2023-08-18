@@ -73,9 +73,11 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor) {
-  constexpr std::size_t NReals = 2 * N;
+  //T priv[2 * MaxFftSizeWi];
+  T temp[2 * wi_temps(MaxFftSizeWi)];
+  constexpr int NReals = 2 * N;
+  T priv[2 * NReals];
 
-  T priv[NReals];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t global_id = it.get_global_id(0);
@@ -97,18 +99,18 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
+        for (int j{0}; j < NReals; j += 2) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
-        });
+        }
       } else {
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
       }
-      wi_dft<Dir, N, 1, 1>(priv, priv);
-      unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
-        priv[i] *= scaling_factor;
-        priv[i + 1] *= scaling_factor;
-      });
+      wi_dft<Dir, 0>(N, priv, 1, priv, 1, temp);
+      for (int j{0}; j < NReals; j += 2) {
+        priv[j] *= scaling_factor;
+        priv[j + 1] *= scaling_factor;
+      }
       private2local<NReals, pad::DO_PAD, BankLinesPerPad>(priv, loc, subgroup_local_id, NReals, local_offset);
     }
     sycl::group_barrier(sg);

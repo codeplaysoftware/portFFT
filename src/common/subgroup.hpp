@@ -267,9 +267,11 @@ constexpr bool fits_in_sg(TIndex N, int sg_size) {
  * @param sg subgroup
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
+ * @param wi_private_scratch Scratch memory for this WI in WI impl.
  */
 template <direction Dir, int M, int N, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles,
+                                                  T* wi_private_scratch) {
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
   detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
@@ -290,8 +292,7 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
       }
     }
   });
-
-  wi_dft<Dir, M, 1, 1>(inout, inout);
+  wi_dft<Dir, 0>(M, inout, 1, inout, 1, wi_private_scratch);
 }
 
 /**
