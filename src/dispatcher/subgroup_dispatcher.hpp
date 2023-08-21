@@ -159,7 +159,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
               static_cast<int>(max_num_batches_local_mem));
         }
         T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
-        sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles, wi_private_scratch);
+        sg_dft<Dir>(FactorWI, FactorSG, priv, sg, loc_twiddles, wi_private_scratch);
         unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
@@ -201,7 +201,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       sycl::group_barrier(sg);
 
       T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
-      sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles, wi_private_scratch);
+      sg_dft<Dir>(FactorWI, FactorSG, priv, sg, loc_twiddles, wi_private_scratch);
       unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
