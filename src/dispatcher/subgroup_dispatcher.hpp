@@ -195,7 +195,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
       sycl::group_barrier(sg);
       if (working) {
-        local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NRealsPerWI,
+        local2private<pad::DO_PAD, BankLinesPerPad>(NRealsPerWI, loc, priv, subgroup_local_id, NRealsPerWI,
                                                                  subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(sg);

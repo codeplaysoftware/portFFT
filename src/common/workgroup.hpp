@@ -168,8 +168,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
-        local2private<2 * FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(
-            loc, priv, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(2 * FactWiM),
+        local2private<detail::pad::DO_PAD, BankLinesPerPad>(
+            2 * FactWiM, loc, priv, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(2 * FactWiM),
             static_cast<std::size_t>(2 * M * row));
       }
       detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {

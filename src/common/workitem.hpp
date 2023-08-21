@@ -115,6 +115,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
     // Do a WI dft of factorN size, reading from in and writing to the private memory.
     wi_dft<Dir, WiDftRecursionLevel>(factorN, in + 2 * i * stride_in, factorM * stride_in,
                                      privateScratch + 2 * i * factorN, 1, privateScratch + 2 * factorN * factorM);
+#pragma clang loop unroll(full)
     for (int j{0}; j < factorN; ++j) {
       // Apply twiddles to values in private memory.
       auto re_multiplier = twiddle<T>::Re[factorN * factorM][i * j];
@@ -131,6 +132,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
       privateScratch[2 * i * factorN + 2 * j + 0] = tmp_val;
     }
   }
+#pragma clang loop unroll(full)
   for (int i{0}; i < factorN; ++i) {
     // Do a WI dft of factor M size, reading from private memory and writing to out.
     wi_dft<Dir, WiDftRecursionLevel>(factorM, privateScratch + 2 * i, factorN, out + 2 * i * stride_out,
@@ -158,20 +160,30 @@ constexpr TIndex factorize(TIndex N) {
 /**
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
- * @param N size of the FFT problem
  * @tparam TIndex Index type
+ * @tparam RecursionDepth How many times has this function called itself alread. Default 0.
+ * @param N size of the FFT problem
  * @return Number of temporary complex values
  */
-template <typename TIndex>
+template <typename TIndex, int RecursionDepth = 0>
 constexpr TIndex wi_temps(TIndex N) {
-  TIndex f0 = factorize(N);
-  TIndex f1 = N / f0;
-  if (f0 < 2 || f1 < 2) {
-    return N;
+  // This function is recursive, but DPC++ can compile it. The depth
+  // limit is because its annoying for the compiler warn us about the recursion.
+  constexpr int MaxRecursionLevel = 10;  // 2^10 allows dftSize < 2^10 == 1024.
+  static_assert((1UL << MaxRecursionLevel) > detail::MaxFftSizeWi,
+                "Insufficient max recursion level for maximum allowable DFT size.");
+  if constexpr (RecursionDepth < MaxRecursionLevel){
+    TIndex f0 = factorize(N);
+    TIndex f1 = N / f0;
+    if (f0 < 2 || f1 < 2) {
+      return N;
+    }
+    TIndex a = wi_temps<TIndex, RecursionDepth + 1>(f0);
+    TIndex b = wi_temps<TIndex, RecursionDepth + 1>(f1);
+    return (a > b ? a : b) + N;
+  } else {
+    return 0;
   }
-  TIndex a = wi_temps(f0);
-  TIndex b = wi_temps(f1);
-  return (a > b ? a : b) + N;
 }
 
 /**
