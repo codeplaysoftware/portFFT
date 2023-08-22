@@ -236,15 +236,17 @@ __attribute__((always_inline)) inline void cross_sg_dft(std::size_t dft_size, st
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
+ * @tparam IntT The integer type to use
  * @param N the number to factorize
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-constexpr int factorize_sg(int N, int sg_size) {
+template <typename IntT>
+constexpr IntT factorize_sg(IntT N, int sg_size) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
-    for (int i = sg_size; i > 1; i--) {
+    for (IntT i = static_cast<IntT>(sg_size); i > 1; i--) {
       if (N % i == 0) {
         return i;
       }

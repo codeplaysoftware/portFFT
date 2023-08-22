@@ -329,13 +329,12 @@ __attribute__((always_inline)) inline void local2private(std::size_t num_elem_pe
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void local2private_transposed(std::size_t num_element_per_wi, const T* local,
-                                                                    T* priv, int thread_id, int col_num, int stride) {
+                                                                    T* priv, std::size_t thread_id, std::size_t col_num,
+                                                                    std::size_t stride) {
 #pragma clang loop unroll(full)
   for (std::size_t i{0}; i < num_element_per_wi; ++i) {
-    std::size_t local_idx = detail::pad_local<Pad>(
-        2 * static_cast<std::size_t>(stride) * (static_cast<std::size_t>(thread_id) * num_element_per_wi + i) +
-            2 * static_cast<std::size_t>(col_num),
-        BankLinesPerPad);
+    std::size_t local_idx =
+        detail::pad_local<Pad>(2 * stride * (thread_id * num_element_per_wi + i) + 2 * col_num, BankLinesPerPad);
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   }
@@ -423,13 +422,14 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void private2local_transposed(int num_elements_per_wi, const T* priv, T* local,
-                                                                    int thread_id, int num_workers, int col_num,
-                                                                    int stride) {
+__attribute__((always_inline)) inline void private2local_transposed(std::size_t num_elements_per_wi, const T* priv,
+                                                                    T* local, std::size_t thread_id,
+                                                                    std::size_t num_workers, std::size_t col_num,
+                                                                    std::size_t stride) {
 #pragma clang loop unroll(full)
-  for (int i{0}; i < num_elements_per_wi; ++i) {
-    std::size_t loc_base_offset = detail::pad_local<Pad>(
-        static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
+  for (std::size_t i{0}; i < num_elements_per_wi; ++i) {
+    std::size_t loc_base_offset =
+        detail::pad_local<Pad>(2 * stride * (i * num_workers + thread_id) + 2 * col_num, BankLinesPerPad);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   }

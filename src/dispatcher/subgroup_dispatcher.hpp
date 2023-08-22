@@ -156,9 +156,8 @@ __attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, 
         bool working_inner = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
         if (working_inner) {
           // load from local memory in a transposed manner
-          local2private_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
-              factor_wi, loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch),
-              static_cast<int>(max_num_batches_local_mem));
+          local2private_transposed<detail::pad::DO_PAD, BankLinesPerPad>(factor_wi, loc, priv, id_of_wi_in_fft,
+                                                                         sub_batch, max_num_batches_local_mem);
         }
         T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
         sg_dft<Dir>(factor_wi, factor_sg, priv, sg, loc_twiddles, wi_private_scratch);
@@ -177,8 +176,7 @@ __attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, 
           if (working_inner) {
             // Store back to local memory only
             private2local_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
-                static_cast<int>(factor_wi), priv, loc, static_cast<int>(id_of_wi_in_fft), static_cast<int>(factor_sg),
-                static_cast<int>(sub_batch), static_cast<int>(max_num_batches_local_mem));
+                factor_wi, priv, loc, id_of_wi_in_fft, factor_sg, sub_batch, max_num_batches_local_mem);
           }
         }
       }
