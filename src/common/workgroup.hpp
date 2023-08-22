@@ -118,13 +118,13 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
       }
       if (working) {
-        local2private_transposed<FactWiN, detail::pad::DO_PAD, BankLinesPerPad>(loc, priv, fft_local_id, column, M);
+        local2private_transposed<detail::pad::DO_PAD, BankLinesPerPad>(FactWiN, loc, priv, fft_local_id, column, M);
       }
       T wi_private_scratch[detail::wi_temps(detail::MaxFftSizeWi)];
       sg_dft<Dir>(FactWiN, FactSgN, priv, sg, loc_twiddles + (2 * M), wi_private_scratch);
       if (working) {
-        private2local_transposed<FactWiN, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, fft_local_id, FactSgN,
-                                                                                column, M);
+        private2local_transposed<detail::pad::DO_PAD, BankLinesPerPad>(FactWiN, priv, loc, fft_local_id, FactSgN,
+                                                                       column, M);
       }
     }
   }
@@ -194,8 +194,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       });
 
       if (working) {
-        store_transposed<2 * FactWiM, detail::pad::DO_PAD, BankLinesPerPad>(
-            priv, loc, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(FactSgM),
+        store_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
+            2 * FactWiM, priv, loc, static_cast<std::size_t>(fft_local_id), static_cast<std::size_t>(FactSgM),
             static_cast<std::size_t>(2 * M * row));
       }
     }
