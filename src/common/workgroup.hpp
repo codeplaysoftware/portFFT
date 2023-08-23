@@ -61,7 +61,7 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
- * @tparam bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  */
 template <direction Dir, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::size_t factor_m, T* loc, T* loc_twiddles,

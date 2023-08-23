@@ -154,7 +154,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(std::size_t factor
 }
 
 /**
- * Calculates DFT using Cooley-Tukey FFT algorithm. Size of the problem is N*M.
+ * Calculates DFT using Cooley-Tukey FFT algorithm. Size of the problem is factor_n*factor_m.
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
@@ -236,7 +236,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(std::size_t dft_size, st
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
- * @tparam IntT The integer type to use
+ * @tparam IntT The integer type to use for N and to return.
  * @param N the number to factorize
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size

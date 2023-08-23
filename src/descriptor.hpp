@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DESCRIPTOR_HPP
 #define PORTFFT_DESCRIPTOR_HPP
 
-#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
@@ -177,9 +176,6 @@ class committed_descriptor {
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
     factors.clear();
     std::size_t fft_size = params.lengths[0];
-    if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
-    }
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
       return detail::level::WORKITEM;

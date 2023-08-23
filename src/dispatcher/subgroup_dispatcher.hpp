@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
-#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>

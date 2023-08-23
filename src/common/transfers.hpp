@@ -72,16 +72,16 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad` elements in local memory to
  * avoid bank conflicts.
  * @tparam T type of the scalar used for computations
  * @param it nd_item
  * @param global pointer to global memory
  * @param local pointer to local memory
  * @param total_num_elems total number of values to copy per group
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
- * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::level Level, int SubgroupSize, detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,

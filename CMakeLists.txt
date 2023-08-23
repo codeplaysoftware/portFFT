@@ -49,7 +49,6 @@ set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup siz
 set(PORTFFT_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(PORTFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(PORTFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
-set(PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
 
 set(PORTFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -86,14 +85,6 @@ write_basic_package_version_file(${version_file}
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY AnyNewerVersion
 )
-
-# Check that the following is a comma separated list.
-if(PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES MATCHES "^[0-9]+(,[0-9]+)*$")
-  message(STATUS "Building with Cooley-Tukey config: " ${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
-else()
-  message(FATAL_ERROR " Invalid PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES value: " ${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
-endif()
-target_compile_definitions(portfft INTERFACE PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES=${PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES})
 
 include(GNUInstallDirs)
 install(TARGETS portfft
