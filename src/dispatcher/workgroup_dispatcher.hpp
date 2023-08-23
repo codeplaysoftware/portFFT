@@ -105,13 +105,10 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * offset, FFTSize,
                                                                               n_transforms, num_batches_in_local_mem);
       sycl::group_barrier(it.get_group());
-      for (std::size_t i = 0; i < num_batches_in_local_mem; i++) {
-        wg_dft<Dir, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it,
-                                                                  scaling_factor);
+      for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
+        wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
+            loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(it.get_group());
-        // Once all batches in local memory have been processed, store all of them back to global memory in one go
-        // Viewing it as a rectangle of height as problem size and length as the number of batches in local memory
-        // Which needs to read in a transposed manner and stored in a contiguous one.
         local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
             it, N * M, num_batches_in_local_mem, max_num_batches_in_local_mem, loc, output, offset);
         sycl::group_barrier(it.get_group());
@@ -119,7 +116,8 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     } else {
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * FFTSize, offset);
       sycl::group_barrier(it.get_group());
-      wg_dft<Dir, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, it, scaling_factor);
+      wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
+          loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0);
       sycl::group_barrier(it.get_group());
       local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(it, N, M, M, loc, output, offset);
       sycl::group_barrier(it.get_group());
@@ -171,6 +169,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
+    std::cout << "DISPATCHING TO WORKGROUP" << std::endl;
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
