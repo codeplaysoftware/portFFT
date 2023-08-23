@@ -92,8 +92,8 @@ __attribute__((always_inline)) inline void workitem_impl(int dft_size, const T* 
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
 
     if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          it, input, loc, n_reals * n_working, n_reals * (i - subgroup_local_id), local_offset);
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD>(it, input, loc, n_reals * n_working, BankLinesPerPad,
+                                                               n_reals * (i - subgroup_local_id), local_offset);
       sycl::group_barrier(sg);
     }
     if (working) {
@@ -105,7 +105,7 @@ __attribute__((always_inline)) inline void workitem_impl(int dft_size, const T* 
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         }
       } else {
-        local2private<pad::DO_PAD, BankLinesPerPad>(n_reals, loc, priv, subgroup_local_id, n_reals, local_offset);
+        local2private<pad::DO_PAD>(n_reals, loc, priv, subgroup_local_id, n_reals, BankLinesPerPad, local_offset);
       }
       wi_dft<Dir, 0>(dft_size, priv, 1, priv, 1, temp);
 #pragma clang loop unroll(full)

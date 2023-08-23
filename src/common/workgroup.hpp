@@ -52,7 +52,6 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  *
  * @tparam Dir Direction of the FFT
  * @tparam SubgroupSize Size of the subgroup
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T Scalar Type
  *
  * @param factor_n Smaller factor of the problem size. Problem size is factor_n * factor_m.
@@ -62,10 +61,12 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
+ * @tparam bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  */
-template <direction Dir, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
+template <direction Dir, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::size_t factor_m, T* loc, T* loc_twiddles,
-                                                  const T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor) {
+                                                  const T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor,
+                                                  std::size_t bank_lines_per_pad) {
   // the number of work-items involved in every row subgroup fft. Is less than SubgroupSize.
   std::size_t fact_sg_n = detail::factorize_sg(factor_n, SubgroupSize);
   // the number of values held in by a work-item in a row subgroup dft
@@ -118,14 +119,14 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
         working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
       }
       if (working) {
-        local2private_transposed<detail::pad::DO_PAD, BankLinesPerPad>(fact_wi_n, loc, priv, fft_local_id, column,
-                                                                       factor_m);
+        local2private_transposed<detail::pad::DO_PAD>(fact_wi_n, loc, priv, fft_local_id, column, factor_m,
+                                                      bank_lines_per_pad);
       }
       T wi_private_scratch[detail::wi_temps(detail::MaxFftSizeWi)];
       sg_dft<Dir>(fact_wi_n, fact_sg_n, priv, sg, loc_twiddles + (2 * factor_m), wi_private_scratch);
       if (working) {
-        private2local_transposed<detail::pad::DO_PAD, BankLinesPerPad>(fact_wi_n, priv, loc, fft_local_id, fact_sg_n,
-                                                                       column, factor_m);
+        private2local_transposed<detail::pad::DO_PAD>(fact_wi_n, priv, loc, fft_local_id, fact_sg_n, column, factor_m,
+                                                      bank_lines_per_pad);
       }
     }
   }
@@ -170,8 +171,8 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
         working = working && sg.get_local_linear_id() < max_working_tid_in_sg;
       }
       if (working) {
-        local2private<detail::pad::DO_PAD, BankLinesPerPad>(2 * fact_wi_m, loc, priv, fft_local_id, 2 * fact_wi_m,
-                                                            2 * factor_m * row);
+        local2private<detail::pad::DO_PAD>(2 * fact_wi_m, loc, priv, fft_local_id, 2 * fact_wi_m, bank_lines_per_pad,
+                                           2 * factor_m * row);
       }
 #pragma clang loop unroll(full)
       for (std::size_t i{0}; i < fact_wi_m; ++i) {
@@ -197,8 +198,8 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
       }
 
       if (working) {
-        store_transposed<detail::pad::DO_PAD, BankLinesPerPad>(2 * fact_wi_m, priv, loc, fft_local_id, fact_sg_m,
-                                                               2 * factor_m * row);
+        store_transposed<detail::pad::DO_PAD>(2 * fact_wi_m, priv, loc, fft_local_id, fact_sg_m, bank_lines_per_pad,
+                                              2 * factor_m * row);
       }
     }
   }

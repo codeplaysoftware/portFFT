@@ -81,10 +81,10 @@ void test() {
             }
           }
           group_barrier(it.get_group());
-          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, a_dev_work, loc1_work,
-                                                                                          N * wg_size);
+          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad>(it, a_dev_work, loc1_work, N * wg_size,
+                                                                        BankGroupsPerPad);
           group_barrier(it.get_group());
-          portfft::local2private<Pad, BankGroupsPerPad>(N, loc1_work, priv, local_id, N);
+          portfft::local2private<Pad>(N, loc1_work, priv, local_id, N, BankGroupsPerPad);
           portfft::private2local<Pad, BankGroupsPerPad>(N ,priv, loc2_work, local_id, N);
           group_barrier(it.get_group());
           portfft::local2global<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, loc2_work, b_dev_work,
