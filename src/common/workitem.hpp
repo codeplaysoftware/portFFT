@@ -221,9 +221,7 @@ template <direction Dir, int WiDftRecursionLevel, typename T>
 __attribute__((always_inline)) inline void wi_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out,
                                                   T* privateScratch) {
   int f0 = detail::factorize(dftSize);
-  constexpr int MaxRecursionLevel = 6;  // 2^6 allows dftSize < 2^6 == 64.
-  static_assert((1UL << MaxRecursionLevel) > detail::MaxFftSizeWi,
-                "Insufficient max recursion level for maximum allowable DFT size.");
+  constexpr int MaxRecursionLevel = detail::uint_log2(detail::MaxFftSizeWi) - 1;
   if constexpr (WiDftRecursionLevel < MaxRecursionLevel) {
     if (dftSize == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];

@@ -108,6 +108,15 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
 }
 
+// Log2 of x. x must be greater than 0.
+inline constexpr std::size_t uint_log2(std::size_t x) {
+  std::size_t y{0};
+  for (; x > 0; x /= 2) {
+    ++y;
+  }
+  return y - 1;
+}
+
 };  // namespace portfft::detail
 
 #endif

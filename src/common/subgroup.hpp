@@ -58,7 +58,7 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction Dir, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
 inline void cross_sg_dft(std::size_t dft_size, std::size_t stride, T& real, T& imag, sycl::sub_group& sg);
 
 /**
@@ -171,7 +171,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(std::size_t factor
  * one workitem
  * @param sg subgroup
  */
-template <direction Dir, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
 __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t factor_n, std::size_t factor_m,
                                                                      std::size_t stride, T& real, T& imag,
                                                                      sycl::sub_group& sg) {
@@ -181,7 +181,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
   std::size_t n = index_in_outer_dft / factor_n;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<Dir, XSgDftRecursionLevel>(factor_n, factor_m * stride, real, imag, sg);
+  cross_sg_dft<Dir, SubgroupSize, XSgDftRecursionLevel>(factor_n, factor_m * stride, real, imag, sg);
   // transpose
   cross_sg_transpose(factor_n, factor_m, stride, real, imag, sg);
   // twiddle
@@ -197,7 +197,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;
   // factor M
-  cross_sg_dft<Dir, XSgDftRecursionLevel>(factor_m, factor_n * stride, real, imag, sg);
+  cross_sg_dft<Dir, SubgroupSize, XSgDftRecursionLevel>(factor_m, factor_n * stride, real, imag, sg);
 }
 
 /**
@@ -217,16 +217,15 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
  * one workitem
  * @param sg subgroup
  */
-template <direction Dir, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
 __attribute__((always_inline)) inline void cross_sg_dft(std::size_t dft_size, std::size_t stride, T& real, T& imag,
                                                         sycl::sub_group& sg) {
-  // Max DFT size is sub-group size, which is unlikely to be more than 64. It is not possible to compile time check
-  // this.
-  constexpr int MaxXSgDftRecursionLevel = 5;  // Allows 2^5 = 64.
+  // Max DFT size is sub-group size.
+  constexpr int MaxXSgDftRecursionLevel = detail::uint_log2(SubgroupSize);
   if constexpr (XSgDftRecursionLevel < MaxXSgDftRecursionLevel) {
     std::size_t f0 = detail::factorize(dft_size);
     if (f0 >= 2 && dft_size / f0 >= 2) {
-      cross_sg_cooley_tukey_dft<Dir, XSgDftRecursionLevel + 1>(dft_size / f0, f0, stride, real, imag, sg);
+      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, XSgDftRecursionLevel + 1>(dft_size / f0, f0, stride, real, imag, sg);
     } else {
       cross_sg_naive_dft<Dir>(dft_size, stride, real, imag, sg);
     }
@@ -287,7 +286,7 @@ constexpr bool fits_in_sg(TIndex N, int sg_size) {
  * commit
  * @param wi_private_scratch Scratch memory for this WI in WI impl.
  */
-template <direction Dir, typename T>
+template <direction Dir, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::size_t factor_n, T* inout,
                                                   sycl::sub_group& sg, const T* sg_twiddles, T* wi_private_scratch) {
   std::size_t idx_of_wi_in_fft = sg.get_local_linear_id() % factor_n;
@@ -298,7 +297,7 @@ __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::siz
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
     if (factor_n > 1) {
-      detail::cross_sg_dft<Dir, 0>(factor_n, 1, real, imag, sg);
+      detail::cross_sg_dft<Dir, SubgroupSize, 0>(factor_n, 1, real, imag, sg);
       if (idx_of_element_in_wi > 0) {
         T twiddle_real = sg_twiddles[idx_of_element_in_wi * factor_n + idx_of_wi_in_fft];
         T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + factor_m) * factor_n + idx_of_wi_in_fft];

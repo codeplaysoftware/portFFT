@@ -123,7 +123,7 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
                                                       bank_lines_per_pad);
       }
       T wi_private_scratch[detail::wi_temps(detail::MaxFftSizeWi)];
-      sg_dft<Dir>(fact_wi_n, fact_sg_n, priv, sg, loc_twiddles + (2 * factor_m), wi_private_scratch);
+      sg_dft<Dir, SubgroupSize>(fact_wi_n, fact_sg_n, priv, sg, loc_twiddles + (2 * factor_m), wi_private_scratch);
       if (working) {
         private2local_transposed<detail::pad::DO_PAD>(fact_wi_n, priv, loc, fft_local_id, fact_sg_n, column, factor_m,
                                                       bank_lines_per_pad);
@@ -190,7 +190,7 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
       }
 
       T wi_private_scratch[2 * detail::wi_temps(detail::MaxFftSizeWi)];
-      sg_dft<Dir>(fact_wi_m, fact_sg_m, priv, sg, loc_twiddles, wi_private_scratch);
+      sg_dft<Dir, SubgroupSize>(fact_wi_m, fact_sg_m, priv, sg, loc_twiddles, wi_private_scratch);
 #pragma clang loop unroll(full)
       for (std::size_t i{0}; i < fact_wi_m; ++i) {
         priv[2 * i] *= scaling_factor;
