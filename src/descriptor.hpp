@@ -364,7 +364,7 @@ class committed_descriptor {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
       }
     }
-    // set_spec_constants(input_bundles);
+    set_spec_constants(input_bundles);
     for (auto in_bundle : input_bundles) {
       exec_bundle.push_back(build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(in_bundle));
     }
