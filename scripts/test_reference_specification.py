@@ -75,4 +75,6 @@ def make_data_spec(file_base):
                                      "COMPLEX", [3], [256, 512, 1024])
     configs += _gen_configuration_1d(file_base, "WorkgroupTest", "COMPLEX",
                                      [1, 3], [2048, 3072, 4096])
+    configs += _gen_configuration_1d(file_base, "GlobalTest", "COMPLEX",
+                                     [1], [16384, 32768, 65536])
     return configs

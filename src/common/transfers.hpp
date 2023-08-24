@@ -58,7 +58,7 @@ namespace detail {
  * @return transformed local_idx
  */
 template <detail::pad Pad = detail::pad::DO_PAD>
-__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx, std::size_t bank_lines_per_pad) {
+__attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_idx, std::size_t bank_lines_per_pad = 1) {
   if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad);
   }
@@ -72,7 +72,8 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param it nd_item
@@ -181,7 +182,8 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param it nd_item
@@ -291,7 +293,8 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param local pointer to local memory
@@ -314,7 +317,8 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -337,7 +341,8 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -367,7 +372,8 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * Loads data from global memory where consecutive elements of a problem are separated by stride.
  * Loads half of workgroup size equivalent number of consecutive batches from global memory.
  *
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
@@ -404,7 +410,8 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -431,7 +438,8 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
@@ -455,7 +463,8 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param priv pointer to private memory
@@ -485,6 +494,44 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
     }
   });
 }
+
+/**
+ * Stores data to global memory where consecutive elements of a problem are separated by stride.
+ * Stores half of workgroup size equivalent number of consecutive batches to global memory.
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ *
+ * @param it Associated nd_item
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad Pad, detail::level Level, std::size_t BankLinesPerPad, typename T>
+__attribute__((always_inline)) inline void local_transposed2_global_transposed(sycl::nd_item<1> it, T* global_base_ptr,
+                                                                               T* local_ptr, std::size_t offset,
+                                                                               std::size_t num_complex,
+                                                                               std::size_t stride_global,
+                                                                               std::size_t stride_local) {
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+  } else {
+    local_id = it.get_local_id(0);
+  }
+  for (std::size_t i = 0; i < num_complex; i++) {
+    std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
+    std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    global_base_ptr[global_index] = local_ptr[local_index];
+  }
+}
+
 };  // namespace portfft
 
 #endif

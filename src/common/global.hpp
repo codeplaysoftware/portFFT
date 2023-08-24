@@ -18,29 +18,20 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_ENUMS_HPP
-#define PORTFFT_ENUMS_HPP
+#ifndef PORTFFT_COMMON_GLOBAL_HPP
+#define PORTFFT_COMMON_GLOBAL_HPP
+
+#include <descriptor.hpp>
+#include <dispatcher/subgroup_dispatcher.hpp>
+#include <dispatcher/workitem_dispatcher.hpp>
+#include <enums.hpp>
 
 namespace portfft {
-
-enum class domain { REAL, COMPLEX };
-
-enum class complex_storage { COMPLEX, REAL_REAL };
-
-enum class placement { IN_PLACE, OUT_OF_PLACE };
-
-enum class direction { FORWARD, BACKWARD };
-
 namespace detail {
-enum class pad { DO_PAD, DONT_PAD };
+constexpr static sycl::specialization_id<std::size_t> SpecConstFftSize{};
+constexpr static sycl::specialization_id<int> SpecConstSGFactorWI{};
+constexpr static sycl::specialization_id<int> SpecConstSGFactorSG{};
 
-enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
-
-enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
-
-enum class memory { BUFFER, USM };
 }  // namespace detail
-
 }  // namespace portfft
-
 #endif
