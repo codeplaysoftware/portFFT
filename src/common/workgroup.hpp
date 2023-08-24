@@ -121,6 +121,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       }
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          // Load in a transposed manner, from the input stored in a transposed manner
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
                 2 * max_num_batches_in_local_mem * (M * (fft_local_id * FactWiN + j) + column) + 2 * sub_batch_num;
@@ -134,6 +135,9 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       sg_dft<Dir, FactWiN, FactSgN>(priv, sg, loc_twiddles + (2 * M));
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          // Fusing three transposes into one here, result from sg_dft is transposed, which is to be stored in a
+          // transposed manner,
+          //  to the input which itself is stored in a transposed fashion.
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
                 2 * max_num_batches_in_local_mem * ((j * FactSgN + fft_local_id) * M + column) + 2 * sub_batch_num;
@@ -188,6 +192,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       }
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          // Load in a contiguous fashion, along a column
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
                 2 * max_num_batches_in_local_mem * (row * M + fft_local_id * FactWiM + j) + 2 * sub_batch_num;
@@ -222,6 +227,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
 
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          // store in a contiguous fashion. along  a column, taking into account the
+          // fact that result from sg_dft is also transposed.
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
                 2 * max_num_batches_in_local_mem * (j * FactSgN + fft_local_id + M * row) + 2 * sub_batch_num;
