@@ -100,10 +100,11 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
   std::size_t id_of_fft_in_sg = subgroup_local_id / FactorSG;
   std::size_t id_of_wi_in_fft = subgroup_local_id % FactorSG;
+  std::size_t n_ffts_per_wg = n_ffts_per_sg * n_sgs_in_wg;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
   std::size_t rounded_up_n_ffts =
-      round_up_to_multiple(n_transforms, n_ffts_per_sg) + (subgroup_local_id >= max_wis_working);
+      round_up_to_multiple(n_transforms, n_ffts_per_wg) + (subgroup_local_id >= max_wis_working);
 
   std::size_t id_of_fft_in_kernel;
   std::size_t n_ffts_in_kernel;
@@ -127,7 +128,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         return n_sgs_in_wg * SubgroupSize / 2;
       } else {
-        return n_ffts_per_sg;
+        return n_ffts_per_sg * n_sgs_in_wg;
       }
     }();
     std::size_t num_batches_in_local_mem = [=]() {
@@ -286,7 +287,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
           priv[i + 1] *= scaling_factor;
         });
       }
-      if constexpr (FactorSG == SubgroupSize) {
+      if constexpr (FactorSG == SubgroupSize && TransposeOut == detail::transpose::NOT_TRANSPOSED) {
         // in this case we get fully coalesced memory access even without going through local memory
         // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
         if (working) {
