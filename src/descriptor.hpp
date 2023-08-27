@@ -136,7 +136,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }
@@ -152,7 +152,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
       case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::GLOBAL, TransposeIn, void>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }

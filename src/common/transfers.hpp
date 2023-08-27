@@ -65,6 +65,55 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
   return local_idx;
 }
 
+/**
+ * Implements generic transpose capable of transposing any size.
+ *
+ * @tparam T Input type
+ * @param N Number of input rows
+ * @param M Number of input columns
+ * @param tile_size Tile Size
+ * @param input Input pointer
+ * @param output Output Pointer
+ * @param loc 2D local memory accessor
+ * @param it Associated nd_item
+ */
+
+template <typename T>
+__attribute__((always_inline)) inline void generic_transpose(std::size_t N, std::size_t M, std::size_t tile_size,
+                                                             T* input, T* output, const sycl::local_accessor<T, 2>& loc,
+                                                             sycl::nd_item<2> it) {
+  using T_vec = sycl::vec<T, 2>;
+  T_vec priv;
+  std::size_t rounded_up_N = round_up_to_multiple(N, tile_size);
+  std::size_t rounded_up_M = round_up_to_multiple(M, tile_size);
+  for (std::size_t tile_y = it.get_group(1); tile_y < rounded_up_N; tile_y += it.get_group_range(1)) {
+    for (std::size_t tile_x = it.get_group(0); tile_x < rounded_up_M; tile_x += it.get_group_range(0)) {
+      std::size_t tile_id_y = tile_y * tile_size;
+      std::size_t tile_id_x = tile_x * tile_size;
+
+      std::size_t i = tile_id_y + it.get_local_id(1);
+      std::size_t j = tile_id_x + it.get_local_id(0);
+
+      if (i < N && j < M) {
+        priv.load(0, get_global_multi_ptr(&input[2 * i * M + 2 * j]));
+        loc[it.get_local_id(0)][2 * it.get_local_id(1)] = priv[0];
+        loc[it.get_local_id(0)][2 * it.get_local_id(1) + 1] = priv[1];
+      }
+      sycl::group_barrier(it.get_group());
+
+      std::size_t i_transposed = tile_id_x + it.get_local_id(1);
+      std::size_t j_transposed = tile_id_y + it.get_local_id(0);
+
+      if (j_transposed < N && i_transposed < M) {
+        priv[0] = loc[it.get_local_id(1)][2 * it.get_local_id(0)];
+        priv[1] = loc[it.get_local_id(1)][2 * it.get_local_id(0) + 1];
+        priv.store(0, get_global_multi_ptr(&output[2 * i_transposed * N + 2 * j_transposed]));
+      }
+      sycl::group_barrier(it.get_group());  // TODO: This barrier should not required, use double buffering
+    }
+  }
+}
+
 }  // namespace detail
 
 /**
