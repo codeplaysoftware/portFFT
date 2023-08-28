@@ -22,6 +22,7 @@
 #define PORTFFT_DESCRIPTOR_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
+#include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
@@ -108,7 +109,7 @@ class committed_descriptor {
   std::size_t num_sgs_per_wg;
   std::size_t local_memory_size;
 
-  template<typename Impl, typename... Args>
+  template <typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
     switch (level) {
       case detail::level::WORKITEM:
@@ -176,10 +177,19 @@ class committed_descriptor {
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
     factors.clear();
+
+    // TODO: check and support all the parameter values
+    if constexpr (Domain != domain::COMPLEX) {
+      throw unsupported_configuration("portFFT only supports complex to complex transforms");
+    }
+    if (params.lengths.size() != 1) {
+      throw unsupported_configuration("portFFT only supports 1D FFT for now");
+    }
     std::size_t fft_size = params.lengths[0];
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
+      throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
     }
+
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
       return detail::level::WORKITEM;
@@ -211,38 +221,38 @@ class committed_descriptor {
       return detail::level::WORKGROUP;
     }
     // TODO global
-    throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
+    throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
   }
 
   /**
    * Struct for dispatching `set_spec_constants()` call.
    */
-  struct set_spec_constants_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-     template <detail::level Lev, typename Dummy>
-     struct inner {
-       static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
-     };
+  struct set_spec_constants_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level Lev, typename Dummy>
+    struct inner {
+      static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
+    };
   };
-  
+
   /**
    * Sets the implementation dependant specialization constant values.
    *
    * @param in_bundle kernel bundle to set the specialization constants on
    */
-  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle){
+  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     dispatch<set_spec_constants_struct>(in_bundle);
   }
 
   /**
    * Struct for dispatching `num_scalars_in_local_mem()` call.
    */
-  struct num_scalars_in_local_mem_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-     template <detail::level Lev, detail::transpose TransposeIn, typename Dummy>
-     struct inner {
-       static std::size_t execute(committed_descriptor& desc);
-     };
+  struct num_scalars_in_local_mem_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level Lev, detail::transpose TransposeIn, typename Dummy>
+    struct inner {
+      static std::size_t execute(committed_descriptor& desc);
+    };
   };
 
   /**
@@ -259,12 +269,12 @@ class committed_descriptor {
   /**
    * Struct for dispatching `calculate_twiddles()` call.
    */
-  struct calculate_twiddles_struct{
-     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-     template <detail::level Lev, typename Dummy>
-     struct inner {
-       static Scalar* execute(committed_descriptor& desc);
-     };
+  struct calculate_twiddles_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level Lev, typename Dummy>
+    struct inner {
+      static Scalar* execute(committed_descriptor& desc);
+    };
   };
 
   /**
@@ -272,9 +282,7 @@ class committed_descriptor {
    *
    * @return Scalar* USM pointer to the twiddle factors
    */
-  Scalar* calculate_twiddles() {
-    return dispatch<calculate_twiddles_struct>();
-  }
+  Scalar* calculate_twiddles() { return dispatch<calculate_twiddles_struct>(); }
 
   /**
    * Builds the kernel bundle with appropriate values of specialization constants for the first supported subgroup size.
@@ -310,6 +318,7 @@ class committed_descriptor {
     }
   }
 
+ public:
   /**
    * Constructor.
    *
@@ -327,11 +336,6 @@ class committed_descriptor {
         // compile the kernels
         exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
-    // TODO: check and support all the parameter values
-    if (params.lengths.size() != 1) {
-      throw std::runtime_error("portFFT only supports 1D FFT for now");
-    }
-
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
@@ -352,7 +356,6 @@ class committed_descriptor {
     });
   }
 
- public:
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
   /**
@@ -368,6 +371,13 @@ class committed_descriptor {
    * Destructor
    */
   ~committed_descriptor() { queue.wait(); }
+
+  // rule of three
+  committed_descriptor(const committed_descriptor& other) = default;
+  committed_descriptor& operator=(const committed_descriptor& other) = default;
+
+  // default construction is not appropriate
+  committed_descriptor() = delete;
 
   /**
    * Computes in-place forward FFT, working on a buffer.

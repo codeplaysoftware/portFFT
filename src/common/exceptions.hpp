@@ -18,17 +18,17 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#ifndef PORTFFT_COMMON_EXCEPTIONS_HPP
+#define PORTFFT_COMMON_EXCEPTIONS_HPP
+#include <stdexcept>
 
-#include "common/exceptions.hpp"
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
-#include "dispatcher/subgroup_dispatcher.hpp"
-#include "dispatcher/workgroup_dispatcher.hpp"
-#include "dispatcher/workitem_dispatcher.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
+namespace portfft {
+class unsupported_configuration : public std::runtime_error {
+ public:
+  unsupported_configuration(const std::string& what_arg) : std::runtime_error(what_arg) {}
+  unsupported_configuration(const char* what_arg) : std::runtime_error(what_arg) {}
+  unsupported_configuration(const runtime_error& other) noexcept : std::runtime_error(other) {}
+};
+}  // namespace portfft
 
 #endif
