@@ -101,7 +101,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
         // No need of going through local memory either as it is an unnecessary extra write step.
         for (int j{0}; j < NReals; j += 2) {
           using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
+          reinterpret_cast<T_vec*>(&priv[j])->load(
+              0, detail::get_global_multi_ptr(&input[i * 2 + static_cast<std::size_t>(j) * n_transforms]));
         }
       } else {
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);

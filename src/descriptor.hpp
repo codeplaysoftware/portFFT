@@ -22,7 +22,6 @@
 #define PORTFFT_DESCRIPTOR_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
-#include <common/subgroup.hpp>
 #include <enums.hpp>
 
 #include <sycl/sycl.hpp>
@@ -113,10 +112,6 @@ class committed_descriptor {
     switch (level) {
       case detail::level::WORKITEM:
         return Impl::template inner<detail::level::WORKITEM, void>::execute(*this, args...);
-      case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
-      case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }
@@ -127,10 +122,6 @@ class committed_descriptor {
     switch (level) {
       case detail::level::WORKITEM:
         return Impl::template inner<detail::level::WORKITEM, TransposeIn, void>::execute(*this, args...);
-      case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
-      case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
       default:
         throw std::runtime_error("Unimplemented!");
     }
@@ -183,32 +174,6 @@ class committed_descriptor {
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       get_ids<detail::workitem_kernel, SubgroupSize>(ids);
       return detail::level::WORKITEM;
-    }
-    int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
-    int factor_wi = static_cast<int>(fft_size) / factor_sg;
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
-      // This factorization is duplicated in the dispatch logic on the device.
-      // The CT and spec constant factors should match.
-      factors.push_back(factor_wi);
-      factors.push_back(factor_sg);
-      get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
-      return detail::level::SUBGROUP;
-    }
-    std::size_t n = detail::factorize(fft_size);
-    std::size_t m = fft_size / n;
-    int factor_sg_n = detail::factorize_sg(static_cast<int>(n), SubgroupSize);
-    int factor_wi_n = static_cast<int>(n) / factor_sg_n;
-    int factor_sg_m = detail::factorize_sg(static_cast<int>(m), SubgroupSize);
-    int factor_wi_m = static_cast<int>(m) / factor_sg_m;
-    if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
-      factors.push_back(factor_wi_n);
-      factors.push_back(factor_sg_n);
-      factors.push_back(factor_wi_m);
-      factors.push_back(factor_sg_m);
-      // This factorization of N and M is duplicated in the dispatch logic on the device.
-      // The CT and spec constant factors should match.
-      get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
-      return detail::level::WORKGROUP;
     }
     // TODO global
     throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
