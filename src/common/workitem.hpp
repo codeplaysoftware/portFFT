@@ -35,7 +35,7 @@ inline void wi_dft(int dftSize, const T* in, int stride_in, T* out, int stride_o
 namespace detail {
 
 // Maximum size of an FFT that can fit in the workitem implementation
-static constexpr std::size_t MaxFftSizeWi = 56;
+static constexpr std::size_t MaxFftSizeWi = PORTFFT_MAX_WI_FFT_SIZE;
 
 /*
 `wi_dft` calculates a DFT by a workitem on values that are already loaded into its private memory.
