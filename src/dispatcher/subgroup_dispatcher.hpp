@@ -298,7 +298,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
-    std::cout << "DISPATCHING TO SUBGROUP" << std::endl;
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n_transforms = desc.params.number_of_transforms;

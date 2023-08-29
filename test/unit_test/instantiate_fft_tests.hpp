@@ -31,9 +31,31 @@ class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 
 // sizes that use workitem implementation
+INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
+// sizes that might use workitem or subgroup implementation depending on device
+// and configuration
+INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
+                                                                                     ::testing::Values(16, 32))));
+// sizes that use subgroup implementation
+INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
+                                                                                     ::testing::Values(64, 96, 128))));
+
+INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(256, 512, 1024))));
+
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1),
-                                                                                     ::testing::Values(512))));
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(2048, 3072, 4096))));
+
+// Backward FFT test suite
+INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
+                         ::testing::ConvertGenerator<param_tuple>(
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 9, 16, 32, 64, 4096))));
 
 #define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,         \
                          DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                      \
@@ -51,12 +73,16 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
 #define INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,       \
                              DIRECTION_NAME, DIRECTION_TEST_SUITE)                                                   \
   INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION, DIRECTION_NAME, \
-                   DIRECTION_TEST_SUITE, usm, USM)
+                   DIRECTION_TEST_SUITE, usm, USM)                                                                   \
+  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION, DIRECTION_NAME, \
+                   DIRECTION_TEST_SUITE, buffer, BUFFER)
 
-#define INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME) \
-  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, FORWARD, Fwd, FFTTest)
+#define INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME)        \
+  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, FORWARD, Fwd, FFTTest) \
+  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, BACKWARD, Bwd, BwdTest)
 
 #define INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_TRANSPOSE(TYPE, TYPE_NAME)   \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, false, )      \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, false, ) \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, true, _in_transposed)
 // transpose in place is not supported (yet?)

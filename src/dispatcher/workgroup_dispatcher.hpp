@@ -92,7 +92,6 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   }();
   std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, 2 * (M + N));
-
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
       const std::size_t num_batches_in_local_mem = [=]() {
@@ -102,17 +101,26 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
         return n_transforms - offset / (2 * FFTSize);
       }();
       // Load in a transposed manner, similar to subgroup impl.
-      global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * offset, FFTSize,
-                                                                              n_transforms, num_batches_in_local_mem);
+      if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(
+            it, input, loc, 2 * offset, FFTSize, n_transforms, max_num_batches_in_local_mem);
+      }
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
             loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(it.get_group());
-        local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
-            it, N * M, num_batches_in_local_mem, max_num_batches_in_local_mem, loc, output, offset);
-        sycl::group_barrier(it.get_group());
       }
+      if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        std::size_t batch_num = it.get_local_linear_id() / 2;
+        for (std::size_t i = 0; i < FFTSize; i++) {
+          std::size_t source_row = i / N;
+          std::size_t source_col = i % N;
+          output[offset + 2 * batch_num * FFTSize + 2 * i + it.get_local_linear_id() % 2] = loc[detail::pad_local(
+              2 * max_num_batches_in_local_mem * (source_col * M + source_row) + it.get_local_id(0), BankLinesPerPad)];
+        }
+      }
+      sycl::group_barrier(it.get_group());
     } else {
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * FFTSize, offset);
       sycl::group_barrier(it.get_group());
@@ -169,7 +177,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
-    std::cout << "DISPATCHING TO WORKGROUP" << std::endl;
+    std::size_t num_batches_in_local_mem = [=]() {
+      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+        return desc.used_sg_size * PORTFFT_SGS_IN_WG / 2;
+      } else {
+        return 1;
+      }
+    }();
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t n_transforms = desc.params.number_of_transforms;
     Scalar* twiddles = desc.twiddles_forward.get();
@@ -191,8 +205,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
-                &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size, bank_lines_per_pad)], n_transforms, it,
-                twiddles, scale_factor, fft_size);
+                &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size * num_batches_in_local_mem,
+                                                            bank_lines_per_pad)],
+                n_transforms, it, twiddles, scale_factor, fft_size);
           });
     });
   }
