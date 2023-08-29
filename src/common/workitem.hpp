@@ -48,50 +48,6 @@ strides.
 `naive_dft` calculates DFT by one workitem using naive DFT algorithm.
 */
 
-/**
- * Calculates DFT using naive algorithm. Can work in or out of place.
- *
- * @tparam Dir direction of the FFT
- * @tparam T type of the scalar used for computations
- * @param dftSize The size of the DFT
- * @param in pointer to input
- * @param stride_in stride (in complex values) between complex values in `in`
- * @param out pointer to output
- * @param stride_out stride (in complex values) between complex values in `out`
- * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
- */
-template <direction Dir, typename T>
-__attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out,
-                                                     T* privateScratch) {
-#pragma clang loop unroll(full)
-  for (int idx_out{0}; idx_out < dftSize; ++idx_out) {
-    privateScratch[2 * idx_out + 0] = 0;
-    privateScratch[2 * idx_out + 1] = 0;
-#pragma clang loop unroll(full)
-    for (int idx_in{0}; idx_in < dftSize; ++idx_in) {
-      // this multiplier is not really a twiddle factor, but it is calculated the same way
-      auto re_multiplier = twiddle<T>::Re[dftSize][idx_in * idx_out % dftSize];
-      auto im_multiplier = [&]() {
-        if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[dftSize][idx_in * idx_out % dftSize];
-        }
-        return -twiddle<T>::Im[dftSize][idx_in * idx_out % dftSize];
-      }();
-
-      // multiply in and multi
-      privateScratch[2 * idx_out + 0] +=
-          in[2 * idx_in * stride_in] * re_multiplier - in[2 * idx_in * stride_in + 1] * im_multiplier;
-      privateScratch[2 * idx_out + 1] +=
-          in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
-    }
-  }
-#pragma clang loop unroll(full)
-  for (int idx_out{0}; idx_out < 2 * dftSize; idx_out += 2) {
-    out[idx_out * stride_out + 0] = privateScratch[idx_out + 0];
-    out[idx_out * stride_out + 1] = privateScratch[idx_out + 1];
-  }
-}
-
 // mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
 // TODO explore if this tmp can be reduced/eliminated ^^^^^^
 /**
@@ -219,11 +175,9 @@ __attribute__((always_inline)) inline void wi_dft(int dftSize, const T* in, int 
       out[0 * stride_out + 0] = a;
       out[0 * stride_out + 1] = b;
       out[2 * stride_out + 0] = c;
-    } else if (f0 >= 2 && dftSize / f0 >= 2) {
+    } else {
       detail::cooley_tukey_dft<Dir, WiDftRecursionLevel + 1>(dftSize / f0, f0, in, stride_in, out, stride_out,
                                                              privateScratch);
-    } else {
-      detail::naive_dft<Dir>(dftSize, in, stride_in, out, stride_out, privateScratch);
     }
   }
 }
