@@ -179,9 +179,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                              const std::vector<sycl::event>& dependencies) {
     std::size_t num_batches_in_local_mem = [=]() {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        return desc.used_sg_size * PORTFFT_SGS_IN_WG / 2;
+        return static_cast<std::size_t>(desc.used_sg_size * PORTFFT_SGS_IN_WG / 2);
       } else {
-        return 1;
+        return static_cast<std::size_t>(1);
       }
     }();
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;

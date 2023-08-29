@@ -238,6 +238,7 @@ class verif_data_spec {
           std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dftLen
                     << ", does not match\nref " << thisBatchRef[e] * scaling << " vs " << thisBatchComputed[e]
                     << "\ndiff " << diff << ", tolerance " << comparisonTolerance << std::endl;
+          throw std::runtime_error("Verification Failed");
         }
       }
     }
