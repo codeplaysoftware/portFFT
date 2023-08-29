@@ -123,7 +123,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
-                2 * max_num_batches_in_local_mem * (M * (wi_in_fft * FactWiN + j) + column) + 2 * sub_batch_num;
+                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (wi_in_fft * FactWiN + j)) + column) +
+                2 * sub_batch_num;
             priv[2 * j] = loc[detail::pad_local(base_offset, BankLinesPerPad)];
             priv[2 * j + 1] = loc[detail::pad_local(base_offset + 1, BankLinesPerPad)];
           });
@@ -136,7 +137,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
-                2 * max_num_batches_in_local_mem * (M * (wi_in_fft * FactWiN + j) + column) + 2 * sub_batch_num;
+                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (wi_in_fft * FactWiN + j) + column)) +
+                2 * sub_batch_num;
             loc[detail::pad_local(base_offset, BankLinesPerPad)] = priv[2 * j];
             loc[detail::pad_local(base_offset + 1, BankLinesPerPad)] = priv[2 * j + 1];
           });
@@ -189,7 +191,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
-                2 * max_num_batches_in_local_mem * (row * M + wi_in_fft * FactWiM + j) + 2 * sub_batch_num;
+                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((row * M + wi_in_fft * FactWiM + j)) +
+                2 * sub_batch_num;
             priv[2 * j] = loc[detail::pad_local(base_index, BankLinesPerPad)];
             priv[2 * j + 1] = loc[detail::pad_local(base_index + 1, BankLinesPerPad)];
           });
@@ -221,7 +224,8 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
-                2 * max_num_batches_in_local_mem * (j * FactSgN + wi_in_fft + M * row) + 2 * sub_batch_num;
+                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((j * FactSgN + wi_in_fft + M * row)) +
+                2 * sub_batch_num;
             loc[detail::pad_local(base_index, BankLinesPerPad)] = priv[2 * j];
             loc[detail::pad_local(base_index + 1, BankLinesPerPad)] = priv[2 * j + 1];
           });
