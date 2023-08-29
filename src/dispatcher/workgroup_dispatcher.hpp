@@ -236,7 +236,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n = static_cast<std::size_t>(factor_wi_n) * static_cast<std::size_t>(factor_sg_n);
     std::size_t m = static_cast<std::size_t>(factor_wi_m) * static_cast<std::size_t>(factor_sg_m);
-    Scalar* res = sycl::malloc_device<Scalar>(2 * (m + n + fft_size), desc.queue);
+    Scalar* res = sycl::aligned_alloc_device<Scalar>(
+        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), 2 * (m + n + fft_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_n), static_cast<std::size_t>(factor_wi_n)}),
                        [=](sycl::item<2> it) {

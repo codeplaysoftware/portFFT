@@ -154,7 +154,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   // Each workitem loads a chunk of `ChunkSize` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
-    loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
+    loaded = *reinterpret_cast<const T_vec*>(&global[global_offset + i]);
     detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       local[local_idx] = loaded[j];
@@ -268,7 +268,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       to_store[j] = local[local_idx];
     });
-    to_store.store(0, detail::get_global_multi_ptr(&global[global_offset + i]));
+    *reinterpret_cast<T_vec*>(&global[global_offset + i]) = to_store;
   }
 #endif
   // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
