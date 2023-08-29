@@ -74,12 +74,13 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
     for (int j{0}; j < factorN; ++j) {
       // Apply twiddles to values in private memory.
       auto re_multiplier = twiddle<T>::Re[factorN * factorM][i * j];
-      auto im_multiplier = [&]() {
+      auto im_multiplier = [&]() __attribute__((always_inline)) {
         if constexpr (Dir == direction::FORWARD) {
           return twiddle<T>::Im[factorN * factorM][i * j];
         }
         return -twiddle<T>::Im[factorN * factorM][i * j];
-      }();
+      }
+      ();
       T tmp_val = privateScratch[2 * i * factorN + 2 * j] * re_multiplier -
                   privateScratch[2 * i * factorN + 2 * j + 1] * im_multiplier;
       privateScratch[2 * i * factorN + 2 * j + 1] = privateScratch[2 * i * factorN + 2 * j] * im_multiplier +
@@ -101,7 +102,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
  * @return the smaller of the factors
  */
 template <typename TIndex>
-constexpr TIndex factorize(TIndex N) {
+__attribute__((always_inline)) constexpr TIndex factorize(TIndex N) {
   TIndex res = 1;
   for (TIndex i = 2; i * i <= N; i++) {
     if (N % i == 0) {
@@ -119,7 +120,7 @@ constexpr TIndex factorize(TIndex N) {
  * @return Number of temporary complex values
  */
 template <typename TIndex>
-constexpr TIndex wi_temps(TIndex N) {
+__attribute__((always_inline)) constexpr TIndex wi_temps(TIndex N) {
   TIndex f0 = factorize(N);
   TIndex f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
@@ -139,7 +140,7 @@ constexpr TIndex wi_temps(TIndex N) {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar, typename TIndex>
-constexpr bool fits_in_wi(TIndex N) {
+__attribute__((always_inline)) constexpr bool fits_in_wi(TIndex N) {
   TIndex n_complex = N + wi_temps(N);
   TIndex complex_size = 2 * sizeof(Scalar);
   TIndex register_space = PORTFFT_REGISTERS_PER_WI * 4;
