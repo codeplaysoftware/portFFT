@@ -23,6 +23,9 @@
 #include <stdexcept>
 
 namespace portfft {
+/**
+ * The exception to be thrown when a given configuration is not supported by the library
+ */
 class unsupported_configuration : public std::runtime_error {
  public:
   unsupported_configuration(const std::string& what_arg) : std::runtime_error(what_arg) {}
