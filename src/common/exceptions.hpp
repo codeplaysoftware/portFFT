@@ -20,18 +20,19 @@
 
 #ifndef PORTFFT_COMMON_EXCEPTIONS_HPP
 #define PORTFFT_COMMON_EXCEPTIONS_HPP
+
 #include <stdexcept>
 
 namespace portfft {
+
 /**
- * The exception to be thrown when a given configuration is not supported by the library
+ * Exception thrown if the provided descriptor is not supported at the moment or cannot be supported on a particular
+ * device or with the particular CMake configuration.
  */
-class unsupported_configuration : public std::runtime_error {
- public:
-  unsupported_configuration(const std::string& what_arg) : std::runtime_error(what_arg) {}
-  unsupported_configuration(const char* what_arg) : std::runtime_error(what_arg) {}
-  unsupported_configuration(const runtime_error& other) noexcept : std::runtime_error(other) {}
+struct unsupported_configuration : public std::runtime_error {
+  using std::runtime_error::runtime_error;
 };
-}  // namespace portfft
+
+};  // namespace portfft
 
 #endif
