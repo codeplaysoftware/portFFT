@@ -45,8 +45,8 @@ if(DPCPP_FOUND AND NOT TARGET DPCPP::DPCPP)
   set(CMAKE_CXX_STANDARD 17)
   add_library(DPCPP::DPCPP INTERFACE IMPORTED)
   set_target_properties(DPCPP::DPCPP PROPERTIES
-    INTERFACE_COMPILE_OPTIONS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
-    INTERFACE_LINK_OPTIONS "-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
+    INTERFACE_COMPILE_OPTIONS "-fsave-optimization-record;-Rpass-missed=gvn;-Rpass=gvn;-Rpass-analysis=gvn;-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
+    INTERFACE_LINK_OPTIONS "-fsave-optimization-record;-Rpass-missed=gvn;-Rpass=gvn;-Rpass-analysis=gvn;-fsycl;-fsycl-targets=${PORTFFT_DEVICE_TRIPLE};-fsycl-unnamed-lambda"
     INTERFACE_LINK_LIBRARIES ${DPCPP_LIB}
     INTERFACE_INCLUDE_DIRECTORIES "${DPCPP_BIN_DIR}/../include/sycl;${DPCPP_BIN_DIR}/../include")
 endif()
@@ -60,5 +60,5 @@ function(add_sycl_to_target)
     "${multi_value_args}"
     ${ARGN}
   )
-  target_link_libraries(${ARG_TARGET} PUBLIC DPCPP::DPCPP)                        
+  target_link_libraries(${ARG_TARGET} PUBLIC DPCPP::DPCPP)
 endfunction()
