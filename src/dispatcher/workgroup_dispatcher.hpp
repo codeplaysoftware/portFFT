@@ -95,7 +95,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
       const std::size_t num_batches_in_local_mem = [=]() {
-        if (offset + it.get_local_range(0) / 2 < n_transforms) {
+        if ((offset / (2 * FFTSize)) + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         }
         return n_transforms - offset / (2 * FFTSize);
@@ -103,7 +103,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       // Load in a transposed manner, similar to subgroup impl.
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(
-            it, input, loc, 2 * offset, FFTSize, n_transforms, max_num_batches_in_local_mem);
+            it, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
       }
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
