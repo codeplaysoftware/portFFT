@@ -77,7 +77,7 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
   std::size_t fact_wi_m = factor_m / fact_sg_m;
 
   constexpr size_t PrivateMemSize = 2 * detail::MaxFftSizeWi;
-  T priv[PrivateMemSize];
+  alignas(sizeof(T) * 2) T priv[PrivateMemSize];
   const std::size_t num_sgs = it.get_local_range(0) / SubgroupSize;
 
   sycl::sub_group sg = it.get_sub_group();
