@@ -318,7 +318,6 @@ class committed_descriptor {
     }
   }
 
- public:
   /**
    * Constructor.
    *
@@ -356,6 +355,7 @@ class committed_descriptor {
     });
   }
 
+ public:
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
   /**
