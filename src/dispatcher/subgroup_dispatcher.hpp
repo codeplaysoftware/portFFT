@@ -81,7 +81,7 @@ __attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, 
                                                          T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
   constexpr std::size_t MaxFactorWI = detail::MaxFftSizeWi;
-  T priv[2 * MaxFactorWI];
+  alignas(sizeof(T) * 2) T priv[2 * MaxFactorWI];
   std::size_t n_reals_per_wi = 2 * factor_wi;
 
   sycl::sub_group sg = it.get_sub_group();
