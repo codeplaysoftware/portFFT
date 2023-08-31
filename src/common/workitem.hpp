@@ -63,20 +63,19 @@ strides.
 template <direction Dir, typename T>
 __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out,
                                                      T* privateScratch) {
-#pragma clang loop unroll(full)
   for (int idx_out{0}; idx_out < dftSize; ++idx_out) {
     privateScratch[2 * idx_out + 0] = 0;
     privateScratch[2 * idx_out + 1] = 0;
-#pragma clang loop unroll(full)
     for (int idx_in{0}; idx_in < dftSize; ++idx_in) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::Re[dftSize][idx_in * idx_out % dftSize];
-      auto im_multiplier = [&]() {
+      auto im_multiplier = [&]() __attribute__((always_inline)) {
         if constexpr (Dir == direction::FORWARD) {
           return twiddle<T>::Im[dftSize][idx_in * idx_out % dftSize];
         }
         return -twiddle<T>::Im[dftSize][idx_in * idx_out % dftSize];
-      }();
+      }
+      ();
 
       // multiply in and multi
       privateScratch[2 * idx_out + 0] +=
@@ -85,7 +84,6 @@ __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, i
           in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
     }
   }
-#pragma clang loop unroll(full)
   for (int idx_out{0}; idx_out < 2 * dftSize; idx_out += 2) {
     out[idx_out * stride_out + 0] = privateScratch[idx_out + 0];
     out[idx_out * stride_out + 1] = privateScratch[idx_out + 1];
@@ -115,16 +113,16 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
     // Do a WI dft of factorN size, reading from in and writing to the private memory.
     wi_dft<Dir, WiDftRecursionLevel>(factorN, in + 2 * i * stride_in, factorM * stride_in,
                                      privateScratch + 2 * i * factorN, 1, privateScratch + 2 * factorN * factorM);
-#pragma clang loop unroll(full)
     for (int j{0}; j < factorN; ++j) {
       // Apply twiddles to values in private memory.
       auto re_multiplier = twiddle<T>::Re[factorN * factorM][i * j];
-      auto im_multiplier = [&]() {
+      auto im_multiplier = [&]() __attribute__((always_inline)) {
         if constexpr (Dir == direction::FORWARD) {
           return twiddle<T>::Im[factorN * factorM][i * j];
         }
         return -twiddle<T>::Im[factorN * factorM][i * j];
-      }();
+      }
+      ();
       T tmp_val = privateScratch[2 * i * factorN + 2 * j] * re_multiplier -
                   privateScratch[2 * i * factorN + 2 * j + 1] * im_multiplier;
       privateScratch[2 * i * factorN + 2 * j + 1] = privateScratch[2 * i * factorN + 2 * j] * im_multiplier +
@@ -132,7 +130,6 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
       privateScratch[2 * i * factorN + 2 * j + 0] = tmp_val;
     }
   }
-#pragma clang loop unroll(full)
   for (int i{0}; i < factorN; ++i) {
     // Do a WI dft of factor M size, reading from private memory and writing to out.
     wi_dft<Dir, WiDftRecursionLevel>(factorM, privateScratch + 2 * i, factorN, out + 2 * i * stride_out,
@@ -147,7 +144,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
  * @return the smaller of the factors
  */
 template <typename TIndex>
-constexpr TIndex factorize(TIndex N) {
+__attribute__((always_inline)) constexpr TIndex factorize(TIndex N) {
   TIndex res = 1;
   for (TIndex i = 2; i * i <= N; i++) {
     if (N % i == 0) {
@@ -166,7 +163,7 @@ constexpr TIndex factorize(TIndex N) {
  * @return Number of temporary complex values
  */
 template <typename TIndex, int RecursionDepth = 0>
-constexpr TIndex wi_temps(TIndex N) {
+__attribute__((always_inline)) constexpr TIndex wi_temps(TIndex N) {
   // This function is recursive, but DPC++ can compile it. The depth
   // limit is because its annoying for the compiler warn us about the recursion.
   constexpr int MaxRecursionLevel = 10;  // 2^10 allows dftSize < 2^10 == 1024.
@@ -195,7 +192,7 @@ constexpr TIndex wi_temps(TIndex N) {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar, typename TIndex>
-constexpr bool fits_in_wi(TIndex N) {
+__attribute__((always_inline)) constexpr bool fits_in_wi(TIndex N) {
   TIndex n_complex = N + wi_temps(N);
   TIndex complex_size = 2 * sizeof(Scalar);
   TIndex register_space = PORTFFT_REGISTERS_PER_WI * 4;

@@ -37,7 +37,7 @@ namespace portfft {
  * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
  * @return constexpr std::size_t the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
-constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
+__attribute__((always_inline)) constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
   constexpr std::size_t BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
   if (row_size % BankLineSize == 0) {
     return row_size / BankLineSize;
@@ -174,7 +174,6 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
         local2private<detail::pad::DO_PAD>(2 * fact_wi_m, loc, priv, fft_local_id, 2 * fact_wi_m, bank_lines_per_pad,
                                            2 * factor_m * row);
       }
-#pragma clang loop unroll(full)
       for (std::size_t i{0}; i < fact_wi_m; ++i) {
         std::size_t element = fft_local_id * fact_wi_m + i;
         std::size_t twiddle_index = factor_m * row + element;
@@ -191,7 +190,6 @@ __attribute__((always_inline)) inline void wg_dft(std::size_t factor_n, std::siz
 
       T wi_private_scratch[2 * detail::wi_temps(detail::MaxFftSizeWi)];
       sg_dft<Dir, SubgroupSize>(fact_wi_m, fact_sg_m, priv, sg, loc_twiddles, wi_private_scratch);
-#pragma clang loop unroll(full)
       for (std::size_t i{0}; i < fact_wi_m; ++i) {
         priv[2 * i] *= scaling_factor;
         priv[2 * i + 1] *= scaling_factor;

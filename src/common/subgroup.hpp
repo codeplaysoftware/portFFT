@@ -100,7 +100,6 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(std::size_t dft_si
     T res_real = 0;
     T res_imag = 0;
 
-#pragma clang loop unroll(full)
     for (std::size_t idx_in{0}; idx_in < dft_size; ++idx_in) {
       const T multi_re = twiddle<T>::Re[dft_size][idx_in * idx_out % dft_size];
       const T multi_im = [&]() __attribute__((always_inline)) {
@@ -241,7 +240,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(std::size_t dft_size, st
  * @return the factor below or equal to subgroup size
  */
 template <typename IntT>
-constexpr IntT factorize_sg(IntT N, int sg_size) {
+__attribute__((always_inline)) constexpr IntT factorize_sg(IntT N, int sg_size) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
@@ -264,7 +263,7 @@ constexpr IntT factorize_sg(IntT N, int sg_size) {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar, typename TIndex>
-constexpr bool fits_in_sg(TIndex N, int sg_size) {
+__attribute__((always_inline)) constexpr bool fits_in_sg(TIndex N, int sg_size) {
   int factor_sg = factorize_sg(static_cast<int>(N), sg_size);
   int factor_wi = static_cast<int>(N) / factor_sg;
   return fits_in_wi<Scalar>(factor_wi);
@@ -291,7 +290,6 @@ __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::siz
                                                   sycl::sub_group& sg, const T* sg_twiddles, T* wi_private_scratch) {
   std::size_t idx_of_wi_in_fft = sg.get_local_linear_id() % factor_n;
 
-#pragma clang loop unroll(full)
   for (std::size_t idx_of_element_in_wi{0}; idx_of_element_in_wi < factor_m; ++idx_of_element_in_wi) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
@@ -324,7 +322,7 @@ __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::siz
  * @param sg_twiddles destination into which to store the twiddles
  */
 template <typename T>
-void sg_calc_twiddles(int N, int M, int n, int k, T* sg_twiddles) {
+__attribute__((always_inline)) void sg_calc_twiddles(int N, int M, int n, int k, T* sg_twiddles) {
   std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
   sg_twiddles[k * N + n] = twiddle.real();
   sg_twiddles[(k + M) * N + n] = twiddle.imag();
