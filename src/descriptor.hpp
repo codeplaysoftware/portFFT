@@ -560,7 +560,7 @@ class committed_descriptor {
       if (input_distance == 1 && output_distance == fft_size && in != out) {
         return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
       }
-      throw std::runtime_error("Unsupported configuration");
+      throw unsupported_configuration("Only contiguous or transposed transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
