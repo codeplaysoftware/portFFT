@@ -137,7 +137,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
-                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (wi_in_fft * FactWiN + j) + column)) +
+                2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (j * FactSgN + wi_in_fft) + column)) +
                 2 * sub_batch_num;
             loc[detail::pad_local(base_offset, BankLinesPerPad)] = priv[2 * j];
             loc[detail::pad_local(base_offset + 1, BankLinesPerPad)] = priv[2 * j + 1];
