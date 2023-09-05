@@ -285,8 +285,6 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     }
     desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
     desc.queue.wait();
-    desc.queue.prefetch(res, 2 * (fft_size + m + n));
-    desc.queue.wait();
     sycl::free(temp_host, desc.queue);
     delete[] scratch_memory;
     return res;
