@@ -29,7 +29,7 @@
 namespace portfft {
 
 // forward declaration
-template <direction Dir, int WiDftRecursionLevel, typename T>
+template <direction Dir, int RecursionLevel, typename T>
 inline void wi_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out, T* privateScratch);
 
 namespace detail {
@@ -98,7 +98,7 @@ __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, i
  * Calculates DFT using Cooley-Tukey FFT algorithm. Can work in or out of place. Size of the problem is N*M
  *
  * @tparam Dir direction of the FFT
- * @tparam WiDftRecursionLevel The number of times wi_dft has been called prior to calling this function.
+ * @tparam RecursionLevel The number of times wi_dft has been called prior to calling this function.
  * @tparam T type of the scalar used for computations
  * @param factorN the first factor of the problem size
  * @param factorM the second factor of the problem size
@@ -108,13 +108,13 @@ __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, i
  * @param stride_out stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI. Expects size 2 * (factorN * factorM + max(factorN, factorM)).
  */
-template <direction Dir, int WiDftRecursionLevel, typename T>
+template <direction Dir, int RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int factorM, const T* in, int stride_in,
                                                             T* out, int stride_out, T* privateScratch) {
   for (int i{0}; i < factorM; ++i) {
     // Do a WI dft of factorN size, reading from in and writing to the private memory.
-    wi_dft<Dir, WiDftRecursionLevel>(factorN, in + 2 * i * stride_in, factorM * stride_in,
-                                     privateScratch + 2 * i * factorN, 1, privateScratch + 2 * factorN * factorM);
+    wi_dft<Dir, RecursionLevel>(factorN, in + 2 * i * stride_in, factorM * stride_in, privateScratch + 2 * i * factorN,
+                                1, privateScratch + 2 * factorN * factorM);
 #pragma clang loop unroll(full)
     for (int j{0}; j < factorN; ++j) {
       // Apply twiddles to values in private memory.
@@ -135,8 +135,8 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
 #pragma clang loop unroll(full)
   for (int i{0}; i < factorN; ++i) {
     // Do a WI dft of factor M size, reading from private memory and writing to out.
-    wi_dft<Dir, WiDftRecursionLevel>(factorM, privateScratch + 2 * i, factorN, out + 2 * i * stride_out,
-                                     factorN * stride_out, privateScratch + 2 * factorN * factorM);
+    wi_dft<Dir, RecursionLevel>(factorM, privateScratch + 2 * i, factorN, out + 2 * i * stride_out,
+                                factorN * stride_out, privateScratch + 2 * factorN * factorM);
   }
 }
 
@@ -208,7 +208,7 @@ constexpr bool fits_in_wi(TIndex N) {
  * Calculates DFT using FFT algorithm. Can work in or out of place.
  *
  * @tparam Dir direction of the FFT
- * @tparam WiDftRecursionLevel How many times has has wi_dft been recursively called before?
+ * @tparam RecursionLevel How many times has has wi_dft been recursively called before?
  * @tparam T type of the scalar used for computations
  * @param dftSize size of the DFT transform
  * @param in pointer to input
@@ -217,12 +217,12 @@ constexpr bool fits_in_wi(TIndex N) {
  * @param stride_out stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI.
  */
-template <direction Dir, int WiDftRecursionLevel, typename T>
+template <direction Dir, int RecursionLevel, typename T>
 __attribute__((always_inline)) inline void wi_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out,
                                                   T* privateScratch) {
   int f0 = detail::factorize(dftSize);
   constexpr int MaxRecursionLevel = detail::uint_log2(detail::MaxFftSizeWi) - 1;
-  if constexpr (WiDftRecursionLevel < MaxRecursionLevel) {
+  if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (dftSize == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
       T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
@@ -232,8 +232,8 @@ __attribute__((always_inline)) inline void wi_dft(int dftSize, const T* in, int 
       out[0 * stride_out + 1] = b;
       out[2 * stride_out + 0] = c;
     } else if (f0 >= 2 && dftSize / f0 >= 2) {
-      detail::cooley_tukey_dft<Dir, WiDftRecursionLevel + 1>(dftSize / f0, f0, in, stride_in, out, stride_out,
-                                                             privateScratch);
+      detail::cooley_tukey_dft<Dir, RecursionLevel + 1>(dftSize / f0, f0, in, stride_in, out, stride_out,
+                                                        privateScratch);
     } else {
       detail::naive_dft<Dir>(dftSize, in, stride_in, out, stride_out, privateScratch);
     }

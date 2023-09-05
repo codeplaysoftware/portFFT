@@ -58,7 +58,7 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int RecursionLevel, typename T>
 inline void cross_sg_dft(std::size_t dft_size, std::size_t stride, T& real, T& imag, sycl::sub_group& sg);
 
 /**
@@ -158,7 +158,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(std::size_t factor
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam XSgDftRecursionLevel The number of times cross_sg_dft has been recursively called prior to calling this
+ * @tparam RecursionLevel The number of times cross_sg_dft has been recursively called prior to calling this
  * function.
  * @tparam T type of the scalar to work on
  * @param factor_n the first factor of the problem size
@@ -171,7 +171,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(std::size_t factor
  * one workitem
  * @param sg subgroup
  */
-template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t factor_n, std::size_t factor_m,
                                                                      std::size_t stride, T& real, T& imag,
                                                                      sycl::sub_group& sg) {
@@ -181,7 +181,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
   std::size_t n = index_in_outer_dft / factor_n;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<Dir, SubgroupSize, XSgDftRecursionLevel>(factor_n, factor_m * stride, real, imag, sg);
+  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(factor_n, factor_m * stride, real, imag, sg);
   // transpose
   cross_sg_transpose(factor_n, factor_m, stride, real, imag, sg);
   // twiddle
@@ -197,7 +197,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;
   // factor M
-  cross_sg_dft<Dir, SubgroupSize, XSgDftRecursionLevel>(factor_m, factor_n * stride, real, imag, sg);
+  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(factor_m, factor_n * stride, real, imag, sg);
 }
 
 /**
@@ -205,7 +205,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
  * output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam XSgDftRecursionLevel The number of times cross_sg_dft has been recursively called prior to calling this
+ * @tparam RecursionLevel The number of times cross_sg_dft has been recursively called prior to calling this
  * function.
  * @tparam T type of the scalar to work on
  * @param dft_size Size of the DFT
@@ -217,15 +217,15 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(std::size_t
  * one workitem
  * @param sg subgroup
  */
-template <direction Dir, int SubgroupSize, int XSgDftRecursionLevel, typename T>
+template <direction Dir, int SubgroupSize, int RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cross_sg_dft(std::size_t dft_size, std::size_t stride, T& real, T& imag,
                                                         sycl::sub_group& sg) {
   // Max DFT size is sub-group size.
-  constexpr int MaxXSgDftRecursionLevel = detail::uint_log2(SubgroupSize);
-  if constexpr (XSgDftRecursionLevel < MaxXSgDftRecursionLevel) {
+  constexpr int MaxRecursionLevel = detail::uint_log2(SubgroupSize);
+  if constexpr (RecursionLevel < MaxRecursionLevel) {
     std::size_t f0 = detail::factorize(dft_size);
     if (f0 >= 2 && dft_size / f0 >= 2) {
-      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, XSgDftRecursionLevel + 1>(dft_size / f0, f0, stride, real, imag, sg);
+      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(dft_size / f0, f0, stride, real, imag, sg);
     } else {
       cross_sg_naive_dft<Dir>(dft_size, stride, real, imag, sg);
     }
