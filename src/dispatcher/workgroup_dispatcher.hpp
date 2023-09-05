@@ -94,6 +94,11 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, 2 * (M + N));
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      /**
+       * In the transposed case, the data is laid out in the local memory column-wise, veiwing it as a FFT_Size x
+       * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
+       * / 2 consecutive batches into the local memory
+       */
       const std::size_t num_batches_in_local_mem = [=]() {
         if ((offset / (2 * FFTSize)) + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;

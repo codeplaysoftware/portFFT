@@ -121,6 +121,10 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       }
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          /**
+           * Load data from the column corresponsing to the sub_batch_being computed,
+           * in a transposed fashion, viewing each column as N x M Matrix.
+           */
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
                 2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (wi_in_fft * FactWiN + j)) + column) +
@@ -135,6 +139,11 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       sg_dft<Dir, FactWiN, FactSgN>(priv, sg, loc_twiddles + (2 * M));
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          /**
+           * Store back the  data to the column corresponsing to the sub_batch_being computed,
+           * in a transposed fashion, viewing each column as N x M Matrix, given the result from
+           * sg_dft is also transposed in the registers.
+           */
           detail::unrolled_loop<0, FactWiN, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_offset =
                 2 * max_num_batches_in_local_mem * static_cast<std::size_t>((M * (j * FactSgN + wi_in_fft) + column)) +
@@ -189,6 +198,9 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       }
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          /**
+           * Load FactWiM contiguous elements per column corresponding to the sub batch being processed.
+           */
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
                 2 * max_num_batches_in_local_mem * static_cast<std::size_t>((row * M + wi_in_fft * FactWiM + j)) +
@@ -222,6 +234,10 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       });
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          /**
+           * Store back FactWiM contiguous elements per column corresponding to the sub batch being processed,
+           * un-transposing the transposed result obtained from sg_dft
+           */
           detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index =
                 2 * max_num_batches_in_local_mem * static_cast<std::size_t>((j * FactSgN + wi_in_fft + M * row)) +
