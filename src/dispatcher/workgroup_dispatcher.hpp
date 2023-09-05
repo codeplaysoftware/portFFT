@@ -257,7 +257,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Scalar* global_pointer = res + 2 * (n + m);
     // Copying from pinned memory to device might be faster than from regular allocation
     Scalar* temp_host = sycl::malloc_host<Scalar>(2 * fft_size, desc.queue);
-    Scalar* scratch_memory = (Scalar*)malloc(2 * factor_wi_m * factor_sg_m * sizeof(Scalar));
+    Scalar* scratch_memory = new Scalar[2 * factor_sg_m * factor_wi_m];
 
     for (std::size_t i = 0; i < n; i++) {
       for (std::size_t j = 0; j < m; j++) {
@@ -288,7 +288,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     desc.queue.prefetch(res, 2 * (fft_size + m + n));
     desc.queue.wait();
     sycl::free(temp_host, desc.queue);
-    free(scratch_memory);
+    delete[] scratch_memory;
     return res;
   }
 };
