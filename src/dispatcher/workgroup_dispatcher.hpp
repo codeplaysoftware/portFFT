@@ -187,8 +187,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
@@ -236,7 +236,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n = static_cast<std::size_t>(factor_wi_n) * static_cast<std::size_t>(factor_sg_n);
     std::size_t m = static_cast<std::size_t>(factor_wi_m) * static_cast<std::size_t>(factor_sg_m);
-    Scalar* res = sycl::malloc_device<Scalar>(2 * (m + n + fft_size), desc.queue);
+    Scalar* res = sycl::aligned_alloc_device<Scalar>(
+        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), 2 * (m + n + fft_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_n), static_cast<std::size_t>(factor_wi_n)}),
                        [=](sycl::item<2> it) {
@@ -256,6 +257,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Scalar* global_pointer = res + 2 * (n + m);
     // Copying from pinned memory to device might be faster than from regular allocation
     Scalar* temp_host = sycl::malloc_host<Scalar>(2 * fft_size, desc.queue);
+    Scalar* scratch_memory = new Scalar[static_cast<std::size_t>(2 * factor_sg_m * factor_wi_m)];
 
     for (std::size_t i = 0; i < n; i++) {
       for (std::size_t j = 0; j < m; j++) {
@@ -266,9 +268,25 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
             static_cast<Scalar>(std::sin((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size)));
       }
     }
+    // rearrange the twiddles
+    for (std::size_t i = 0; i < n; i++) {
+      std::size_t row_offset = 2 * i * m;
+      for (int j = 0; j < factor_wi_m; j++) {
+        for (int k = 0; k < factor_sg_m; k++) {
+          scratch_memory[2 * j * factor_sg_m + 2 * k] =
+              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j)];
+          scratch_memory[2 * j * factor_sg_m + 2 * k + 1] =
+              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j + 1)];
+        }
+      }
+      for (std::size_t j = 0; j < 2 * m; j++) {
+        temp_host[row_offset + j] = scratch_memory[j];
+      }
+    }
     desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
     desc.queue.wait();
     sycl::free(temp_host, desc.queue);
+    delete[] scratch_memory;
     return res;
   }
 };
