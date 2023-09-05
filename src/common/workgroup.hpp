@@ -51,6 +51,7 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
+ * @tparam TransposeIn Whether or not the input is transposed
  * @tparam FFTSize Problem Size
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
@@ -63,6 +64,8 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param it Associated nd_item
  * @param scaling_factor Scalar value with which the result is to be scaled
+ * @param max_num_batches_in_local_mem Maximum possible number of batches in local memory
+ * @param sub_batch_num Batch that is stored in the local memory currently being computed
  */
 template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int M, int SubgroupSize,
           std::size_t BankLinesPerPad, typename T>
