@@ -218,9 +218,9 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         }
       }
       detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
-        int element = wi_in_fft * FactWiM + i;
-        int twiddle_index = M * row + element;
-        sycl::vec<T, 2> twiddles = *reinterpret_cast<const sycl::vec<T, 2>*>(&wg_twiddles[2 * twiddle_index]);
+        int element = 2 * i * FactSgM + 2 * wi_in_fft;
+        int twiddle_index = 2 * M * row + element;
+        sycl::vec<T, 2> twiddles = *reinterpret_cast<const sycl::vec<T, 2>*>(&wg_twiddles[twiddle_index]);
         T twiddle_real = twiddles[0];
         T twiddle_imag = twiddles[1];
         if constexpr (Dir == direction::BACKWARD) {
