@@ -287,7 +287,7 @@ __attribute__((always_inline)) constexpr bool fits_in_sg(TIndex N, int sg_size) 
  */
 template <direction Dir, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::size_t factor_n, T* inout,
-                                                  sycl::sub_group& sg, const T* sg_twiddles, T* wi_private_scratch) {
+                                                  sycl::sub_group& sg, const T* sg_twiddles) {
   std::size_t idx_of_wi_in_fft = sg.get_local_linear_id() % factor_n;
 
   for (std::size_t idx_of_element_in_wi{0}; idx_of_element_in_wi < factor_m; ++idx_of_element_in_wi) {
@@ -308,7 +308,7 @@ __attribute__((always_inline)) inline void sg_dft(std::size_t factor_m, std::siz
       }
     }
   }
-  wi_dft<Dir, 0>(static_cast<int>(factor_m), inout, 1, inout, 1, wi_private_scratch);
+  wi_dft<Dir, 0>(static_cast<int>(factor_m), inout, 1, inout, 1);
 }
 
 /**

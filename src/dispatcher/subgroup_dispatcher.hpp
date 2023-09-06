@@ -158,8 +158,7 @@ __attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, 
           local2private_transposed<detail::pad::DO_PAD>(factor_wi, loc, priv, id_of_wi_in_fft, sub_batch,
                                                         max_num_batches_local_mem, BankLinesPerPad);
         }
-        T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
-        sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles, wi_private_scratch);
+        sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles);
 #pragma clang loop unroll(full)
         for (std::size_t idx{0}; idx < n_reals_per_wi; idx += 2) {
           priv[idx] *= scaling_factor;
@@ -200,8 +199,7 @@ __attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, 
       }
       sycl::group_barrier(sg);
 
-      T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
-      sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles, wi_private_scratch);
+      sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles);
 #pragma clang loop unroll(full)
       for (std::size_t j{0}; j < n_reals_per_wi; j += 2) {
         priv[j] *= scaling_factor;
