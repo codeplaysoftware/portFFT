@@ -62,9 +62,11 @@ strides.
 template <direction Dir, typename T>
 __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, int stride_in, T* out, int stride_out) {
   T private_scratch[2 * MaxFftSizeWi];
+#pragma clang loop unroll(full)
   for (int idx_out{0}; idx_out < dftSize; ++idx_out) {
     private_scratch[2 * idx_out + 0] = 0;
     private_scratch[2 * idx_out + 1] = 0;
+#pragma clang loop unroll(full)
     for (int idx_in{0}; idx_in < dftSize; ++idx_in) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::Re[dftSize][idx_in * idx_out % dftSize];
@@ -83,6 +85,7 @@ __attribute__((always_inline)) inline void naive_dft(int dftSize, const T* in, i
           in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
     }
   }
+#pragma clang loop unroll(full)
   for (int idx_out{0}; idx_out < 2 * dftSize; idx_out += 2) {
     out[idx_out * stride_out + 0] = private_scratch[idx_out + 0];
     out[idx_out * stride_out + 1] = private_scratch[idx_out + 1];
@@ -110,10 +113,12 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
   static_assert(RecursionLevel > 0, "Expect positive RecursionLevel");
   T private_scratch[2 * (0x1 << (detail::uint_log2(detail::MaxFftSizeWi) -
                                  RecursionLevel))];  // Overallocated for max possible FFT size
+#pragma clang loop unroll(full)
   for (int i{0}; i < factorM; ++i) {
     // Do a WI dft of factorN size, reading from in and writing to the private memory.
     wi_dft<Dir, RecursionLevel>(factorN, in + 2 * i * stride_in, factorM * stride_in, private_scratch + 2 * i * factorN,
                                 1);
+#pragma clang loop unroll(full)
     for (int j{0}; j < factorN; ++j) {
       // Apply twiddles to values in private memory.
       auto re_multiplier = twiddle<T>::Re[factorN * factorM][i * j];
@@ -131,6 +136,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
       private_scratch[2 * i * factorN + 2 * j + 0] = tmp_val;
     }
   }
+#pragma clang loop unroll(full)
   for (int i{0}; i < factorN; ++i) {
     // Do a WI dft of factor M size, reading from private memory and writing to out.
     wi_dft<Dir, RecursionLevel>(factorM, private_scratch + 2 * i, factorN, out + 2 * i * stride_out,
@@ -147,6 +153,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(int factorN, int fac
 template <typename TIndex>
 __attribute__((always_inline)) constexpr TIndex factorize(TIndex N) {
   TIndex res = 1;
+#pragma clang loop unroll(full)
   for (TIndex i = 2; i * i <= N; i++) {
     if (N % i == 0) {
       res = i;
