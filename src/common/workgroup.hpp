@@ -128,11 +128,11 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
            * Load data from the column corresponsing to the sub_batch_being computed,
            * in a transposed fashion, viewing each column as N x M Matrix.
            */
-          transfer_strided<T, detail::pad::DO_PAD, FactWiN, 0>(
+          transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWiN>(
               priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(M),
               static_cast<std::size_t>(column), 1L, static_cast<std::size_t>(wi_in_fft * FactWiN), BankLinesPerPad);
         } else {
-          transfer_strided<T, detail::pad::DO_PAD, FactWiN, 0>(
+          transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWiN>(
               priv, loc, 1L, 0L, static_cast<std::size_t>(2 * M), static_cast<std::size_t>(2 * column), 1L,
               static_cast<std::size_t>(wi_in_fft * FactWiN), BankLinesPerPad);
         }
@@ -145,12 +145,12 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
            * in a transposed fashion, viewing each column as N x M Matrix, given the result from
            * sg_dft is also transposed in the registers.
            */
-          transfer_strided<T, detail::pad::DO_PAD, FactWiN, 1>(
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWiN>(
               priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(M),
               static_cast<std::size_t>(column), static_cast<std::size_t>(FactSgN), static_cast<std::size_t>(wi_in_fft),
               BankLinesPerPad);
         } else {
-          transfer_strided<T, detail::pad::DO_PAD, FactWiN, 1>(
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWiN>(
               priv, loc, 1L, 0L, static_cast<std::size_t>(2 * M), static_cast<std::size_t>(2 * column),
               static_cast<std::size_t>(FactSgN), static_cast<std::size_t>(wi_in_fft), BankLinesPerPad);
         }
@@ -200,7 +200,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
           /**
            * Load FactWiM contiguous elements per column corresponding to the sub batch being processed.
            */
-          transfer_strided<T, detail::pad::DO_PAD, FactWiM, 0>(
+          transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWiM>(
               priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, 1L, static_cast<std::size_t>(row * M), 1L,
               static_cast<std::size_t>(wi_in_fft * FactWiM), BankLinesPerPad);
         } else {
@@ -233,7 +233,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
            * Store back FactWiM contiguous elements per column corresponding to the sub batch being processed,
            * un-transposing the transposed result obtained from sg_dft
            */
-          transfer_strided<T, detail::pad::DO_PAD, FactWiM, 1>(
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWiM>(
               priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, 1L, static_cast<std::size_t>(M * row),
               static_cast<std::size_t>(FactSgN), static_cast<std::size_t>(wi_in_fft), BankLinesPerPad);
         } else {
