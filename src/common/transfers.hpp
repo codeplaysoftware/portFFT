@@ -491,9 +491,19 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
  * of transpositions / strides and combine them into a single load / store.
  *
  * @tparam T Scalar Type
- * @tparam PadSource Whether or not to pad
+ * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TransferDirection Direction of Transfer. 0: local -> Private. 1: Private -> local
+ *
+ * @param priv Pointer to private memory
+ * @param loc Pointer to local memory
+ * @param stride_1 Outer Most stride
+ * @param offset_1 Outer most offset
+ * @param stride_2 2nd level of stride
+ * @param offset_2 2nd level of offset
+ * @param stride_3 inner most stride
+ * @param offset_3 inner most offset
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <typename T, detail::pad Pad, int NumComplexElements, int TransferDirection>
 __attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,

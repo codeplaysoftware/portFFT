@@ -117,6 +117,8 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
         sycl::group_barrier(it.get_group());
       }
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
+        // in a strided fashion.
         std::size_t batch_num = it.get_local_linear_id() / 2;
         for (std::size_t i = 0; i < FFTSize; i++) {
           std::size_t source_row = i / N;
