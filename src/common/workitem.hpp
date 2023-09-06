@@ -59,31 +59,37 @@ strides.
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
-__attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
-  T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+template <direction Dir, typename T>
+__attribute__((always_inline)) inline void naive_dft(std::size_t dft_size, const T* in, std::size_t stride_in, T* out,
+                                                     std::size_t stride_out) {
+  T tmp[2 * MaxFftSizeWi];
+#pragma clang loop unroll(full)
+  for (std::size_t idx_out{0}; idx_out < dft_size; ++idx_out) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+#pragma clang loop unroll(full)
+    for (std::size_t idx_in{0}; idx_in < dft_size; ++idx_in) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
-      auto re_multiplier = twiddle<T>::Re[N][idx_in * idx_out % N];
+      auto re_multiplier = twiddle<T>::Re[dft_size][idx_in * idx_out % dft_size];
       auto im_multiplier = [&]() {
         if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[N][idx_in * idx_out % N];
+          return twiddle<T>::Im[dft_size][idx_in * idx_out % dft_size];
         }
-        return -twiddle<T>::Im[N][idx_in * idx_out % N];
+        return -twiddle<T>::Im[dft_size][idx_in * idx_out % dft_size];
       }();
 
       // multiply in and multi
-      tmp[2 * idx_out + 0] += in[2 * idx_in * StrideIn] * re_multiplier - in[2 * idx_in * StrideIn + 1] * im_multiplier;
-      tmp[2 * idx_out + 1] += in[2 * idx_in * StrideIn] * im_multiplier + in[2 * idx_in * StrideIn + 1] * re_multiplier;
-    });
-  });
-  unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
-    out[idx_out * StrideOut + 0] = tmp[idx_out + 0];
-    out[idx_out * StrideOut + 1] = tmp[idx_out + 1];
-  });
+      tmp[2 * idx_out + 0] +=
+          in[2 * idx_in * stride_in] * re_multiplier - in[2 * idx_in * stride_in + 1] * im_multiplier;
+      tmp[2 * idx_out + 1] +=
+          in[2 * idx_in * stride_in] * im_multiplier + in[2 * idx_in * stride_in + 1] * re_multiplier;
+    }
+  }
+#pragma clang loop unroll(full)
+  for (std::size_t idx_out{0}; idx_out < 2 * dft_size; idx_out += 2) {
+    out[idx_out * stride_out + 0] = tmp[idx_out + 0];
+    out[idx_out * stride_out + 1] = tmp[idx_out + 1];
+  }
 }
 
 // mem requirement: ~N*M(if in place, otherwise x2) + N*M(=tmp) + sqrt(N*M) + pow(N*M,0.25) + ...
@@ -204,7 +210,7 @@ __attribute__((always_inline)) inline void wi_dft(const T* in, T* out) {
   } else if constexpr (F0 >= 2 && N / F0 >= 2) {
     detail::cooley_tukey_dft<Dir, N / F0, F0, StrideIn, StrideOut>(in, out);
   } else {
-    detail::naive_dft<Dir, N, StrideIn, StrideOut>(in, out);
+    detail::naive_dft<Dir>(N, in, StrideIn, out, StrideOut);
   }
 }
 
