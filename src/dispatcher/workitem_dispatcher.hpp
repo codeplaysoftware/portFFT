@@ -74,7 +74,7 @@ template <direction Dir, detail::transpose TransposeIn, int N, std::size_t Subgr
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          sycl::nd_item<1> it, T scaling_factor) {
   constexpr std::size_t NReals = 2 * N;
-
+  T temp[2 * wi_temps(MaxFftSizeWi)];
   T priv[NReals];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
@@ -104,7 +104,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       } else {
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
       }
-      wi_dft<Dir, N, 1, 1>(priv, priv);
+      wi_dft<Dir, 0>(N, priv, 1, priv, 1, temp);
       unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;

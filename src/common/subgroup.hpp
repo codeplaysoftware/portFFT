@@ -290,8 +290,8 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
       }
     }
   });
-
-  wi_dft<Dir, M, 1, 1>(inout, inout);
+  T temp[2 * detail::wi_temps(M)];
+  wi_dft<Dir, 0>(M, inout, 1, inout, 1, temp);
 }
 
 /**
