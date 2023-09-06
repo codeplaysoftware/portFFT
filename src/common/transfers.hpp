@@ -485,6 +485,35 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
     }
   });
 }
+
+/**
+ * Function meant to transfer data between local and private memory, and is able to handle 3 levels
+ * of transpositions / strides and combine them into a single load / store.
+ *
+ * @tparam T Scalar Type
+ * @tparam PadSource Whether or not to pad
+ * @tparam NumComplexElements Number of complex elements to transfer between the two.
+ * @tparam TransferDirection Direction of Transfer. 0: local -> Private. 1: Private -> local
+ */
+template <typename T, detail::pad Pad, int NumComplexElements, int TransferDirection>
+__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
+                                                            std::size_t stride_2, std::size_t offset_2,
+                                                            std::size_t stride_3, std::size_t offset_3,
+                                                            std::size_t bank_lines_per_pad) {
+  detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) __attribute__((always_inline)) {
+    std::size_t j_size_t = static_cast<std::size_t>(j);
+    std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
+    if constexpr (TransferDirection == 0) {
+      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+    }
+    if constexpr (TransferDirection == 1) {
+      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
+      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+    }
+  });
+}
+
 };  // namespace portfft
 
 #endif
