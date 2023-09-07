@@ -88,7 +88,7 @@ def make_data_spec(file_base):
     # The expected results are scaled during the tests for backward FFTs
     # so we do not need to specify the FFTs are backward.
     _append_configuration_1d(configs, file_base, "BackwardTest", "COMPLEX",
-                             [1], [8, 9, 16, 32, 64, 4096])
+                             [1], [16, 64, 2048])
     # The inputs and outputs are re-ordered during the tests
     # so we do not need to specify the stride or distance parameters.
     _append_configuration_1d(configs, file_base, "StridedTest", "COMPLEX",

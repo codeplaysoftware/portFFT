@@ -49,6 +49,17 @@ T prod_vec(const std::vector<T>& vec) {
   return std::accumulate(vec.cbegin(), vec.cend(), T(1), std::multiplies<>());
 }
 
+/// Set the value used to fill unpacked data.
+template <typename T>
+struct get_init_unpack_value {
+  T operator()() { return T(-42); }
+};
+
+template <typename T>
+struct get_init_unpack_value<std::complex<T>> {
+  auto operator()() { return std::complex<T>(-42, -42); }
+};
+
 /**
  * Apply strides and distance to a linear packed index to produce a linear unpacked index
  *
@@ -93,11 +104,11 @@ template <typename T>
 std::vector<T> unpack_data(const std::vector<T>& in, std::size_t num_unpack_elements,
                            const std::vector<std::size_t>& lengths, const std::vector<std::size_t>& strides,
                            size_t distance) {
-  T unused_value = std::is_scalar_v<T> ? T(-42) : T(-42, -42);
-  std::vector<T> out(num_unpack_elements, unused_value);
+  std::vector<T> out(num_unpack_elements, get_init_unpack_value<T>()());
   std::size_t fft_length = prod_vec(lengths);
   for (std::size_t in_idx = 0; in_idx < in.size(); ++in_idx) {
     std::size_t out_idx = packed_to_unpacked_idx(in_idx, fft_length, lengths, strides, distance);
+    assert(out_idx < num_unpack_elements && "Invalid out_idx");
     out[out_idx] = in[in_idx];
   }
   return out;
@@ -136,6 +147,7 @@ std::vector<T> pack_data(const std::vector<T>& in, std::size_t batch, const std:
   std::vector<T> out(num_pack_elements);
   for (std::size_t out_idx = 0; out_idx < num_pack_elements; ++out_idx) {
     std::size_t in_idx = packed_to_unpacked_idx(out_idx, fft_length, lengths, stride, distance);
+    assert(in_idx < in.size() && "Invalid in_idx");
     out[out_idx] = in[in_idx];
   }
   return out;

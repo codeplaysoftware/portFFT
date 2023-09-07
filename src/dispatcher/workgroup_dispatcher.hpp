@@ -210,32 +210,22 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, Su
     auto input_distance = desc.params.get_distance(Dir) * ElemSize;
     auto output_distance = desc.params.get_distance(inv(Dir)) * ElemSize;
     auto scale_factor = desc.params.get_scale(Dir);
-    bool use_scratch_output = desc.params.placement == placement::IN_PLACE && in == out;
     sycl::event event = desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(desc.exec_bundle);
+      cgh.use_kernel_bundle(desc.exec_bundle.value());
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-      auto out_ptr = use_scratch_output ? desc.scratch_output.get() : &out_acc_or_usm[0] + output_offset;
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, mem, LayoutIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::workgroup_spec_const_fft_size>();
             detail::workgroup_dispatch_impl<Dir, LayoutIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0] + input_offset, out_ptr, &loc[0], &loc[detail::pad_local(2 * fft_size)], n_transforms,
-                it, twiddles, scale_factor, fft_size, input_1d_stride, output_1d_stride, input_distance,
-                output_distance);
+                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, &loc[0],
+                &loc[detail::pad_local(2 * fft_size)], n_transforms, it, twiddles, scale_factor, fft_size,
+                input_1d_stride, output_1d_stride, input_distance, output_distance);
           });
     });
-    if (use_scratch_output) {
-      return desc.queue.submit([&](sycl::handler& cgh) {
-        cgh.depends_on(event);
-        auto inout_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-        cgh.memcpy(&inout_acc_or_usm[0] + output_offset, desc.scratch_output.get(),
-                   desc.scratch_output_num_scalars * sizeof(Scalar));
-      });
-    }
     return event;
   }
 };

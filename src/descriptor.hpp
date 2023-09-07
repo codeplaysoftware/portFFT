@@ -28,10 +28,12 @@
 
 #include <sycl/sycl.hpp>
 
+#include <algorithm>
 #include <complex>
 #include <cstdint>
 #include <functional>
 #include <numeric>
+#include <optional>
 #include <type_traits>
 #include <vector>
 
@@ -40,7 +42,7 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-// TODO: Remove LayoutIn
+// TODO: Remove LayoutIn once we use can use spec constant instead
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, int SubgroupSize>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, int SubgroupSize>
@@ -129,17 +131,17 @@ class committed_descriptor {
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
-  std::size_t n_compute_units;
+  std::size_t n_compute_units = 0;
   std::vector<std::size_t> supported_sg_sizes;
-  int used_sg_size;
+  int used_sg_size = 0;
   std::shared_ptr<Scalar> twiddles_forward;
-  std::shared_ptr<Scalar> scratch_output;
-  std::size_t scratch_output_num_scalars = 0;
   detail::level level;
   std::vector<int> factors;
-  sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
-  std::size_t num_sgs_per_wg;
-  std::size_t local_memory_size;
+  std::optional<sycl::kernel_bundle<sycl::bundle_state::executable>> exec_bundle;
+  std::size_t num_sgs_per_wg = 0;
+  std::size_t local_memory_size = 0;
+  std::string fwd_validation_err;
+  std::string bwd_validation_err;
 
   template <typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
@@ -356,11 +358,13 @@ class committed_descriptor {
         // get some properties we will use for tuning
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
-        // compile the kernels
-        exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
-    // Throw exceptions if the descriptor is invalid
-    params.validate();
+    // Throw an exception if the descriptor is invalid.
+    // One direction is allowed to be invalid but not both.
+    params.validate(fwd_validation_err, bwd_validation_err);
+
+    // compile the kernels
+    exec_bundle = build_w_spec_const<PORTFFT_SUBGROUP_SIZES>();
 
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
@@ -374,17 +378,6 @@ class committed_descriptor {
                                       "B. Required: ", minimum_local_mem_required, "B.");
     }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), detail::free_usm(queue));
-
-    if (params.placement == placement::IN_PLACE) {
-      // For now always allocate the output to safely compute the FFT and copy the output back to the input at the end.
-      // The direction is unknown at this point so assume the maximum size.
-      // The output offset is not allocated in this case.
-      scratch_output_num_scalars =
-          2 * std::max(params.get_output_count(direction::FORWARD) - params.get_strides(direction::FORWARD)[0],
-                       params.get_output_count(direction::BACKWARD) - params.get_strides(direction::BACKWARD)[0]);
-      Scalar* scratch_output_ptr = sycl::malloc_device<Scalar>(scratch_output_num_scalars, queue);
-      scratch_output = std::shared_ptr<Scalar>(scratch_output_ptr, detail::free_usm(queue));
-    }
   }
 
  public:
@@ -558,6 +551,11 @@ class committed_descriptor {
    */
   template <direction Dir, typename T_in, typename T_out>
   sycl::event dispatch_kernel(const T_in in, T_out out, const std::vector<sycl::event>& dependencies = {}) {
+    if (Dir == direction::FORWARD && !fwd_validation_err.empty()) {
+      throw invalid_configuration("Invalid forward FFT configuration. ", fwd_validation_err);
+    } else if (Dir == direction::BACKWARD && !bwd_validation_err.empty()) {
+      throw invalid_configuration("Invalid backward FFT configuration. ", bwd_validation_err);
+    }
     return dispatch_kernel_helper<Dir, T_in, T_out, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies);
   }
 
@@ -696,34 +694,6 @@ struct descriptor {
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) const { return {*this, queue}; }
 
   /**
-   * Check if the descriptor can be committed.
-   * Throw @link invalid_configuration or @link unsupported_configuration if it cannot be committed.
-   */
-  void validate() const {
-    if (complex_storage != complex_storage::COMPLEX) {
-      throw unsupported_configuration("portFFT only supports COMPLEX storage for now");
-    }
-    if (lengths.empty()) {
-      throw invalid_configuration("Invalid lengths, must have at least 1 dimension");
-    }
-    if (lengths.size() != 1) {
-      throw unsupported_configuration("portFFT only supports 1D FFT for now");
-    }
-    for (std::size_t i = 0; i < lengths.size(); ++i) {
-      if (lengths[i] == 0) {
-        throw invalid_configuration("Invalid lengths[", i, "]=", lengths[i], ", must be positive");
-      }
-    }
-    if (number_of_transforms == 0) {
-      throw invalid_configuration("Invalid number of transform ", number_of_transforms, ", must be positive");
-    }
-    validate_strides_distance(forward_strides, forward_distance, "forward");
-    validate_strides_distance(backward_strides, backward_distance, "backward");
-
-    validate_overlap();
-  }
-
-  /**
    * Get the flattened length of an FFT for a single batch, ignoring strides and distance.
    */
   std::size_t get_flattened_length() const noexcept {
@@ -773,6 +743,43 @@ struct descriptor {
    */
   Scalar get_scale(direction dir) const noexcept { return dir == direction::FORWARD ? forward_scale : backward_scale; }
 
+  /**
+   * Check if the descriptor can be committed.
+   * Throw @link invalid_configuration or @link unsupported_configuration if it cannot be committed.
+   *
+   * @param fwd_err Output string, empty if the forward direction is valid
+   * @param bwd_err Output string, empty if the backward direction is valid
+   */
+  void validate(std::string& fwd_err, std::string& bwd_err) const {
+    if (complex_storage != complex_storage::COMPLEX) {
+      throw unsupported_configuration("portFFT only supports COMPLEX storage for now");
+    }
+    if (lengths.empty()) {
+      throw invalid_configuration("Invalid lengths, must have at least 1 dimension");
+    }
+    if (lengths.size() != 1) {
+      throw unsupported_configuration("portFFT only supports 1D FFT for now");
+    }
+    for (std::size_t i = 0; i < lengths.size(); ++i) {
+      if (lengths[i] == 0) {
+        throw invalid_configuration("Invalid lengths[", i, "]=", lengths[i], ", must be positive");
+      }
+    }
+    if (number_of_transforms == 0) {
+      throw invalid_configuration("Invalid number of transform ", number_of_transforms, ", must be positive");
+    }
+    validate_strides_distance(forward_strides, forward_distance, "forward");
+    validate_strides_distance(backward_strides, backward_distance, "backward");
+    validate_strides_distance_in_place();
+
+    fwd_err = validate_overlap(direction::FORWARD);
+    bwd_err = validate_overlap(direction::BACKWARD);
+    if (!fwd_err.empty() && !bwd_err.empty()) {
+      throw invalid_configuration("Invalid configuration for both directions.\nForward error:'", fwd_err,
+                                  "'.\nBackward error:'", bwd_err, "'\n");
+    }
+  }
+
  private:
   /**
    * Throw an exception if the given stride and distance are invalid for any direction.
@@ -803,64 +810,105 @@ struct descriptor {
   }
 
   /**
-   * Check that FFTs don't overlap regardless of their placement.
-   * Two input indices must not write to the same output index.
-   * It should only need to check the first `stride` elements of the FFT and the first `distance` batches due to
-   * congruence. This assumes the forward direction is used, it should be symmetric with the backward one. Only supports
-   * 1D C2C transforms for now.
+   * Require the same input and output strides and distance for in-place configurations.
    */
-  void validate_overlap() const {
-    // Consider supporting multiple dimensions and R2C transforms
-    if (lengths.size() != 1 || Domain == domain::REAL) {
-      return;
-    }
-    if (forward_strides == backward_strides && forward_distance == backward_distance) {
-      // No risks of overlapping here.
+  void validate_strides_distance_in_place() const {
+    if (placement != placement::IN_PLACE) {
       return;
     }
 
+    if (forward_strides != backward_strides) {
+      throw invalid_configuration("Invalid forward and backward strides must match for in-place configurations");
+    }
+
+    if (forward_distance != backward_distance) {
+      throw invalid_configuration("Invalid forward and backward distances must match for in-place configurations");
+    }
+  }
+
+  /**
+   * Check that out-of-place FFTs don't overlap.
+   * Two input indices must not write to the same output index.
+   * Only supports 1D C2C transforms for now.
+   *
+   * @param dir Direction
+   * @return An empty string if the FFT is valid for the given direction. Otherwise returns an error message.
+   */
+  std::string validate_overlap(direction dir) const {
+    // TODO: Add support for R2C transforms
+    if (Domain == domain::REAL) {
+      return "unsupported";
+    }
+
+    const auto& output_strides = get_strides(inv(dir));
+    const std::size_t output_distance = get_distance(inv(dir));
+
+    // Quick check for most common configurations.
+    // This check has some false-negative for some impractical configurations, see ArbitraryInterleavedTest.
+    // View the output data as a N+1 dimensional tensor for a N-dimension FFT: the number of batch is just another
+    // dimension with a stride of 'distance'. This sorts the dimensions from fastest moving (inner-most) to slowest
+    // moving (outer-most) and check that the stride of a dimension is large enough to avoid overlapping the previous
+    // dimension.
+    std::vector<std::size_t> generic_output_strides(output_strides.begin() + 1, output_strides.end());
+    std::vector<std::size_t> generic_output_sizes = lengths;
+    if (number_of_transforms > 1) {
+      generic_output_strides.push_back(output_distance);
+      generic_output_sizes.push_back(number_of_transforms);
+    }
+    std::vector<std::size_t> indices(generic_output_sizes.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::sort(indices.begin(), indices.end(),
+              [&](std::size_t a, std::size_t b) { return generic_output_strides[a] < generic_output_strides[b]; });
+    bool generic_valid = true;
+    for (std::size_t i = 1; i < indices.size(); ++i) {
+      generic_valid = generic_valid && generic_output_strides[indices[i - 1]] * generic_output_sizes[indices[i - 1]] <=
+                                           generic_output_strides[indices[i]];
+    }
+    if (generic_valid) {
+      return "";
+    }
+
+    // Arbitrary interleaved configurations are not supported for multiple-dimensions.
+    if (lengths.size() != 1) {
+      return "unsupported";
+    }
+
     // Strides or distance differ for the input and output.
-    // Check that in-place transforms won't overlap.
+    // Compute the output indices for multiple batches and input index and work backward to determine if another batch
+    // and input index will write to the same location.
+    const auto& input_strides = get_strides(dir);
+    const std::size_t input_distance = get_distance(dir);
     std::size_t fft_size = lengths[0];
-    std::size_t input_offset = forward_strides[0];
-    std::size_t input_stride = forward_strides[1];
-    std::size_t output_offset = backward_strides[0];
-    std::size_t output_stride = backward_strides[1];
-    // Limit the number of batches to check, useful for batch interleaved configurations.
-    std::size_t num_batches_check = std::min(number_of_transforms, std::max(forward_distance, 1LU));
-    // Limit the number of indices to check in an FFT, useful for default layout.
-    std::size_t fft_size_check = std::min(fft_size, input_stride);
-    for (std::size_t b = 0; b < num_batches_check; ++b) {
-      for (std::size_t i = 0; i < fft_size_check; ++i) {
-        std::size_t linear_input_idx = input_offset + b * forward_distance + i * input_stride;
-        std::size_t linear_output_idx = output_offset + b * backward_distance + i * output_stride;
+    std::size_t input_offset = input_strides[0];
+    std::size_t input_stride = input_strides[1];
+    std::size_t output_offset = output_strides[0];
+    std::size_t output_stride = output_strides[1];
+    for (std::size_t b = 0; b < number_of_transforms; ++b) {
+      for (std::size_t i = 0; i < fft_size; ++i) {
+        std::size_t linear_input_idx = input_offset + b * input_distance + i * input_stride;
+        std::size_t linear_output_idx = output_offset + b * output_distance + i * output_stride;
         // Check if another batch will write to the same output index.
-        for (std::size_t other_b = 0; other_b < number_of_transforms; ++other_b) {
-          if (b == other_b) {
-            continue;
-          }
-          std::size_t other_linear_output_idx = output_offset + other_b * backward_distance;
-          if (other_linear_output_idx > linear_output_idx) {
-            // Distance is large enough, other batches cannot overlap.
-            break;
-          }
-          std::size_t diff = linear_output_idx - other_linear_output_idx;
-          if (diff % output_stride) {
+        for (std::size_t other_b = b + 1; other_b < number_of_transforms; ++other_b) {
+          std::size_t other_linear_output_idx = output_offset + other_b * output_distance;
+          std::size_t diff = other_linear_output_idx > linear_output_idx ? other_linear_output_idx - linear_output_idx
+                                                                         : linear_output_idx - other_linear_output_idx;
+          if (diff % output_stride == 0) {
             std::size_t other_i = diff / output_stride;
             if (other_i < fft_size) {
-              std::size_t other_linear_input_idx = input_offset + other_b * forward_distance + other_i * input_stride;
-              throw invalid_configuration(
-                  "FFT configuration will overlap for in-place transforms. Check your configuration or run it "
-                  "out-of-place. Found overlapping output for batch=",
-                  b, " index=", i, " (linear index=", linear_input_idx, ") and other batch=", other_b,
-                  " other index=", other_i, " (other linear index=", other_linear_input_idx,
-                  ") both writing at the output linear index=", linear_output_idx);
+              std::size_t other_linear_input_idx = input_offset + other_b * input_distance + other_i * input_stride;
+              std::stringstream ss;
+              ss << "Found overlapping output for batch=" << b << " index=" << i
+                 << " (linear index=" << linear_input_idx << ") and other batch=" << other_b
+                 << " other index=" << other_i << " (other linear index=" << other_linear_input_idx
+                 << ") both writing at the output linear index=" << linear_output_idx;
+              return ss.str();
             }
           }
         }
       }  // end of loop on input indices
     }    // end of loop on input batches
-  }      // end of validate_overlap
+    return "";
+  }  // end of validate_overlap
 
   /**
    * Compute the number of elements required for a buffer with the descriptor's length, number of transforms and the
