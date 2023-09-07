@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP
 
-#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
@@ -62,28 +61,29 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam TransposeIn Whether or not the input is transposed
- * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
- * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
+ * @param factor_wi factor of the FFT size. How many elements per FFT are processed by one workitem
+ * @param factor_sg factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @param input accessor or pointer to global memory containing input data
  * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*FactorWI*FactorSG*SubgroupSize
+ * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*SubgroupSize
  * values
- * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*FactorSG
+ * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param n_transforms number of FT transforms to do in one call
  * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, int FactorWI, int FactorSG, int SubgroupSize, typename T>
-__attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
-                                                         std::size_t n_transforms, sycl::nd_item<1> it,
-                                                         const T* twiddles, T scaling_factor) {
-  constexpr int NRealsPerWI = 2 * FactorWI;
+template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T>
+__attribute__((always_inline)) inline void subgroup_impl(std::size_t factor_wi, std::size_t factor_sg, const T* input,
+                                                         T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
+                                                         sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
+  constexpr std::size_t MaxFactorWI = detail::MaxFftSizeWi;
+  alignas(sizeof(T) * 2) T priv[2 * MaxFactorWI];
+  std::size_t n_reals_per_wi = 2 * factor_wi;
 
-  T priv[NRealsPerWI];
   sycl::sub_group sg = it.get_sub_group();
   std::size_t subgroup_local_id = sg.get_local_linear_id();
   std::size_t subgroup_id = sg.get_group_id();
@@ -91,12 +91,12 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   std::size_t id_of_sg_in_kernel = subgroup_id + it.get_group_linear_id() * n_sgs_in_wg;
   std::size_t n_sgs_in_kernel = it.get_group_range(0) * n_sgs_in_wg;
 
-  std::size_t n_ffts_per_sg = SubgroupSize / FactorSG;
-  std::size_t max_wis_working = n_ffts_per_sg * FactorSG;
-  std::size_t n_reals_per_fft = FactorSG * NRealsPerWI;
+  std::size_t n_ffts_per_sg = SubgroupSize / factor_sg;
+  std::size_t max_wis_working = n_ffts_per_sg * factor_sg;
+  std::size_t n_reals_per_fft = factor_sg * n_reals_per_wi;
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
-  std::size_t id_of_fft_in_sg = subgroup_local_id / FactorSG;
-  std::size_t id_of_wi_in_fft = subgroup_local_id % FactorSG;
+  std::size_t id_of_fft_in_sg = subgroup_local_id / factor_sg;
+  std::size_t id_of_wi_in_fft = subgroup_local_id % factor_sg;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
   std::size_t rounded_up_n_ffts =
@@ -114,7 +114,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
   constexpr std::size_t BankLinesPerPad = 1;
 
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(it, twiddles, loc_twiddles, NRealsPerWI * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD>(it, twiddles, loc_twiddles, n_reals_per_wi * factor_sg,
+                                                              0);
   sycl::group_barrier(it.get_group());
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
@@ -145,8 +146,8 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         // load / store in a transposed manner
-        global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, BankLinesPerPad, T>(
-            it, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+        global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, T>(
+            it, input, loc, 2 * i, factor_wi * factor_sg, n_transforms, max_num_batches_local_mem, BankLinesPerPad);
       }
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
@@ -154,67 +155,69 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         bool working_inner = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
         if (working_inner) {
           // load from local memory in a transposed manner
-          local2private_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-              loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch),
-              static_cast<int>(max_num_batches_local_mem));
+          local2private_transposed<detail::pad::DO_PAD>(factor_wi, loc, priv, id_of_wi_in_fft, sub_batch,
+                                                        max_num_batches_local_mem, BankLinesPerPad);
         }
-        sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-        unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
+        T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+        sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles, wi_private_scratch);
+#pragma clang loop unroll(full)
+        for (std::size_t idx{0}; idx < n_reals_per_wi; idx += 2) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
-        });
-        if constexpr (SubgroupSize == FactorSG) {
+        }
+        if (SubgroupSize == factor_sg) {
           if (working_inner) {
             // Store directly from registers for fully coalesced accesses
-            store_transposed<NRealsPerWI, detail::pad::DONT_PAD, 0>(priv, output, id_of_wi_in_fft, FactorSG,
-                                                                    (i + sub_batch) * n_reals_per_fft);
+            store_transposed<detail::pad::DONT_PAD>(n_reals_per_wi, priv, output, id_of_wi_in_fft, factor_sg, 0,
+                                                    (i + sub_batch) * n_reals_per_fft);
           }
         } else {
           if (working_inner) {
             // Store back to local memory only
-            private2local_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-                priv, loc, static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch),
-                static_cast<int>(max_num_batches_local_mem));
+            private2local_transposed<detail::pad::DO_PAD>(factor_wi, priv, loc, id_of_wi_in_fft, factor_sg, sub_batch,
+                                                          max_num_batches_local_mem, BankLinesPerPad);
           }
         }
       }
-      if constexpr (SubgroupSize != FactorSG) {
+      if (SubgroupSize != factor_sg) {
         // store back all loaded batches at once.
-        local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(it, FactorWI * FactorSG, num_batches_in_local_mem,
-                                                                      max_num_batches_local_mem, loc, output,
-                                                                      i * n_reals_per_fft);
+        local2global_transposed<detail::pad::DO_PAD>(it, factor_wi * factor_sg, num_batches_in_local_mem,
+                                                     max_num_batches_local_mem, loc, output, i * n_reals_per_fft,
+                                                     BankLinesPerPad);
       }
       sycl::group_barrier(it.get_group());
     } else {
       // Codepath taken if input is not transposed
 
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, n_reals_per_fft * (i - id_of_fft_in_sg),
-          subgroup_id * n_reals_per_sg);
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD>(it, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+                                                               BankLinesPerPad, n_reals_per_fft * (i - id_of_fft_in_sg),
+                                                               subgroup_id * n_reals_per_sg);
 
       sycl::group_barrier(sg);
       if (working) {
-        local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NRealsPerWI,
-                                                                 subgroup_id * n_reals_per_sg);
+        local2private<pad::DO_PAD>(n_reals_per_wi, loc, priv, subgroup_local_id, n_reals_per_wi, BankLinesPerPad,
+                                   subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(sg);
 
-      sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-      unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
-        priv[i] *= scaling_factor;
-        priv[i + 1] *= scaling_factor;
-      });
-      if constexpr (FactorSG == SubgroupSize) {
+      T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+      sg_dft<Dir, SubgroupSize>(factor_wi, factor_sg, priv, sg, loc_twiddles, wi_private_scratch);
+#pragma clang loop unroll(full)
+      for (std::size_t j{0}; j < n_reals_per_wi; j += 2) {
+        priv[j] *= scaling_factor;
+        priv[j + 1] *= scaling_factor;
+      }
+      if (factor_sg == SubgroupSize) {
         // in this case we get fully coalesced memory access even without going through local memory
-        // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
+        // TODO we may want to tune maximal `factor_sg` for which we use direct stores.
         if (working) {
-          store_transposed<NRealsPerWI, pad::DONT_PAD, BankLinesPerPad>(
-              priv, output, id_of_wi_in_fft, FactorSG, i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+          store_transposed<pad::DONT_PAD>(n_reals_per_wi, priv, output, id_of_wi_in_fft, factor_sg, BankLinesPerPad,
+                                          i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
       } else {
         if (working) {
-          store_transposed<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(
-              priv, loc, id_of_wi_in_fft, FactorSG, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+          store_transposed<pad::DO_PAD>(n_reals_per_wi, priv, loc, id_of_wi_in_fft, factor_sg, BankLinesPerPad,
+                                        subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
         sycl::group_barrier(sg);
         local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
@@ -226,48 +229,6 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
   }
 }
 
-/**
- * Dispatch cross sg implementation for different work-item factorizations.
- *
- * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam SubgroupSize size of the subgroup
- * @tparam TransposeIn Whether or not the input is transposed
- * @tparam T type of the scalar used for computations
- * @tparam SizeList The list of sizes that will be specialized.
- * @param factor_wi factor of fft size. How many elements are processed by 1 work-item.
- * @param factor_sg cross-subgroup factor of the fft size
- * @param input accessor or pointer to global memory containing input data
- * @param output accessor or pointer to global memory for output data
- * @param loc local accessor. Must have enough space for 2*factor_wi*factor_sg*SubgroupSize
- * values
- * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
- * values
- * @param n_transforms number of FFT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
- * @param twiddles pointer containing twiddles
- * @param scaling_factor Scaling factor applied to the result
- */
-template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename T, typename SizeList>
-__attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
-                                                           T* loc, T* loc_twiddles, std::size_t n_transforms,
-                                                           sycl::nd_item<1> it, const T* twiddles, T scaling_factor) {
-  if constexpr (!SizeList::ListEnd) {
-    constexpr int ThisSize = SizeList::Size;
-    // This factorization is duplicated in the dispatch logic on the host.
-    // The CT and spec constant factors should match.
-    constexpr int CtFactorSg = factorize_sg(ThisSize, SubgroupSize);
-    constexpr int CtFactorWi = ThisSize / CtFactorSg;
-    if (factor_sg * factor_wi == ThisSize) {
-      if constexpr (!fits_in_wi<T>(ThisSize) && fits_in_wi<T>(CtFactorWi) && (CtFactorSg <= SubgroupSize)) {
-        detail::subgroup_impl<Dir, TransposeIn, CtFactorWi, CtFactorSg, SubgroupSize>(
-            input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
-      }
-    } else {
-      subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
-          factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor);
-    }
-  }
-}
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
@@ -318,11 +279,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-            int factor_wi = kh.get_specialization_constant<detail::FactorWISpecConst>();
-            int factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
-            detail::subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
-                factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,
-                it, twiddles, scale_factor);
+            auto factor_wi = static_cast<std::size_t>(kh.get_specialization_constant<detail::FactorWISpecConst>());
+            auto factor_sg = static_cast<std::size_t>(kh.get_specialization_constant<detail::FactorSGSpecConst>());
+            detail::subgroup_impl<Dir, TransposeIn, SubgroupSize>(factor_wi, factor_sg, &in_acc_or_usm[0],
+                                                                  &out_acc_or_usm[0], &loc[0], &loc_twiddles[0],
+                                                                  n_transforms, it, twiddles, scale_factor);
           });
     });
   }
