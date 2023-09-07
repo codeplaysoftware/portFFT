@@ -493,7 +493,7 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
  * @tparam T Scalar Type
  * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
- * @tparam TransferDirection Direction of Transfer. 0: local -> Private. 1: Private -> local
+ * @tparam TransferDirection Direction of Transfer
  *
  * @param priv Pointer to private memory
  * @param loc Pointer to local memory
@@ -522,6 +522,20 @@ __attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std
       loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
     }
   });
+}
+
+template <detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local_strided_2_global_strided_transposed(
+    T* loc, T* global, std::size_t global_offset, std::size_t local_stride, std::size_t N, std::size_t M,
+    std::size_t fft_size, std::size_t bank_lines_per_pad, sycl::nd_item<1> it) {
+  std::size_t batch_num = it.get_local_linear_id() / 2;
+  for (std::size_t i = 0; i < fft_size; i++) {
+    std::size_t source_row = i / N;
+    std::size_t source_col = i % N;
+    global[global_offset + 2 * batch_num * fft_size + 2 * i + it.get_local_linear_id() % 2] =
+        loc[detail::pad_local<Pad>(local_stride * (source_col * M + source_row) + it.get_local_id(0),
+                                   bank_lines_per_pad)];
+  }
 }
 
 };  // namespace portfft
