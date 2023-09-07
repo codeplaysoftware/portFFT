@@ -524,6 +524,22 @@ __attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std
   });
 }
 
+/**
+ * Transfers data from local memory which is strided to global memory, which too is strided in a transposed fashion
+ *
+ * @tparam Pad Whether or not to pad local memory
+ * @tparam T Scalar type
+ *
+ * @param loc Pointer to local memory
+ * @param global Pointer to global memory
+ * @param global_offset Offset to global memory
+ * @param local_stride stride value in local memory
+ * @param N Number of rows
+ * @param M Number of Columns
+ * @param fft_size Size of the problem
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @param it Associated nd_item
+ */
 template <detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local_strided_2_global_strided_transposed(
     T* loc, T* global, std::size_t global_offset, std::size_t local_stride, std::size_t N, std::size_t M,
