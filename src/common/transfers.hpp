@@ -84,10 +84,10 @@ __attribute__((always_inline)) inline void generic_transpose(std::size_t N, std:
                                                              sycl::nd_item<2> it) {
   using T_vec = sycl::vec<T, 2>;
   T_vec priv;
-  std::size_t rounded_up_N = round_up_to_multiple(N, tile_size);
-  std::size_t rounded_up_M = round_up_to_multiple(M, tile_size);
-  for (std::size_t tile_y = it.get_group(1); tile_y < rounded_up_N; tile_y += it.get_group_range(1)) {
-    for (std::size_t tile_x = it.get_group(0); tile_x < rounded_up_M; tile_x += it.get_group_range(0)) {
+  std::size_t rounded_up_n = round_up_to_multiple(N, tile_size);
+  std::size_t rounded_up_m = round_up_to_multiple(M, tile_size);
+  for (std::size_t tile_y = it.get_group(1); tile_y < rounded_up_n; tile_y += it.get_group_range(1)) {
+    for (std::size_t tile_x = it.get_group(0); tile_x < rounded_up_m; tile_x += it.get_group_range(0)) {
       std::size_t tile_id_y = tile_y * tile_size;
       std::size_t tile_id_x = tile_x * tile_size;
 

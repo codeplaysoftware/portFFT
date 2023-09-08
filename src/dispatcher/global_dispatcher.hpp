@@ -31,10 +31,10 @@
 namespace portfft {
 namespace detail {
 
-std::pair<sycl::range<1>, sycl::range<1>> get_launch_configuration(level Level, std::size_t fft_size,
-                                                                   std::size_t n_transforms,
-                                                                   std::size_t n_compute_units,
-                                                                   std::size_t subgroup_size) {
+std::pair<sycl::range<1>, sycl::range<1>> inline get_launch_configuration(level Level, std::size_t fft_size,
+                                                                          std::size_t n_transforms,
+                                                                          std::size_t n_compute_units,
+                                                                          std::size_t subgroup_size) {
   // ensure maximum parallelism per batch, do not allocate more resources than required to acheive as many running (not
   // just scheduled) kernels. Ideally the number of batches processed concurrently also depends on launch params (and
   // not just L2 size and hardware limitations) to avoid scheduling stalls per level. For now, this is a TODO, as well
@@ -81,8 +81,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
             std::accumulate(desc.factors.begin() + i + 1, desc.factors.end(), 1, std::multiplies<std::size_t>());
         num_scalars += num_batches * desc.factors[i];
       }
-      for (detail::level Level : desc.levels) {
-        switch (Level) {
+      for (detail::level level : desc.levels) {
+        switch (level) {
           case detail::level::WORKITEM:
             break;
           case detail::level::SUBGROUP:
@@ -90,9 +90,11 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
             break;
           case detail::level::WORKGROUP:
             num_scalars += desc.factors[index];
-            auto N = detail::factorize(desc.factors[index]);
-            num_scalars += N + desc.factors[index] / N;
+            auto n = detail::factorize(desc.factors[index]);
+            num_scalars += n + desc.factors[index] / n;
             break;
+          default:
+            throw std::logic_error("Invalid factor level for the committed size");
         }
         index++;
       }
@@ -118,41 +120,43 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::size_t offset = 0;
     int index = 0;
     for (std::size_t i = 0; i < desc.factors.size() - 1; i++) {
-      std::size_t N = desc.factors[i];
-      std::size_t M = std::accumulate(desc.factors.begin() + static_cast<long>(i + 1), desc.factors.end(), 1,
+      std::size_t n = desc.factors[i];
+      std::size_t m = std::accumulate(desc.factors.begin() + static_cast<long>(i + 1), desc.factors.end(), 1,
                                       std::multiplies<std::size_t>());
       // store twiddles for global memory in a transposed fashion to ensure coalesced accesses.
-      calculate_twiddles(M, N, offset, host_twiddles_ptr);
+      calculate_twiddles(m, n, offset, host_twiddles_ptr);
     }
 
-    for (detail::level Level : desc.levels) {
+    for (detail::level level : desc.levels) {
       // TODO: Refactor this and dispatch to correct execute specialization
-      switch (Level) {
+      switch (level) {
         case detail::level::WORKITEM:
           /* code */
           break;
 
         case detail::level::SUBGROUP: {
           std::size_t factor = desc.factors[index];
-          auto N = detail::factorize_sg(factor, desc.used_sg_size);
-          auto M = factor / N;
-          calculate_twiddles(N, M, offset, host_twiddles_ptr);
+          auto n = detail::factorize_sg(factor, desc.used_sg_size);
+          auto m = factor / n;
+          calculate_twiddles(m, n, offset, host_twiddles_ptr);
         } break;
 
         case detail::level::WORKGROUP: {
           std::size_t factor = desc.factors[index];
-          std::size_t N = detail::factorize(factor);
-          std::size_t M = factor / N;
-          std::size_t N_sg = detail::factorize_sg(N, desc.used_sg_size);
-          std::size_t N_wi = N / N_sg;
-          std::size_t M_sg = detail::factorize_sg(M, desc.used_sg_size);
-          std::size_t M_wi = M / M_sg;
+          std::size_t n = detail::factorize(factor);
+          std::size_t m = factor / N;
+          std::size_t n_sg = detail::factorize_sg(n, desc.used_sg_size);
+          std::size_t n_wi = N / N_sg;
+          std::size_t m_sg = detail::factorize_sg(m, desc.used_sg_size);
+          std::size_t m_wi = m / m_sg;
 
-          calculate_twiddles(N, M, offset, host_twiddles_ptr);
-          calculate_twiddles(N_sg, N_wi, offset, host_twiddles_ptr);
-          calculate_twiddles(M_sg, M_wi, offset, host_twiddles_ptr);
+          calculate_twiddles(n, m, offset, host_twiddles_ptr);
+          calculate_twiddles(n_sg, n_wi, offset, host_twiddles_ptr);
+          calculate_twiddles(m_sg, m_wi, offset, host_twiddles_ptr);
           break;
         }
+        default:
+          throw std::logic_error("Invalid factor level for committed size");
       }
       index++;
     }
@@ -229,12 +233,12 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
           transposed = false;
         }
         auto factor = desc.factors[i];
-        detail::level Level = desc.levels[i];
-        desc.local_mem_per_factor.push_back(get_local_mem_usage_per_level(desc, factor, Level, transposed));
+        detail::level level = desc.levels[i];
+        desc.local_mem_per_factor.push_back(get_local_mem_usage_per_level(desc, factor, level, transposed));
       }
       int index = 0;
       desc.launch_configurations.clear();
-      for (detail::level Level : desc.levels) {
+      for (detail::level level : desc.levels) {
         std::size_t fft_size = desc.factors[index];
         std::size_t batch_size =
             std::accumulate(desc.factors.begin() + index, desc.factors.end(), 1, std::multiplies<std::size_t>());
@@ -242,7 +246,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
           batch_size = desc.factors[index - 1];
         }
         desc.launch_configurations.push_back(
-            detail::get_launch_configuration(Level, fft_size, batch_size, desc.n_compute_units, desc.used_sg_size));
+            detail::get_launch_configuration(level, fft_size, batch_size, desc.n_compute_units, desc.used_sg_size));
         index++;
       }
       return 0;
