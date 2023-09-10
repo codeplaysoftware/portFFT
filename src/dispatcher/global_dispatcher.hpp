@@ -255,6 +255,7 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
       detail::level level = desc.levels[i];
       std::size_t factor = desc.factors[i];
       auto& in_bundle = in_bundles[i];
+      in_bundle.template set_specialization_constant<detail::SpecConstLevel>(level);
       switch (level) {
         case detail::level::WORKITEM: {
           in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factor);

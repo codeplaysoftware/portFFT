@@ -31,6 +31,7 @@ namespace detail {
 constexpr static sycl::specialization_id<std::size_t> SpecConstFftSize{};
 constexpr static sycl::specialization_id<int> SpecConstSGFactorWI{};
 constexpr static sycl::specialization_id<int> SpecConstSGFactorSG{};
+constexpr static sycl::specialization_id<level> SpecConstLevel{};
 
 }  // namespace detail
 }  // namespace portfft
