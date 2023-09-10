@@ -168,7 +168,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t fft_size = desc.params.lengths[0];
     for (int batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
       detail::dispatch_kernel_struct<0, Dir, Scalar, Domain, mem, detail::transpose::TRANSPOSED,
-                                     detail::transpose::TRANSPOSED, false, true, SubgroupSize, TIn,
+                                     detail::transpose::TRANSPOSED, false, true, false, SubgroupSize, TIn,
                                      TOut>::execute(in, out, desc, 0, 2 * local_mem_twiddle_offset, scale_factor,
                                                     2 * fft_size * batch);
     }

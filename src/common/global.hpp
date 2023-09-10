@@ -98,23 +98,26 @@ struct dispatch_kernel_struct {
                   }
                   if (level_ == detail::level::WORKITEM) {
                     std::size_t problem_size = kh.get_specialization_constant<SpecConstFftSize>();
-                    workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, cooley_tukey_size_list_t, TransposeOut,
-                                           ApplyLoadModifier, ApplyStoreModifier, Scalar>(
+                    workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
+                                           ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t>(
                         static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * i * committed_size +
                             sub_batch_offset,
                         &scratch_pointer[0] + base_offset + 2 * i * committed_size + sub_batch_offset, &loc[0],
-                        batch_size, it, scale_factor, problem_size, twiddles_ptr + intermediate_twiddles_offset);
+                        batch_size, it, scale_factor, problem_size, static_cast<const Scalar*>(nullptr),
+                        twiddles_ptr + intermediate_twiddles_offset, static_cast<const Scalar*>(nullptr),
+                        &loc_store_modifier[0]);
                   } else if (level_ == detail::level::SUBGROUP) {
                     int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
                     int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
-                    subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, cooley_tukey_size_list_t, TransposeOut,
-                                           ApplyLoadModifier, ApplyStoreModifier, Scalar>(
+                    subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
+                                           ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
                         factor_wi, factor_sg,
                         static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * committed_size +
                             sub_batch_offset,
                         &scratch_pointer[0] + base_offset + 2 * committed_size + sub_batch_offset, &loc[0],
                         &loc_twiddles[0], batch_size, it, twiddles_ptr + local_twiddles_offset, scale_factor,
-                        twiddles_ptr + intermediate_twiddles_offset);
+                        static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
+                        static_cast<const Scalar*>(nullptr), &loc_store_modifier[0]);
                   }
                 }
               });
@@ -235,20 +238,22 @@ struct dispatch_kernel_struct<0, Dir, Scalar, Domain, mem, TransposeIn, Transpos
                 auto level_ = kh.get_specialization_constant<SpecConstLevel>();
                 if (level_ == detail::level::WORKITEM) {
                   std::size_t problem_size = kh.get_specialization_constant<SpecConstFftSize>();
-                  workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, cooley_tukey_size_list_t, TransposeOut,
-                                         ApplyLoadModifier, ApplyStoreModifier, Scalar>(
+                  workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
+                                         ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t>(
                       &in_ptr_or_acc[0] + base_offset + 2 * i * committed_size,
                       &scratch_pointer[0] + base_offset + 2 * i * committed_size, &loc[0], batch_size, it, scale_factor,
-                      problem_size, twiddles_ptr + intermediate_twiddles_offset);
+                      problem_size, static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
+                      static_cast<const Scalar*>(nullptr), &loc_store_modifier[0]);
                 } else if (level_ == detail::level::SUBGROUP) {
                   int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
                   int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
-                  subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, cooley_tukey_size_list_t, TransposeOut,
-                                         ApplyLoadModifier, ApplyStoreModifier, Scalar>(
+                  subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
+                                         ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
                       factor_wi, factor_sg, &in_ptr_or_acc[0] + base_offset + 2 * i * committed_size,
                       &scratch_pointer[0] + base_offset + 2 * i * committed_size, &loc[0], &loc_twiddles[0], batch_size,
-                      it, twiddles_ptr + local_twiddles_offset, scale_factor,
-                      twiddles_ptr + intermediate_twiddles_offset);
+                      it, twiddles_ptr + local_twiddles_offset, scale_factor, static_cast<const Scalar*>(nullptr),
+                      twiddles_ptr + intermediate_twiddles_offset, static_cast<const Scalar*>(nullptr),
+                      &loc_store_modifier[0]);
                 }
               });
         });
