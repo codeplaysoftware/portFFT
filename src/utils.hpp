@@ -35,18 +35,18 @@ namespace detail {
  * @tparam SubgroupSize size of the subgroup
  * @param ids vector of kernel ids
  */
-template <
-    template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, bool, int>
-    class Kernel,
-    typename Scalar, domain Domain, int SubgroupSize>
+template <template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, bool,
+                    int, int>
+          class Kernel,
+          typename Scalar, domain Domain, int SubgroupSize, int KernelID = 0>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
 // if not used, some kernels might be optimized away in AOT compilation and not available here
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR) \
-  try {                                                                                                             \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT,        \
-                                             LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR, SubgroupSize>>());        \
-  } catch (...) {                                                                                                   \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR)    \
+  try {                                                                                                                \
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT,           \
+                                             LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR, SubgroupSize, KernelID>>()); \
+  } catch (...) {                                                                                                      \
   }
   // TODO: A better way to do this instead of a long list of all possibilities
   // clang-format off
@@ -154,12 +154,12 @@ std::vector<sycl::kernel_id> get_ids() {
   // clang-format on
   return ids;
 }
-template <typename F, typename G>
+template <int KernelID = 0, typename F, typename G>
 struct factorize_input_struct {
   static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
     std::size_t fact_1 = input_size;
     if (fits_in_target_level(input_size)) {
-      select_impl(input_size);
+      select_impl.template operator()<KernelID>(input_size);
       return;
     } else {
       if ((detail::factorize(fact_1) == 1)) {
@@ -170,8 +170,13 @@ struct factorize_input_struct {
       } while (!fits_in_target_level(fact_1));
     }
     select_impl(fact_1);
-    factorize_input_struct<F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
+    factorize_input_struct<KernelID + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
+
+  template <typename F, typename G>
+  struct factorize_input_struct<64, F, G> {
+    static void execute(std::size_t, F, G) { throw std::runtime_error("No more than 63 factors are supported!"); }
+  };
 };
 
 }  // namespace detail

@@ -41,20 +41,23 @@ namespace detail {
 // kernel names
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize>
+          int SubgroupSize, int kernel_id = 0>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize>
+          int SubgroupSize, int kernel_id = 0>
 class subgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize>
+          int SubgroupSize, int kernel_id = 0>
 class workgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize>
+          int SubgroupSize, int kernel_id = 0>
 class global_kernel;
+
+template <int, direction, typename, domain, memory, transpose, transpose, bool, bool, bool, int, typename, typename>
+struct dispatch_kernel_struct;
 
 }  // namespace detail
 
@@ -101,6 +104,9 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
+  template <int, direction, typename, domain, detail::memory, detail::transpose, detail::transpose, bool, bool, bool,
+            int, typename, typename>
+  friend struct detail::dispatch_kernel_struct;
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -219,21 +225,21 @@ class committed_descriptor {
       }() && !PORTFFT_SLOW_SG_SHUFFLES;
     };
 
-    auto select_impl = [&](std::size_t input_size) -> void {
+    auto select_impl = [&]<int KernelID>(std::size_t input_size) -> void {
       if (detail::fits_in_wi<Scalar>(input_size)) {
         levels.push_back(detail::level::WORKITEM);
-        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>());
+        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
         return;
       }
       if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
         levels.push_back(detail::level::SUBGROUP);
-        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>());
+        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
         return;
       }
     };
-    detail::factorize_input_struct<decltype(fits_in_target_level), decltype(select_impl)>::execute(
+    detail::factorize_input_struct<0, decltype(fits_in_target_level), decltype(select_impl)>::execute(
         params.lengths[0], fits_in_target_level, select_impl);
     std::size_t num_twiddles = 0;
     for (std::size_t i = 0; i < factors.size() - 1; i++) {

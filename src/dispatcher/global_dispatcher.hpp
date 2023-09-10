@@ -162,6 +162,19 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     constexpr detail::memory mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     num_scalars_in_local_mem_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(desc);
     std::size_t local_mem_twiddle_offset = 0;
+    for (std::size_t i = 0; i < desc.factors.size() - 1; i++) {
+      local_mem_twiddle_offset += static_cast<std::size_t>(desc.factors[i] * desc.sub_batches[i]);
+    }
+    std::size_t fft_size = desc.params.lengths[0];
+    for (int batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
+      detail::dispatch_kernel_struct<0, Dir, Scalar, Domain, mem, detail::transpose::TRANSPOSED,
+                                     detail::transpose::TRANSPOSED, false, true, SubgroupSize, TIn,
+                                     TOut>::execute(in, out, desc, 0, 2 * local_mem_twiddle_offset, scale_factor,
+                                                    2 * fft_size * batch);
+    }
+    desc.queue.wait();
+    sycl::event Event;
+    return Event;
   }
 };
 
