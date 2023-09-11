@@ -67,11 +67,12 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * @param max_num_batches_in_local_mem Maximum possible number of batches in local memory
  * @param sub_batch_num Batch that is stored in the local memory currently being computed
  */
-template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int M, int SubgroupSize,
-          std::size_t BankLinesPerPad, typename T>
+template <direction Dir, detail::transpose TransposeIn, bool ApplyLoadModifier, bool ApplyStoreModifier,
+          bool ApplyScaleFactor, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor, std::size_t max_num_batches_in_local_mem,
-                                                  std::size_t sub_batch_num) {
+                                                  std::size_t sub_batch_num, const T* load_data_modifier = nullptr,
+                                                  const T* store_data_modifer = nullptr) {
   // the number of work-items involved in every row subgroup fft
   constexpr int FactSgN = detail::factorize_sg(N, SubgroupSize);
   // the number of values held in by a work-item in a row subgroup dft
@@ -136,6 +137,21 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
               priv, loc, 1L, 0L, static_cast<std::size_t>(2 * M), static_cast<std::size_t>(2 * column), 1L,
               static_cast<std::size_t>(wi_in_fft * FactWiN), BankLinesPerPad);
         }
+      }
+      if constexpr (ApplyLoadModifier) {
+        detail::unrolled_loop<0, FactWiN, 1>([&](const std::size_t j) __attribute__((always_inline)) {
+          sycl::vec<T, 2> priv;
+          priv = *(reinterpret_cast<sycl::vec<T, 2>*>(
+              &load_data_modifier[2 * static_cast<std::size_t>(FFTSize) * sub_batch_num +
+                                  static_cast<std::size_t>(2 * M) *
+                                      (static_cast<std::size_t>(wi_in_fft * FactWiN) + j) *
+                                      static_cast<std::size_t>(2 * column)]));
+          T modifier_real = priv[0];
+          T modifier_complex = priv[1];
+          T tmp_real = priv[2 * j];
+          priv[2 * j] = modifier_real * tmp_real - modifier_complex * priv[2 * j + 1];
+          priv[2 * j + 1] = tmp_real * modifier_complex + modifier_real * priv[2 * j + 1];
+        });
       }
       sg_dft<Dir, FactWiN, FactSgN>(priv, sg, loc_twiddles + (2 * M));
       if (working) {
@@ -223,10 +239,26 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
       });
       sg_dft<Dir, FactWiM, FactSgM>(priv, sg, loc_twiddles);
-      detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
-        priv[2 * i] *= scaling_factor;
-        priv[2 * i + 1] *= scaling_factor;
-      });
+      if constexpr (ApplyScaleFactor) {
+        detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
+          priv[2 * i] *= scaling_factor;
+          priv[2 * i + 1] *= scaling_factor;
+        });
+      }
+      if constexpr (ApplyStoreModifier) {
+        detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
+          sycl::vec<T, 2> priv;
+          priv = *(reinterpret_cast<sycl::vec<T, 2>*>(
+              &store_data_modifer[2 * static_cast<std::size_t>(FFTSize) * sub_batch_num +
+                                  2 * static_cast<std::size_t>(M) * row +
+                                  static_cast<std::size_t>(2 * wi_in_fft + j * FactSgM)]));
+          T modifier_real = priv[0];
+          T modifier_complex = priv[1];
+          T tmp_real = priv[2 * j];
+          priv[2 * j] = modifier_real * tmp_real - modifier_complex * priv[2 * j + 1];
+          priv[2 * j + 1] = tmp_real * modifier_complex + modifier_real * priv[2 * j + 1];
+        });
+      }
       if (working) {
         if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
           /**

@@ -114,8 +114,9 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       }
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
-            loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, sub_batch);
+        wg_dft<Dir, TransposeIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
+               BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem,
+                                sub_batch, load_modifier_data, store_modifier_data);
         sycl::group_barrier(it.get_group());
       }
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
@@ -128,8 +129,9 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     } else {
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * FFTSize, offset);
       sycl::group_barrier(it.get_group());
-      wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
-          loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0);
+      wg_dft<Dir, TransposeIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
+             BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0,
+                              load_modifier_data, store_modifier_data);
       sycl::group_barrier(it.get_group());
       local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(it, N, M, M, loc, output, offset);
       sycl::group_barrier(it.get_group());
