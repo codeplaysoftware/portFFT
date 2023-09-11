@@ -149,7 +149,8 @@ struct dispatch_kernel_struct {
     desc.queue.wait();
     for (std::size_t i = 0; i < desc.num_batches_in_l2; i++) {
       desc.queue.submit([&](sycl::handler& cgh) {
-        auto out_acc_or_usm = get_access<Scalar>(output_pointer, cgh);
+        auto out_acc_or_usm = &get_access<Scalar>(output_pointer, cgh)[0];
+        out_acc_or_usm = scratch_pointer_2;
         sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
         cgh.parallel_for(
             sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
@@ -175,7 +176,7 @@ struct dispatch_kernel_struct {
                 }
                 generic_transpose(fft_size, batch_size, 16,
                                   scratch_pointer + 2 * i * committed_size + base_offset + sub_batch_offset,
-                                  scratch_pointer_2 + base_offset + 2 * i * committed_size + sub_batch_offset, loc, it);
+                                  out_acc_or_usm + base_offset + 2 * i * committed_size + sub_batch_offset, loc, it);
               }
             });
       });
@@ -207,13 +208,6 @@ struct dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, TransposeIn, Transpos
     std::size_t local_mem_usage = desc.local_mem_per_factor[0];
     const Scalar* twiddles_ptr = static_cast<const Scalar*>(desc.twiddles_forward.get());
     detail::level Level = desc.levels[0];
-    std::size_t loc_mem_for_twiddles = [=]() {
-      if (Level == detail::level::WORKITEM || Level == detail::level::WORKGROUP) {
-        return static_cast<std::size_t>(0);
-      } else {
-        return 2 * fft_size;
-      }
-    }();
     desc.queue.wait();
     for (std::size_t i = 0; i < desc.num_batches_in_l2; i++) {
       if (batch_num + i < desc.params.number_of_transforms) {
@@ -307,7 +301,10 @@ template <direction Dir, typename Scalar, domain Domain, memory Mem, transpose T
 struct dispatch_kernel_struct<33, Dir, Scalar, Domain, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
                               ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, TIn, TOut> {
   static sycl::event execute(TIn, TOut, committed_descriptor<Scalar, Domain>&, std::size_t, std::size_t, Scalar,
-                             std::size_t, std::size_t) {}
+                             std::size_t, std::size_t) {
+    sycl::event Event;
+    return Event;
+  }
 };
 }  // namespace detail
 }  // namespace portfft

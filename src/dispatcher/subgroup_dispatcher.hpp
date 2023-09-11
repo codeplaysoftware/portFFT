@@ -429,8 +429,8 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& desc,
                       std::vector<sycl::kernel_bundle<sycl::bundle_state::input>>& in_bundles) {
     for (auto& in_bundle : in_bundles) {
-      in_bundle.template set_specialization_constant<detail::FactorWISpecConst>(desc.factors[0]);
-      in_bundle.template set_specialization_constant<detail::FactorSGSpecConst>(desc.factors[1]);
+      in_bundle.template set_specialization_constant<detail::FactorWISpecConst>(static_cast<int>(desc.factors[0]));
+      in_bundle.template set_specialization_constant<detail::FactorSGSpecConst>(static_cast<int>(desc.factors[1]));
     }
   }
 };

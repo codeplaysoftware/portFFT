@@ -69,19 +69,19 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
   static Scalar* execute(committed_descriptor& desc) {
     auto calc_total_mem_for_twiddles = [=]() -> std::size_t {
       std::size_t num_scalars = 0;
-      int index = 0;
+      std::size_t index = 0;
       for (std::size_t i = 0; i < desc.factors.size() - 1; i++) {
-        std::size_t num_batches =
-            std::accumulate(desc.factors.begin() + i + 1, desc.factors.end(), 1, std::multiplies<std::size_t>());
+        std::size_t num_batches = std::accumulate(desc.factors.begin() + static_cast<long>(i + 1), desc.factors.end(),
+                                                  static_cast<std::size_t>(1), std::multiplies<std::size_t>());
         num_scalars += num_batches * desc.factors[i];
       }
-      for (detail::level level : desc.levels) {
-        if (level == detail::level::WORKITEM) {
+      for (detail::level level_ : desc.levels) {
+        if (level_ == detail::level::WORKITEM) {
         }
-        if (level == detail::level::SUBGROUP) {
+        if (level_ == detail::level::SUBGROUP) {
           num_scalars += desc.factors[index];
         }
-        if (level == detail::level::WORKGROUP) {
+        if (level_ == detail::level::WORKGROUP) {
           num_scalars += desc.factors[index];
           auto n = detail::factorize(desc.factors[index]);
           num_scalars += n + desc.factors[index] / n;
@@ -108,39 +108,37 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     // first calculate all for Intermediate twiddles
     //  Then iff level is subgroup, calculate twiddles required for subgroup.
     std::size_t offset = 0;
-    int index = 0;
+    std::size_t index = 0;
     for (std::size_t i = 0; i < desc.factors.size() - 1; i++) {
       std::size_t n = desc.factors[i];
-      std::size_t m = std::accumulate(desc.factors.begin() + static_cast<long>(i + 1), desc.factors.end(), 1,
-                                      std::multiplies<std::size_t>());
+      std::size_t m = std::accumulate(desc.factors.begin() + static_cast<long>(i + 1), desc.factors.end(),
+                                      static_cast<std::size_t>(1), std::multiplies<std::size_t>());
       // store twiddles for global memory in a transposed fashion to ensure coalesced accesses.
       calculate_twiddles(m, n, offset, host_twiddles_ptr);
     }
 
-    for (detail::level level : desc.levels) {
+    for (detail::level level_ : desc.levels) {
       // TODO: Refactor this and dispatch to correct execute specialization
-      switch (level) {
-        if (level == detail::level::WORKITEM) {
-        }
-        if (level == detail::level::SUBGROUP) {
-          std::size_t factor = desc.factors[index];
-          auto n = detail::factorize_sg(factor, desc.used_sg_size);
-          auto m = factor / n;
-          calculate_twiddles(m, n, offset, host_twiddles_ptr);
-        }
-        if (level == detail::level::WORKGROUP) {
-          std::size_t factor = desc.factors[index];
-          std::size_t n = detail::factorize(factor);
-          std::size_t m = factor / n;
-          std::size_t n_sg = static_cast<std::size_t>(detail::factorize_sg(n, desc.used_sg_size));
-          std::size_t n_wi = n / n_sg;
-          std::size_t m_sg = static_cast<std::size_t>(detail::factorize_sg(m, desc.used_sg_size));
-          std::size_t m_wi = m / m_sg;
+      if (level_ == detail::level::WORKITEM) {
+      }
+      if (level_ == detail::level::SUBGROUP) {
+        std::size_t factor = desc.factors[index];
+        auto n = static_cast<std::size_t>(detail::factorize_sg(static_cast<int>(factor), desc.used_sg_size));
+        auto m = factor / static_cast<std::size_t>(n);
+        calculate_twiddles(m, n, offset, host_twiddles_ptr);
+      }
+      if (level_ == detail::level::WORKGROUP) {
+        std::size_t factor = desc.factors[index];
+        std::size_t n = detail::factorize(factor);
+        std::size_t m = factor / n;
+        std::size_t n_sg = static_cast<std::size_t>(detail::factorize_sg(static_cast<int>(n), desc.used_sg_size));
+        std::size_t n_wi = n / n_sg;
+        std::size_t m_sg = static_cast<std::size_t>(detail::factorize_sg(static_cast<int>(m), desc.used_sg_size));
+        std::size_t m_wi = m / m_sg;
 
-          calculate_twiddles(n, m, offset, host_twiddles_ptr);
-          calculate_twiddles(n_sg, n_wi, offset, host_twiddles_ptr);
-          calculate_twiddles(m_sg, m_wi, offset, host_twiddles_ptr);
-        }
+        calculate_twiddles(n, m, offset, host_twiddles_ptr);
+        calculate_twiddles(n_sg, n_wi, offset, host_twiddles_ptr);
+        calculate_twiddles(m_sg, m_wi, offset, host_twiddles_ptr);
       }
       index++;
     }
@@ -166,7 +164,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       local_mem_twiddle_offset += static_cast<std::size_t>(desc.factors[i] * desc.sub_batches[i]);
     }
     std::size_t fft_size = desc.params.lengths[0];
-    for (int batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
+    for (std::size_t batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
       detail::dispatch_kernel_struct<0, Dir, Scalar, Domain, mem, detail::transpose::TRANSPOSED,
                                      detail::transpose::TRANSPOSED, false, true, false, SubgroupSize, TIn,
                                      TOut>::execute(in, out, desc, 0, 2 * local_mem_twiddle_offset, scale_factor,
@@ -184,40 +182,38 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
                                                                                          TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
     auto get_local_mem_usage_per_level = [](committed_descriptor<Scalar, Domain> committed_descriptor,
-                                            std::size_t factor, detail::level level, bool transposed) -> std::size_t {
-      if (level == detail::level::WORKITEM) {
+                                            std::size_t factor, detail::level level_, bool transposed) -> std::size_t {
+      if (level_ == detail::level::WORKITEM) {
         if (transposed) {
           return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, detail::transpose::TRANSPOSED,
                                                                  Dummy, std::size_t>::execute(committed_descriptor,
                                                                                               factor);
-        } else {
-          return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM,
-                                                                 detail::transpose::NOT_TRANSPOSED, Dummy,
-                                                                 std::size_t>::execute(committed_descriptor, factor);
         }
+        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM,
+                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+                                                               std::size_t>::execute(committed_descriptor, factor);
       }
-      if (level == detail::level::SUBGROUP) {
+      if (level_ == detail::level::SUBGROUP) {
         if (transposed) {
           return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, detail::transpose::TRANSPOSED,
                                                                  Dummy, std::size_t>::execute(committed_descriptor,
                                                                                               factor);
-        } else {
-          return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP,
-                                                                 detail::transpose::NOT_TRANSPOSED, Dummy,
-                                                                 std::size_t>::execute(committed_descriptor, factor);
         }
+        return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP,
+                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+                                                               std::size_t>::execute(committed_descriptor, factor);
       }
-      if (level == detail::level::WORKGROUP) {
+      if (level_ == detail::level::WORKGROUP) {
         if (transposed) {
           return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP,
                                                                  detail::transpose::TRANSPOSED, Dummy,
                                                                  std::size_t>::execute(committed_descriptor, factor);
-        } else {
-          return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP,
-                                                                 detail::transpose::NOT_TRANSPOSED, Dummy,
-                                                                 std::size_t>::execute(committed_descriptor, factor);
         }
+        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP,
+                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+                                                               std::size_t>::execute(committed_descriptor, factor);
       }
+      return 0;
     };
     if (desc.local_mem_per_factor.empty()) {
       bool transposed = true;
@@ -226,20 +222,20 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
           transposed = false;
         }
         auto factor = desc.factors[i];
-        detail::level level = desc.levels[i];
-        desc.local_mem_per_factor.push_back(get_local_mem_usage_per_level(desc, factor, level, transposed));
+        detail::level level_ = desc.levels[i];
+        desc.local_mem_per_factor.push_back(get_local_mem_usage_per_level(desc, factor, level_, transposed));
       }
-      int index = 0;
+      std::size_t index = 0;
       desc.launch_configurations.clear();
-      for (detail::level level : desc.levels) {
+      for (detail::level level_ : desc.levels) {
         std::size_t fft_size = desc.factors[index];
-        std::size_t batch_size =
-            std::accumulate(desc.factors.begin() + index, desc.factors.end(), 1, std::multiplies<std::size_t>());
+        std::size_t batch_size = std::accumulate(desc.factors.begin() + static_cast<long>(index), desc.factors.end(),
+                                                 static_cast<std::size_t>(1), std::multiplies<std::size_t>());
         if (index == desc.factors.size() - 1) {
           batch_size = desc.factors[index - 1];
         }
-        desc.launch_configurations.push_back(
-            detail::get_launch_configuration(level, fft_size, batch_size, desc.n_compute_units, desc.used_sg_size));
+        desc.launch_configurations.push_back(detail::get_launch_configuration(
+            level_, fft_size, batch_size, desc.n_compute_units, static_cast<std::size_t>(desc.used_sg_size)));
         index++;
       }
       return 0;
@@ -265,11 +261,11 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& desc,
                       std::vector<sycl::kernel_bundle<sycl::bundle_state::input>>& in_bundles) {
     for (std::size_t i = 0; i < in_bundles.size(); i++) {
-      detail::level level = desc.levels[i];
+      detail::level level_ = desc.levels[i];
       std::size_t factor = desc.factors[i];
       auto& in_bundle = in_bundles[i];
-      in_bundle.template set_specialization_constant<detail::SpecConstLevel>(level);
-      switch (level) {
+      in_bundle.template set_specialization_constant<detail::SpecConstLevel>(level_);
+      switch (level_) {
         case detail::level::WORKITEM: {
           in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factor);
           break;
