@@ -18,31 +18,21 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_ENUMS_HPP
-#define PORTFFT_ENUMS_HPP
+#ifndef PORTFFT_COMMON_EXCEPTIONS_HPP
+#define PORTFFT_COMMON_EXCEPTIONS_HPP
+
+#include <stdexcept>
 
 namespace portfft {
 
-enum class domain { REAL, COMPLEX };
+/**
+ * Exception thrown if the provided descriptor is not supported at the moment or cannot be supported on a particular
+ * device or with the particular CMake configuration.
+ */
+struct unsupported_configuration : public std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
 
-enum class complex_storage { COMPLEX, REAL_REAL };
-
-enum class placement { IN_PLACE, OUT_OF_PLACE };
-
-enum class direction { FORWARD, BACKWARD };
-
-namespace detail {
-enum class pad { DO_PAD, DONT_PAD };
-
-enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
-
-enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
-
-enum class memory { BUFFER, USM };
-
-enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
-}  // namespace detail
-
-}  // namespace portfft
+};  // namespace portfft
 
 #endif

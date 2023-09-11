@@ -22,6 +22,7 @@
 #define PORTFFT_DESCRIPTOR_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
+#include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 #include <utils.hpp>
@@ -175,10 +176,19 @@ class committed_descriptor {
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids) {
     factors.clear();
+
+    // TODO: check and support all the parameter values
+    if constexpr (Domain != domain::COMPLEX) {
+      throw unsupported_configuration("portFFT only supports complex to complex transforms");
+    }
+    if (params.lengths.size() != 1) {
+      throw unsupported_configuration("portFFT only supports 1D FFT for now");
+    }
     std::size_t fft_size = params.lengths[0];
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
+      throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
     }
+
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids.push_back(detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>());
       return detail::level::WORKITEM;
@@ -430,6 +440,13 @@ class committed_descriptor {
    */
   ~committed_descriptor() { queue.wait(); }
 
+  // rule of three
+  committed_descriptor(const committed_descriptor& other) = default;
+  committed_descriptor& operator=(const committed_descriptor& other) = default;
+
+  // default construction is not appropriate
+  committed_descriptor() = delete;
+
   /**
    * Computes in-place forward FFT, working on a buffer.
    *
@@ -611,7 +628,7 @@ class committed_descriptor {
       if (input_distance == 1 && output_distance == fft_size && in != out) {
         return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
       }
-      throw std::runtime_error("Unsupported configuration");
+      throw unsupported_configuration("Only contiguous or transposed transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");

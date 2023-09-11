@@ -78,47 +78,33 @@ def make_data_spec(file_base):
             "input_dimensions": [64 * 1024 + 1],
             "batch": 2 * 1024,
         },
-        # 6. large complex 2D fits in global memory
+        # 6. small real 1D fits in workitem Cooley-Tukey
         {
             "file_path": make_path("benchmark_6.dat"),
-            "transform_type": "COMPLEX",
-            "input_dimensions": [4096, 4096],
-            "batch": 8,
-        },
-        # 7. small real 1D fits in workitem Cooley-Tukey
-        {
-            "file_path": make_path("benchmark_7.dat"),
             "transform_type": "REAL",
             "input_dimensions": [32],
             "batch": 8 * 1024 * 1024,
         },
-        # 8. medium-small real 1D fits in subgroup Cooley-Tukey
+        # 7. medium-small real 1D fits in subgroup Cooley-Tukey
         {
-            "file_path": make_path("benchmark_8.dat"),
+            "file_path": make_path("benchmark_7.dat"),
             "transform_type": "REAL",
             "input_dimensions": [512],
             "batch": 512 * 1024,
         },
-        # 9. medium-large real 1D fits in local memory Cooley-Tukey
+        # 8. medium-large real 1D fits in local memory Cooley-Tukey
         {
-            "file_path": make_path("benchmark_9.dat"),
+            "file_path": make_path("benchmark_8.dat"),
             "transform_type": "REAL",
             "input_dimensions": [8 * 1024],
             "batch": 32 * 1024,
         },
-        # 10. large real 1D fits in global memory Cooley-Tukey
+        # 9. large real 1D fits in global memory Cooley-Tukey
         {
-            "file_path": make_path("benchmark_10.dat"),
+            "file_path": make_path("benchmark_9.dat"),
             "transform_type": "REAL",
             "input_dimensions": [128 * 1024],
             "batch": 2 * 1024,
         },
-        # 11. small real 3D
-        {
-            "file_path": make_path("benchmark_11.dat"),
-            "transform_type": "REAL",
-            "input_dimensions": [64, 64, 64],
-            "batch": 1024,
-        }
     ]
     return cases

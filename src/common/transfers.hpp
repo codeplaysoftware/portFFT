@@ -204,7 +204,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   // Each workitem loads a chunk of `ChunkSize` consecutive elements. Chunks loaded by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
-    loaded.load(0, detail::get_global_multi_ptr(&global[global_offset + i]));
+    loaded = *reinterpret_cast<const T_vec*>(&global[global_offset + i]);
     detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       local[local_idx] = loaded[j];
@@ -319,7 +319,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
       to_store[j] = local[local_idx];
     });
-    to_store.store(0, detail::get_global_multi_ptr(&global[global_offset + i]));
+    *reinterpret_cast<T_vec*>(&global[global_offset + i]) = to_store;
   }
 #endif
   // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
@@ -578,6 +578,74 @@ __attribute__((always_inline)) inline void local_transposed2_global_transposed(s
     std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
     std::size_t global_index = offset + local_id + 2 * i * stride_global;
     global_base_ptr[global_index] = local_ptr[local_index];
+  }
+}
+
+/**
+ * Function meant to transfer data between local and private memory, and is able to handle 3 levels
+ * of transpositions / strides and combine them into a single load / store.
+ *
+ * @tparam T Scalar Type
+ * @tparam Pad Whether or not to pad
+ * @tparam NumComplexElements Number of complex elements to transfer between the two.
+ * @tparam TransferDirection Direction of Transfer
+ *
+ * @param priv Pointer to private memory
+ * @param loc Pointer to local memory
+ * @param stride_1 Outer Most stride
+ * @param offset_1 Outer most offset
+ * @param stride_2 2nd level of stride
+ * @param offset_2 2nd level of offset
+ * @param stride_3 inner most stride
+ * @param offset_3 inner most offset
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ */
+template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
+__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
+                                                            std::size_t stride_2, std::size_t offset_2,
+                                                            std::size_t stride_3, std::size_t offset_3,
+                                                            std::size_t bank_lines_per_pad) {
+  detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) __attribute__((always_inline)) {
+    std::size_t j_size_t = static_cast<std::size_t>(j);
+    std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
+    if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+    }
+    if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
+      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
+      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+    }
+  });
+}
+
+/**
+ * Transfers data from local memory which is strided to global memory, which too is strided in a transposed fashion
+ *
+ * @tparam Pad Whether or not to pad local memory
+ * @tparam T Scalar type
+ *
+ * @param loc Pointer to local memory
+ * @param global Pointer to global memory
+ * @param global_offset Offset to global memory
+ * @param local_stride stride value in local memory
+ * @param N Number of rows
+ * @param M Number of Columns
+ * @param fft_size Size of the problem
+ * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @param it Associated nd_item
+ */
+template <detail::pad Pad, typename T>
+__attribute__((always_inline)) inline void local_strided_2_global_strided_transposed(
+    T* loc, T* global, std::size_t global_offset, std::size_t local_stride, std::size_t N, std::size_t M,
+    std::size_t fft_size, std::size_t bank_lines_per_pad, sycl::nd_item<1> it) {
+  std::size_t batch_num = it.get_local_linear_id() / 2;
+  for (std::size_t i = 0; i < fft_size; i++) {
+    std::size_t source_row = i / N;
+    std::size_t source_col = i % N;
+    global[global_offset + 2 * batch_num * fft_size + 2 * i + it.get_local_linear_id() % 2] =
+        loc[detail::pad_local<Pad>(local_stride * (source_col * M + source_row) + it.get_local_id(0),
+                                   bank_lines_per_pad)];
   }
 }
 
