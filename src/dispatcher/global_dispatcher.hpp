@@ -170,7 +170,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       detail::dispatch_kernel_struct<0, Dir, Scalar, Domain, mem, detail::transpose::TRANSPOSED,
                                      detail::transpose::TRANSPOSED, false, true, false, SubgroupSize, TIn,
                                      TOut>::execute(in, out, desc, 0, 2 * local_mem_twiddle_offset, scale_factor,
-                                                    2 * fft_size * batch);
+                                                    2 * fft_size * batch, batch);
     }
     desc.queue.wait();
     sycl::event Event;

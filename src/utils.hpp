@@ -154,7 +154,7 @@ std::vector<sycl::kernel_id> get_ids() {
   // clang-format on
   return ids;
 }
-template <int KernelID = 0, typename F, typename G>
+template <int KernelID, typename F, typename G>
 struct factorize_input_struct {
   static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
     std::size_t fact_1 = input_size;
@@ -169,14 +169,13 @@ struct factorize_input_struct {
         fact_1 = detail::factorize(fact_1);
       } while (!fits_in_target_level(fact_1));
     }
-    select_impl(fact_1);
+    select_impl.template operator()<KernelID>(fact_1);
     factorize_input_struct<KernelID + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
-
-  template <typename F, typename G>
-  struct factorize_input_struct<64, F, G> {
-    static void execute(std::size_t, F, G) { throw std::runtime_error("No more than 63 factors are supported!"); }
-  };
+};
+template <typename F, typename G>
+struct factorize_input_struct<33, F, G> {
+  static void execute(std::size_t, F, G) { throw std::runtime_error("No more than 33 factors are supported!"); }
 };
 
 }  // namespace detail
