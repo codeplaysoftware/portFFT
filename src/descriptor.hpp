@@ -440,9 +440,86 @@ class committed_descriptor {
         sycl::free(ptr, queue);
       }
     });
+    if (level == detail::level::GLOBAL) {
+      scratch_1 = std::shared_ptr<Scalar>(
+          sycl::malloc_device<Scalar>(2 * params.lengths[0] * params.number_of_transforms, queue),
+          [queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, queue);
+            }
+          });
+      scratch_2 = std::shared_ptr<Scalar>(
+          sycl::malloc_device<Scalar>(2 * params.lengths[0] * params.number_of_transforms, queue),
+          [queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, queue);
+            }
+          });
+      dev_factors = std::shared_ptr<std::size_t>(sycl::malloc_device<std::size_t>(3 * factors.size(), queue),
+                                                 [queue](std::size_t* ptr) {
+                                                   if (ptr != nullptr) {
+                                                     sycl::free(ptr, queue);
+                                                   }
+                                                 });
+      queue.copy(factors.data(), dev_factors.get(), factors.size());
+      queue.copy(sub_batches.data(), dev_factors.get() + factors.size(), sub_batches.size());
+      queue.copy(inclusive_scan.data(), dev_factors.get() + 2 * factors.size(), inclusive_scan.size());
+      queue.wait();
+    }
+  }
+
+  void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
+#define COPY(x) x = desc.x;
+    COPY(params)
+    COPY(queue)
+    COPY(dev)
+    COPY(ctx)
+    COPY(local_memory_size)
+    COPY(n_compute_units)
+    COPY(supported_sg_sizes)
+    COPY(used_sg_size)
+    COPY(twiddles_forward)
+    COPY(dev_factors)
+    COPY(level)
+    COPY(factors)
+    COPY(sub_batches)
+    COPY(inclusive_scan)
+    COPY(levels)
+    COPY(launch_configurations)
+    COPY(exec_bundle)
+    COPY(transpose_kernel_bundle)
+    COPY(num_sgs_per_wg)
+    COPY(l2_cache_size)
+    COPY(num_batches_in_l2)
+
+#undef COPY
+
+    if (level == detail::level::GLOBAL) {
+      scratch_1 = std::shared_ptr<Scalar>(
+          sycl::malloc_device<Scalar>(2 * params.lengths[0] * params.number_of_transforms, queue),
+          [captured_queue = this->queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, captured_queue);
+            }
+          });
+      scratch_2 = std::shared_ptr<Scalar>(
+          sycl::malloc_device<Scalar>(2 * params.lengths[0] * params.number_of_transforms, queue),
+          [captured_queue = this->queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, captured_queue);
+            }
+          });
+    }
   }
 
  public:
+  committed_descriptor<Scalar, Domain>(const committed_descriptor<Scalar, Domain>& desc) : params(desc.params) {
+    create_copy(desc);
+  }
+  committed_descriptor<Scalar, Domain>& operator=(const committed_descriptor<Scalar, Domain>& desc) {
+    create_copy(desc);
+    return *this;
+  }
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
   /**
@@ -458,10 +535,6 @@ class committed_descriptor {
    * Destructor
    */
   ~committed_descriptor() { queue.wait(); }
-
-  // rule of three
-  committed_descriptor(const committed_descriptor& other) = default;
-  committed_descriptor& operator=(const committed_descriptor& other) = default;
 
   // default construction is not appropriate
   committed_descriptor() = delete;
@@ -789,6 +862,9 @@ struct descriptor {
   std::size_t get_total_length() const noexcept {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
+
+  descriptor<Scalar, Domain>(const descriptor<Scalar, Domain>&) = default;
+  descriptor<Scalar, Domain>& operator=(const descriptor<Scalar, Domain>&) = default;
 };
 
 }  // namespace portfft
