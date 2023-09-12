@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
+#include <defines.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -36,7 +37,7 @@ namespace portfft::detail {
  * __attribute__((always_inline)).
  */
 template <auto Start, auto Stop, auto Step, typename Functor>
-void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+PORTFFT_INLINE void unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);

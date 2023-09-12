@@ -69,10 +69,9 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  */
 template <direction Dir, detail::transpose TransposeIn, bool ApplyLoadModifier, bool ApplyStoreModifier,
           bool ApplyScaleFactor, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
-                                                  T scaling_factor, std::size_t max_num_batches_in_local_mem,
-                                                  std::size_t sub_batch_num, const T* load_data_modifier = nullptr,
-                                                  const T* store_data_modifer = nullptr) {
+PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor,
+                           std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num,
+                           const T* load_data_modifier = nullptr, const T* store_data_modifer = nullptr) {
   // the number of work-items involved in every row subgroup fft
   constexpr int FactSgN = detail::factorize_sg(N, SubgroupSize);
   // the number of values held in by a work-item in a row subgroup dft
@@ -139,7 +138,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
         }
       }
       if constexpr (ApplyLoadModifier) {
-        detail::unrolled_loop<0, FactWiN, 1>([&](const std::size_t j) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWiN, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
           sycl::vec<T, 2> priv;
           priv = *(reinterpret_cast<sycl::vec<T, 2>*>(
               &load_data_modifier[2 * static_cast<std::size_t>(FFTSize) * sub_batch_num +
@@ -225,7 +224,7 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
               static_cast<std::size_t>(2 * M * row));
         }
       }
-      detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, FactWiM, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
         int element = 2 * i * FactSgM + 2 * wi_in_fft;
         int twiddle_index = 2 * M * row + element;
         sycl::vec<T, 2> twiddles = *reinterpret_cast<const sycl::vec<T, 2>*>(&wg_twiddles[twiddle_index]);
@@ -240,13 +239,13 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
       });
       sg_dft<Dir, FactWiM, FactSgM>(priv, sg, loc_twiddles);
       if constexpr (ApplyScaleFactor) {
-        detail::unrolled_loop<0, FactWiM, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWiM, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
         });
       }
       if constexpr (ApplyStoreModifier) {
-        detail::unrolled_loop<0, FactWiM, 1>([&](const int j) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWiM, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
           sycl::vec<T, 2> priv;
           priv = *(reinterpret_cast<sycl::vec<T, 2>*>(
               &store_data_modifer[2 * static_cast<std::size_t>(FFTSize) * sub_batch_num +

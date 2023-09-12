@@ -18,31 +18,11 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_ENUMS_HPP
-#define PORTFFT_ENUMS_HPP
+#ifndef PORTFFT_DEFINES_HPP
+#define PORTFFT_DEFINES_HPP
 
-namespace portfft {
+#define PORTFFT_ALWAYS_INLINE __attribute__((always_inline))
+#define PORTFFT_INLINE PORTFFT_ALWAYS_INLINE inline
+#define MaxFactors 33
 
-enum class domain { REAL, COMPLEX };
-
-enum class complex_storage { COMPLEX, REAL_REAL };
-
-enum class placement { IN_PLACE, OUT_OF_PLACE };
-
-enum class direction { FORWARD, BACKWARD };
-
-namespace detail {
-enum class pad { DO_PAD, DONT_PAD };
-
-enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
-
-enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
-
-enum class memory { BUFFER, USM };
-
-enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
-}  // namespace detail
-
-}  // namespace portfft
-
-#endif
+#endif  // PORTFFT_DEFINES_HPP

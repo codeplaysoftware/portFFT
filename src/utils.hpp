@@ -21,6 +21,7 @@
 #ifndef PORTFFT_UTILS_HPP
 #define PORTFFT_UTILS_HPP
 
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 #include <vector>

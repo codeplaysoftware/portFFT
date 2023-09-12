@@ -25,6 +25,7 @@
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workgroup.hpp>
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 
@@ -72,10 +73,9 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
           bool ApplyStoreModifier, bool ApplyScaleFactor, std::size_t FFTSize, int SubgroupSize, typename T>
-__attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
-                                                          std::size_t n_transforms, sycl::nd_item<1> it,
-                                                          const T* twiddles, T scaling_factor,
-                                                          const T* load_modifier_data, const T* store_modifier_data) {
+PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
+                                          sycl::nd_item<1> it, const T* twiddles, T scaling_factor,
+                                          const T* load_modifier_data, const T* store_modifier_data) {
   std::size_t num_workgroups = it.get_group_range(0);
   std::size_t wg_id = it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
@@ -158,11 +158,11 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
           bool ApplyStoreModifier, bool ApplyScaleFactor, int SubgroupSize, typename T, typename SizeList>
-__attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
-                                                            std::size_t n_transforms, sycl::nd_item<1> it,
-                                                            const T* twiddles, T scaling_factor, std::size_t fft_size,
-                                                            const T* load_modifier_data = nullptr,
-                                                            const T* store_modifier_data = nullptr) {
+PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+                                            std::size_t n_transforms, sycl::nd_item<1> it, const T* twiddles,
+                                            T scaling_factor, std::size_t fft_size,
+                                            const T* load_modifier_data = nullptr,
+                                            const T* store_modifier_data = nullptr) {
   if constexpr (!SizeList::ListEnd) {
     constexpr size_t ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {

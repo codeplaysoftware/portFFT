@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_GLOBAL_HPP
 #define PORTFFT_COMMON_GLOBAL_HPP
 
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <dispatcher/subgroup_dispatcher.hpp>
 #include <dispatcher/workitem_dispatcher.hpp>
@@ -85,7 +86,7 @@ struct dispatch_kernel_struct {
                   if constexpr (KernelID == 1) {
                     sub_batch_offset = sub_batch * device_factors[num_factors];
                   } else {
-                    unrolled_loop<0, KernelID, 1>([&](std::size_t j) __attribute__((always_inline)) {
+                    unrolled_loop<0, KernelID, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
                       if (j == KernelID - 1) {
                         sub_batch_offset += (sub_batch % device_factors[j]) * device_factors[num_factors + j];
                       } else {
@@ -166,7 +167,7 @@ struct dispatch_kernel_struct {
                 if constexpr (KernelID == 1) {
                   sub_batch_offset = sub_batch * device_factors[num_factors];
                 } else {
-                  unrolled_loop<0, KernelID, 1>([&](std::size_t j) __attribute__((always_inline)) {
+                  unrolled_loop<0, KernelID, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
                     if (j == KernelID - 1) {
                       sub_batch_offset += (sub_batch % device_factors[j]) * device_factors[num_factors + j];
                     } else {

@@ -25,6 +25,7 @@
 #include <common/twiddle.hpp>
 #include <common/twiddle_calc.hpp>
 #include <common/workitem.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
@@ -77,7 +78,7 @@ inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg);
  * @param sg subgroup
  */
 template <direction Dir, int N, int Stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
   if constexpr (N == 2 && (Stride & (Stride - 1)) == 0) {
     int local_id = static_cast<int>(sg.get_local_linear_id());
     int idx_out = (local_id / Stride) % 2;
@@ -99,15 +100,14 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_real = 0;
     T res_imag = 0;
 
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1>([&](int idx_in) PORTFFT_ALWAYS_INLINE {
       const T multi_re = twiddle<T>::Re[N][idx_in * idx_out % N];
-      const T multi_im = [&]() __attribute__((always_inline)) {
+      const T multi_im = [&]() PORTFFT_ALWAYS_INLINE {
         if constexpr (Dir == direction::FORWARD) {
           return twiddle<T>::Im[N][idx_in * idx_out % N];
         }
         return -twiddle<T>::Im[N][idx_in * idx_out % N];
-      }
-      ();
+      }();
       std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
 
       T cur_real = sycl::select_from_group(sg, real, source_wi_id);
@@ -138,7 +138,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * @param sg subgroup
  */
 template <int N, int M, int Stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = static_cast<int>(sg.get_local_linear_id());
   int index_in_outer_dft = (local_id / Stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -166,7 +166,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * @param sg subgroup
  */
 template <direction Dir, int N, int M, int Stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group& sg) {
   int local_id = static_cast<int>(sg.get_local_linear_id());
   int index_in_outer_dft = (local_id / Stride) % (N * M);
   int k = index_in_outer_dft % N;  // index in the contiguous factor/fft
@@ -178,13 +178,12 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
   const T multi_re = twiddle<T>::Re[N * M][k * n];
-  const T multi_im = [&]() __attribute__((always_inline)) {
+  const T multi_im = [&]() PORTFFT_ALWAYS_INLINE {
     if constexpr (Dir == direction::FORWARD) {
       return twiddle<T>::Im[N * M][k * n];
     }
     return -twiddle<T>::Im[N * M][k * n];
-  }
-  ();
+  }();
   T tmp_real = real * multi_re - imag * multi_im;
   imag = real * multi_im + imag * multi_re;
   real = tmp_real;
@@ -208,7 +207,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * @param sg subgroup
  */
 template <direction Dir, int N, int Stride, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, sycl::sub_group& sg) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (F0 >= 2 && N / F0 >= 2) {
     cross_sg_cooley_tukey_dft<Dir, N / F0, F0, Stride>(real, imag, sg);
@@ -269,10 +268,10 @@ constexpr bool fits_in_sg(TIndex N, int sg_size) {
  * commit
  */
 template <direction Dir, int M, int N, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
+PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
-  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
+  detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) PORTFFT_ALWAYS_INLINE {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
