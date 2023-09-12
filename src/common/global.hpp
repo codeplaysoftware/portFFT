@@ -149,14 +149,16 @@ struct dispatch_kernel_struct {
     desc.queue.wait();
     for (std::size_t i = 0; i < desc.num_batches_in_l2; i++) {
       desc.queue.submit([&](sycl::handler& cgh) {
+        cgh.use_kernel_bundle(desc.transpose_kernel_bundle[KernelID]);
         auto out_acc_or_usm = &get_access<Scalar>(output_pointer, cgh)[0];
         out_acc_or_usm = scratch_pointer_2;
         sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
-        cgh.parallel_for(
+        cgh.parallel_for<transpose_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
+                                          ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, KernelID>>(
             sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
                                round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
                               {16, 16}),
-            [=](sycl::nd_item<2> it) {
+            [=](sycl::nd_item<2> it) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
               auto sub_batches_product = device_factors[2 * num_factors + KernelID - 1];
               for (std::size_t sub_batch = 0; sub_batch < sub_batches_product; sub_batch++) {
                 std::size_t sub_batch_offset = 0;
@@ -279,16 +281,18 @@ struct dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, TransposeIn, Transpos
     }
     for (std::size_t i = 0; i < desc.num_batches_in_l2; i++) {
       desc.queue.submit([&](sycl::handler& cgh) {
+        cgh.use_kernel_bundle(desc.transpose_kernel_bundle[0]);
         auto out_acc_or_usm = get_access<Scalar>(output_pointer, cgh);
         sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
-        cgh.parallel_for(sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
-                                            round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
-                                           {16, 16}),
-                         [=](sycl::nd_item<2> it) {
-                           generic_transpose(fft_size, batch_size, 16,
-                                             scratch_pointer + 2 * i * committed_size + base_offset,
-                                             &out_acc_or_usm[0] + base_offset + 2 * i * committed_size, loc, it);
-                         });
+        cgh.parallel_for<transpose_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
+                                          ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, 0>>(
+            sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
+                               round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
+                              {16, 16}),
+            [=](sycl::nd_item<2> it) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+              generic_transpose(fft_size, batch_size, 16, scratch_pointer + 2 * i * committed_size + base_offset,
+                                &out_acc_or_usm[0] + base_offset + 2 * i * committed_size, loc, it);
+            });
       });
     }
     return Event;

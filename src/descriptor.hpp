@@ -42,23 +42,28 @@ namespace detail {
 // kernel names
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int kernel_id = 0>
+          int SubgroupSize, int KernelID = 0>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int kernel_id = 0>
+          int SubgroupSize, int KernelID = 0>
 class subgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int kernel_id = 0>
+          int SubgroupSize, int KernelID = 0>
 class workgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int kernel_id = 0>
+          int SubgroupSize, int KernelID = 0>
 class global_kernel;
 
 template <int, direction, typename, domain, memory, transpose, transpose, bool, bool, bool, int, typename, typename>
 struct dispatch_kernel_struct;
+
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+          detail::transpose TransposeOut, bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor,
+          int SubgroupSize, int KernelID = 0>
+class transpose_kernel;
 
 }  // namespace detail
 
@@ -129,6 +134,7 @@ class committed_descriptor {
   std::vector<std::size_t> local_mem_per_factor;
   std::vector<std::pair<sycl::range<1>, sycl::range<1>>> launch_configurations;
   std::vector<sycl::kernel_bundle<sycl::bundle_state::executable>> exec_bundle;
+  std::vector<sycl::kernel_bundle<sycl::bundle_state::executable>> transpose_kernel_bundle;
   std::size_t num_sgs_per_wg;
   std::size_t l2_cache_size;
   std::size_t num_batches_in_l2;
@@ -237,12 +243,14 @@ class committed_descriptor {
 
     auto select_impl = [&]<int KernelID>(std::size_t input_size) -> void {
       if (detail::fits_in_wi<Scalar>(input_size)) {
+        transpose_kernel_bundle.push_back(build_transpose_kernel<KernelID, PORTFFT_SUBGROUP_SIZES>());
         levels.push_back(detail::level::WORKITEM);
         ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
         return;
       }
       if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
+        transpose_kernel_bundle.push_back(build_transpose_kernel<KernelID, PORTFFT_SUBGROUP_SIZES>());
         levels.push_back(detail::level::SUBGROUP);
         ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
@@ -381,6 +389,13 @@ class committed_descriptor {
     }
   }
 
+  template <int KernelID, int SubgroupSize, int... OtherSGSizes>
+  sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel() {
+    auto transpose_in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+        queue.get_context(), detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize>());
+    return build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(transpose_in_bundle);
+  }
+
   /**
    * Constructor.
    *
@@ -412,9 +427,10 @@ class committed_descriptor {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
     }
     if (minimum_local_mem_required > local_memory_size) {
-      // throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size)
-      // +
-      //                          "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      if (params.forward_distance == 1 || params.backward_distance == 1) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      }
     }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
