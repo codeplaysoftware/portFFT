@@ -25,6 +25,7 @@
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 
@@ -71,9 +72,10 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, int N, std::size_t SubgroupSize, typename T>
-__attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                         sycl::nd_item<1> it, T scaling_factor) {
+          bool ApplyStoreModifier, bool ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
+PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms, sycl::nd_item<1> it,
+                                  T scaling_factor, const T* load_modifier_data, const T* store_modifier_data,
+                                  T* loc_load_modifier, T* loc_store_modifier) {
   constexpr std::size_t NReals = 2 * N;
 
   T priv[NReals];
@@ -88,7 +90,20 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
   for (std::size_t i = global_id; i < round_up_to_multiple(n_transforms, SubgroupSize); i += global_size) {
     bool working = i < n_transforms;
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
-
+    // TODO: There are possibilities where only one subgroup level barrier is required, relying on compliler to replace
+    // and remove barriers as of now.
+    if constexpr (ApplyLoadModifier) {
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
+          it, load_modifier_data, loc_load_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
+          local_offset);
+      sycl::group_barrier(sg);
+    }
+    if constexpr (ApplyStoreModifier) {
+      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
+          it, store_modifier_data, loc_store_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
+          local_offset);
+      sycl::group_barrier(sg);
+    }
     if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           it, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
@@ -98,26 +113,57 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
+        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
       }
+      if constexpr (ApplyLoadModifier) {
+        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+          std::size_t base_offset = local_offset + subgroup_local_id * NReals + 2 * j;
+          T modifier_real = loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)];
+          T modifier_complex = loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
+          T tmp_priv_real = priv[2 * j];
+          priv[2 * j] = tmp_priv_real * modifier_real - priv[2 * j + 1] * modifier_complex;
+          priv[2 * j + 1] = tmp_priv_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+        });
+      }
       wi_dft<Dir, N, 1, 1>(priv, priv);
-      unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
-        priv[i] *= scaling_factor;
-        priv[i + 1] *= scaling_factor;
-      });
-      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(priv, loc, subgroup_local_id, NReals, local_offset);
+      // Relying on compiler optimizations to fuse store_modifier and scale factor.
+      if constexpr (ApplyStoreModifier) {
+        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+          std::size_t base_offset =
+              detail::pad_local(local_offset + subgroup_local_id * NReals + 2 * j, BankLinesPerPad);
+          T modifier_real = loc_store_modifier[base_offset];
+          T modifier_complex = loc_store_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
+          T tmp_priv_real = priv[2 * j];
+          priv[2 * j] = tmp_priv_real * modifier_real - priv[2 * j + 1] * modifier_complex;
+          priv[2 * j + 1] = tmp_priv_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+        });
+      }
+      if constexpr (ApplyScaleFactor) {
+        unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_ALWAYS_INLINE {
+          priv[i] *= scaling_factor;
+          priv[i + 1] *= scaling_factor;
+        });
+      }
+      if (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+        private2local<NReals, pad::DO_PAD, BankLinesPerPad>(priv, loc, subgroup_local_id, NReals, local_offset);
+      } else {
+        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+          using T_vec = sycl::vec<T, 2>;
+          reinterpret_cast<T_vec*>(&priv[j])->store(0, detail::get_global_multi_ptr(&output[i * 2 + j * n_transforms]));
+        });
+      }
     }
-    sycl::group_barrier(sg);
-    // Store back to global in the same manner irrespective of input data layout, as
-    //  the transposed case is assumed to be used only in OOP scenario.
-    local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-        it, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
-    sycl::group_barrier(sg);
+    if (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+      sycl::group_barrier(sg);
+      local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
+          it, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
+      sycl::group_barrier(sg);
+    }
   }
 }
 
@@ -137,22 +183,26 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
  */
-template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename SizeList,
-          detail::transpose TransposeOut = detail::transpose::NOT_TRANSPOSED, bool ApplyLoadModifier = false,
-          bool ApplyStoreModifier = false, typename T>
-__attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                           sycl::nd_item<1> it, T scaling_factor,
-                                                           std::size_t fft_size) {
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
+          bool ApplyStoreModifier, bool ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
+PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
+                                           sycl::nd_item<1> it, T scaling_factor, std::size_t fft_size,
+                                           const T* load_modifier_data = nullptr,
+                                           const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
+                                           T* loc_store_modifier = nullptr) {
   if constexpr (!SizeList::ListEnd) {
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (detail::fits_in_wi<T>(ThisSize)) {
-        workitem_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, n_transforms, it, scaling_factor);
+        workitem_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, ThisSize,
+                      SubgroupSize, T>(input, output, loc, n_transforms, it, scaling_factor, load_modifier_data,
+                                       store_modifier_data, loc_load_modifier, loc_store_modifier);
       }
     } else {
-      workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, typename SizeList::child_t, TransposeOut,
-                             ApplyLoadModifier, ApplyStoreModifier, T>(input, output, loc, n_transforms, it,
-                                                                       scaling_factor, fft_size, modifier_data_array);
+      workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
+                             SubgroupSize, typename SizeList::child_t, T>(
+          input, output, loc, n_transforms, it, scaling_factor, fft_size, load_modifier_data, store_modifier_data,
+          loc_load_modifier, loc_store_modifier);
     }
   }
 }
@@ -178,11 +228,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
+                                               false, false, true, SubgroupSize>>(
+          sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
-            detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
+            detail::workitem_dispatch_impl<Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, false, false, true,
+                                           SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, it, scale_factor, fft_size);
           });
     });
@@ -192,8 +244,33 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
-  static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
-    in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(desc.params.lengths[0]);
+  static void execute(committed_descriptor& desc,
+                      std::vector<sycl::kernel_bundle<sycl::bundle_state::input>>& in_bundles) {
+    for (auto& in_bundle : in_bundles) {
+      in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(desc.params.lengths[0]);
+    }
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::WORKITEM,
+                                                                                         TransposeIn, Dummy> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    std::size_t num_scalars_per_sg = detail::pad_local(2 * fft_size * static_cast<std::size_t>(desc.used_sg_size));
+    std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
+    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1UL, max_n_sgs));
+    return num_scalars_per_sg * desc.num_sgs_per_wg;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <detail::transpose TransposeIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
+                                                                                    TransposeIn, Dummy, std::size_t> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKITEM, TransposeIn, Dummy>::execute(
+        desc, fft_size);
   }
 };
 
@@ -202,11 +279,8 @@ template <detail::transpose TransposeIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
                                                                                     TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
-    std::size_t num_scalars_per_sg =
-        detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size), 1);
-    std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
-    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1UL, max_n_sgs));
-    return num_scalars_per_sg * desc.num_sgs_per_wg;
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKITEM, TransposeIn, Dummy>::execute(
+        desc, desc.params.lengths[0]);
   }
 };
 
