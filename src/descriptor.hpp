@@ -22,6 +22,7 @@
 #define PORTFFT_DESCRIPTOR_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
+#include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
@@ -172,10 +173,19 @@ class committed_descriptor {
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids) {
     factors.clear();
+
+    // TODO: check and support all the parameter values
+    if constexpr (Domain != domain::COMPLEX) {
+      throw unsupported_configuration("portFFT only supports complex to complex transforms");
+    }
+    if (params.lengths.size() != 1) {
+      throw unsupported_configuration("portFFT only supports 1D FFT for now");
+    }
     std::size_t fft_size = params.lengths[0];
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw std::runtime_error("FFT size " + std::to_string(fft_size) + " is not supported!");
+      throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
     }
+
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids.push_back(detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>());
       return detail::level::WORKITEM;
@@ -190,19 +200,17 @@ class committed_descriptor {
       ids.push_back(detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>());
       return detail::level::SUBGROUP;
     }
-    std::size_t N = detail::factorize(fft_size);
-    std::size_t M = fft_size / N;
-    int factor_sg_N = detail::factorize_sg(static_cast<int>(N), SubgroupSize);
-    int factor_wi_N = static_cast<int>(N) / factor_sg_N;
-    int factor_sg_M = detail::factorize_sg(static_cast<int>(M), SubgroupSize);
-    int factor_wi_M = static_cast<int>(M) / factor_sg_M;
-    std::size_t total_local_mem_usage = 2 * (fft_size + N + M) * sizeof(Scalar);
-    if (detail::fits_in_wi<Scalar>(factor_wi_N) && detail::fits_in_wi<Scalar>(factor_wi_M) &&
-        (total_local_mem_usage <= local_memory_size)) {
-      factors.push_back(static_cast<std::size_t>(factor_wi_N));
-      factors.push_back(static_cast<std::size_t>(factor_sg_N));
-      factors.push_back(static_cast<std::size_t>(factor_wi_M));
-      factors.push_back(static_cast<std::size_t>(factor_sg_M));
+    std::size_t n = detail::factorize(fft_size);
+    std::size_t m = fft_size / n;
+    int factor_sg_n = detail::factorize_sg(static_cast<int>(n), SubgroupSize);
+    int factor_wi_n = static_cast<int>(n) / factor_sg_n;
+    int factor_sg_m = detail::factorize_sg(static_cast<int>(m), SubgroupSize);
+    int factor_wi_m = static_cast<int>(m) / factor_sg_m;
+    if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
+      factors.push_back(factor_wi_n);
+      factors.push_back(factor_sg_n);
+      factors.push_back(factor_wi_m);
+      factors.push_back(factor_sg_m);
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
       ids.push_back(detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>());
@@ -264,6 +272,8 @@ class committed_descriptor {
       }
       return detail::level::GLOBAL;
     }
+    // TODO global
+    throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
   }
 
   /**
@@ -273,8 +283,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static void execute(committed_descriptor& desc,
-                          std::vector<sycl::kernel_bundle<sycl::bundle_state::input>>& in_bundle);
+      static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle);
     };
   };
 
@@ -283,7 +292,7 @@ class committed_descriptor {
    *
    * @param in_bundle kernel bundle to set the specialization constants on
    */
-  void set_spec_constants(std::vector<sycl::kernel_bundle<sycl::bundle_state::input>>& in_bundle) {
+  void set_spec_constants(sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     dispatch<set_spec_constants_struct>(in_bundle);
   }
 
@@ -292,16 +301,9 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template <detail::level Lev, detail::transpose TransposeIn, typename Dummy, typename... Params>
+    template <detail::level Lev, detail::transpose TransposeIn, typename Dummy>
     struct inner {
-      static std::size_t execute(committed_descriptor& desc, Params...);
-    };
-  };
-
-  struct num_scalars_in_local_mem_impl_struct {
-    template <detail::level Level, detail::transpose TransposeIn, typename Dummy>
-    struct inner {
-      static std::size_t execute(committed_descriptor& desc, std::size_t fft_size);
+      static std::size_t execute(committed_descriptor& desc);
     };
   };
 
@@ -392,13 +394,14 @@ class committed_descriptor {
         ctx(queue.get_context()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG),
         n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
-        local_memory_size(queue.get_device().get_info<sycl::info::device::local_mem_size>()),
-        supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()) {
-    // TODO: check and support all the parameter values
-    if (params.lengths.size() != 1) {
-      throw std::runtime_error("portFFT only supports 1D FFT for now");
-    }
-    build_w_spec_const<PORTFFT_SUBGROUP_SIZES>();
+        supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
+        // compile the kernels
+        exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
+        num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
+    // get some properties we will use for tuning
+    n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
+    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    std::size_t minimum_local_mem_required;
     if (params.forward_distance == 1 || params.backward_distance == 1) {
       std::size_t local_memory_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
       if (local_memory_required > local_memory_size) {
@@ -453,6 +456,13 @@ class committed_descriptor {
    * Destructor
    */
   ~committed_descriptor() { queue.wait(); }
+
+  // rule of three
+  committed_descriptor(const committed_descriptor& other) = default;
+  committed_descriptor& operator=(const committed_descriptor& other) = default;
+
+  // default construction is not appropriate
+  committed_descriptor() = delete;
 
   /**
    * Computes in-place forward FFT, working on a buffer.
@@ -635,7 +645,7 @@ class committed_descriptor {
       if (input_distance == 1 && output_distance == fft_size && in != out) {
         return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
       }
-      throw std::runtime_error("Unsupported configuration");
+      throw unsupported_configuration("Only contiguous or transposed transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
@@ -691,15 +701,59 @@ class committed_descriptor {
  */
 template <typename Scalar, domain Domain>
 struct descriptor {
+  /**
+   * The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
+   */
   std::vector<std::size_t> lengths;
+  /**
+   * A scaling factor applied to the output of forward transforms. Default value is 1.
+   */
   Scalar forward_scale = 1;
+  /**
+   * A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
+   * product of the lengths.
+   * NB a forward transform followed by a backward transform with both forward_scale and
+   * backward_scale set to 1 will result in the data being scaled by the product of the lengths.
+   */
   Scalar backward_scale = 1;
+  /**
+   * The number of transforms or batches that will be solved with each call to compute_xxxward. Default value
+   * is 1.
+   */
   std::size_t number_of_transforms = 1;
+  /**
+   * The data layout of complex values. Default value is complex_storage::COMPLEX. complex_storage::COMPLEX
+   * indicates that the real and imaginary part of a complex number is contiguous i.e an Array of Structures.
+   * complex_storage::REAL_REAL indicates that all the real values are contiguous and all the imaginary values are
+   * contiguous i.e. a Structure of Arrays. Only complex_storage::COMPLEX is supported.
+   */
   complex_storage complex_storage = complex_storage::COMPLEX;
+  /**
+   * Indicates if the memory address of the output pointer is the same as the input pointer. Default value is
+   * placement::OUT_OF_PLACE. When placement::OUT_OF_PLACE is used, only the out of place compute_xxxward functions can
+   * be used and the memory pointed to by the input pointer and the memory pointed to by the output pointer must not
+   * overlap at all. When placement::IN_PLACE is used, only the in-place compute_xxxward functions can be used.
+   */
   placement placement = placement::OUT_OF_PLACE;
+  /**
+   * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
+   * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   */
   std::vector<std::size_t> forward_strides;
+  /**
+   * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
+   * forward_strides.
+   */
   std::vector<std::size_t> backward_strides;
+  /**
+   * The number of elements between the first value of each transform in the forward domain. The default value is
+   * lengths[0]. Must be either 1 or lengths[0]. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   */
   std::size_t forward_distance = 1;
+  /**
+   * The number of elements between the first value of each transform in the backward domain. The default value
+   * is lengths[0]. Must be the same as forward_distance.
+   */
   std::size_t backward_distance = 1;
   // TODO: add TRANSPOSE, WORKSPACE and ORDERING if we determine they make sense
 
@@ -708,10 +762,13 @@ struct descriptor {
    *
    * @param lengths size of the FFT transform
    */
-  explicit descriptor(std::vector<std::size_t> lengths) : lengths(lengths), forward_strides{1}, backward_strides{1} {
+  explicit descriptor(std::vector<std::size_t> lengths)
+      : lengths(lengths),
+        forward_strides{1},
+        backward_strides{1},
+        forward_distance(lengths[0]),
+        backward_distance(lengths[0]) {
     // TODO: properly set default values for forward_strides, backward_strides, forward_distance, backward_distance
-    forward_distance = lengths[0];
-    backward_distance = lengths[0];
     for (auto l : lengths) {
       backward_scale *= Scalar(1) / static_cast<Scalar>(l);
     }

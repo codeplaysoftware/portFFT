@@ -21,6 +21,7 @@
 #ifndef SYCL_FFT_HPP
 #define SYCL_FFT_HPP
 
+#include "common/exceptions.hpp"
 #include "common/transfers.hpp"
 #include "common/workitem.hpp"
 #include "descriptor.hpp"
