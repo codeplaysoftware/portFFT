@@ -35,8 +35,6 @@
 #include <numeric>
 #include <vector>
 
-#include <utils.hpp>
-
 namespace portfft {
 
 namespace detail {
@@ -227,62 +225,6 @@ class committed_descriptor {
       // The CT and spec constant factors should match.
       ids.push_back(detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>());
       return detail::level::WORKGROUP;
-    } else {
-      // Global impl is designed to completely rely on already optimized lower level
-      // Implementations. Majority of the performance gains for global implementation will come from the way
-      // the input is factored, currently its heuristically set to prefer subgroup impl. mainly because of lower
-      // number of sub batches generated
-      auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
-        if (detail::fits_in_wi<Scalar>(size))
-          return true;
-        else
-          return detail::fits_in_sg<Scalar>(size, SubgroupSize) && [=, this]() {
-            if (transposed_in)
-              return local_memory_size >=
-                     num_scalars_in_local_mem_struct::template inner<
-                         detail::level::SUBGROUP, detail::transpose::TRANSPOSED, void>::execute(*this);
-            else
-              return local_memory_size >=
-                     num_scalars_in_local_mem_struct::template inner<
-                         detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, void>::execute(*this);
-          }() && !PORTFFT_SLOW_SG_SHUFFLES;
-      };
-
-      auto select_impl = [&]<int kernel_id>(std::size_t input_size) -> void {
-        if (detail::fits_in_wi<Scalar>(input_size)) {
-          levels.push_back(detail::level::WORKITEM);
-          ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>());
-          factors.push_back(input_size);
-          return;
-        }
-        if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
-          levels.push_back(detail::level::SUBGROUP);
-          ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, kernel_id>());
-          factors.push_back(input_size);
-          return;
-        }
-      };
-
-      detail::factorize_input_struct<0, decltype(fits_in_target_level), decltype(select_impl)>::execute(
-          params.lengths[0], fits_in_target_level, select_impl);
-      std::size_t num_twiddles = 0;
-      for (std::size_t i = 0; i < factors.size() - 1; i++) {
-        auto batches_at_level =
-            std::accumulate(factors.begin() + i + 1, factors.end(), 1, std::multiplies<std::size_t>());
-        sub_batches.push_back(batches_at_level);
-        num_twiddles += factors[i] * batches_at_level * 2;
-      }
-      sub_batches.push_back(factors[factors.size() - 2]);
-      num_batches_in_l2 =
-          std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
-                   std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
-                                                             (2 * sizeof(Scalar) * params.lengths[0])));
-      std::vector<std::size_t> inclusive_scan;
-      inclusive_scan.push_back(factors[0]);
-      for (std::size_t i = 1; i < factors.size(); i++) {
-        inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
-      }
-      return detail::level::GLOBAL;
     }
     auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
       if (detail::fits_in_wi<Scalar>(size)) {

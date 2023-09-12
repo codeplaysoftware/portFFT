@@ -275,26 +275,6 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 };
 
 template <typename Scalar, domain Domain>
-template <typename detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
-                                                                                    TransposeIn, Dummy, std::size_t> {
-  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
-    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(
-        desc, fft_size);
-  }
-};
-
-template <typename Scalar, domain Domain>
-template <typename detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
-                                                                                    TransposeIn, Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(
-        desc, desc.params.lengths[0]);
-  }
-};
-
-template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc) {
