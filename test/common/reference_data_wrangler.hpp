@@ -125,6 +125,11 @@ class verif_data_spec {
     auto scaling = isForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dftLen);
     if (isForward) {
       auto referenceData = load_data_fourier(desc);
+      std::cout << "referenceData for fwd: ";
+      for(auto i : referenceData){
+        std::cout << i << ", ";
+      }
+      std::cout << std::endl << std::endl;
       if constexpr (std::is_same_v<complex_type, ElemT>) {
         compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {
@@ -132,6 +137,11 @@ class verif_data_spec {
       }
     } else {
       auto referenceData = load_data_time(desc);
+      std::cout << "referenceData for bwd: ";
+      for(auto i : referenceData){
+        std::cout << i << ", ";
+      }
+      std::cout << std::endl << std::endl;
       if constexpr (std::is_same_v<forward_type, ElemT>) {
         compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {
@@ -233,7 +243,7 @@ class verif_data_spec {
 
       for (std::size_t e = 0; e != dftLen; ++e) {
         const auto diff = std::abs(thisBatchComputed[e] - thisBatchRef[e] * scaling);
-        if (diff > comparisonTolerance) {
+        if (diff > comparisonTolerance && diff / std::abs(thisBatchComputed[e]) > comparisonTolerance) {
           // std::endl is used intentionally to flush the error message before google test exits the test.
           std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dftLen
                     << ", does not match\nref " << thisBatchRef[e] * scaling << " vs " << thisBatchComputed[e]

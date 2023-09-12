@@ -415,12 +415,36 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+/*template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset = detail::pad_local<Pad>(
         static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
+    local[loc_base_offset] = priv[2 * i];
+    local[loc_base_offset + 1] = priv[2 * i + 1];
+  });
+}*/
+
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+__attribute__((always_inline)) inline void private2local_2strides(const T* priv, T* local, int thread_id,
+                                                                    int stride_num_workers, int destination_offset, 
+                                                                    int stride, sycl::stream s) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
+    std::size_t loc_base_offset = detail::pad_local<Pad>(
+        2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset), BankLinesPerPad);
+    //if(thread_id<8) s << "2strides " << thread_id << ": "  << i << " " << loc_base_offset << " " << priv[2 * i] << " " << priv[2 * i + 1] << "\n" << sycl::stream_manipulator::flush;
+    local[loc_base_offset] = priv[2 * i];
+    local[loc_base_offset + 1] = priv[2 * i + 1];
+  });
+}
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+__attribute__((always_inline)) inline void private2local_2strides(const T* priv, T* local, int thread_id,
+                                                                    int stride_num_workers, int destination_offset, 
+                                                                    int stride) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
+    std::size_t loc_base_offset = detail::pad_local<Pad>(
+        2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset), BankLinesPerPad);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });

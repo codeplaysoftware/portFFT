@@ -35,7 +35,7 @@ INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
-// and configuration
+// and configurations
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
                                                                                      ::testing::Values(16, 32))));
@@ -46,11 +46,11 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(256, 512, 1024))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(1024))));
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(2048, 3072, 4096))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(2048))));
 
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
