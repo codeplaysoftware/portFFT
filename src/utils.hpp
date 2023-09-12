@@ -161,20 +161,19 @@ struct factorize_input_struct {
     if (fits_in_target_level(input_size)) {
       select_impl.template operator()<KernelID>(input_size);
       return;
-    } else {
-      if ((detail::factorize(fact_1) == 1)) {
-        throw std::runtime_error("Large prime sized factors are not supported at the moment");
-      }
-      do {
-        fact_1 = detail::factorize(fact_1);
-      } while (!fits_in_target_level(fact_1));
     }
+    if ((detail::factorize(fact_1) == 1)) {
+      throw std::runtime_error("Large prime sized factors are not supported at the moment");
+    }
+    do {
+      fact_1 = detail::factorize(fact_1);
+    } while (!fits_in_target_level(fact_1));
     select_impl.template operator()<KernelID>(fact_1);
     factorize_input_struct<KernelID + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
 };
 template <typename F, typename G>
-struct factorize_input_struct<33, F, G> {
+struct factorize_input_struct<MaxFactors, F, G> {
   static void execute(std::size_t, F, G) { throw std::runtime_error("No more than 33 factors are supported!"); }
 };
 

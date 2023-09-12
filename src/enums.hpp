@@ -21,6 +21,8 @@
 #ifndef PORTFFT_ENUMS_HPP
 #define PORTFFT_ENUMS_HPP
 
+#define MaxFactors 33
+
 namespace portfft {
 
 enum class domain { REAL, COMPLEX };

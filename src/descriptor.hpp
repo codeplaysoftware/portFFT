@@ -227,13 +227,16 @@ class committed_descriptor {
       return detail::level::WORKGROUP;
     }
     auto fits_in_target_level = [this](std::size_t size, bool transposed_in = true) -> bool {
-      if (detail::fits_in_wi<Scalar>(size)) return true;
+      if (detail::fits_in_wi<Scalar>(size)) {
+        return true;
+      };
       return detail::fits_in_sg<Scalar>(size, SubgroupSize) && [=, this]() {
-        if (transposed_in)
+        if (transposed_in) {
           return local_memory_size >=
                  (2 * num_scalars_in_local_mem_struct::template inner<
                           detail::level::SUBGROUP, detail::transpose::TRANSPOSED, void>::execute(*this)) *
                      sizeof(Scalar);
+        }
         return local_memory_size >=
                num_scalars_in_local_mem_struct::template inner<
                    detail::level::SUBGROUP, detail::transpose::NOT_TRANSPOSED, void>::execute(*this) *
@@ -378,7 +381,7 @@ class committed_descriptor {
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
     level = prepare_implementation<SubgroupSize>(ids);
-    for (auto kernel_ids : ids) {
+    for (const auto& kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
       }

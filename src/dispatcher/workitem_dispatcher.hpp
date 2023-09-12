@@ -260,7 +260,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
   static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
     std::size_t num_scalars_per_sg = detail::pad_local(2 * fft_size * static_cast<std::size_t>(desc.used_sg_size));
     std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
-    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
+    desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1UL, max_n_sgs));
     return num_scalars_per_sg * desc.num_sgs_per_wg;
   }
 };

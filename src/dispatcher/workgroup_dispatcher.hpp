@@ -243,15 +243,14 @@ template <detail::transpose TransposeIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::WORKGROUP,
                                                                                          TransposeIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
-    std::size_t N = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
-    std::size_t M = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
+    std::size_t n = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
+    std::size_t m = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     if (TransposeIn == detail::transpose::TRANSPOSED) {
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
-      return detail::pad_local(2 * fft_size * num_batches_in_local_mem) + 2 * (M + N);
-    } else {
-      return detail::pad_local(2 * fft_size) + 2 * (M + N);
+      return detail::pad_local(2 * fft_size * num_batches_in_local_mem) + 2 * (m + n);
     }
+    return detail::pad_local(2 * fft_size) + 2 * (m + n);
   }
 };
 

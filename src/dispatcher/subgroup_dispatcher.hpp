@@ -447,7 +447,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
       std::size_t max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
       std::size_t batches_per_sg = static_cast<std::size_t>(desc.used_sg_size) / 2;
       std::size_t num_sgs_required = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG),
-                                              std::max(1ul, max_batches_in_local_mem / batches_per_sg));
+                                              std::max(1UL, max_batches_in_local_mem / batches_per_sg));
       desc.num_sgs_per_wg = num_sgs_required;
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * desc.num_sgs_per_wg / 2;
       return detail::pad_local(2 * fft_size * num_batches_in_local_mem);
@@ -456,7 +456,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
       std::size_t n_ffts_per_sg = static_cast<std::size_t>(desc.used_sg_size / factor_sg);
       std::size_t num_scalars_per_sg = detail::pad_local(2 * fft_size * n_ffts_per_sg);
       std::size_t max_n_sgs = desc.local_memory_size / sizeof(Scalar) / num_scalars_per_sg;
-      desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1ul, max_n_sgs));
+      desc.num_sgs_per_wg = std::min(static_cast<std::size_t>(PORTFFT_SGS_IN_WG), std::max(1UL, max_n_sgs));
       return num_scalars_per_sg * desc.num_sgs_per_wg;
     }
   }
