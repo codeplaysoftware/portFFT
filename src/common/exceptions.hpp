@@ -18,17 +18,21 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#ifndef PORTFFT_COMMON_EXCEPTIONS_HPP
+#define PORTFFT_COMMON_EXCEPTIONS_HPP
 
-#include "common/exceptions.hpp"
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
-#include "dispatcher/subgroup_dispatcher.hpp"
-#include "dispatcher/workgroup_dispatcher.hpp"
-#include "dispatcher/workitem_dispatcher.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
+#include <stdexcept>
+
+namespace portfft {
+
+/**
+ * Exception thrown if the provided descriptor is not supported at the moment or cannot be supported on a particular
+ * device or with the particular CMake configuration.
+ */
+struct unsupported_configuration : public std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
+};  // namespace portfft
 
 #endif

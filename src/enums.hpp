@@ -39,6 +39,8 @@ enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
 
 enum class memory { BUFFER, USM };
+
+enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
 }  // namespace detail
 
 }  // namespace portfft
