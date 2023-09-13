@@ -185,7 +185,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     host_input_transposed = std::vector<std::complex<FType>>(num_elements);
     transpose(host_input, host_input_transposed, params.batch, params.length);
   }
-  /*std::cout << "input data: ";
+  std::cout << "input data: ";
   for(auto i : host_input){
     std::cout << i << ", ";
   }

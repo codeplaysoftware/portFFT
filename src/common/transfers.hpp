@@ -415,7 +415,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-/*template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
@@ -424,7 +424,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
-}*/
+}
 
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void private2local_2strides(const T* priv, T* local, int thread_id,
@@ -434,6 +434,7 @@ __attribute__((always_inline)) inline void private2local_2strides(const T* priv,
     std::size_t loc_base_offset = detail::pad_local<Pad>(
         2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset), BankLinesPerPad);
     //if(thread_id<8) s << "2strides " << thread_id << ": "  << i << " " << loc_base_offset << " " << priv[2 * i] << " " << priv[2 * i + 1] << "\n" << sycl::stream_manipulator::flush;
+    (void)s;
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -521,22 +522,65 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
  *
  * @param priv Pointer to private memory
  * @param loc Pointer to local memory
- * @param stride_1 Outer Most stride
- * @param offset_1 Outer most offset
+ * @param stride_1 Innermost stride
+ * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
  * @param offset_2 2nd level of offset
- * @param stride_3 inner most stride
- * @param offset_3 inner most offset
+ * @param stride_3 Outermost stride
+ * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
+__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, 
+                                                            std::size_t stride_1, std::size_t offset_1,
                                                             std::size_t stride_2, std::size_t offset_2,
                                                             std::size_t stride_3, std::size_t offset_3,
                                                             std::size_t bank_lines_per_pad) {
   detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) __attribute__((always_inline)) {
     std::size_t j_size_t = static_cast<std::size_t>(j);
     std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
+    if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+    }
+    if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
+      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
+      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+    }
+  });
+}
+template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
+__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, 
+                                                            std::size_t stride_1, std::size_t offset_1,
+                                                            std::size_t stride_2, std::size_t offset_2,
+                                                            std::size_t stride_3, std::size_t offset_3,
+                                                            std::size_t bank_lines_per_pad, sycl::stream s) {
+  detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) __attribute__((always_inline)) {
+    std::size_t j_size_t = static_cast<std::size_t>(j);
+    std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
+    if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+    s << offset_3 <<" load: " << priv[2*j] << "["<< base_offset << "] (" << offset_1 << " " << stride_1 << " " << offset_2 << " " << stride_2 << " " << offset_3 << " " << stride_3 << " " << j << ")" << "\n" << sycl::stream_manipulator::flush; 
+    }
+    if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
+      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
+      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+    s << offset_3 <<" store: " << priv[2*j] << "["<< base_offset << "] (" << offset_1 << " " << stride_1 << " " << offset_2 << " " << stride_2 << " " << offset_3 << " " << stride_3 << " " << j << ")" << "\n" << sycl::stream_manipulator::flush; 
+    }
+  });
+}
+template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
+__attribute__((always_inline)) inline void transfer_strided_my(T* priv, T* loc, 
+                                                            std::size_t index1, std::size_t stride1, 
+                                                            std::size_t index2, std::size_t stride2, 
+                                                            std::size_t index3, std::size_t stride3, 
+                                                            std::size_t stride_extra,
+                                                            std::size_t bank_lines_per_pad, sycl::stream s) {
+  detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) __attribute__((always_inline)) {
+    std::size_t j_size_t = static_cast<std::size_t>(j);
+    std::size_t base_offset = j_size_t * stride_extra + index1*stride1 + index2*stride2 + index3*stride3;
+    //s << offset_3 <<": " << base_offset << "(" << offset_1 << " " << stride_1 << " " << offset_2 << " " << stride_2 << " " << offset_3 << " " << stride_3 << ")" << "\n" << sycl::stream_manipulator::flush; 
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
       priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
       priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];

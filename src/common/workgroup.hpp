@@ -51,8 +51,10 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
 // StrideWithinDFT = number of problems in inner stride dimension
 // BetweenProblemOuterStride = DFTSize * StrideWithinDFT
 //template<int StrideWithinDFT, int BetweenProblemInnerStride=1, int BetweenProblemOuterStride, int SubgroupSize>
-template<direction Dir, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc_twiddles, const T* wg_twiddles, T scaling_factor, sycl::nd_item<1> it, sycl::stream s){
+template<direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
+__attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc_twiddles, const T* wg_twiddles, 
+                                                         T scaling_factor, std::size_t max_num_batches_in_local_mem, 
+                                                         std::size_t sub_batch_num, sycl::nd_item<1> it, sycl::stream s){
   constexpr int OuterStride = DFTSize * StrideWithinDFT;
   // the number of work-items involved in every subgroup fft
   constexpr int FactSg = detail::factorize_sg(DFTSize, SubgroupSize);
@@ -98,7 +100,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc
     for (int j = begin; j < end; j += step) {
       int j_inner = j % StrideWithinDFT;
       int j_outer = j / StrideWithinDFT;
-      T* loc_start = loc + detail::pad_local(2 * j_outer * OuterStride, BankLinesPerPad);
+      T* loc_start = loc + detail::pad_local(static_cast<std::size_t>(2 * j_outer * OuterStride), BankLinesPerPad);
       bool working = true;
       if constexpr (ExcessSGs) {
         working = j < TotalDFTs;
@@ -115,23 +117,44 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc
             << j_inner << " "
             << StrideWithinDFT << "\n" << sycl::stream_manipulator::flush;
         }*/
-        //transposition due to working on columns
-        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(loc_start, priv, wi_id_in_fft, j_inner, StrideWithinDFT);
-          sycl::group_barrier(it.get_group());
-        /*if(it.get_global_id(0)==0){
-          s << "after load\n\n" << sycl::stream_manipulator::flush;
-        }*/
-        //sycl::group_barrier(it.get_group());
-        /*for(int k=0;k<FactSg;k++){
-          sycl::group_barrier(it.get_group());
-          if(it.get_local_linear_id()==k && j <= begin+step){
-            s  << k << ": ";
-            for(int l=0;l<FactWi*2;l++){
-              s << priv[l] << ", ";
-            }
-            s << "\n" << sycl::stream_manipulator::flush;
+        if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
+              priv, loc, 
+              2 * max_num_batches_in_local_mem, 2 * sub_batch_num, 
+              static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 
+              1L, static_cast<std::size_t>(wi_id_in_fft * FactWi), 
+              BankLinesPerPad, s);
+          
+          /*transfer_strided_my<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
+              priv, loc, 
+              2 * sub_batch_num, 2 * max_num_batches_in_local_mem, 
+              static_cast<std::size_t>(j_inner), static_cast<std::size_t>(DFTSize), 
+              0L, 1L, 
+              2 * max_num_batches_in_local_mem * StrideWithinDFT
+              BankLinesPerPad, s);*/
+        } else{
+          //transposition due to working on columns
+          local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(loc_start, priv, wi_id_in_fft, 
+                                                                                 j_inner, StrideWithinDFT);
+        }
+
+        sycl::group_barrier(it.get_group());
+        if(j <= begin+step){
+          if(it.get_global_id(0)==0){
+            s << "after load\n\n" << sycl::stream_manipulator::flush;
           }
-        }*/
+          sycl::group_barrier(it.get_group());
+          for(int k=0;k<FactSg;k++){
+            sycl::group_barrier(it.get_group());
+            if(it.get_local_linear_id()==k){
+              s  << k << ": ";
+              for(int l=0;l<FactWi*2;l++){
+                s << priv[l] << ", ";
+              }
+              s << "\n\n" << sycl::stream_manipulator::flush;
+            }
+          }
+        }
         //if(j==begin+step) s << it.get_global_id(0) << " " << StrideWithinDFT << ": " << priv[1] << "\n";
         if(wg_twiddles){
           detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
@@ -160,7 +183,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc
             priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_imag;
             priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
           });
-          /*if (working) {
+          if (working) {
             if(it.get_global_id(0)==0){
               s << "after twiddling\n\n" << sycl::stream_manipulator::flush;
             }
@@ -171,10 +194,10 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc
                 for(int l=0;l<FactWi*2;l++){
                   s << priv[l] << ", ";
                 }
-                s << "\n" << sycl::stream_manipulator::flush;
+                s << "\n\n" << sycl::stream_manipulator::flush;
               }
             }
-          }*/
+          }
         }
         if(scaling_factor != T(1)){
           detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
@@ -187,30 +210,44 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* priv, T* loc
       sg_dft<Dir, FactWi, FactSg>(priv, sg, loc_twiddles);
       if (working) {
         //transposition due to working on columns AND transposition for SG dft
-        
-        /*if(it.get_global_id(0)==0){
-          s << "after compute\n\n" << sycl::stream_manipulator::flush;
-        }
-        for(int k=0;k<FactSg;k++){
-          sycl::group_barrier(it.get_group());
-          if(it.get_local_linear_id()==k && j <= begin+step){
-            s  << k << ": ";
-            for(int l=0;l<FactWi*2;l++){
-              s << priv[l] << ", ";
-            }
-            s << "\n" << sycl::stream_manipulator::flush;
+        if(j <= begin+step){
+          if(it.get_global_id(0)==0){
+            s << "after compute\n\n" << sycl::stream_manipulator::flush;
           }
-        }*/
+          for(int k=0;k<FactSg;k++){
+            sycl::group_barrier(it.get_group());
+            if(it.get_local_linear_id()==k){
+              s  << k << ": ";
+              for(int l=0;l<FactWi*2;l++){
+                s << priv[l] << ", ";
+              }
+              s << "\n\n" << sycl::stream_manipulator::flush;
+            }
+          }
+        }
         //private2local_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc_start, wi_id_in_fft, FactSg,
           //                                                                      j_inner, StrideWithinDFT);
         /*private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, wi_id_in_fft, 
                                                                               FactSg*StrideWithinDFT,
                                                                               j_inner + 2 * j_outer * OuterStride, 
                                                                               StrideWithinDFT, s);*/
-        private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, wi_id_in_fft, 
-                                                                              FactSg*StrideWithinDFT,
-                                                                              j_inner + j_outer * OuterStride, 
-                                                                              StrideWithinDFT, s);
+        if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
+              priv, loc, 
+              2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+              static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 
+              static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft),
+              BankLinesPerPad);
+          /*transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
+              priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(DFTSize), 
+              static_cast<std::size_t>(DFTSize * j_inner), static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft), 
+              BankLinesPerPad);*/
+        } else {  
+          private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, wi_id_in_fft, 
+                                                                                FactSg*StrideWithinDFT,
+                                                                                j_inner + j_outer * OuterStride, 
+                                                                                StrideWithinDFT);
+        }
       }
     }
   //}
@@ -256,17 +293,18 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   sycl::sub_group sg = it.get_sub_group();
 
   sycl::group_barrier(it.get_group());
-  /*if(it.get_local_linear_id()==0){
+  if(it.get_local_linear_id()==0){
     s << "factors FactSgN " << FactSgN << " FactWiN " << FactWiN << " FactSgM " << FactSgM << " FactWiM " << FactWiM << "\n"; 
     s << "first dim " << FFTSize << " N " << N << " M " << M << "\n"; 
     s << "\n\n\n";
-    for(int i=0;i<M*N;i++){
+    for(int i=0;i<M*N*max_num_batches_in_local_mem;i++){
       s << loc[i] << ",";
     }
     s << "\n\n\n";
-  }*/
+  }
   sycl::group_barrier(it.get_group());
-  dimension_dft<Dir, N, M, 1, SubgroupSize, BankLinesPerPad, T>(loc, priv, loc_twiddles + (2 * M), nullptr, 1, it, s);
+  dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(loc, priv, loc_twiddles + (2 * M), nullptr, 1, 
+                                                                max_num_batches_in_local_mem, sub_batch_num, it, s);
   /*{  // column ffts
     constexpr int FFTsPerSG = SubgroupSize / FactSgN;
     constexpr bool ExcessWIs = SubgroupSize % FactSgN > 0;
@@ -351,17 +389,18 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
     }
   }//*/
   sycl::group_barrier(it.get_group());
-  /*if(it.get_local_linear_id()==0){
+  if(it.get_local_linear_id()==0){
     s << "second dim " << FFTSize << " N " << N << " M " << M << "\n"; 
     s << "\n\n\n";
-    for(int i=0;i<M*N;i++){
+    for(int i=0;i<M*N*max_num_batches_in_local_mem;i++){
       s << loc[i] << ",";
     }
     s << "\n\n\n";
-  }*/
+  }
   
   sycl::group_barrier(it.get_group());
-  dimension_dft<Dir, M, 1, N, SubgroupSize, BankLinesPerPad, T>(loc, priv, loc_twiddles, wg_twiddles, scaling_factor, it, s);
+  dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(loc, priv, loc_twiddles, wg_twiddles, scaling_factor, 
+                                                                max_num_batches_in_local_mem, sub_batch_num, it, s);
   /*{  // row ffts
     constexpr int FFTsPerSG = SubgroupSize / FactSgM;
     constexpr bool ExcessWIs = SubgroupSize % FactSgM > 0;
@@ -495,14 +534,14 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
   }//*/
   
   sycl::group_barrier(it.get_group());
-  /*if(it.get_local_linear_id()==0){
+  if(it.get_local_linear_id()==0){
     s << "end " << FFTSize << " N " << N << " M " << M << "\n"; 
     s << "\n\n\n";
-    for(int i=0;i<M*N;i++){
+    for(int i=0;i<M*N*max_num_batches_in_local_mem;i++){
       s << loc[i] << ",";
     }
     s << "\n\n\n";
-  }*/
+  }
 }
 
 }  // namespace portfft
