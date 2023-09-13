@@ -396,7 +396,7 @@ class committed_descriptor {
   template <int KernelID, int SubgroupSize, int... OtherSGSizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel() {
     auto transpose_in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-        queue.get_context(), detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize>());
+        queue.get_context(), detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
     return build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(transpose_in_bundle);
   }
 
