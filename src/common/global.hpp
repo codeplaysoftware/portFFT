@@ -186,9 +186,6 @@ struct dispatch_kernel_struct {
       });
     }
     desc.queue.wait();
-    // BTW, due to this, if a shallow copy and the original committed_descriptor are computing FFTs in parallel, it will
-    // result in an incorrect result
-    //  Do we need to guarantee thread safety?
     desc.scratch_1.swap(desc.scratch_2);
     return event;
   }
