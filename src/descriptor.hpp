@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
+#include <cstddef>
 #include <enums.hpp>
 #include <utils.hpp>
 
@@ -425,6 +426,9 @@ class committed_descriptor {
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     std::size_t minimum_local_mem_required;
     if (params.forward_distance == 1 || params.backward_distance == 1) {
+      if (2 * params.lengths[0] * sizeof(Scalar) > local_memory_size) {
+        throw std::runtime_error("Strided support not available for large sized FFTs");
+      }
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
     } else {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
