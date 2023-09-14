@@ -133,10 +133,10 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
 
       if(wg_twiddles){
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
-          int twiddle_i = i + wi_id_in_fft * FactWi;
+          // Unintuitive indexing to ensure coalesced access
+          int twiddle_i = i * FactSg + wi_id_in_fft;
           int twiddle_j = j_outer;
-          // TODO: this accesses twiddles in uncoalesced manner. Coalesced access might improve performance by avoiding bank conflicts in cache.
-          int twiddle_index = twiddle_i * NDFTsInOuterDimension + twiddle_j;
+          int twiddle_index = twiddle_j * DFTSize + twiddle_i;
           sycl::vec<T, 2> twiddles = reinterpret_cast<const sycl::vec<T, 2>*>(wg_twiddles)[twiddle_index];
           T twiddle_real = twiddles[0];
           T twiddle_imag = twiddles[1];
@@ -200,20 +200,6 @@ template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int 
 __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
                                                   T scaling_factor, std::size_t max_num_batches_in_local_mem,
                                                   std::size_t sub_batch_num) {
-  // the number of work-items involved in every row subgroup fft
-  constexpr int FactSgN = detail::factorize_sg(N, SubgroupSize);
-  // the number of values held in by a work-item in a row subgroup dft
-  constexpr int FactWiN = N / FactSgN;
-  // the number of work-items involved in every column subgroup fft
-  constexpr int FactSgM = detail::factorize_sg(M, SubgroupSize);
-  // the number of values held in by a work-item in a column subgroup dft
-  constexpr int FactWiM = M / FactSgM;
-
-  constexpr int PrivateMemSize = FactWiM > FactWiN ? 2 * FactWiM : 2 * FactWiN;
-  T priv[PrivateMemSize];
-  const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
-  sycl::sub_group sg = it.get_sub_group();
-
   // column-wise DFTs
   dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(loc, loc_twiddles + (2 * M), nullptr, 1, 
                                                                 max_num_batches_in_local_mem, sub_batch_num, it);
