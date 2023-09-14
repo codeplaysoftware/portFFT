@@ -283,7 +283,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
           std::size_t j = j_wi + j_sg * factor_wi_m;
           std::size_t j_loc = j_wi * factor_sg_m + j_sg;
           std::size_t index = 2 * (i * m + j_loc);
-          auto tw = detail::calculate_twiddle<Scalar>(i*j, fft_size);
+          auto tw = detail::calculate_twiddle<Scalar>(i * j, fft_size);
           temp_host[index] = tw.real();
           temp_host[index + 1] = tw.imag();
         }

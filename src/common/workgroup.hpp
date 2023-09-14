@@ -49,7 +49,7 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
 
 /**
  * Calculate all dfts in one dimension of the data stored in local memory.
- * 
+ *
  * @tparam Dir Direction of the FFT
  * @tparam TransposeIn Whether or not the input is transposed
  * @tparam DFTSize Size of each DFT to calculate
@@ -66,10 +66,11 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
  * @param sub_batch_num Id of the local memory batch to work on
  * @param it sycl::nd_item<1> for the kernel launch
  */
-template<direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, 
-                                                         T scaling_factor, std::size_t max_num_batches_in_local_mem, 
-                                                         std::size_t sub_batch_num, sycl::nd_item<1> it){
+template <direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension,
+          int SubgroupSize, std::size_t BankLinesPerPad, typename T>
+__attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
+                                                         T scaling_factor, std::size_t max_num_batches_in_local_mem,
+                                                         std::size_t sub_batch_num, sycl::nd_item<1> it) {
   constexpr int OuterStride = DFTSize * StrideWithinDFT;
   // the number of work-items involved in every subgroup fft
   constexpr int FactSg = detail::factorize_sg(DFTSize, SubgroupSize);
@@ -120,18 +121,16 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
-            priv, loc, 
-            2 * max_num_batches_in_local_mem, 2 * sub_batch_num, 
-            static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 
-            1L, static_cast<std::size_t>(wi_id_in_fft * FactWi), 
-            BankLinesPerPad);
-      } else{
-        //transposition due to working on columns
-        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(loc_start, priv, wi_id_in_fft, 
-                                                                                j_inner, StrideWithinDFT);
+            priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(StrideWithinDFT),
+            static_cast<std::size_t>(j_inner + j_outer * OuterStride), 1L,
+            static_cast<std::size_t>(wi_id_in_fft * FactWi), BankLinesPerPad);
+      } else {
+        // transposition due to working on columns
+        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(loc_start, priv, wi_id_in_fft, j_inner,
+                                                                               StrideWithinDFT);
       }
 
-      if(wg_twiddles){
+      if (wg_twiddles) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
           // Unintuitive indexing to ensure coalesced access
           int twiddle_i = i * FactSg + wi_id_in_fft;
@@ -148,7 +147,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
           priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
         });
       }
-      if(scaling_factor != T(1)){
+      if (scaling_factor != T(1)) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
@@ -159,17 +158,13 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
-            priv, loc, 
-            2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
-            static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 
-            static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft),
-            BankLinesPerPad);
-      } else {  
-        //transposition due to working on columns AND transposition for SG dft
-        private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(priv, loc, wi_id_in_fft, 
-                                                                              FactSg*StrideWithinDFT,
-                                                                              j_inner + j_outer * OuterStride, 
-                                                                              StrideWithinDFT);
+            priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(StrideWithinDFT),
+            static_cast<std::size_t>(j_inner + j_outer * OuterStride), static_cast<std::size_t>(FactSg),
+            static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
+      } else {
+        // transposition due to working on columns AND transposition for SG dft
+        private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
+            priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride, StrideWithinDFT);
       }
     }
   }
@@ -201,12 +196,12 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
                                                   T scaling_factor, std::size_t max_num_batches_in_local_mem,
                                                   std::size_t sub_batch_num) {
   // column-wise DFTs
-  dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(loc, loc_twiddles + (2 * M), nullptr, 1, 
-                                                                max_num_batches_in_local_mem, sub_batch_num, it);
+  dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
+      loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, it);
   sycl::group_barrier(it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(loc, loc_twiddles, wg_twiddles, scaling_factor, 
-                                                                max_num_batches_in_local_mem, sub_batch_num, it);
+  dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+      loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, it);
 }
 
 }  // namespace portfft

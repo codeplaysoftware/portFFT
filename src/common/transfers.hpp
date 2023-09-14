@@ -427,14 +427,15 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
 }
 
 /**
- * Copies data from private to local memory, allowing separate strides for thread id and id of element in workitem, 
+ * Copies data from private to local memory, allowing separate strides for thread id and id of element in workitem,
  * allowing for up to two transposes of the data.
- * 
+ *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
- * 
+ *
  * @param priv Pointer to private memory
  * @param local Pointer to local memory
  * @param thread_id Id of the working thread for the FFT
@@ -444,11 +445,12 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void private2local_2strides(const T* priv, T* local, int thread_id,
-                                                                    int stride_num_workers, int destination_offset, 
-                                                                    int stride) {
+                                                                  int stride_num_workers, int destination_offset,
+                                                                  int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset = detail::pad_local<Pad>(
-        2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset), BankLinesPerPad);
+        2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset),
+        BankLinesPerPad);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -534,8 +536,7 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, 
-                                                            std::size_t stride_1, std::size_t offset_1,
+__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
                                                             std::size_t stride_2, std::size_t offset_2,
                                                             std::size_t stride_3, std::size_t offset_3,
                                                             std::size_t bank_lines_per_pad) {

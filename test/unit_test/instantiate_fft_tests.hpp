@@ -21,8 +21,8 @@
 #ifndef PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 #define PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
-#include <type_traits>
 #include <gtest/gtest.h>
+#include <type_traits>
 
 #include "fft_test_utils.hpp"
 
