@@ -77,8 +77,12 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out) {
       }();
 
       // multiply in and multi
-      tmp[2 * idx_out + 0] += in[2 * idx_in * StrideIn] * re_multiplier - in[2 * idx_in * StrideIn + 1] * im_multiplier;
-      tmp[2 * idx_out + 1] += in[2 * idx_in * StrideIn] * im_multiplier + in[2 * idx_in * StrideIn + 1] * re_multiplier;
+      T tmp_real;
+      T tmp_imag;
+      detail::multiply_complex(in[2 * idx_in * StrideIn], in[2 * idx_in * StrideIn + 1], re_multiplier, im_multiplier,
+                               tmp_real, tmp_imag);
+      tmp[2 * idx_out + 0] += tmp_real;
+      tmp[2 * idx_out + 1] += tmp_imag;
     });
   });
   unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
@@ -115,10 +119,9 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out) {
         }
         return -twiddle<T>::Im[N * M][i * j];
       }();
-      T tmp_val = tmp_buffer[2 * i * N + 2 * j] * re_multiplier - tmp_buffer[2 * i * N + 2 * j + 1] * im_multiplier;
-      tmp_buffer[2 * i * N + 2 * j + 1] =
-          tmp_buffer[2 * i * N + 2 * j] * im_multiplier + tmp_buffer[2 * i * N + 2 * j + 1] * re_multiplier;
-      tmp_buffer[2 * i * N + 2 * j + 0] = tmp_val;
+      detail::multiply_complex(static_cast<const T>(tmp_buffer[2 * i * N + 2 * j]),
+                               static_cast<const T>(tmp_buffer[2 * i * N + 2 * j + 1]), re_multiplier, im_multiplier,
+                               tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
     });
   });
   unrolled_loop<0, N, 1>([&](int i) PORTFFT_ALWAYS_INLINE {

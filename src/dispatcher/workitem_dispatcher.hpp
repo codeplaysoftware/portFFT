@@ -125,9 +125,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
           std::size_t base_offset = local_offset + subgroup_local_id * NReals + 2 * j;
           T modifier_real = loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)];
           T modifier_complex = loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
-          T tmp_priv_real = priv[2 * j];
-          priv[2 * j] = tmp_priv_real * modifier_real - priv[2 * j + 1] * modifier_complex;
-          priv[2 * j + 1] = tmp_priv_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+          detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                   static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                   priv[2 * j], priv[2 * j + 1]);
         });
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
@@ -138,9 +138,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
               detail::pad_local(local_offset + subgroup_local_id * NReals + 2 * j, BankLinesPerPad);
           T modifier_real = loc_store_modifier[base_offset];
           T modifier_complex = loc_store_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
-          T tmp_priv_real = priv[2 * j];
-          priv[2 * j] = tmp_priv_real * modifier_real - priv[2 * j + 1] * modifier_complex;
-          priv[2 * j + 1] = tmp_priv_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+          detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                   static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                   priv[2 * j], priv[2 * j + 1]);
         });
       }
       if constexpr (ApplyScaleFactor) {

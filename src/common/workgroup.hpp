@@ -139,17 +139,14 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::
       }
       if constexpr (ApplyLoadModifier) {
         detail::unrolled_loop<0, FactWiN, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
-          sycl::vec<T, 2> priv;
-          priv = *(reinterpret_cast<sycl::vec<T, 2>*>(
+          const sycl::vec<T, 2> priv;
+          priv = *(reinterpret_cast<const sycl::vec<T, 2>*>(
               &load_data_modifier[2 * static_cast<std::size_t>(FFTSize) * sub_batch_num +
                                   static_cast<std::size_t>(2 * M) *
                                       (static_cast<std::size_t>(wi_in_fft * FactWiN) + j) *
                                       static_cast<std::size_t>(2 * column)]));
-          T modifier_real = priv[0];
-          T modifier_complex = priv[1];
-          T tmp_real = priv[2 * j];
-          priv[2 * j] = modifier_real * tmp_real - modifier_complex * priv[2 * j + 1];
-          priv[2 * j + 1] = tmp_real * modifier_complex + modifier_real * priv[2 * j + 1];
+          detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]), priv[0],
+                                   priv[1], priv[2 * j], priv[2 * j + 1]);
         });
       }
       sg_dft<Dir, FactWiN, FactSgN>(priv, sg, loc_twiddles + (2 * M));
@@ -233,9 +230,9 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
-        T tmp_real = priv[2 * i];
-        priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_imag;
-        priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
+        detail::multiply_complex(static_cast<const T>(priv[2 * i]), static_cast<const T>(priv[2 * i + 1]),
+                                 static_cast<const T>(twiddle_real), static_cast<const T>(twiddle_imag), priv[2 * i],
+                                 priv[2 * i + 1]);
       });
       sg_dft<Dir, FactWiM, FactSgM>(priv, sg, loc_twiddles);
       if constexpr (ApplyScaleFactor) {
@@ -254,8 +251,9 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::
           T modifier_real = priv[0];
           T modifier_complex = priv[1];
           T tmp_real = priv[2 * j];
-          priv[2 * j] = modifier_real * tmp_real - modifier_complex * priv[2 * j + 1];
-          priv[2 * j + 1] = tmp_real * modifier_complex + modifier_real * priv[2 * j + 1];
+          detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                   static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                   priv[2 * j], priv[2 * j + 1]);
         });
       }
       if (working) {

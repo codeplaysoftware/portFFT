@@ -186,9 +186,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               std::size_t base_index = sub_batch * n_reals_per_fft + NRealsPerWI * id_of_wi_in_fft + 2 * j;
               T modifier_real = loc[detail::pad_local(base_index, BankLinesPerPad)];
               T modifier_complex = loc[detail::pad_local(base_index + 1, BankLinesPerPad)];
-              T tmp_real = priv[2 * j];
-              priv[2 * j] = tmp_real * modifier_real - priv[2 * j + 1] * modifier_complex;
-              priv[2 * j + 1] = tmp_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+              detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                       static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                       priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -200,9 +200,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                   sub_batch * n_reals_per_fft + 2 * id_of_wi_in_fft + static_cast<std::size_t>(j) * FactorSG;
               T modifier_real = loc[detail::pad_local(base_offset, BankLinesPerPad)];
               T modifier_complex = loc[detail::pad_local(base_offset + 1, BankLinesPerPad)];
-              T tmp_real = priv[2 * j];
-              priv[2 * j] = tmp_real * modifier_real - priv[2 * j + 1] * modifier_complex;
-              priv[2 * j + 1] = tmp_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+              detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                       static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                       priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -260,9 +260,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                      NRealsPerWI * id_of_wi_in_fft + 2 * j;
             T modifier_real = loc_load_modifier[detail::pad_local(base_index, BankLinesPerPad)];
             T modifier_complex = loc_store_modifier[detail::pad_local(base_index + 1, BankLinesPerPad)];
-            T tmp_real = priv[2 * j];
-            priv[2 * j] = tmp_real * modifier_real - priv[2 * j + 1] * modifier_complex;
-            priv[2 * j + 1] = tmp_real * modifier_complex + priv[2 * j + 1] * modifier_real;
+            detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                     static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
+                                     priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
@@ -274,9 +274,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                      2 * id_of_wi_in_fft + static_cast<std::size_t>(j) * FactorSG;
             T modifier_real = loc_store_modifier[detail::pad_local(base_index, BankLinesPerPad)];
             T modifier_imag = loc_store_modifier[detail::pad_local(base_index + 1, BankLinesPerPad)];
-            T tmp_real = priv[2 * j];
-            priv[2 * j] = tmp_real * modifier_real - priv[2 * j + 1] * modifier_imag;
-            priv[2 * j + 1] = tmp_real * modifier_imag + priv[2 * j + 1] * modifier_real;
+            detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
+                                     static_cast<const T>(modifier_real), static_cast<const T>(modifier_imag),
+                                     priv[2 * j], priv[2 * j + 1]);
           });
         }
       }

@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_SUBGROUP_HPP
 #define PORTFFT_COMMON_SUBGROUP_HPP
 
+#include "helpers.hpp"
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
 #include <common/twiddle_calc.hpp>
@@ -114,8 +115,12 @@ PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, sycl::sub_group& sg) {
       T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
 
       // multiply cur and multi
-      res_real += cur_real * multi_re - cur_imag * multi_im;
-      res_imag += cur_real * multi_im + cur_imag * multi_re;
+      T tmp_real;
+      T tmp_imag;
+      multiply_complex(static_cast<const T>(cur_real), static_cast<const T>(cur_imag), static_cast<const T>(multi_re),
+                       static_cast<const T>(multi_im), tmp_real, tmp_imag);
+      res_real += tmp_real;
+      res_imag += tmp_imag;
     });
 
     real = res_real;
@@ -184,9 +189,7 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, sycl::sub_group&
     }
     return -twiddle<T>::Im[N * M][k * n];
   }();
-  T tmp_real = real * multi_re - imag * multi_im;
-  imag = real * multi_im + imag * multi_re;
-  real = tmp_real;
+  multiply_complex(static_cast<const T>(real), static_cast<const T>(imag), multi_re, multi_im, real, imag);
   // factor M
   cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
 }
@@ -283,9 +286,8 @@ PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) 
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
-        T tmp_real = real * twiddle_real - imag * twiddle_imag;
-        imag = real * twiddle_imag + imag * twiddle_real;
-        real = tmp_real;
+        detail::multiply_complex(static_cast<const T>(real), static_cast<const T>(imag),
+                                 static_cast<const T>(twiddle_real), static_cast<const T>(twiddle_imag), real, imag);
       }
     }
   });
