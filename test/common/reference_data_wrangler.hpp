@@ -125,11 +125,6 @@ class verif_data_spec {
     auto scaling = isForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dftLen);
     if (isForward) {
       auto referenceData = load_data_fourier(desc);
-      /*std::cout << "referenceData for fwd: ";
-      for(auto i : referenceData){
-        std::cout << i << ", ";
-      }
-      std::cout << std::endl << std::endl;*/
       if constexpr (std::is_same_v<complex_type, ElemT>) {
         compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {
@@ -137,11 +132,6 @@ class verif_data_spec {
       }
     } else {
       auto referenceData = load_data_time(desc);
-      /*std::cout << "referenceData for bwd: ";
-      for(auto i : referenceData){
-        std::cout << i << ", ";
-      }
-      std::cout << std::endl << std::endl;*/
       if constexpr (std::is_same_v<forward_type, ElemT>) {
         compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {

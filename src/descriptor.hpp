@@ -196,10 +196,9 @@ class committed_descriptor {
     }
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
     int factor_wi = static_cast<int>(fft_size) / factor_sg;
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize) && fft_size<256) {
+    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       // This factorization is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
-      std::cout << "SG" << factor_sg << " " << factor_wi << std::endl;
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
       get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
@@ -212,7 +211,6 @@ class committed_descriptor {
     int factor_sg_m = detail::factorize_sg(static_cast<int>(m), SubgroupSize);
     int factor_wi_m = static_cast<int>(m) / factor_sg_m;
     if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
-      std::cout << "WG" << factor_wi_n << " " << factor_sg_n << " " << factor_wi_m << " " << factor_sg_m << std::endl;
       factors.push_back(factor_wi_n);
       factors.push_back(factor_sg_n);
       factors.push_back(factor_wi_m);

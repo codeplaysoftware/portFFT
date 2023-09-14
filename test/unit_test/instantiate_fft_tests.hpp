@@ -22,7 +22,6 @@
 #define PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
 #include <type_traits>
-
 #include <gtest/gtest.h>
 
 #include "fft_test_utils.hpp"
@@ -31,7 +30,7 @@ class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, leng
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 
 // sizes that use workitem implementation
-/*INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
+INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
@@ -43,20 +42,20 @@ INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
                                                                                      ::testing::Values(64, 96, 128))));
-*/
+
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1), ::testing::Values(512, 1024))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(256, 512, 1024))));
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1), ::testing::Values(2048))));
+                             ::testing::Combine(::testing::Values(1), ::testing::Values(2048, 3072, 4096))));
 
 // Backward FFT test suite
-/*INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
+INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1), ::testing::Values(8, 9, 16, 32, 64, 4096))));
-*/
+
 #define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,         \
                          DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                      \
   TEST_P(DIRECTION_TEST_SUITE, MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##TRANSPOSE_NAME) { \

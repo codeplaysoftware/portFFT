@@ -24,7 +24,6 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
-#include <common/twiddle_calc.hpp>
 #include <common/workgroup.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
@@ -65,16 +64,16 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param input global input pointer
  * @param output global output pointer
  * @param loc Pointer to local memory
- * @param loc_twiddles pointer to twiddles residing in the local memory
- * @param n_transforms number of fft batch size
- * @param it Associated Iterator
- * @param twiddles Pointer to twiddles residing in the global memory
+ * @param loc_twiddles pointer to local allocation for subgroup level twiddles
+ * @param n_transforms number of fft batches
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t FFTSize, int SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                           std::size_t n_transforms, sycl::nd_item<1> it,
-                                                          const T* twiddles, T scaling_factor, sycl::stream s) {
+                                                          const T* twiddles, T scaling_factor) {
   std::size_t num_workgroups = it.get_group_range(0);
   std::size_t wg_id = it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
@@ -115,7 +114,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       sycl::group_barrier(it.get_group());
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
-            loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, sub_batch, s);
+            loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(it.get_group());
       }
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
@@ -129,7 +128,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(it, input, loc, 2 * FFTSize, offset);
       sycl::group_barrier(it.get_group());
       wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
-          loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0, s);
+          loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0);
       sycl::group_barrier(it.get_group());
       // transposition for WG CT
       local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(it, N, M, M, loc, output, offset);
@@ -149,8 +148,8 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
  * @param output global output pointer
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to twiddles residing in the local memory
- * @param n_transforms number of fft batch size
- * @param it Associated Iterator
+ * @param n_transforms number of fft batches
+ * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size
@@ -158,17 +157,17 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T, typename SizeList>
 __attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                             std::size_t n_transforms, sycl::nd_item<1> it,
-                                                            const T* twiddles, T scaling_factor, std::size_t fft_size, sycl::stream s) {
+                                                            const T* twiddles, T scaling_factor, std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {
     constexpr size_t ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
-      //if constexpr (!fits_in_sg<T>(ThisSize, SubgroupSize)) {
+      if constexpr (!fits_in_sg<T>(ThisSize, SubgroupSize)) {
         workgroup_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, it,
-                                                                 twiddles, scaling_factor, s);
-      //}
+                                                                 twiddles, scaling_factor);
+      }
     } else {
       workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
-          input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, fft_size, s);
+          input, output, loc, loc_twiddles, n_transforms, it, twiddles, scaling_factor, fft_size);
     }
   }
 }
@@ -198,14 +197,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
     const std::size_t bank_lines_per_pad =
         bank_lines_per_pad_wg(2 * sizeof(Scalar) * static_cast<std::size_t>(desc.factors[2] * desc.factors[3]));
-    std::cout << "WG global" << global_size << " local " <<   SubgroupSize * PORTFFT_SGS_IN_WG << std::endl;
-    auto e = desc.queue.submit([&](sycl::handler& cgh) {
+    return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::stream s(1024*500,1024*30,cgh);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
@@ -214,11 +211,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
                 &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size * num_batches_in_local_mem,
                                                             bank_lines_per_pad)],
-                n_transforms, it, twiddles, scale_factor, fft_size, s);
+                n_transforms, it, twiddles, scale_factor, fft_size);
           });
     });
-    e.wait();
-    return e;
   }
 };
 
@@ -284,30 +279,12 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
     for (std::size_t j = 0; j < m; j++) {
       for (std::size_t i = 0; i < n; i++) {
-        //std::size_t index = 2 * (i * m + j);
         std::size_t index = 2 * (i + j * n);
         auto tw = detail::calculate_twiddle<Scalar>(i*j, fft_size);
         temp_host[index] = tw.real();
-            //static_cast<Scalar>(std::cos((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size)));
         temp_host[index + 1] = tw.imag();
-            //static_cast<Scalar>(std::sin((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size)));
       }
     }
-    // rearrange the twiddles
-    /*for (std::size_t i = 0; i < n; i++) {
-      std::size_t row_offset = 2 * i * m;
-      for (int j = 0; j < factor_wi_m; j++) {
-        for (int k = 0; k < factor_sg_m; k++) {
-          scratch_memory[2 * j * factor_sg_m + 2 * k] =
-              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j)];
-          scratch_memory[2 * j * factor_sg_m + 2 * k + 1] =
-              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j + 1)];
-        }
-      }
-      for (std::size_t j = 0; j < 2 * m; j++) {
-        temp_host[row_offset + j] = scratch_memory[j];
-      }
-    }*/
     desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
     desc.queue.wait();
     sycl::free(temp_host, desc.queue);
