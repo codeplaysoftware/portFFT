@@ -47,6 +47,7 @@ constexpr std::size_t bank_lines_per_pad_wg(std::size_t row_size) {
   return 0;
 }
 
+namespace detail {
 /**
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
@@ -147,7 +148,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
           priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
         });
       }
-      if (scaling_factor != T(1)) {
+      if (scaling_factor != static_cast<T>(1)) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
@@ -169,6 +170,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     }
   }
 }
+
+};
 
 /**
  * Calculates FFT using Bailey 4 step algorithm.
@@ -196,11 +199,11 @@ __attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const
                                                   T scaling_factor, std::size_t max_num_batches_in_local_mem,
                                                   std::size_t sub_batch_num) {
   // column-wise DFTs
-  dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, it);
   sycl::group_barrier(it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, it);
 }
 
