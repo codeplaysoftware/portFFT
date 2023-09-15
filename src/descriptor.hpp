@@ -521,7 +521,9 @@ class committed_descriptor {
     create_copy(desc);
   }
   committed_descriptor<Scalar, Domain>& operator=(const committed_descriptor<Scalar, Domain>& desc) {
-    create_copy(desc);
+    if (this != &desc) {
+      create_copy(desc);
+    }
     return *this;
   }
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
