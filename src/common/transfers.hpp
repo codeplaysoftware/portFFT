@@ -515,6 +515,35 @@ PORTFFT_INLINE void private2local_transposed(const T* priv, T* local, int thread
 }
 
 /**
+ * Copies data from private to local memory, allowing separate strides for thread id and id of element in workitem,
+ * allowing for up to two transposes of the data.
+ *
+ * @tparam NumElementsPerWI Elements per workitem
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @tparam T type of the scalar used for computations
+ *
+ * @param priv Pointer to private memory
+ * @param local Pointer to local memory
+ * @param thread_id Id of the working thread for the FFT
+ * @param stride_num_workers stride in local memory between consecutive elements in a workitem
+ * @param destination_offset Offset to local memory destination
+ * @param stride Stride in local memory between consecutive workitems
+ */
+template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+PORTFFT_INLINE void private2local_2strides(const T* priv, T* local, int thread_id, int stride_num_workers,
+                                           int destination_offset, int stride) {
+  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
+    std::size_t loc_base_offset = detail::pad_local<Pad>(
+        2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset),
+        BankLinesPerPad);
+    local[loc_base_offset] = priv[2 * i];
+    local[loc_base_offset + 1] = priv[2 * i + 1];
+  });
+}
+
+/**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
  *
@@ -621,12 +650,12 @@ PORTFFT_INLINE void local_transposed2_global_transposed(sycl::nd_item<1> it, T* 
  *
  * @param priv Pointer to private memory
  * @param loc Pointer to local memory
- * @param stride_1 Outer Most stride
- * @param offset_1 Outer most offset
+ * @param stride_1 Innermost stride
+ * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
  * @param offset_2 2nd level of offset
- * @param stride_3 inner most stride
- * @param offset_3 inner most offset
+ * @param stride_3 Outermost stride
+ * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>

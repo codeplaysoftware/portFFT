@@ -21,9 +21,8 @@
 #ifndef PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 #define PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
-#include <type_traits>
-
 #include <gtest/gtest.h>
+#include <type_traits>
 
 #include "fft_test_utils.hpp"
 
@@ -35,7 +34,7 @@ INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
 // sizes that might use workitem or subgroup implementation depending on device
-// and configuration
+// and configurations
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
                          ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
                                                                                      ::testing::Values(16, 32))));
@@ -59,7 +58,7 @@ INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1), ::testing::Values(8, 9, 16, 32, 64, 4096))));
+                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(8, 9, 16, 32, 64, 4096))));
 
 #define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, TRANSPOSE, TRANSPOSE_NAME, DIRECTION,         \
                          DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                      \

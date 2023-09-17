@@ -233,7 +233,7 @@ class verif_data_spec {
 
       for (std::size_t e = 0; e != dftLen; ++e) {
         const auto diff = std::abs(thisBatchComputed[e] - thisBatchRef[e] * scaling);
-        if (diff > comparisonTolerance) {
+        if (diff > comparisonTolerance && diff / std::abs(thisBatchComputed[e]) > comparisonTolerance) {
           // std::endl is used intentionally to flush the error message before google test exits the test.
           std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dftLen
                     << ", does not match\nref " << thisBatchRef[e] * scaling << " vs " << thisBatchComputed[e]

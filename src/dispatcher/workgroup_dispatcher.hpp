@@ -65,10 +65,10 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param input global input pointer
  * @param output global output pointer
  * @param loc Pointer to local memory
- * @param loc_twiddles pointer to twiddles residing in the local memory
- * @param n_transforms number of fft batch size
- * @param it Associated Iterator
- * @param twiddles Pointer to twiddles residing in the global memory
+ * @param loc_twiddles pointer to local allocation for subgroup level twiddles
+ * @param n_transforms number of fft batches
+ * @param it sycl::nd_item<1> for the kernel launch
+ * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
@@ -109,6 +109,7 @@ PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* 
       }();
       // Load in a transposed manner, similar to subgroup impl.
       if (it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        // transposition requested by the caller
         global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(
             it, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
       }
@@ -133,6 +134,7 @@ PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* 
              BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, it, scaling_factor, max_num_batches_in_local_mem, 0,
                               load_modifier_data, store_modifier_data);
       sycl::group_barrier(it.get_group());
+      // transposition for WG CT
       local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(it, N, M, M, loc, output, offset);
       sycl::group_barrier(it.get_group());
     }
@@ -150,8 +152,8 @@ PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* 
  * @param output global output pointer
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to twiddles residing in the local memory
- * @param n_transforms number of fft batch size
- * @param it Associated Iterator
+ * @param n_transforms number of fft batches
+ * @param it sycl::nd_item<1> for the kernel launch
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size
@@ -306,36 +308,22 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Scalar* global_pointer = res + 2 * (n + m);
     // Copying from pinned memory to device might be faster than from regular allocation
     Scalar* temp_host = sycl::malloc_host<Scalar>(2 * fft_size, desc.queue);
-    Scalar* scratch_memory = new Scalar[static_cast<std::size_t>(2 * factor_sg_m * factor_wi_m)];
 
     for (std::size_t i = 0; i < n; i++) {
-      for (std::size_t j = 0; j < m; j++) {
-        std::size_t index = 2 * (i * m + j);
-        temp_host[index] =
-            static_cast<Scalar>(std::cos((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size)));
-        temp_host[index + 1] =
-            static_cast<Scalar>(std::sin((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size)));
-      }
-    }
-    // rearrange the twiddles
-    for (std::size_t i = 0; i < n; i++) {
-      std::size_t row_offset = 2 * i * m;
-      for (int j = 0; j < factor_wi_m; j++) {
-        for (int k = 0; k < factor_sg_m; k++) {
-          scratch_memory[2 * j * factor_sg_m + 2 * k] =
-              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j)];
-          scratch_memory[2 * j * factor_sg_m + 2 * k + 1] =
-              temp_host[row_offset + static_cast<std::size_t>(2 * k * factor_wi_m + 2 * j + 1)];
+      for (std::size_t j_wi = 0; j_wi < static_cast<std::size_t>(factor_wi_m); j_wi++) {
+        for (std::size_t j_sg = 0; j_sg < static_cast<std::size_t>(factor_sg_m); j_sg++) {
+          std::size_t j = j_wi + j_sg * static_cast<std::size_t>(factor_wi_m);
+          std::size_t j_loc = j_wi * static_cast<std::size_t>(factor_sg_m) + j_sg;
+          std::size_t index = 2 * (i * m + j_loc);
+          auto tw = detail::calculate_twiddle<Scalar>(i * j, fft_size);
+          temp_host[index] = tw.real();
+          temp_host[index + 1] = tw.imag();
         }
-      }
-      for (std::size_t j = 0; j < 2 * m; j++) {
-        temp_host[row_offset + j] = scratch_memory[j];
       }
     }
     desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
     desc.queue.wait();
     sycl::free(temp_host, desc.queue);
-    delete[] scratch_memory;
     return res;
   }
 };
