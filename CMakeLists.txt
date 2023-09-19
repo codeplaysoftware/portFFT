@@ -51,6 +51,7 @@ set(PORTFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(PORTFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 set(PORTFFT_MAX_CONCURRENT_KERNELS 16 CACHE STRING "Maximum resident kernels possible on the target device")
 set(PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES "1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256,384,512,768,1024,1536,2048,3072,4096,6144,8192,16384,32768,65536" CACHE STRING "Specify the sizes supported in work-item, sub-group, and work-group Cooley-Tukey implementations")
+set(PORTFFT_CLANG_OPTIMIZATION_REMARKS_REGEX "" CACHE STRING "Use -fsave-optimization-record -Rpass-missed=<regex> -Rpass=<regex> -Rpass-analysis=<regex> to obtain optimization pass remarks. See https://llvm.org/docs/Passes.html for passes.")
 
 set(PORTFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
