@@ -180,8 +180,12 @@ PORTFFT_INLINE void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                                        sub_batch_num +
                                    static_cast<std::size_t>(2 * j * DFTSize) +
                                    static_cast<std::size_t>(2 * wi_id_in_fft + i * FactSg)]);
+          T modifier_complex = modifier_priv[1];
+          if constexpr (Dir == direction::BACKWARD) {
+            modifier_complex = -modifier_complex;
+          }
           multiply_complex(static_cast<const T>(priv[2 * i]), static_cast<const T>(priv[2 * i + 1]), modifier_priv[0],
-                           modifier_priv[1], priv[2 * i], priv[2 * i + 1]);
+                           modifier_complex, priv[2 * i], priv[2 * i + 1]);
         });
       }
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {

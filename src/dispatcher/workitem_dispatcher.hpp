@@ -138,6 +138,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
               detail::pad_local(local_offset + subgroup_local_id * NReals + 2 * j, BankLinesPerPad);
           T modifier_real = loc_store_modifier[base_offset];
           T modifier_complex = loc_store_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
+          if constexpr (Dir == direction::BACKWARD) {
+            modifier_complex = -modifier_complex;
+          }
           detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
                                    static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
                                    priv[2 * j], priv[2 * j + 1]);
