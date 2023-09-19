@@ -31,6 +31,15 @@
 namespace portfft {
 namespace detail {
 
+/**
+ * prepare launch configuration for different levels
+ * @param Level level of the FFT for which launch config needs to be prepared
+ * @param fft_size factor length
+ * @param n_transforms batch size corresposing to the factor
+ * @param n_compute_units Number of SMs/EU available in the device
+ * @param subgroup_size Subgroup Size the kernel will be using
+ * @return std::pair containing range<1> global and local sizes
+ */
 std::pair<sycl::range<1>, sycl::range<1>> inline get_launch_configuration(level Level, std::size_t fft_size,
                                                                           std::size_t n_transforms,
                                                                           std::size_t n_compute_units,
@@ -39,25 +48,29 @@ std::pair<sycl::range<1>, sycl::range<1>> inline get_launch_configuration(level 
   // just scheduled) kernels. Ideally the number of batches processed concurrently also depends on launch params (and
   // not just L2 size and hardware limitations) to avoid scheduling stalls per level. For now, this is a TODO, as well
   // tuning of these params
-  std::size_t max_concurrent_subgroups = 64 * n_compute_units;  // Just a heuristic, not true for all hardware
+  std::size_t max_concurrent_subgroups = 64 * 8 * n_compute_units;  // Just a heuristic, not true for all hardware
 
   if (Level == level::WORKITEM) {
-    std::size_t num_wgs_required = std::min(max_concurrent_subgroups, detail::divide_ceil(n_transforms, subgroup_size));
-    return std::pair(sycl::range<1>(num_wgs_required * subgroup_size), sycl::range<1>(subgroup_size));
+    std::size_t num_wgs_required =
+        std::min(max_concurrent_subgroups, detail::divide_ceil(n_transforms, subgroup_size * PORTFFT_SGS_IN_WG));
+    return std::pair(sycl::range<1>(num_wgs_required * subgroup_size * PORTFFT_SGS_IN_WG),
+                     sycl::range<1>(subgroup_size * PORTFFT_SGS_IN_WG));
   }
   if (Level == level::SUBGROUP) {
     std::size_t factor_sg =
         static_cast<std::size_t>(factorize_sg(static_cast<int>(fft_size), static_cast<int>(subgroup_size)));
     std::size_t num_batches_per_sg = subgroup_size / factor_sg;
     std::size_t num_wgs_required =
-        std::min(max_concurrent_subgroups, detail::divide_ceil(n_transforms, num_batches_per_sg));
-    return std::pair(sycl::range<1>(num_wgs_required * subgroup_size), sycl::range<1>(subgroup_size));
+        std::min(max_concurrent_subgroups, detail::divide_ceil(n_transforms, num_batches_per_sg * PORTFFT_SGS_IN_WG));
+    return std::pair(sycl::range<1>(num_wgs_required * subgroup_size * PORTFFT_SGS_IN_WG),
+                     sycl::range<1>(subgroup_size * PORTFFT_SGS_IN_WG));
   }
   if (Level == level::WORKGROUP) {
-    std::size_t wg_size = subgroup_size * 4;
+    std::size_t wg_size = subgroup_size * PORTFFT_SGS_IN_WG;
     std::size_t num_wgs_required = detail::divide_ceil(n_transforms, wg_size);
-    return std::pair(sycl::range<1>(std::min(max_concurrent_subgroups, num_wgs_required * 4) * subgroup_size),
-                     sycl::range<1>(subgroup_size * 4));
+    return std::pair(
+        sycl::range<1>(std::min(max_concurrent_subgroups, num_wgs_required * PORTFFT_SGS_IN_WG) * subgroup_size),
+        sycl::range<1>(subgroup_size * PORTFFT_SGS_IN_WG));
   }
   throw std::logic_error("Invalid Level");
 }

@@ -439,6 +439,11 @@ class committed_descriptor {
                                  "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
       }
     }
+    if (level == detail::level::GLOBAL) {
+      if (queue.is_in_order()) {
+        std::cerr << "Out of order queue is required for large FFTs to ensure maximum parallelism " << std::endl;
+      }
+    }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);
