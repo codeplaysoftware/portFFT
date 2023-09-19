@@ -273,15 +273,17 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
-      cgh.parallel_for(sycl::range<3>({static_cast<std::size_t>(n), static_cast<std::size_t>(factor_wi_m),static_cast<std::size_t>(factor_sg_m)}),
+      cgh.parallel_for(sycl::range<3>({static_cast<std::size_t>(n), static_cast<std::size_t>(factor_wi_m),
+                                       static_cast<std::size_t>(factor_sg_m)}),
                        [=](sycl::item<3> it) {
                          int i = static_cast<int>(it.get_id(0));
                          int j_wi = static_cast<int>(it.get_id(1));
                          int j_sg = static_cast<int>(it.get_id(2));
                          int j = j_wi + j_sg * factor_wi_m;
                          int j_loc = j_wi * factor_sg_m + j_sg;
-                         std::complex<Scalar> twiddle = detail::calculate_twiddle<Scalar>(i * j, static_cast<int>(fft_size));
-                         int index = 2*(static_cast<int>(n+m) + i * static_cast<int>(m) + j_loc);
+                         std::complex<Scalar> twiddle =
+                             detail::calculate_twiddle<Scalar>(i * j, static_cast<int>(fft_size));
+                         int index = 2 * (static_cast<int>(n + m) + i * static_cast<int>(m) + j_loc);
                          res[index] = twiddle.real();
                          res[index + 1] = twiddle.imag();
                        });
