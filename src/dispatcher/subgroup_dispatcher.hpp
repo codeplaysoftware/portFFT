@@ -216,8 +216,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.sg);
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NRealsPerWI,
-                                                                 subgroup_id * n_reals_per_sg);
+        auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
+        local2private<NRealsPerWI>(global_data, local_view, priv, subgroup_local_id, NRealsPerWI,
+                                   subgroup_id * n_reals_per_sg);
         global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
       }
       sycl::group_barrier(global_data.sg);

@@ -23,12 +23,9 @@
 
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <common/memory_views.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
-
-#ifndef PORTFFT_N_LOCAL_BANKS
-#define PORTFFT_N_LOCAL_BANKS 32
-#endif
 
 static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
               "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
@@ -41,32 +38,6 @@ bytes.
 */
 
 namespace portfft {
-
-namespace detail {
-
-/**
- * If Pad is true transforms an index into local memory to skip one element for every
- * PORTFFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
- * elements with a stride that is multiple of (or has any common divisor greater than 1 with)
- * the number of local banks. Does nothing if Pad is false.
- *
- * Can also be used to transform size of a local allocation to account for padding indices in it this way.
- *
- * @tparam Pad whether to do padding
- * @param local_idx index to transform
- * @param bank_lines_per_pad A padding space will be added after every `bank_lines_per_pad` groups of
- * `PORTFFT_N_LOCAL_BANKS` banks.
- * @return transformed local_idx
- */
-template <detail::pad Pad = detail::pad::DO_PAD>
-PORTFFT_INLINE std::size_t pad_local(std::size_t local_idx, std::size_t bank_lines_per_pad) {
-  if constexpr (Pad == detail::pad::DO_PAD) {
-    local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad);
-  }
-  return local_idx;
-}
-
-}  // namespace detail
 
 /**
  * Copies data from global memory to local memory.
@@ -321,28 +292,28 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @tparam LocalViewT A view of local memory. Type must match T
  * @param global_data global data for the kernel
- * @param local pointer to local memory
+ * @param local A local memory view
  * @param priv pointer to private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const T* local, T* priv, std::size_t local_id,
-                                  std::size_t stride, std::size_t local_offset = 0) {
+template <std::size_t NumElemsPerWI, typename LocalViewT, typename T>
+__attribute__((always_inline)) inline void local2private(detail::global_data_struct global_data, const LocalViewT local,
+                                                         T* priv, std::size_t local_id, std::size_t stride,
+                                                         std::size_t local_offset = 0) {
+  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Source / destination element type mismatch.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
-  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) PORTFFT_INLINE {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
+    std::size_t local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
-    priv[i] = local[local_idx];
+    priv[i] = local[local_offset + local_id * stride + i];
   });
 }
 
@@ -522,25 +493,25 @@ PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_dat
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @tparam LocalViewT The view type of local memory
  * @param global_data global data for the kernel
  * @param priv pointer to private memory
- * @param local pointer to local memory
+ * @param local A local memory view
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const T* priv, T* local, std::size_t local_id,
-                                  std::size_t stride, std::size_t local_offset = 0) {
+template <std::size_t NumElemsPerWI, typename T, typename LocalViewT>
+__attribute__((always_inline)) inline void private2local(detail::global_data_struct global_data, const T* priv,
+                                                         LocalViewT local, std::size_t local_id, std::size_t stride,
+                                                         std::size_t local_offset = 0) {
+  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Source / destination element type mismatch.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
-  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) PORTFFT_INLINE {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
+    std::size_t local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", i, "to", local_idx, "value", priv[i]);
     local[local_idx] = priv[i];
   });

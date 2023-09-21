@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <common/memory_views.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
 #include <descriptor.hpp>
@@ -84,6 +85,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
   std::size_t subgroup_id = global_data.sg.get_group_id();
   std::size_t local_offset = NReals * SubgroupSize * subgroup_id;
   constexpr std::size_t BankLinesPerPad = 1;
+  auto local_mem_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
 
   for (std::size_t i = global_id; i < round_up_to_multiple(n_transforms, SubgroupSize); i += global_size) {
     bool working = i < n_transforms;
@@ -107,8 +109,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals,
-                                                            local_offset);
+        local2private<NReals>(global_data, local_mem_view, priv, subgroup_local_id, NReals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       wi_dft<Dir, N, 1, 1>(priv, priv);
@@ -119,8 +120,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       });
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
-      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
-                                                          local_offset);
+      private2local<NReals>(global_data, priv, local_mem_view, subgroup_local_id, NReals, local_offset);
     }
     sycl::group_barrier(global_data.sg);
     global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
