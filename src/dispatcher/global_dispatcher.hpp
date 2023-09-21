@@ -278,21 +278,22 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
       detail::level level_id = desc.levels[i];
       std::size_t factor = desc.factors[i];
       auto& in_bundle = in_bundles[i];
-      in_bundle.template set_specialization_constant<detail::SpecConstLevel>(level_id);
+      in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevel>(level_id);
+      in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(desc.factors.size());
       switch (level_id) {
         case detail::level::WORKITEM: {
-          in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factor);
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstFftSize>(factor);
           break;
         }
         case detail::level::SUBGROUP: {
           int factor_sg = detail::factorize_sg(static_cast<int>(factor), static_cast<int>(desc.used_sg_size));
           int factor_wi = static_cast<int>(factor) / factor_sg;
-          in_bundle.template set_specialization_constant<detail::SpecConstSGFactorWI>(factor_wi);
-          in_bundle.template set_specialization_constant<detail::SpecConstSGFactorSG>(factor_sg);
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstSGFactorWI>(factor_wi);
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstSGFactorSG>(factor_sg);
           break;
         }
         case detail::level::WORKGROUP: {
-          in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factor);
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstFftSize>(factor);
           break;
         }
         case detail::level::GLOBAL:

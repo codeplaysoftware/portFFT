@@ -30,10 +30,62 @@
 namespace portfft {
 namespace detail {
 
-constexpr static sycl::specialization_id<std::size_t> SpecConstFftSize{};
-constexpr static sycl::specialization_id<int> SpecConstSGFactorWI{};
-constexpr static sycl::specialization_id<int> SpecConstSGFactorSG{};
-constexpr static sycl::specialization_id<level> SpecConstLevel{};
+constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstFftSize{};
+constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorWI{};
+constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorSG{};
+constexpr static sycl::specialization_id<level> GlobalSpecConstLevel{};
+constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstNumFactors{};
+
+/**
+ * Gets the inclusive scan of the factors at a particular index.
+ *
+ * @tparam KernelID  Recursion Level
+ * @param device_factors device array containing, factors, and their inclusive scan
+ * @param num_factors Number of factors
+ * @return Outer batch product
+ */
+template <int KernelID>
+PORTFFT_INLINE std::size_t get_outer_batch_product(std::size_t* device_factors, std::size_t num_factors) {
+  if (KernelID == (num_factors - 1) && KernelID != 1) {
+    return device_factors[2 * num_factors + KernelID - 2];
+  }
+  return device_factors[2 * num_factors + KernelID - 1];
+}
+
+/**
+ * Calculate the n-1'th dimensional array offset where N = KernelID, where
+ * offset = dim_1 * stride_1 + ..... dim_{n-1} * stride_{n-1}
+ *
+ * @tparam KernelID Recursion Level
+ * @param device_factors device_factors device array containing, factors, and their inclusive scan
+ * @param num_factors Number of factors
+ * @param iter_value Current iterator value of the flattened n-dimensional loop
+ * @param outer_batch_product Inclusive Scan of factors at position KernelID-1
+ * @return
+ */
+template <int KernelID>
+PORTFFT_INLINE std::size_t get_outer_batch_offset(std::size_t* device_factors, std::size_t num_factors,
+                                                  std::size_t iter_value, std::size_t outer_batch_product) {
+  auto get_outer_batch_offset_impl = [&]<int N>() -> std::size_t {
+    std::size_t outer_batch_offset = 0;
+    unrolled_loop<0, N, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
+      if (j == N - 1) {
+        outer_batch_offset += 2 * (iter_value % device_factors[j]) * device_factors[num_factors + j];
+      }
+      outer_batch_offset +=
+          2 * ((iter_value / (outer_batch_product / device_factors[2 * num_factors + j])) % device_factors[j]) *
+          device_factors[num_factors + j];
+    });
+    return outer_batch_offset;
+  };
+  if constexpr (KernelID == 1) {
+    return 2 * iter_value * device_factors[num_factors];
+  }
+  if (KernelID == num_factors - 1) {
+    return get_outer_batch_offset_impl.template operator()<KernelID - 1>();
+  }
+  return get_outer_batch_offset_impl.template operator()<KernelID>();
+}
 
 template <int KernelID, direction Dir, typename Scalar, domain Domain, memory Mem, transpose TransposeIn,
           transpose TransposeOut, bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor,
@@ -75,47 +127,31 @@ struct dispatch_kernel_struct {
                                        ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, KernelID>>(
             sycl::nd_range<1>(global_range, local_range),
             [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto level_spec_const = kh.get_specialization_constant<SpecConstLevel>();
-              auto sub_batches_product = device_factors[2 * num_factors + KernelID - 1];
-              if (KernelID == (num_factors - 1)) {
-                sub_batches_product = device_factors[2 * num_factors + KernelID - 2];
-              }
-              for (std::size_t sub_batch = 0; sub_batch < sub_batches_product; sub_batch++) {
-                std::size_t sub_batch_offset = 0;
-                if constexpr (KernelID == 1) {
-                  sub_batch_offset = sub_batch * device_factors[num_factors];
-                } else {
-                  unrolled_loop<0, KernelID, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
-                    if (j == KernelID - 1) {
-                      sub_batch_offset += (sub_batch % device_factors[j]) * device_factors[num_factors + j];
-                    } else {
-                      // sub_batch_offset += (sub_batch / (sub_batch_product / inclusive_scan[j]) % factor[j]) *
-                      // sub_batch[j]
-                      sub_batch_offset += ((sub_batch / (sub_batches_product / device_factors[2 * num_factors + j])) %
-                                           device_factors[j]) *
-                                          device_factors[num_factors + j];
-                    }
-                  });
-                }
+              auto level_spec_const = kh.get_specialization_constant<GlobalSpecConstLevel>();
+              std::size_t num_factors_spec_const = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+              auto outer_batch_product = get_outer_batch_product<KernelID>(device_factors, num_factors_spec_const);
+              for (std::size_t sub_batch = 0; sub_batch < outer_batch_product; sub_batch++) {
+                auto outer_batch_offset = get_outer_batch_offset<KernelID>(device_factors, num_factors_spec_const,
+                                                                           sub_batch, outer_batch_product);
                 if (level_spec_const == detail::level::WORKITEM) {
-                  std::size_t problem_size = kh.get_specialization_constant<SpecConstFftSize>();
+                  std::size_t problem_size = kh.get_specialization_constant<GlobalSpecConstFftSize>();
                   workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
                                          ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t>(
                       static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * i * committed_size +
-                          sub_batch_offset,
-                      &scratch_pointer[0] + base_offset + 2 * i * committed_size + sub_batch_offset, &loc[0],
+                          outer_batch_offset,
+                      &scratch_pointer[0] + base_offset + 2 * i * committed_size + outer_batch_offset, &loc[0],
                       batch_size, it, scale_factor, problem_size, static_cast<const Scalar*>(nullptr),
                       twiddles_ptr + intermediate_twiddles_offset, static_cast<Scalar*>(nullptr),
                       &loc_store_modifier[0]);
                 } else if (level_spec_const == detail::level::SUBGROUP) {
-                  int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
-                  int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
+                  int factor_wi = kh.get_specialization_constant<GlobalSpecConstSGFactorWI>();
+                  int factor_sg = kh.get_specialization_constant<GlobalSpecConstSGFactorSG>();
                   subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
                                          ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
                       factor_wi, factor_sg,
                       static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * committed_size +
-                          sub_batch_offset,
-                      &scratch_pointer[0] + base_offset + 2 * committed_size + sub_batch_offset, &loc[0],
+                          outer_batch_offset,
+                      &scratch_pointer[0] + base_offset + 2 * committed_size + outer_batch_offset, &loc[0],
                       &loc_twiddles[0], batch_size, it, twiddles_ptr + local_twiddles_offset, scale_factor,
                       static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
                       static_cast<Scalar*>(nullptr), &loc_store_modifier[0]);
@@ -158,27 +194,15 @@ struct dispatch_kernel_struct {
             sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
                                round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
                               {16, 16}),
-            [=](sycl::nd_item<2> it) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto sub_batches_product = device_factors[2 * num_factors + KernelID - 1];
-              for (std::size_t sub_batch = 0; sub_batch < sub_batches_product; sub_batch++) {
-                std::size_t sub_batch_offset = 0;
-                if constexpr (KernelID == 1) {
-                  sub_batch_offset = sub_batch * device_factors[num_factors];
-                } else {
-                  unrolled_loop<0, KernelID, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
-                    if (j == KernelID - 1) {
-                      sub_batch_offset += (sub_batch % device_factors[j]) * device_factors[num_factors + j];
-                    } else {
-                      // sub_batch_offset += ((sub_batch_product / inclusive_scan[j]) % factor[j]) * sub_batch[j]
-                      sub_batch_offset += ((sub_batch / (sub_batches_product / device_factors[2 * num_factors + j])) %
-                                           device_factors[j]) *
-                                          device_factors[num_factors + j];
-                    }
-                  });
-                }
+            [=](sycl::nd_item<2> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+              auto num_factors_spec_const = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+              auto outer_batch_product = get_outer_batch_product<KernelID>(device_factors, num_factors_spec_const);
+              for (std::size_t sub_batch = 0; sub_batch < outer_batch_product; sub_batch++) {
+                auto outer_batch_offset = get_outer_batch_offset<KernelID>(device_factors, num_factors_spec_const,
+                                                                           sub_batch, outer_batch_product);
                 generic_transpose(fft_size, batch_size, 16,
-                                  scratch_pointer + 2 * i * committed_size + base_offset + sub_batch_offset,
-                                  out_acc_or_usm + base_offset + 2 * i * committed_size + sub_batch_offset, loc, it);
+                                  scratch_pointer + 2 * i * committed_size + base_offset + outer_batch_offset,
+                                  out_acc_or_usm + base_offset + 2 * i * committed_size + outer_batch_offset, loc, it);
               }
             });
       });
@@ -227,9 +251,9 @@ struct dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, TransposeIn, Transpos
                                        ApplyStoreModifier, ApplyScaleFactor, SubgroupSize>>(
             sycl::nd_range<1>(global_range, local_range),
             [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto level_spec_const = kh.get_specialization_constant<SpecConstLevel>();
+              auto level_spec_const = kh.get_specialization_constant<GlobalSpecConstLevel>();
               if (level_spec_const == detail::level::WORKITEM) {
-                std::size_t problem_size = kh.get_specialization_constant<SpecConstFftSize>();
+                std::size_t problem_size = kh.get_specialization_constant<GlobalSpecConstFftSize>();
                 workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
                                        ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t, Scalar>(
                     static_cast<const Scalar*>(&in_ptr_or_acc[0] + base_offset + 2 * i * committed_size),
@@ -237,8 +261,8 @@ struct dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, TransposeIn, Transpos
                     problem_size, static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
                     static_cast<Scalar*>(nullptr), &loc_store_modifier[0]);
               } else if (level_spec_const == detail::level::SUBGROUP) {
-                int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
-                int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
+                int factor_wi = kh.get_specialization_constant<GlobalSpecConstSGFactorWI>();
+                int factor_sg = kh.get_specialization_constant<GlobalSpecConstSGFactorSG>();
                 subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
                                        ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
                     factor_wi, factor_sg, &in_ptr_or_acc[0] + base_offset + 2 * i * committed_size,

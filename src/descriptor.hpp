@@ -181,7 +181,8 @@ class committed_descriptor {
    * @return detail::level
    */
   template <int SubgroupSize>
-  detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids) {
+  detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids,
+                                       std::vector<sycl::kernel_id>& transpose_kernel_ids) {
     factors.clear();
 
     // TODO: check and support all the parameter values
@@ -247,14 +248,16 @@ class committed_descriptor {
 
     auto select_impl = [&]<int KernelID>(std::size_t input_size) -> void {
       if (detail::fits_in_wi<Scalar>(input_size)) {
-        transpose_kernel_bundle.push_back(build_transpose_kernel<KernelID, PORTFFT_SUBGROUP_SIZES>());
+        transpose_kernel_ids.push_back(
+            detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         levels.push_back(detail::level::WORKITEM);
         ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
         return;
       }
       if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
-        transpose_kernel_bundle.push_back(build_transpose_kernel<KernelID, PORTFFT_SUBGROUP_SIZES>());
+        transpose_kernel_ids.push_back(
+            detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         levels.push_back(detail::level::SUBGROUP);
         ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         factors.push_back(input_size);
@@ -381,7 +384,8 @@ class committed_descriptor {
     // member that is initialized by this function.
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
-    level = prepare_implementation<SubgroupSize>(ids);
+    std::vector<sycl::kernel_id> transpose_kernel_ids;
+    level = prepare_implementation<SubgroupSize>(ids, transpose_kernel_ids);
     for (const auto& kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
@@ -391,12 +395,20 @@ class committed_descriptor {
     for (auto in_bundle : input_bundles) {
       exec_bundle.push_back(build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(in_bundle));
     }
+
+    if (level == detail::level::GLOBAL) {
+      for (const auto& transpose_kernel_id : transpose_kernel_ids) {
+        transpose_kernel_bundle.push_back(build_transpose_kernel<SubgroupSize, OtherSGSizes...>(transpose_kernel_id));
+      }
+    }
   }
 
-  template <int KernelID, int SubgroupSize, int... OtherSGSizes>
-  sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel() {
-    auto transpose_in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-        queue.get_context(), detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
+  template <int SubgroupSize, int... OtherSGSizes>
+  sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel(
+      const sycl::kernel_id& transpose_kernel_id) {
+    auto transpose_in_bundle =
+        sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), transpose_kernel_id);
+    in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(factors.size());
     return build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(transpose_in_bundle);
   }
 
@@ -477,6 +489,10 @@ class committed_descriptor {
     }
   }
 
+  /**
+   * Helper function for copy assignment and copy constructor
+   * @param desc committed_descriptor to be copied
+   */
   void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
 #define COPY(x) x = desc.x;
     COPY(params)
