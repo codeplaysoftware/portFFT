@@ -31,6 +31,23 @@
 
 namespace portfft::detail {
 
+template <typename T>
+struct basic_view {
+  using element_type = T;
+  using reference = T&;
+  static constexpr bool is_padded = false;
+  T* data;
+
+  // Constructor: Create a view of a pointer.
+  constexpr basic_view(T* ptr) noexcept : data(ptr){};
+
+  // Index into the view.
+  template <typename IdxT>
+  __attribute__((always_inline)) inline constexpr reference operator[](IdxT i) const {
+    return data[i];
+  }
+};
+
 /**
  * If Pad is true transforms an index into local memory to skip one element for every
  * PORTFFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
@@ -66,7 +83,7 @@ struct padded_view {
   // Index into the view.
   template <typename IdxT>
   __attribute__((always_inline)) inline constexpr reference operator[](IdxT i) const {
-    return data[pad_local<Pad>(i, BankLinesPerPad)];
+    return data[pad_local<Pad>(static_cast<std::size_t>(i), BankLinesPerPad)];
   }
 };
 

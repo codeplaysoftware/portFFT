@@ -84,6 +84,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   constexpr std::size_t M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
   constexpr std::size_t BankLinesPerPad = bank_lines_per_pad_wg(2 * sizeof(T) * M);
+  auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
 
   std::size_t max_num_batches_in_local_mem = [=]() {
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
@@ -113,8 +114,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // transposition requested by the caller
-        global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(
-            global_data, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
+        global2local_transposed<level::WORKGROUP>(global_data, input, local_view, offset / FFTSize, FFTSize,
+                                                  n_transforms, max_num_batches_in_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
@@ -130,13 +131,12 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
         // in a strided fashion.
-        local_strided_2_global_strided_transposed<detail::pad::DO_PAD>(
-            loc, output, offset, 2 * max_num_batches_in_local_mem, N, M, FFTSize, BankLinesPerPad, global_data);
+        local_strided_2_global_strided_transposed(local_view, output, offset, 2 * max_num_batches_in_local_mem, N, M,
+                                                  FFTSize, global_data);
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
       global2local<level::WORKGROUP, SubgroupSize>(global_data, input, local_view, 2 * FFTSize, offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, LayoutIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
@@ -144,7 +144,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
-      local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, N, M, M, loc, output, offset);
+      local2global_transposed(global_data, N, M, M, local_view, output, offset);
       sycl::group_barrier(global_data.it.get_group());
     }
   }

@@ -114,7 +114,9 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
   for (int j = begin; j < end; j += step) {
     int j_inner = j % StrideWithinDFT;
     int j_outer = j / StrideWithinDFT;
+    auto loc_view = make_padded_view<detail::pad::DO_PAD, BankLinesPerPad>(loc);
     T* loc_start = loc + detail::pad_local(static_cast<std::size_t>(2 * j_outer * OuterStride), BankLinesPerPad);
+    auto loc_start_view = make_padded_view<detail::pad::DO_PAD, BankLinesPerPad>(loc_start);
     bool working = true;
     if constexpr (ExcessSGs) {
       working = j < TotalDFTs;
@@ -125,15 +127,14 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     if (working) {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
-        transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
-            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+        transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, FactWi>(
+            global_data, priv, loc_view, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
             static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 1L,
-            static_cast<std::size_t>(wi_id_in_fft * FactWi), BankLinesPerPad);
+            static_cast<std::size_t>(wi_id_in_fft * FactWi));
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
-        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(global_data, loc_start, priv,
-                                                                               wi_id_in_fft, j_inner, StrideWithinDFT);
+        local2private_transposed<FactWi>(global_data, loc_start_view, priv, wi_id_in_fft, j_inner, StrideWithinDFT);
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
@@ -166,16 +167,15 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
-        transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
-            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+        transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, FactWi>(
+            global_data, priv, loc_view, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
             static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride),
-            static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
+            static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft));
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride,
-            StrideWithinDFT);
+        private2local_2strides<FactWi>(global_data, priv, loc_view, wi_id_in_fft, FactSg * StrideWithinDFT,
+                                       j_inner + j_outer * OuterStride, StrideWithinDFT);
       }
     }
   }
