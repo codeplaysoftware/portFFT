@@ -57,6 +57,7 @@ template <pad Pad, std::size_t BankLinesPerPad, typename T>
 struct padded_view {
   using element_type = T;
   using reference = T&;
+  static constexpr bool is_padded = Pad == pad::DO_PAD;
   T* data;
 
   // Constructor: Create a view of a pointer.
@@ -81,6 +82,7 @@ struct padded_view {
  */
 template <pad Pad, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) constexpr padded_view<Pad, BankLinesPerPad, T> make_padded_view(T* ptr) noexcept {
+  static_assert(std::is_pointer_v<T*>, "Expected pointer argument.");
   return padded_view<Pad, BankLinesPerPad, T>(ptr);
 }
 

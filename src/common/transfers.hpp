@@ -44,10 +44,8 @@ namespace portfft {
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @tparam LocalViewT The type of the local memory view
  * @param global_data global data for the kernel
  * @param global pointer to global memory
  * @param local pointer to local memory
@@ -55,10 +53,11 @@ namespace portfft {
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global, T* local,
+template <detail::level Level, int SubgroupSize, typename T, typename LocalViewT>
+PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global, LocalViewT local,
                                  std::size_t total_num_elems, std::size_t global_offset = 0,
                                  std::size_t local_offset = 0) {
+  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Different source / destination types.");
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
   constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
@@ -99,16 +98,15 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   // Each subgroup loads a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec loaded = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset + i]));
-    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
-      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-        std::size_t local_idx =
-            detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        global_data.sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
+    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || !LocalViewT::is_padded) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
+        global_data.sg.store(
+            detail::get_local_multi_ptr(&local[local_offset + i + static_cast<std::size_t>(j) * local_size]),
+            loaded[j]);
       });
     } else {
-      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-        std::size_t local_idx = detail::pad_local<Pad>(
-            local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
+      detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
+        std::size_t local_idx = local_offset + i + static_cast<std::size_t>(j) * local_size + local_id;
         local[local_idx] = loaded[j];
         global_data.log_message(func_name, "from", global_offset + i + static_cast<std::size_t>(j), "to", local_idx,
                                 "value", loaded[j]);
@@ -123,7 +121,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
 
   // load the first few unaligned elements
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id, BankLinesPerPad);
+    std::size_t local_idx = local_offset + local_id;
     global_data.log_message(func_name, "first unaligned from", global_offset + local_id, "to", local_idx, "value",
                             global[global_offset + local_id]);
     local[local_idx] = global[global_offset + local_id];
@@ -135,8 +133,8 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec loaded;
     loaded = *reinterpret_cast<const T_vec*>(&global[global_offset + i]);
-    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
+      std::size_t local_idx = local_offset + i + static_cast<std::size_t>(j);
       global_data.log_message(func_name, "aligned chunk from", global_offset + i, "to", local_idx, "value", loaded[j]);
       local[local_idx] = loaded[j];
     });
@@ -145,8 +143,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   // We can not load `ChunkSize`-sized chunks anymore, so we load the largest we can - `last_chunk_size`-sized one
   std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (std::size_t j = 0; j < last_chunk_size; j++) {
-    std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j, BankLinesPerPad);
+    std::size_t local_idx = local_offset + rounded_down_num_elems + local_id * last_chunk_size + j;
     std::size_t global_idx = global_offset + rounded_down_num_elems + local_id * last_chunk_size + j;
     global_data.log_message(func_name, "last chunk from", global_idx, "to", local_idx, "value", global[global_idx]);
     local[local_idx] = global[global_idx];
@@ -154,7 +151,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   // Less than group size elements remain. Each workitem loads at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
+    std::size_t local_idx = local_offset + my_last_idx;
     global_data.log_message(func_name, "last element from", global_offset + my_last_idx, "to", local_idx, "value",
                             global[global_offset + my_last_idx]);
     local[local_idx] = global[global_offset + my_last_idx];
@@ -166,9 +163,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @tparam LocalViewT The type of the local memory view
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
  * @param local pointer to local memory
@@ -177,10 +172,11 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T* local, T* global,
+template <detail::level Level, int SubgroupSize, typename LocalViewT, typename T>
+PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const LocalViewT local, T* global,
                                  std::size_t total_num_elems, std::size_t local_offset = 0,
                                  std::size_t global_offset = 0) {
+  static_assert(std::is_same_v<typename LocalViewT::element_type, T>, "Mismatching source / destination element type.");
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
   constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
@@ -221,18 +217,14 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   // Each subgroup stores a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
+    if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || !LocalViewT::is_padded) {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-        std::size_t local_idx =
-            detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        global_data.log_message(func_name, "from", local_idx, "to", global_offset + i + static_cast<std::size_t>(j),
-                                "value", to_store[j]);
+        std::size_t local_idx = local_offset + i + static_cast<std::size_t>(j) * local_size;
         to_store[j] = global_data.sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-        std::size_t local_idx = detail::pad_local<Pad>(
-            local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
+        std::size_t local_idx = local_offset + i + static_cast<std::size_t>(j) * local_size + local_id;
         global_data.log_message(func_name, "from", local_idx, "to", global_offset + i + static_cast<std::size_t>(j),
                                 "value", to_store[j]);
         to_store[j] = local[local_idx];
@@ -248,7 +240,7 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
 
   // store the first few unaligned elements
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id, BankLinesPerPad);
+    std::size_t local_idx = local_offset + local_id;
     global_data.log_message(func_name, "first unaligned from", local_idx, "to", global_offset + local_id, "value",
                             local[local_idx]);
     global[global_offset + local_id] = local[local_idx];
@@ -259,8 +251,8 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   // Each workitem stores a chunk of `ChunkSize` consecutive elements. Chunks stored by a group are consecutive.
   for (std::size_t i = local_id * ChunkSize; i < rounded_down_num_elems; i += stride) {
     T_vec to_store;
-    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
-      std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
+    detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE((always_inline)) {
+      std::size_t local_idx = local_offset + i + static_cast<std::size_t>(j);
       global_data.log_message(func_name, "aligned chunk from", local_idx, "to",
                               global_offset + i + static_cast<std::size_t>(j), "value", to_store[j]);
       to_store[j] = local[local_idx];
@@ -271,8 +263,7 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   // We can not store `ChunkSize`-sized chunks anymore, so we store the largest we can - `last_chunk_size`-sized one
   std::size_t last_chunk_size = (total_num_elems - rounded_down_num_elems) / local_size;
   for (std::size_t j = 0; j < last_chunk_size; j++) {
-    std::size_t local_idx =
-        detail::pad_local<Pad>(local_offset + rounded_down_num_elems + local_id * last_chunk_size + j, BankLinesPerPad);
+    std::size_t local_idx = local_offset + rounded_down_num_elems + local_id * last_chunk_size + j;
     std::size_t global_idx = global_offset + rounded_down_num_elems + local_id * last_chunk_size + j;
     global_data.log_message(func_name, "last chunk from", local_idx, "to", global_idx, "value", local[local_idx]);
     global[global_idx] = local[local_idx];
@@ -280,10 +271,9 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   // Less than group size elements remain. Each workitem stores at most one.
   std::size_t my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
-    std::size_t local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
-    global_data.log_message(func_name, "last element from", local_idx, "to", global_offset + my_last_idx, "value",
-                            local[local_idx]);
-    global[global_offset + my_last_idx] = local[local_idx];
+    global_data.log_message(func_name, "last element from", local_offset + my_last_idx, "to",
+                            global_offset + my_last_idx, "value", local[local_offset + my_last_idx]);
+    global[global_offset + my_last_idx] = local[local_offset + my_last_idx];
   }
 }
 

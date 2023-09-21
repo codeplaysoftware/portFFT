@@ -80,8 +80,6 @@ void test() {
           std::size_t local_id = it.get_group().get_local_linear_id();
 
           ftype priv[N];
-          ftype* loc1_work = &loc1[N_sentinel_values];
-          ftype* loc2_work = &loc2[N_sentinel_values];
           auto loc1_work_view = portfft::detail::make_padded_view<Pad, BankGroupsPerPad>(&loc1[N_sentinel_values]);
           auto loc2_work_view = portfft::detail::make_padded_view<Pad, BankGroupsPerPad>(&loc2[N_sentinel_values]);
           if (local_id == 0) {
@@ -91,14 +89,14 @@ void test() {
             }
           }
           group_barrier(it.get_group());
-          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(global_data, a_dev_work,
-                                                                                          loc1_work, N * wg_size);
+          portfft::global2local<detail::level::WORKGROUP, sg_size>(global_data, a_dev_work, loc1_work_view,
+                                                                   N * wg_size);
           group_barrier(it.get_group());
           portfft::local2private<N>(global_data, loc1_work_view, priv, local_id, N);
           portfft::private2local<N>(global_data, priv, loc2_work_view, local_id, N);
           group_barrier(it.get_group());
-          portfft::local2global<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(global_data, loc2_work,
-                                                                                          b_dev_work, N * wg_size);
+          portfft::local2global<detail::level::WORKGROUP, sg_size>(global_data, loc2_work_view, b_dev_work,
+                                                                   N * wg_size);
           group_barrier(it.get_group());
           if (local_id == 0) {
             for (std::size_t i = 0; i < N_sentinel_values; i++) {

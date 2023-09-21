@@ -75,6 +75,7 @@ template <direction Dir, detail::layout LayoutIn, std::size_t FFTSize, int Subgr
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
                                    global_data_struct global_data, const T* twiddles, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "n_transforms", n_transforms);
+  auto loc_twiddles_view = make_padded_view<pad::DONT_PAD, 0>(loc_twiddles);
   std::size_t num_workgroups = global_data.it.get_group_range(0);
   std::size_t wg_id = global_data.it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
@@ -93,7 +94,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   }();
   std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles_view, 2 * (M + N));
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
@@ -135,8 +136,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       sycl::group_barrier(global_data.it.get_group());
     } else {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
-                                                                                 offset);
+      auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
+      global2local<level::WORKGROUP, SubgroupSize>(global_data, input, local_view, 2 * FFTSize, offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, LayoutIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
           loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, 0);

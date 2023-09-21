@@ -84,6 +84,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   global_data.log_message_global(__func__, "entered", "FactorWI", FactorWI, "FactorSG", FactorSG, "n_transforms",
                                  n_transforms);
   constexpr int NRealsPerWI = 2 * FactorWI;
+  auto loc_twiddles_view = make_padded_view<pad::DONT_PAD, 0>(loc_twiddles);
 
   T priv[NRealsPerWI];
   std::size_t subgroup_local_id = global_data.sg.get_local_linear_id();
@@ -116,8 +117,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   constexpr std::size_t BankLinesPerPad = 1;
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles,
-                                                                 NRealsPerWI * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles_view, NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
   global_data.log_dump_local("twiddles in local memory:", loc_twiddles, NRealsPerWI * FactorSG);
 
@@ -207,16 +207,16 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.it.get_group());
     } else {
       // Codepath taken if input is not transposed
+      auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
 
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, n_reals_per_fft * (i - id_of_fft_in_sg),
-          subgroup_id * n_reals_per_sg);
+      global2local<level::SUBGROUP, SubgroupSize>(
+          global_data, input, local_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
+          n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
       sycl::group_barrier(global_data.sg);
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
         local2private<NRealsPerWI>(global_data, local_view, priv, subgroup_local_id, NRealsPerWI,
                                    subgroup_id * n_reals_per_sg);
         global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
@@ -256,8 +256,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
         global_data.log_message_global(
             __func__, "storing transposed data from local to global memory (FactorSG != SubgroupSize)");
-        local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-            global_data, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
+        local2global<level::SUBGROUP, SubgroupSize>(
+            global_data, local_view, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
             n_reals_per_fft * (i - id_of_fft_in_sg));
         sycl::group_barrier(global_data.sg);
       }
