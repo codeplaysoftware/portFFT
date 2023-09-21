@@ -45,8 +45,8 @@ constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstNumFactors{
  * @return Outer batch product
  */
 template <int KernelID>
-PORTFFT_INLINE std::size_t get_outer_batch_product(std::size_t* device_factors, std::size_t num_factors) {
-  if (KernelID == (num_factors - 1) && KernelID != 1) {
+PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_factors, std::size_t num_factors) {
+  if (KernelID == static_cast<int>(num_factors - 1) && KernelID != 1) {
     return device_factors[2 * num_factors + KernelID - 2];
   }
   return device_factors[2 * num_factors + KernelID - 1];
@@ -64,12 +64,12 @@ PORTFFT_INLINE std::size_t get_outer_batch_product(std::size_t* device_factors, 
  * @return
  */
 template <int KernelID>
-PORTFFT_INLINE std::size_t get_outer_batch_offset(std::size_t* device_factors, std::size_t num_factors,
+PORTFFT_INLINE std::size_t get_outer_batch_offset(const std::size_t* device_factors, std::size_t num_factors,
                                                   std::size_t iter_value, std::size_t outer_batch_product) {
   auto get_outer_batch_offset_impl = [&]<int N>() -> std::size_t {
     std::size_t outer_batch_offset = 0;
     unrolled_loop<0, N, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
-      if (j == N - 1) {
+      if (j == static_cast<std::size_t>(N - 1)) {
         outer_batch_offset += 2 * (iter_value % device_factors[j]) * device_factors[num_factors + j];
       }
       outer_batch_offset +=
@@ -81,7 +81,7 @@ PORTFFT_INLINE std::size_t get_outer_batch_offset(std::size_t* device_factors, s
   if constexpr (KernelID == 1) {
     return 2 * iter_value * device_factors[num_factors];
   }
-  if (KernelID == num_factors - 1) {
+  if (KernelID == static_cast<int>(num_factors - 1)) {
     return get_outer_batch_offset_impl.template operator()<KernelID - 1>();
   }
   return get_outer_batch_offset_impl.template operator()<KernelID>();
@@ -107,7 +107,6 @@ struct dispatch_kernel_struct {
     auto level_id = desc.levels[KernelID];
     const Scalar* twiddles_ptr = static_cast<const Scalar*>(desc.twiddles_forward.get());
     const std::size_t* device_factors = static_cast<const std::size_t*>(desc.dev_factors.get());
-    std::size_t num_factors = desc.factors.size();
     desc.queue.wait();
     for (std::size_t i = 0; i < desc.num_batches_in_l2 && i + batch_num < desc.params.number_of_transforms; i++) {
       desc.queue.submit([&](sycl::handler& cgh) {

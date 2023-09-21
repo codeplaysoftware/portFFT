@@ -182,7 +182,7 @@ class committed_descriptor {
    */
   template <int SubgroupSize>
   detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids,
-                                       std::vector<sycl::kernel_id>& transpose_kernel_ids) {
+                                       std::vector<std::vector<sycl::kernel_id>>& transpose_kernel_ids) {
     factors.clear();
 
     // TODO: check and support all the parameter values
@@ -384,7 +384,7 @@ class committed_descriptor {
     // member that is initialized by this function.
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
-    std::vector<sycl::kernel_id> transpose_kernel_ids;
+    std::vector<std::vector<sycl::kernel_id>> transpose_kernel_ids;
     level = prepare_implementation<SubgroupSize>(ids, transpose_kernel_ids);
     for (const auto& kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
@@ -397,7 +397,7 @@ class committed_descriptor {
     }
 
     if (level == detail::level::GLOBAL) {
-      for (const auto& transpose_kernel_id : transpose_kernel_ids) {
+      for (auto& transpose_kernel_id : transpose_kernel_ids) {
         transpose_kernel_bundle.push_back(build_transpose_kernel<SubgroupSize, OtherSGSizes...>(transpose_kernel_id));
       }
     }
@@ -405,10 +405,10 @@ class committed_descriptor {
 
   template <int SubgroupSize, int... OtherSGSizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel(
-      const sycl::kernel_id& transpose_kernel_id) {
+      std::vector<sycl::kernel_id>& transpose_kernel_id) {
     auto transpose_in_bundle =
         sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), transpose_kernel_id);
-    in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(factors.size());
+    // transpose_in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(factors.size());
     return build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(transpose_in_bundle);
   }
 
