@@ -36,9 +36,8 @@ namespace detail {
  */
 template <typename T, typename TIndex>
 std::complex<T> calculate_twiddle(TIndex n, TIndex total) {
-  constexpr T MinusTwoPi = static_cast<T>(-2 * M_PI);
-  T theta = MinusTwoPi * static_cast<T>(n) / static_cast<T>(total);
-  return {sycl::cos(theta), sycl::sin(theta)};
+  T theta = static_cast<T>(-2) * static_cast<T>(n) / static_cast<T>(total);
+  return {sycl::cospi(theta), sycl::sinpi(theta)};
 }
 
 }  // namespace detail
