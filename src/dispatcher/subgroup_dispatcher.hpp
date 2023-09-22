@@ -85,7 +85,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                  n_transforms);
   constexpr int NRealsPerWI = 2 * FactorWI;
   constexpr std::size_t BankLinesPerPad = 1;
-  auto loc_twiddles_view = make_padded_view<pad::DONT_PAD, 0>(loc_twiddles);
+  auto loc_twiddles_view = basic_view(loc_twiddles);
   auto local_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
 
   T priv[NRealsPerWI];
@@ -188,8 +188,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to local memory (SubgroupSize != FactorSG)");
             // Store back to local memory only
-            private2local_transposed<FactorWI>(global_data, priv, local_view, static_cast<int>(id_of_wi_in_fft),
-                                               FactorSG, static_cast<int>(sub_batch),
+            private2local_transposed<FactorWI>(global_data, basic_view(priv), local_view,
+                                               static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch),
                                                static_cast<int>(max_num_batches_local_mem));
           }
         }

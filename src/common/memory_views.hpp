@@ -103,6 +103,42 @@ __attribute__((always_inline)) constexpr padded_view<Pad, BankLinesPerPad, T> ma
   return padded_view<Pad, BankLinesPerPad, T>(ptr);
 }
 
+/** View a real array as data in complex-complex form.
+ * @tparam BaseView The underlying view of real/float/double data
+ */
+template <typename BaseView>
+struct complex_complex_view : BaseView {
+  using element_type = std::pair<typename BaseView::element_type, typename BaseView::element_type>;
+  using reference = element_type&;
+  using BaseView::data;
+  using BaseView::is_padded;
+
+  static_assert(std::is_floating_point_v<typename BaseView::element_type>, "Expected floating point real type.");
+
+  constexpr complex_complex_view(element_type* ptr) noexcept : BaseView(ptr){};
+  constexpr complex_complex_view(BaseView base) noexcept : BaseView(base.data){};
+
+  // Index into the view.
+  template <typename IdxT>
+  __attribute__((always_inline)) inline constexpr reference operator[](IdxT i) const {
+    return {BaseView::operator[](i), BaseView::operator[](i + 1)};
+  }
+};
+
+/**
+ * Make a complex-complex view from a pointer
+ *
+ * @tparam T The element type of the view.
+ * @param ptr A pointer to the memory to make a view of
+ * @return A memory view
+ */
+template <typename T>
+__attribute__((always_inline)) constexpr complex_complex_view<basic_view<T>> make_complex_complex_view(
+    T* ptr) noexcept {
+  static_assert(std::is_pointer_v<T*>, "Expected pointer argument.");
+  return basic_view<T>(ptr);
+}
+
 }  // namespace portfft::detail
 
 #endif  // PORTFFT_COMMON_MEMORY_VIEWS_HPP

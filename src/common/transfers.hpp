@@ -411,6 +411,7 @@ PORTFFT_INLINE inline void global2local_transposed(detail::global_data_struct gl
  *
  * @tparam NumElementsPerWI Elements per workitem
  * @tparam LocalViewT The type of the local memory view
+ * @tparam PrivViewT The type of the private memory view
  * @tparam T type of the scalar used for computations
  *
  * @param global_data global data for the kernel
@@ -421,48 +422,17 @@ PORTFFT_INLINE inline void global2local_transposed(detail::global_data_struct gl
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int NumElementsPerWI, typename LocalViewT, typename T>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const T* priv, LocalViewT local,
-                                             int thread_id, int num_workers, int col_num, int stride) {
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Different source / destination element types.");
+template <int NumElementsPerWI, typename PrivateViewT, typename LocalViewT>
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const PrivateViewT priv,
+                                             LocalViewT local, int thread_id, int num_workers, int col_num,
+                                             int stride) {
+  static_assert(std::is_same_v<typename PrivateViewT::element_type, typename LocalViewT::element_type>,
+                "Different source / destination element types.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "thread_id", thread_id, "num_workers", num_workers, "col_num", col_num,
                                 "stride", stride);
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
     auto loc_base_offset = 2 * stride * (i * num_workers + thread_id) + 2 * col_num;
-    global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
-    local[loc_base_offset] = priv[2 * i];
-    local[loc_base_offset + 1] = priv[2 * i + 1];
-  });
-}
-
-/**
- * Copies data from private to local memory, allowing separate strides for thread id and id of element in workitem,
- * allowing for up to two transposes of the data.
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam LocalViewT The type of the local memory view
- * @tparam T type of the scalar used for computations
- *
- * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param local View of local memory
- * @param thread_id Id of the working thread for the FFT
- * @param stride_num_workers stride in local memory between consecutive elements in a workitem
- * @param destination_offset Offset to local memory destination
- * @param stride Stride in local memory between consecutive workitems
- */
-template <int NumElementsPerWI, typename LocalViewT, typename T>
-PORTFFT_INLINE inline void private2local_2strides(detail::global_data_struct global_data, const T* priv,
-                                                  LocalViewT local, int thread_id, int stride_num_workers,
-                                                  int destination_offset, int stride) {
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Different source / destination element types.");
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "thread_id", thread_id, "stride_num_workers", stride_num_workers,
-                                "destination_offset", destination_offset, "stride", stride);
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
-    auto loc_base_offset = 2 * (stride_num_workers * i + stride * thread_id + destination_offset);
     global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
     global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
     local[loc_base_offset] = priv[2 * i];
@@ -541,8 +511,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
 }
 
 /**
- * Function meant to transfer data between local and private memory, and is able to handle 3 levels
- * of transpositions / strides and combine them into a single load / store.
+ * Transfer data between local and private memory, with 3 levels of transpositions / strides.
+ * priv[i] <-> loc[s1 (s2 (s3 * i + o3) + o2) + o1]
  *
  * @tparam T Scalar Type
  * @tparam TransferDirection Direction of Transfer
