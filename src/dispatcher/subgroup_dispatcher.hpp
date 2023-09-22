@@ -160,7 +160,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working_inner) {
           global_data.log_message_global(__func__, "loading transposed data from local to private memory");
           // load from local memory in a transposed manner
-          local2private_transposed<FactorWI>(global_data, local_view, priv, static_cast<int>(id_of_wi_in_fft),
+          local2private_transposed<FactorWI>(global_data, make_complex_complex_view(local_view),
+                                             make_complex_complex_view(priv), static_cast<int>(id_of_wi_in_fft),
                                              static_cast<int>(sub_batch), static_cast<int>(max_num_batches_local_mem));
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }

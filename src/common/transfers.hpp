@@ -312,28 +312,27 @@ __attribute__((always_inline)) inline void local2private(detail::global_data_str
  *
  * @tparam NumElementsPerWI Elements per workitem
  * @tparam LocalViewT The type of the local memory view
- * @tparam T type of the scalar used for computations
+ * @tparam PrivViewT The type of the private memory view
  *
  * @param global_data global data for the kernel
- * @param local Pointer to local memory
- * @param priv Pointer to private memory
+ * @param local View of local memory
+ * @param priv View of private memory
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <int NumElementsPerWI, typename LocalViewT, typename T>
+template <int NumElementsPerWI, typename LocalViewT, typename PrivViewT>
 PORTFFT_INLINE inline void local2private_transposed(detail::global_data_struct global_data, const LocalViewT local,
-                                                    T* priv, int thread_id, int col_num, int stride) {
+                                                    PrivViewT priv, int thread_id, int col_num, int stride) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "NumElementsPerWI", NumElementsPerWI, "thread_id", thread_id, "col_num",
                                 col_num, "stride", stride);
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Different source / destination element types.");
+  static_assert(std::is_same_v<typename PrivViewT::element_type, typename LocalViewT::element_type>,
+                "Different source / destination element types.");
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
-    auto local_idx = 2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num;
-    global_data.log_message(func_name, "from", local_idx, "to", 2 * i, "value", local[local_idx]);
-    global_data.log_message(func_name, "from", local_idx + 1, "to", 2 * i + 1, "value", local[local_idx + 1]);
-    priv[2 * i] = local[local_idx];
-    priv[2 * i + 1] = local[local_idx + 1];
+    auto local_idx = stride * (thread_id * NumElementsPerWI + i) + col_num;
+    global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
+    priv[i] = local[local_idx];
   });
 }
 
@@ -512,14 +511,14 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * Transfer data between local and private memory, with 3 levels of transpositions / strides.
  * priv[i] <-> loc[s1 (s2 (s3 * i + o3) + o2) + o1]
  *
- * @tparam T Scalar Type
  * @tparam TransferDirection Direction of Transfer
- * @tparam LocalViewT The view type of local memory
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
+ * @tparam PrivViewT The view type of the private memory
+ * @tparam LocalViewT The view type of local memory
  *
  * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param loc Pointer to local memory
+ * @param priv A view of private memory
+ * @param loc A view of local memory
  * @param stride_1 Innermost stride
  * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
@@ -527,11 +526,12 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param stride_3 Outermost stride
  * @param offset_3 Outermost offset
  */
-template <detail::transfer_direction TransferDirection, int NumComplexElements, typename LocalViewT, typename T>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* priv, LocalViewT loc,
+template <detail::transfer_direction TransferDirection, int NumComplexElements, typename PrivViewT, typename LocalViewT>
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, PrivViewT priv, LocalViewT loc,
                                      std::size_t stride_1, std::size_t offset_1, std::size_t stride_2,
                                      std::size_t offset_2, std::size_t stride_3, std::size_t offset_3) {
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Source / destination element type mismatch.");
+  static_assert(std::is_same_v<typename PrivViewT::element_type, typename LocalViewT::element_type>,
+                "Source / destination element type mismatch.");
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
@@ -539,16 +539,12 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
     std::size_t j_size_t = static_cast<std::size_t>(j);
     std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
-      global_data.log_message(func_name, "from", base_offset, "to", 2 * j, "value", loc[base_offset]);
-      global_data.log_message(func_name, "from", base_offset + 1, "to", 2 * j + 1, "value", loc[base_offset + 1]);
-      priv[2 * j] = loc[base_offset];
-      priv[2 * j + 1] = loc[base_offset + 1];
+      global_data.log_message(func_name, "from", base_offset, "to", j, "value", loc[base_offset]);
+      priv[j] = loc[base_offset];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
-      global_data.log_message(func_name, "from", 2 * j, "to", base_offset, "value", priv[2 * j]);
-      global_data.log_message(func_name, "from", 2 * j + 1, "to", base_offset + 1, "value", priv[2 * j + 1]);
-      loc[base_offset] = priv[2 * j];
-      loc[base_offset + 1] = priv[2 * j + 1];
+      global_data.log_message(func_name, "from", j, "to", base_offset, "value", priv[j]);
+      loc[base_offset] = priv[j];
     }
   });
 }

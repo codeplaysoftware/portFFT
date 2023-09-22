@@ -126,10 +126,10 @@ struct complex_complex_view : BaseView {
 };
 
 /**
- * Make a complex-complex view from a pointer
+ * Make a complex-complex view from another view
  *
  * @tparam View A view type
- * @param ptr A pointer to the memory to make a view of
+ * @param view A view to turn to complex-complex
  * @return A memory view
  */
 template <typename View>
