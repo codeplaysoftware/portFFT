@@ -188,8 +188,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to local memory (SubgroupSize != FactorSG)");
             // Store back to local memory only
-            private2local_transposed<FactorWI>(global_data, basic_view(priv), local_view,
-                                               static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch),
+            private2local_transposed<FactorWI>(global_data, make_complex_complex_view(priv),
+                                               make_complex_complex_view(local_view), static_cast<int>(id_of_wi_in_fft),
+                                               FactorSG, static_cast<int>(sub_batch),
                                                static_cast<int>(max_num_batches_local_mem));
           }
         }

@@ -174,7 +174,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        private2local_transposed<FactWi>(global_data, basic_view(priv), loc_view, wi_id_in_fft, FactSg,
+        private2local_transposed<FactWi>(global_data, make_complex_complex_view(priv),
+                                         make_complex_complex_view(loc_view), wi_id_in_fft, FactSg,
                                          j_inner + j_outer * OuterStride, StrideWithinDFT);
       }
     }

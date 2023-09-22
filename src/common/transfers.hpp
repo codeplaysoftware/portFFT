@@ -432,11 +432,9 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
   global_data.log_message_local(func_name, "thread_id", thread_id, "num_workers", num_workers, "col_num", col_num,
                                 "stride", stride);
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
-    auto loc_base_offset = 2 * stride * (i * num_workers + thread_id) + 2 * col_num;
-    global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
-    local[loc_base_offset] = priv[2 * i];
-    local[loc_base_offset + 1] = priv[2 * i + 1];
+    auto loc_base_offset = stride * (i * num_workers + thread_id) + col_num;
+    global_data.log_message(func_name, "from", i, "to", loc_base_offset, "value", priv[i]);
+    local[loc_base_offset] = priv[i];
   });
 }
 

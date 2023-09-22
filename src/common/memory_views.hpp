@@ -109,7 +109,7 @@ __attribute__((always_inline)) constexpr padded_view<Pad, BankLinesPerPad, T> ma
 template <typename BaseView>
 struct complex_complex_view : BaseView {
   using element_type = std::pair<typename BaseView::element_type, typename BaseView::element_type>;
-  using reference = element_type&;
+  using reference = std::pair<typename BaseView::element_type&, typename BaseView::element_type&>;
   using BaseView::data;
   using BaseView::is_padded;
 
@@ -121,9 +121,21 @@ struct complex_complex_view : BaseView {
   // Index into the view.
   template <typename IdxT>
   __attribute__((always_inline)) inline constexpr reference operator[](IdxT i) const {
-    return {BaseView::operator[](i), BaseView::operator[](i + 1)};
+    return {BaseView::operator[](2 * i), BaseView::operator[](2 * i + 1)};
   }
 };
+
+/**
+ * Make a complex-complex view from a pointer
+ *
+ * @tparam View A view type
+ * @param ptr A pointer to the memory to make a view of
+ * @return A memory view
+ */
+template <typename View>
+__attribute__((always_inline)) constexpr complex_complex_view<View> make_complex_complex_view(View view) noexcept {
+  return complex_complex_view<View>(view);
+}
 
 /**
  * Make a complex-complex view from a pointer
@@ -136,7 +148,7 @@ template <typename T>
 __attribute__((always_inline)) constexpr complex_complex_view<basic_view<T>> make_complex_complex_view(
     T* ptr) noexcept {
   static_assert(std::is_pointer_v<T*>, "Expected pointer argument.");
-  return basic_view<T>(ptr);
+  return complex_complex_view<basic_view<T>>(basic_view<T>(ptr));
 }
 
 }  // namespace portfft::detail
