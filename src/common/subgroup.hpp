@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_SUBGROUP_HPP
 
 #include <common/helpers.hpp>
+#include <common/transfers.hpp>
 #include <common/twiddle.hpp>
 #include <common/twiddle_calc.hpp>
 #include <common/workitem.hpp>
@@ -100,12 +101,15 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_imag = 0;
 
     unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
-      const T multi_re = twiddle<T>::Re[N][idx_in * idx_out % N];
+      const T multi_re = static_cast<T>(
+          sycl::cos(static_cast<float>(-2 * M_PI) * static_cast<float>(idx_in * idx_out % N) / static_cast<float>(N)));
       const T multi_im = [&]() __attribute__((always_inline)) {
         if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[N][idx_in * idx_out % N];
+          return static_cast<T>(sycl::sin(static_cast<float>(-2 * M_PI) * static_cast<float>(idx_in * idx_out % N) /
+                                          static_cast<float>(N)));
         }
-        return -twiddle<T>::Im[N][idx_in * idx_out % N];
+        return static_cast<T>(sycl::sin(static_cast<float>(-2 * M_PI) * static_cast<float>(idx_in * idx_out % N) /
+                                        static_cast<float>(N)));
       }
       ();
       std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
@@ -177,12 +181,15 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   // transpose
   cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
-  const T multi_re = twiddle<T>::Re[N * M][k * n];
+  const T multi_re =
+      static_cast<T>(sycl::cos(static_cast<float>(-2 * M_PI) * static_cast<float>(k * n % N) / static_cast<float>(N)));
   const T multi_im = [&]() __attribute__((always_inline)) {
     if constexpr (Dir == direction::FORWARD) {
-      return twiddle<T>::Im[N * M][k * n];
+      return static_cast<T>(
+          sycl::sin(static_cast<float>(-2 * M_PI) * static_cast<float>(k * n % N) / static_cast<float>(N)));
     }
-    return -twiddle<T>::Im[N * M][k * n];
+    return static_cast<T>(
+        sycl::sin(static_cast<float>(-2 * M_PI) * static_cast<float>(k * n % N) / static_cast<float>(N)));
   }
   ();
   T tmp_real = real * multi_re - imag * multi_im;
@@ -269,7 +276,8 @@ constexpr bool fits_in_sg(TIndex N, int sg_size) {
  * commit
  */
 template <direction Dir, int M, int N, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, const T* sg_twiddles_real,
+                                                  const T* sg_twiddles_imag) {
   int idx_of_wi_in_fft = static_cast<int>(sg.get_local_linear_id()) % N;
 
   detail::unrolled_loop<0, M, 1>([&](int idx_of_element_in_wi) __attribute__((always_inline)) {
@@ -279,8 +287,8 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
     if constexpr (N > 1) {
       detail::cross_sg_dft<Dir, N, 1>(real, imag, sg);
       if (idx_of_element_in_wi > 0) {
-        T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
-        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
+        T twiddle_real = sg_twiddles_real[detail::pad_local(idx_of_element_in_wi * N + idx_of_wi_in_fft, 1)];
+        T twiddle_imag = sg_twiddles_imag[detail::pad_local(idx_of_element_in_wi * N + idx_of_wi_in_fft, 1)];
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
