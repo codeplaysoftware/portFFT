@@ -161,8 +161,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "loading transposed data from local to private memory");
           // load from local memory in a transposed manner
           local2private_transposed<FactorWI>(global_data, make_complex_complex_view(local_view),
-                                             make_complex_complex_view(priv), static_cast<int>(id_of_wi_in_fft),
-                                             static_cast<int>(sub_batch), static_cast<int>(max_num_batches_local_mem));
+                                             make_complex_complex_view(priv), id_of_wi_in_fft, sub_batch,
+                                             max_num_batches_local_mem);
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, global_data.sg, loc_twiddles);
@@ -190,9 +190,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                 __func__, "storing transposed data from private to local memory (SubgroupSize != FactorSG)");
             // Store back to local memory only
             private2local_transposed<FactorWI>(global_data, make_complex_complex_view(priv),
-                                               make_complex_complex_view(local_view), static_cast<int>(id_of_wi_in_fft),
-                                               FactorSG, static_cast<int>(sub_batch),
-                                               static_cast<int>(max_num_batches_local_mem));
+                                               make_complex_complex_view(local_view), id_of_wi_in_fft, FactorSG,
+                                               sub_batch, max_num_batches_local_mem);
           }
         }
       }
@@ -216,7 +215,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.sg);
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NRealsPerWI>(global_data, local_view, priv, subgroup_local_id, NRealsPerWI,
+        local2private<NRealsPerWI>(global_data, local_view, basic_view(priv), subgroup_local_id, NRealsPerWI,
                                    subgroup_id * n_reals_per_sg);
         global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
       }

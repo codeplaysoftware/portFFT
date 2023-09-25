@@ -109,7 +109,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals>(global_data, loc_view, priv, subgroup_local_id, NReals, local_offset);
+        local2private<NReals>(global_data, loc_view, basic_view(priv), subgroup_local_id, NReals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       wi_dft<Dir, N, 1, 1>(priv, priv);
@@ -120,7 +120,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       });
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
-      private2local<NReals>(global_data, priv, loc_view, subgroup_local_id, NReals, local_offset);
+      private2local<NReals>(global_data, basic_view(priv), loc_view, subgroup_local_id, NReals, local_offset);
     }
     sycl::group_barrier(global_data.sg);
     global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);

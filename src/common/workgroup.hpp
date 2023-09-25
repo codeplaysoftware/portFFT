@@ -136,7 +136,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
         local2private_transposed<FactWi>(global_data, make_complex_complex_view(loc_start_view),
-                                         make_complex_complex_view(priv), wi_id_in_fft, j_inner, StrideWithinDFT);
+                                         make_complex_complex_view(priv), static_cast<std::size_t>(wi_id_in_fft),
+                                         static_cast<std::size_t>(j_inner), StrideWithinDFT);
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
@@ -178,8 +179,9 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
         private2local_transposed<FactWi>(global_data, make_complex_complex_view(priv),
-                                         make_complex_complex_view(loc_view), wi_id_in_fft, FactSg,
-                                         j_inner + j_outer * OuterStride, StrideWithinDFT);
+                                         make_complex_complex_view(loc_view), static_cast<std::size_t>(wi_id_in_fft),
+                                         FactSg, static_cast<std::size_t>(j_inner + j_outer * OuterStride),
+                                         StrideWithinDFT);
       }
     }
   }

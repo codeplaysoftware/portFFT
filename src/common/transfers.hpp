@@ -282,21 +282,21 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const L
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam T type of the scalar used for computations
+ * @tparam PrivViewT The type of the private memory view
  * @tparam LocalViewT A view of local memory. Type must match T
  * @param global_data global data for the kernel
  * @param local A local memory view
- * @param priv pointer to private memory
+ * @param priv View of private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, typename LocalViewT, typename T>
-__attribute__((always_inline)) inline void local2private(detail::global_data_struct global_data, const LocalViewT local,
-                                                         T* priv, std::size_t local_id, std::size_t stride,
-                                                         std::size_t local_offset = 0) {
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Source / destination element type mismatch.");
+template <std::size_t NumElemsPerWI, typename LocalViewT, typename PrivViewT>
+PORTFFT_INLINE inline void local2private(detail::global_data_struct global_data, const LocalViewT local, PrivViewT priv,
+                                         std::size_t local_id, std::size_t stride, std::size_t local_offset = 0) {
+  static_assert(std::is_same_v<typename PrivViewT::element_type, typename LocalViewT::element_type>,
+                "Different source / destination element types.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
@@ -304,35 +304,6 @@ __attribute__((always_inline)) inline void local2private(detail::global_data_str
     std::size_t local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_offset + local_id * stride + i];
-  });
-}
-
-/**
- * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam LocalViewT The type of the local memory view
- * @tparam PrivViewT The type of the private memory view
- *
- * @param global_data global data for the kernel
- * @param local View of local memory
- * @param priv View of private memory
- * @param thread_id ID of the working thread in FFT
- * @param col_num Column number which is to be loaded
- * @param stride Inner most dimension of the reinterpreted matrix
- */
-template <int NumElementsPerWI, typename LocalViewT, typename PrivViewT>
-PORTFFT_INLINE inline void local2private_transposed(detail::global_data_struct global_data, const LocalViewT local,
-                                                    PrivViewT priv, int thread_id, int col_num, int stride) {
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "NumElementsPerWI", NumElementsPerWI, "thread_id", thread_id, "col_num",
-                                col_num, "stride", stride);
-  static_assert(std::is_same_v<typename PrivViewT::element_type, typename LocalViewT::element_type>,
-                "Different source / destination element types.");
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
-    auto local_idx = stride * (thread_id * NumElementsPerWI + i) + col_num;
-    global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
-    priv[i] = local[local_idx];
   });
 }
 
@@ -406,57 +377,25 @@ PORTFFT_INLINE inline void global2local_transposed(detail::global_data_struct gl
 }
 
 /**
- * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam LocalViewT The type of the local memory view
- * @tparam PrivViewT The type of the private memory view
- * @tparam T type of the scalar used for computations
- *
- * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param local Pointer to local memory
- * @param thread_id Id of the working thread for the FFT
- * @param num_workers Number of threads working for that FFt
- * @param col_num Column number in which the data will be stored
- * @param stride Inner most dimension of the reinterpreted matrix
- */
-template <int NumElementsPerWI, typename PrivateViewT, typename LocalViewT>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const PrivateViewT priv,
-                                             LocalViewT local, int thread_id, int num_workers, int col_num,
-                                             int stride) {
-  static_assert(std::is_same_v<typename PrivateViewT::element_type, typename LocalViewT::element_type>,
-                "Different source / destination element types.");
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "thread_id", thread_id, "num_workers", num_workers, "col_num", col_num,
-                                "stride", stride);
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
-    auto loc_base_offset = stride * (i * num_workers + thread_id) + col_num;
-    global_data.log_message(func_name, "from", i, "to", loc_base_offset, "value", priv[i]);
-    local[loc_base_offset] = priv[i];
-  });
-}
-
-/**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam T type of the scalar used for computations
+ * @tparam PrivViewT The type of the private memory view
  * @tparam LocalViewT The view type of local memory
  * @param global_data global data for the kernel
- * @param priv pointer to private memory
+ * @param priv A private memory view
  * @param local A local memory view
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <std::size_t NumElemsPerWI, typename T, typename LocalViewT>
-__attribute__((always_inline)) inline void private2local(detail::global_data_struct global_data, const T* priv,
-                                                         LocalViewT local, std::size_t local_id, std::size_t stride,
-                                                         std::size_t local_offset = 0) {
-  static_assert(std::is_same_v<T, typename LocalViewT::element_type>, "Source / destination element type mismatch.");
+template <std::size_t NumElemsPerWI, typename PrivateViewT, typename LocalViewT>
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const PrivateViewT priv, LocalViewT local,
+                                  std::size_t local_id, std::size_t stride, std::size_t local_offset = 0) {
+  static_assert(std::is_same_v<typename PrivateViewT::element_type, typename LocalViewT::element_type>,
+                "Source / destination element type mismatch.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
@@ -547,6 +486,51 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Pri
       loc[base_offset] = priv[j];
     }
   });
+}
+
+/**
+ * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
+ *
+ * @tparam NumElementsPerWI Elements per workitem
+ * @tparam LocalViewT The type of the local memory view
+ * @tparam PrivViewT The type of the private memory view
+ *
+ * @param priv Pointer to private memory
+ * @param local Pointer to local memory
+ * @param thread_id Id of the working thread for the FFT
+ * @param num_workers Number of threads working for that FFt
+ * @param col_num Column number in which the data will be stored
+ * @param stride Inner most dimension of the reinterpreted matrix
+ */
+template <int NumElementsPerWI, typename PrivateViewT, typename LocalViewT>
+__attribute__((always_inline)) inline void private2local_transposed(detail::global_data_struct global_data,
+                                                                    const PrivateViewT priv, LocalViewT local,
+                                                                    std::size_t thread_id, std::size_t num_workers,
+                                                                    std::size_t col_num, std::size_t stride) {
+  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, NumElementsPerWI>(
+      global_data, priv, local, 1, 0, stride, col_num, num_workers, thread_id);
+}
+
+/**
+ * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
+ *
+ * @tparam NumElementsPerWI Elements per workitem
+ * @tparam LocalViewT The type of the local memory view
+ * @tparam PrivViewT The type of the private memory view
+ *
+ * @param local View of local memory
+ * @param priv View of private memory
+ * @param thread_id ID of the working thread in FFT
+ * @param col_num Column number which is to be loaded
+ * @param stride Inner most dimension of the reinterpreted matrix
+ */
+template <int NumElementsPerWI, typename LocalViewT, typename PrivViewT>
+__attribute__((always_inline)) inline void local2private_transposed(detail::global_data_struct global_data,
+                                                                    const LocalViewT local, PrivViewT priv,
+                                                                    std::size_t thread_id, std::size_t col_num,
+                                                                    std::size_t stride) {
+  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, NumElementsPerWI>(
+      global_data, priv, local, 1, 0, stride, col_num, 1, thread_id * NumElementsPerWI);
 }
 
 /**
