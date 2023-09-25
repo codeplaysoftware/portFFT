@@ -437,7 +437,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
     std::size_t destination_idx = destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group;
     global_data.log_message(func_name, "from", i, "to", destination_idx, "value", priv[i]);
     global_data.log_message(func_name, "from", i + 1, "to", destination_idx + 1, "value", priv[i + 1]);
-    if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
+    if (!DestViewT::is_padded &&
+        destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
       destination_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
       destination[destination_idx] = priv[i];
