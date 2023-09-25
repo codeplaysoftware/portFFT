@@ -114,8 +114,11 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
       T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
 
       // multiply cur and multi
-      res_real += cur_real * multi_re - cur_imag * multi_im;
-      res_imag += cur_real * multi_im + cur_imag * multi_re;
+      T tmp_real;
+      T tmp_imag;
+      detail::multiply_complex(cur_real, cur_imag, multi_re, multi_im, tmp_real, tmp_imag);
+      res_real += tmp_real;
+      res_imag += tmp_imag;
     });
 
     real = res_real;
@@ -185,9 +188,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
     return -twiddle<T>::Im[N * M][k * n];
   }
   ();
-  T tmp_real = real * multi_re - imag * multi_im;
-  imag = real * multi_im + imag * multi_re;
-  real = tmp_real;
+  detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
   cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
 }
@@ -284,9 +285,7 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
-        T tmp_real = real * twiddle_real - imag * twiddle_imag;
-        imag = real * twiddle_imag + imag * twiddle_real;
-        real = tmp_real;
+        detail::multiply_complex(real, imag, twiddle_real, twiddle_imag, real, imag);
       }
     }
   });

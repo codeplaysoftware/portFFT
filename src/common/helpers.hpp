@@ -108,6 +108,26 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
 }
 
+/**
+ * Multiplies 2 complex numbers
+ *
+ * @tparam Scalar Type
+ * @param input_real Input real part
+ * @param input_imag Input imag part
+ * @param multiplier_real Multiplier real part
+ * @param multiplier_imag Multiplier imag part
+ * @param output_real output real part
+ * @param output_imag output imag part
+ */
+template <typename T>
+__attribute__((always_inline)) inline void multiply_complex(const T input_real, const T input_imag,
+                                                            const T multiplier_real, const T multiplier_imag,
+                                                            T& output_real, T& output_imag) {
+  T temp = input_real;
+  output_real = temp * multiplier_real - input_imag * multiplier_imag;
+  output_imag = temp * multiplier_imag + input_imag * multiplier_real;
+}
+
 };  // namespace portfft::detail
 
 #endif
