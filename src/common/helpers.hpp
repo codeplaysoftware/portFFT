@@ -111,7 +111,7 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
 /**
  * Multiplies 2 complex numbers
  *
- * @tparam Scalar Type
+ * @tparam T Scalar Type
  * @param input_real Input real part
  * @param input_imag Input imag part
  * @param multiplier_real Multiplier real part
