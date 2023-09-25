@@ -83,7 +83,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @param local_offset offset to the local pointer
  */
 template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, const T* global, T* local,
+__attribute__((always_inline)) inline void global2local(detail::global_data_struct global_data, const T* global, T* local,
                                                         std::size_t total_num_elems, std::size_t global_offset = 0,
                                                         std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
@@ -92,15 +92,14 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
   constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
   using T_vec = sycl::vec<T, ChunkSize>;
 
-  sycl::sub_group sg = it.get_sub_group();
   std::size_t local_id;
   std::size_t local_size;
   if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
     local_size = SubgroupSize;
   } else {
-    local_id = it.get_local_id(0);
-    local_size = it.get_local_range(0);
+    local_id = global_data.it.get_local_id(0);
+    local_size = global_data.it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
@@ -108,26 +107,26 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
-    std::size_t subgroup_id = sg.get_group_id();
+    std::size_t subgroup_id = global_data.sg.get_group_id();
     std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
     local_size = SubgroupSize;
     stride = local_size * ChunkSize;
     rounded_down_num_elems = (total_num_elems / stride) * stride;
   }
   // Each subgroup loads a chunk of `ChunkSize * local_size` elements.
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    T_vec loaded = sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset + i]));
+    T_vec loaded = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset + i]));
     if constexpr (PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || Pad == detail::pad::DONT_PAD) {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
+        global_data.sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
@@ -192,7 +191,7 @@ __attribute__((always_inline)) inline void global2local(sycl::nd_item<1> it, con
  * @param global_offset offset to the global pointer
  */
 template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, const T* local, T* global,
+__attribute__((always_inline)) inline void local2global(detail::global_data_struct global_data, const T* local, T* global,
                                                         std::size_t total_num_elems, std::size_t local_offset = 0,
                                                         std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
@@ -201,15 +200,14 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
   constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
   using T_vec = sycl::vec<T, ChunkSize>;
 
-  sycl::sub_group sg = it.get_sub_group();
   std::size_t local_size;
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
     local_size = SubgroupSize;
   } else {
-    local_id = it.get_local_id(0);
-    local_size = it.get_local_range(0);
+    local_id = global_data.it.get_local_id(0);
+    local_size = global_data.it.get_local_range(0);
   }
 
   std::size_t stride = local_size * static_cast<std::size_t>(ChunkSize);
@@ -217,14 +215,14 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
   if constexpr (Level == detail::level::WORKGROUP) {  // recalculate parameters for subgroup transfer
-    std::size_t subgroup_id = sg.get_group_id();
+    std::size_t subgroup_id = global_data.sg.get_group_id();
     std::size_t elems_per_sg = detail::divide_ceil<std::size_t>(total_num_elems, local_size / SubgroupSize);
     std::size_t offset = subgroup_id * elems_per_sg;
     std::size_t next_offset = (subgroup_id + 1) * elems_per_sg;
     local_offset += offset;
     global_offset += offset;
     total_num_elems = sycl::min(total_num_elems, next_offset) - sycl::min(total_num_elems, offset);
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
     local_size = SubgroupSize;
     stride = local_size * static_cast<std::size_t>(ChunkSize);
     rounded_down_num_elems = (total_num_elems / stride) * stride;
@@ -236,7 +234,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        to_store[j] = sg.load(detail::get_local_multi_ptr(&local[local_idx]));
+        to_store[j] = global_data.sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
@@ -245,7 +243,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
         to_store[j] = local[local_idx];
       });
     }
-    sg.store(detail::get_global_multi_ptr(&global[global_offset + i]), to_store);
+    global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset + i]), to_store);
   }
 #else
   const T* global_ptr = &global[global_offset];
@@ -302,7 +300,7 @@ __attribute__((always_inline)) inline void local2global(sycl::nd_item<1> it, con
  * @param local_offset offset to the local pointer
  */
 template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void local2private(const T* local, T* priv, std::size_t local_id,
+__attribute__((always_inline)) inline void local2private(detail::global_data_struct global_data, const T* local, T* priv, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
@@ -325,7 +323,7 @@ __attribute__((always_inline)) inline void local2private(const T* local, T* priv
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void local2private_transposed(const T* local, T* priv, int thread_id, int col_num,
+__attribute__((always_inline)) inline void local2private_transposed(detail::global_data_struct global_data, const T* local, T* priv, int thread_id, int col_num,
                                                                     int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(
@@ -350,11 +348,11 @@ __attribute__((always_inline)) inline void local2private_transposed(const T* loc
  * @param offset offset to the global memory pointer
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item<1> it, std::size_t N, std::size_t M,
+__attribute__((always_inline)) inline void local2global_transposed(detail::global_data_struct global_data, std::size_t N, std::size_t M,
                                                                    std::size_t stride, T* local, T* global,
                                                                    std::size_t offset) {
-  std::size_t num_threads = it.get_local_range(0);
-  for (std::size_t i = it.get_local_linear_id(); i < N * M; i += num_threads) {
+  std::size_t num_threads = global_data.it.get_local_range(0);
+  for (std::size_t i = global_data.it.get_local_linear_id(); i < N * M; i += num_threads) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
     std::size_t source_index = detail::pad_local<Pad>(2 * (stride * source_col + source_row), BankLinesPerPad);
@@ -381,17 +379,16 @@ __attribute__((always_inline)) inline void local2global_transposed(sycl::nd_item
  * @param stride_local Stride Value for Local Memory
  */
 template <detail::level Level, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item<1> it, const T* global_base_ptr,
+__attribute__((always_inline)) inline void global2local_transposed(detail::global_data_struct global_data, const T* global_base_ptr,
                                                                    T* local_ptr, std::size_t offset,
                                                                    std::size_t num_complex, std::size_t stride_global,
                                                                    std::size_t stride_local) {
-  sycl::sub_group sg = it.get_sub_group();
   std::size_t local_id;
 
   if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
   } else {
-    local_id = it.get_local_id(0);
+    local_id = global_data.it.get_local_id(0);
   }
   for (std::size_t i = 0; i < num_complex; i++) {
     std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
@@ -416,7 +413,7 @@ __attribute__((always_inline)) inline void global2local_transposed(sycl::nd_item
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void private2local_transposed(const T* priv, T* local, int thread_id,
+__attribute__((always_inline)) inline void private2local_transposed(detail::global_data_struct global_data, const T* priv, T* local, int thread_id,
                                                                     int num_workers, int col_num, int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
     std::size_t loc_base_offset = detail::pad_local<Pad>(
@@ -444,7 +441,7 @@ __attribute__((always_inline)) inline void private2local_transposed(const T* pri
  * @param stride Stride in local memory between consecutive workitems
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void private2local_2strides(const T* priv, T* local, int thread_id,
+__attribute__((always_inline)) inline void private2local_2strides(detail::global_data_struct global_data, const T* priv, T* local, int thread_id,
                                                                   int stride_num_workers, int destination_offset,
                                                                   int stride) {
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) __attribute__((always_inline)) {
@@ -472,7 +469,7 @@ __attribute__((always_inline)) inline void private2local_2strides(const T* priv,
  * @param local_offset offset to the local pointer
  */
 template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void private2local(const T* priv, T* local, std::size_t local_id,
+__attribute__((always_inline)) inline void private2local(detail::global_data_struct global_data, const T* priv, T* local, std::size_t local_id,
                                                          std::size_t stride, std::size_t local_offset = 0) {
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) __attribute__((always_inline)) {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
@@ -496,7 +493,7 @@ __attribute__((always_inline)) inline void private2local(const T* priv, T* local
  * @param destination_offset offset to the destination pointer
  */
 template <int NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void store_transposed(const T* priv, T* destination, std::size_t local_id,
+__attribute__((always_inline)) inline void store_transposed(detail::global_data_struct global_data, const T* priv, T* destination, std::size_t local_id,
                                                             std::size_t workers_in_group,
                                                             std::size_t destination_offset = 0) {
   constexpr int VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
@@ -536,7 +533,7 @@ __attribute__((always_inline)) inline void store_transposed(const T* priv, T* de
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-__attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
+__attribute__((always_inline)) inline void transfer_strided(detail::global_data_struct global_data, T* priv, T* loc, std::size_t stride_1, std::size_t offset_1,
                                                             std::size_t stride_2, std::size_t offset_2,
                                                             std::size_t stride_3, std::size_t offset_3,
                                                             std::size_t bank_lines_per_pad) {
@@ -573,13 +570,13 @@ __attribute__((always_inline)) inline void transfer_strided(T* priv, T* loc, std
 template <detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local_strided_2_global_strided_transposed(
     T* loc, T* global, std::size_t global_offset, std::size_t local_stride, std::size_t N, std::size_t M,
-    std::size_t fft_size, std::size_t bank_lines_per_pad, sycl::nd_item<1> it) {
-  std::size_t batch_num = it.get_local_linear_id() / 2;
+    std::size_t fft_size, std::size_t bank_lines_per_pad, detail::global_data_struct global_data) {
+  std::size_t batch_num = global_data.it.get_local_linear_id() / 2;
   for (std::size_t i = 0; i < fft_size; i++) {
     std::size_t source_row = i / N;
     std::size_t source_col = i % N;
-    global[global_offset + 2 * batch_num * fft_size + 2 * i + it.get_local_linear_id() % 2] =
-        loc[detail::pad_local<Pad>(local_stride * (source_col * M + source_row) + it.get_local_id(0),
+    global[global_offset + 2 * batch_num * fft_size + 2 * i + global_data.it.get_local_linear_id() % 2] =
+        loc[detail::pad_local<Pad>(local_stride * (source_col * M + source_row) + global_data.it.get_local_id(0),
                                    bank_lines_per_pad)];
   }
 }

@@ -72,15 +72,14 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  */
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                         sycl::nd_item<1> it, T scaling_factor) {
+                                                         global_data_struct global_data, T scaling_factor) {
   constexpr std::size_t NReals = 2 * N;
 
   T priv[NReals];
-  sycl::sub_group sg = it.get_sub_group();
-  std::size_t subgroup_local_id = sg.get_local_linear_id();
-  std::size_t global_id = it.get_global_id(0);
-  std::size_t global_size = it.get_global_range(0);
-  std::size_t subgroup_id = sg.get_group_id();
+  std::size_t subgroup_local_id = global_data.sg.get_local_linear_id();
+  std::size_t global_id = global_data.it.get_global_id(0);
+  std::size_t global_size = global_data.it.get_global_range(0);
+  std::size_t subgroup_id = global_data.sg.get_group_id();
   std::size_t local_offset = NReals * SubgroupSize * subgroup_id;
   constexpr std::size_t BankLinesPerPad = 1;
 
@@ -90,8 +89,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
 
     if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          it, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
-      sycl::group_barrier(sg);
+          global_data, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
+      sycl::group_barrier(global_data.sg);
     }
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
@@ -102,21 +101,21 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
-        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
+        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals, local_offset);
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
-      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(priv, loc, subgroup_local_id, NReals, local_offset);
+      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals, local_offset);
     }
-    sycl::group_barrier(sg);
+    sycl::group_barrier(global_data.sg);
     // Store back to global in the same manner irrespective of input data layout, as
     //  the transposed case is assumed to be used only in OOP scenario.
     local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-        it, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
-    sycl::group_barrier(sg);
+        global_data, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
+    sycl::group_barrier(global_data.sg);
   }
 }
 
@@ -138,17 +137,17 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename SizeList, typename T>
 __attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                           sycl::nd_item<1> it, T scaling_factor,
+                                                           global_data_struct global_data, T scaling_factor,
                                                            std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (detail::fits_in_wi<T>(ThisSize)) {
-        workitem_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, n_transforms, it, scaling_factor);
+        workitem_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, n_transforms, global_data, scaling_factor);
       }
     } else {
       workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, typename SizeList::child_t, T>(
-          input, output, loc, n_transforms, it, scaling_factor, fft_size);
+          input, output, loc, n_transforms, global_data, scaling_factor, fft_size);
     }
   }
 }
@@ -174,12 +173,22 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+#ifdef PORTFFT_LOG
+      sycl::stream s{1024*8, 1024, cgh};
+#endif
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
+            detail::global_data_struct global_data{
+#ifdef PORTFFT_LOG
+              s
+#endif
+              it, 
+              it.get_sub_group(),
+            };
             detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, it, scale_factor, fft_size);
+                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
           });
     });
   }
