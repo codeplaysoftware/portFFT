@@ -26,29 +26,6 @@
 
 namespace portfft::detail {
 
-struct global_data_struct{
-#ifdef PORTFFT_LOG
-  sycl::stream s;
-#endif
-  sycl::nd_item<1> it;
-  sycl::sub_group sg;
-
-  /*std::size_t local_id; /// id of workitem in a workgroup
-  std::size_t global_id; /// id of workitem in the kernel
-
-  std::size_t sg_local_id; // id of workitem in a subgroup
-  std::size_t sg_id; /// id of subgroup in a workgroup
-  std::size_t wg_id; /// id of workgroup in the kernel
-
-  std::size_t sg_size; // number of workitems in a subgroup
-  std::size_t local_size; // number of workitems in a workgroup
-  std::size_t global_size; // number of workitems in the kernel
-
-  std::size_t n_sgs_in_wg; // number of subgroups in a workgroup
-
-  */
-};
-
 /**
  * Implements a loop that will be fully unrolled.
  * @tparam Start starting value of loop counter

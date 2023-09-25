@@ -23,6 +23,7 @@
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
+#include <common/logging.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
 #include <descriptor.hpp>

@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_TRANSFERS_HPP
 
 #include <common/helpers.hpp>
+#include <common/logging.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 

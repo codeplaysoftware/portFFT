@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
 #include <common/helpers.hpp>
+#include <common/logging.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
