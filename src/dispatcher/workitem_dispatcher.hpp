@@ -180,7 +180,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*8, 1024, cgh};
+      sycl::stream s{1024*16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
@@ -188,7 +188,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s,
+              s << sycl::setprecision(3),
 #endif
               it, 
               it.get_sub_group()

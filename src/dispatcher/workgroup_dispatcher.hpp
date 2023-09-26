@@ -120,7 +120,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
             loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(global_data.it.get_group());
       }
-      global_data.log_dump_local("computed data local memory:", loc, FFTSize * global_data.it.get_local_range(0) / 2);
+      global_data.log_dump_local("computed data in local memory:", loc, FFTSize * global_data.it.get_local_range(0) / 2);
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
         // in a strided fashion.
@@ -208,7 +208,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*8, 1024, cgh};
+      sycl::stream s{1024*16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
@@ -216,7 +216,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s,
+              s << sycl::setprecision(3),
 #endif
               it,
               it.get_sub_group()

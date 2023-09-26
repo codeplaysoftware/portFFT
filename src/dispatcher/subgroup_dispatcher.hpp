@@ -150,7 +150,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
             global_data, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
-      global_data.log_dump_local("data loaded to local memory:", loc_twiddles, NRealsPerWI * FactorSG);
+      global_data.log_dump_local("data loaded to local memory:", loc, NRealsPerWI * FactorSG);
       for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
            sub_batch += n_sgs_in_wg * n_ffts_per_sg) {
         bool working_inner = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
@@ -335,7 +335,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*8, 1024, cgh};
+      sycl::stream s{1024*16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
@@ -344,7 +344,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             int factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s,
+              s << sycl::setprecision(3),
 #endif
               it, 
               it.get_sub_group()
