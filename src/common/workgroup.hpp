@@ -144,9 +144,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
           if constexpr (Dir == direction::BACKWARD) {
             twiddle_imag = -twiddle_imag;
           }
-          T tmp_real = priv[2 * i];
-          priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_imag;
-          priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
+          multiply_complex(priv[2 * i], priv[2 * i + 1], twiddle_real, twiddle_imag, priv[2 * i], priv[2 * i + 1]);
         });
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * FactWi);
       }
