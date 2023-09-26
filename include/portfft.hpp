@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef PORT_FFT_HPP
-#define PORT_FFT_HPP
+#ifndef PORTFFT_HPP
+#define PORTFFT_HPP
 
 #include "common/exceptions.hpp"
 #include "common/transfers.hpp"
