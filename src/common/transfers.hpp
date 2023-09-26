@@ -80,7 +80,7 @@ PORTFFT_INLINE std::size_t pad_local(std::size_t local_idx, std::size_t bank_lin
  */
 
 template <typename T>
-PORTFFT_INLINE void generic_transpose(std::size_t N, std::size_t M, std::size_t tile_size, T* input, T* output,
+PORTFFT_INLINE void generic_transpose(std::size_t N, std::size_t M, std::size_t tile_size, const T* input, T* output,
                                       const sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
   using T_vec = sycl::vec<T, 2>;
   T_vec priv;

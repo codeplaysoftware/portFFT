@@ -22,7 +22,7 @@
 #define PORTFFT_COMMON_GLOBAL_HPP
 
 #include <defines.hpp>
-#include <descriptor.hpp>
+#include <dispatcher/global_dispatcher.hpp>
 #include <dispatcher/subgroup_dispatcher.hpp>
 #include <dispatcher/workitem_dispatcher.hpp>
 #include <enums.hpp>
@@ -35,6 +35,7 @@ constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorWI{};
 constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorSG{};
 constexpr static sycl::specialization_id<level> GlobalSpecConstLevel{};
 constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstNumFactors{};
+constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstLevelNum{};
 
 /**
  * Gets the inclusive scan of the factors at a particular index.
@@ -44,12 +45,16 @@ constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstNumFactors{
  * @param num_factors Number of factors
  * @return Outer batch product
  */
-template <int KernelID>
-PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_factors, std::size_t num_factors) {
-  if (KernelID == static_cast<int>(num_factors - 1) && KernelID != 1) {
-    return device_factors[2 * num_factors + KernelID - 2];
+
+PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_factors, std::size_t num_factors,
+                                                   std::size_t level_num) {
+  if (level_num == 0) {
+    return static_cast<std::size_t>(1);
   }
-  return device_factors[2 * num_factors + KernelID - 1];
+  if (level_num == num_factors - 1 && level_num != 1) {
+    return device_factors[2 * num_factors + level_num - 2];
+  }
+  return device_factors[2 * num_factors + level_num - 1];
 }
 
 /**
@@ -63,270 +68,183 @@ PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_fac
  * @param outer_batch_product Inclusive Scan of factors at position KernelID-1
  * @return
  */
-template <int KernelID>
 PORTFFT_INLINE std::size_t get_outer_batch_offset(const std::size_t* device_factors, std::size_t num_factors,
-                                                  std::size_t iter_value, std::size_t outer_batch_product) {
-  auto get_outer_batch_offset_impl = [&]<int N>() -> std::size_t {
+                                                  std::size_t level_num, std::size_t iter_value,
+                                                  std::size_t outer_batch_product) {
+  auto get_outer_batch_offset_impl = [&](std::size_t N) -> std::size_t {
     std::size_t outer_batch_offset = 0;
-    unrolled_loop<0, N, 1>([&](std::size_t j) PORTFFT_ALWAYS_INLINE {
-      if (j == static_cast<std::size_t>(N - 1)) {
+    for (std::size_t j = 0; j < N; j++) {
+      if (j == N - 1) {
         outer_batch_offset += 2 * (iter_value % device_factors[j]) * device_factors[num_factors + j];
       }
       outer_batch_offset +=
           2 * ((iter_value / (outer_batch_product / device_factors[2 * num_factors + j])) % device_factors[j]) *
           device_factors[num_factors + j];
-    });
+    }
     return outer_batch_offset;
   };
-  if constexpr (KernelID == 1) {
+  if (level_num == 0) {
+    return static_cast<std::size_t>(0);
+  }
+  if (level_num == 1) {
     return 2 * iter_value * device_factors[num_factors];
   }
-  if (KernelID == static_cast<int>(num_factors - 1)) {
-    return get_outer_batch_offset_impl.template operator()<KernelID - 1>();
+  if (level_num == static_cast<int>(num_factors - 1)) {
+    return get_outer_batch_offset_impl(level_num - 1);
   }
-  return get_outer_batch_offset_impl.template operator()<KernelID>();
+  return get_outer_batch_offset_impl(level_num);
 }
 
-template <int KernelID, direction Dir, typename Scalar, domain Domain, memory Mem, transpose TransposeIn,
-          transpose TransposeOut, bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor,
-          int SubgroupSize, typename TIn, typename TOut>
-struct dispatch_kernel_struct {
-  static sycl::event execute(TIn input_pointer, TOut output_pointer, committed_descriptor<Scalar, Domain>& desc,
-                             std::size_t intermediate_twiddles_offset, std::size_t local_twiddles_offset,
-                             Scalar scale_factor, std::size_t base_offset, std::size_t batch_num,
-                             const std::vector<sycl::event>& dependencies = {}) {
-    sycl::event event;
-    std::size_t fft_size = desc.factors[KernelID];
-    std::size_t committed_size = desc.params.lengths[0];
-    std::size_t batch_size = desc.sub_batches[KernelID];
-    Scalar* scratch_pointer = desc.scratch_1.get();
-    Scalar* scratch_pointer_2 = desc.scratch_2.get();
-    auto global_range = desc.launch_configurations[KernelID].first;
-    auto local_range = desc.launch_configurations[KernelID].second;
-    std::size_t local_mem_usage = desc.local_mem_per_factor[KernelID];
-    auto level_id = desc.levels[KernelID];
-    const Scalar* twiddles_ptr = static_cast<const Scalar*>(desc.twiddles_forward.get());
-    const std::size_t* device_factors = static_cast<const std::size_t*>(desc.dev_factors.get());
-    desc.queue.wait();
-    for (std::size_t i = 0; i < desc.num_batches_in_l2 && i + batch_num < desc.params.number_of_transforms; i++) {
-      desc.queue.submit([&](sycl::handler& cgh) {
-        sycl::local_accessor<Scalar, 1> loc(local_mem_usage, cgh);
-        sycl::local_accessor<Scalar, 1> loc_twiddles(
-            [=]() {
-              if (level_id == detail::level::WORKITEM || level_id == detail::level::WORKGROUP) {
-                return static_cast<std::size_t>(0);
-              }
-              return 2 * fft_size;
-            }(),
-            cgh);
-        cgh.depends_on(dependencies);
-        sycl::local_accessor<Scalar, 1> loc_store_modifier(local_mem_usage, cgh);
-        cgh.use_kernel_bundle(desc.exec_bundle[KernelID]);
-        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                                       ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, KernelID>>(
+template <typename Scalar, domain Domain, int SubgroupSize, typename TOut>
+void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>& desc, const Scalar* input, TOut& output,
+                                std::size_t level_num, std::size_t batch, std::vector<sycl::event>& dependencies) {
+  constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
+  std::size_t N = desc.factors[level_num];
+  std::size_t M = desc.sub_batches[level_num];
+  std::size_t committed_size = desc.params.lengths[0];
+  detail::level level_id = desc.levels[0];
+  const std::size_t* device_factors = static_cast<const std::size_t*>(desc.dev_factors.get());
+  std::vector<sycl::event> dependency_copy(dependencies);
+  dependencies.clear();
+  for (std::size_t batch_in_l2 = 0;
+       batch_in_l2 < desc.num_batches_in_l2 && batch_in_l2 + batch < desc.params.number_of_transforms; batch_in_l2++) {
+    dependencies.push_back(desc.queue.submit([&](sycl::handler& cgh) {
+      auto out_acc_or_usm = get_access<Scalar>(output, cgh);
+      sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
+      cgh.depends_on(dependency_copy);
+      cgh.use_kernel_bundle(desc.transpose_kernel_bundle[level_num]);
+      cgh.parallel_for<transpose_kernel<Scalar, Domain, Mem, SubgroupSize>>(
+          sycl::nd_range<2>({round_up_to_multiple(N, static_cast<std::size_t>(16)),
+                             round_up_to_multiple(M, static_cast<std::size_t>(16))},
+                            {16, 16}),
+          [=](sycl::nd_item<2> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+            std::size_t level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
+            std::size_t num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+            std::size_t outer_batch_product = get_outer_batch_product(device_factors, num_factors, level_num);
+            for (std::size_t iter_value = 0; iter_value < outer_batch_product; iter_value++) {
+              std::size_t outer_batch_offset =
+                  get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
+              generic_transpose(N, M, 16, input + (batch_in_l2 + batch) * 2 * committed_size + outer_batch_offset,
+                                &out_acc_or_usm[0] + (batch_in_l2 + batch) * 2 * committed_size + outer_batch_offset,
+                                loc, it);
+            }
+          });
+    }));
+  }
+  if (level_num != 0) {
+    std::vector<sycl::event> dependency_copy_2(dependencies);
+    dependencies.clear();
+    dependencies.push_back(desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(dependency_copy_2);
+      cgh.host_task([=]() { desc.scratch_1.swap(desc.scratch_2); })
+    }));
+  }
+}
+
+template <direction Dir, typename Scalar, transpose TransposeIn, transpose TransposeOut, load_modifer ApplyLoadModifier,
+          store_modifier ApplyStoreModifier, scale_factor ApplyScaleFactor, int SubgroupSize>
+PORTFFT_INLINE dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
+                              const Scalar* load_modifier_data, const Scalar* store_modifier_data, Scalar* input_loc,
+                              Scalar* twiddles_loc, Scalar* load_modifier_loc, Scalar* store_modifier_loc,
+                              const std::size_t* device_factors, Scalar scaling_factor, std::size_t batch_size,
+                              sycl::nd_item<1> it, sycl::kernel_handler kh) {
+  auto level = kh.get_specialization_constant<SpecConstLevel>();
+  std::size_t level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
+  std::size_t num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+  std::size_t outer_batch_product = get_outer_batch_product(device_factors, num_factors, level_num);
+  for (std::size_t iter_value = 0; iter_value < outer_batch_product; iter_value++) {
+    std::size_t outer_batch_offset =
+        get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
+    if (level == detail::level::WORKITEM) {
+      std::size_t fft_size = kh.get_specialization_constant<SpecConstFftSize>();
+      workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
+                             SubgroupSize, cooley_tukey_size_list_t, Scalar>(
+          input + outer_batch_offset, output + outer_batch_offset, input_loc, batch_size, it, scaling_factor, fft_size,
+          load_modifier_data, store_modifier_data, load_modifier_loc, store_modifier_loc);
+    } else if (level == detail::level::SUBGROUP) {
+      int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
+      int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
+      subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
+                             SubgroupSize, Scalar, cooley_tukey_size_list_t>(
+          factor_wi, factor_sg, input + outer_batch_offset, output + outer_batch_offset, input_loc, twiddles_loc,
+          batch_size, it, implementation_twiddles, scale_factor, load_modifier_data, store_modifier_data,
+          load_modifier_loc, store_modifier_loc);
+    }
+  }
+}
+
+template <typename Scalar, domain Domain, int SubgroupSize, typename TIn>
+void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>& desc, const TIn& input, Scalar scale_factor,
+                              std::size_t level_num, std::size_t implementation_twiddle_offset,
+                              std::size_t intermediate_twiddle_offset, std::size_t batch,
+                              std::vector<sycl::event>& dependencies) {
+  std::vector<sycl::event> dependency_copy(dependencies);
+  constexpr detail::memory Mem = std::is_pointer<TIn>::value ? detail::memory::USM : detail::memory::BUFFER;
+  dependencies.clear();
+  std::size_t fft_size = desc.factors[level_num];
+  std::size_t batch_size = desc.sub_batches[level_num];
+  std::size_t committed_size = desc.params.lengths[0];
+  auto [global_range, local_range] = desc.launch_configurations[level_num];
+  std::size_t local_mem_usage = desc.local_mem_per_factor[level_num];
+  const Scalar* twiddles_ptr = static_cast<const Scalar*>(desc.twiddles_forward.get());
+  detail::level level_id = desc.levels[0];
+  Scalar* scratch_1 = desc.scratch_1.get();
+  const std::size_t* device_factors = static_cast<const std::size_t*>(desc.dev_factors.get());
+  for (std::size_t batch_in_l2 = 0;
+       batch_in_l2 < desc.num_batches_in_l2 && batch_in_l2 + batch < desc.params.number_of_transforms; batch_in_l2++) {
+    dependencies.push_back(desc.queue.submit([&](sycl::handler& cgh) {
+      sycl::local_accessor<Scalar, 1> loc(local_mem_usage, cgh);
+      sycl::local_accessor<Scalar, 1> loc_twiddles(
+          [=]() {
+            if (level_id == detail::level::WORKITEM || level_id == detail::level::WORKGROUP) {
+              return static_cast<std::size_t>(0);
+            }
+            return 2 * fft_size;
+          }(),
+          cgh);
+      sycl::local_accessor<Scalar, 1> loc_store_modifier(
+          [=]() {
+            if (level_num == desc.factors.size() - 1) {
+              return static_cast<std::size_t>(0);
+            }
+            return local_mem_usage;
+          }(),
+          cgh);
+      auto in_acc_or_usm = get_access<const Scalar*>(in);
+      cgh.use_kernel_bundle(desc.exec_bundle[level_num]);
+      cgh.depends_on(dependency_copy);
+      if (level_num == desc.factors.size() - 1) {
+        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, transpose::NOT_TRANSPOSED, transpose::NOT_TRANSPOSED,
+                                       load_modifier::NOT_APPLIED, store_modifier::NOT_APPLIED, scale_factor::APPLIED>>(
             sycl::nd_range<1>(global_range, local_range),
             [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto level_spec_const = kh.get_specialization_constant<GlobalSpecConstLevel>();
-              std::size_t num_factors_spec_const = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
-              auto outer_batch_product = get_outer_batch_product<KernelID>(device_factors, num_factors_spec_const);
-              for (std::size_t sub_batch = 0; sub_batch < outer_batch_product; sub_batch++) {
-                auto outer_batch_offset = get_outer_batch_offset<KernelID>(device_factors, num_factors_spec_const,
-                                                                           sub_batch, outer_batch_product);
-                if (level_spec_const == detail::level::WORKITEM) {
-                  std::size_t problem_size = kh.get_specialization_constant<GlobalSpecConstFftSize>();
-                  workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
-                                         ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t>(
-                      static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * i * committed_size +
-                          outer_batch_offset,
-                      &scratch_pointer[0] + base_offset + 2 * i * committed_size + outer_batch_offset, &loc[0],
-                      batch_size, it, scale_factor, problem_size, static_cast<const Scalar*>(nullptr),
-                      twiddles_ptr + intermediate_twiddles_offset, static_cast<Scalar*>(nullptr),
-                      &loc_store_modifier[0]);
-                } else if (level_spec_const == detail::level::SUBGROUP) {
-                  int factor_wi = kh.get_specialization_constant<GlobalSpecConstSGFactorWI>();
-                  int factor_sg = kh.get_specialization_constant<GlobalSpecConstSGFactorSG>();
-                  subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
-                                         ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
-                      factor_wi, factor_sg,
-                      static_cast<const Scalar*>(&scratch_pointer[0]) + base_offset + 2 * committed_size +
-                          outer_batch_offset,
-                      &scratch_pointer[0] + base_offset + 2 * committed_size + outer_batch_offset, &loc[0],
-                      &loc_twiddles[0], batch_size, it, twiddles_ptr + local_twiddles_offset, scale_factor,
-                      static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
-                      static_cast<Scalar*>(nullptr), &loc_store_modifier[0]);
-                }
-              }
+              dispatch_level<Dir, Scalar, transpose::NOT_TRANSPOSED, transpose::NOT_TRANSPOSED,
+                             load_modifier::NOT_APPLIED, store_modifier::NOT_APPLIED, scale_factor::APPLIED,
+                             SubgroupSize>(
+                  &in[0] + 2 * (batch_in_l2 + batch) * committed_size,
+                  scratch_1 + 2 * (batch_in_l2 + batch) * committed_size, twiddles_ptr + implementation_twiddle_offset,
+                  static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddle_offset, &loc[0],
+                  &loc_twiddles[0], static_cast<const Scalar*>(nullptr), &loc_store_modifier[0], device_factors,
+                  scale_factor, batch_size, it, kh);
             });
-      });
-    }
-    if (KernelID == (desc.factors.size() - 1)) {
-      return event;
-    }
-    std::size_t incremented_local_twiddles_offset;
-    if (level_id == detail::level::SUBGROUP) {
-      incremented_local_twiddles_offset = local_twiddles_offset + 2 * fft_size;
-    }
-    std::size_t incremented_intermediate_twiddles_offset = intermediate_twiddles_offset + 2 * fft_size * batch_size;
-    if (KernelID == (desc.factors.size() - 2)) {
-      dispatch_kernel_struct<KernelID + 1, Dir, Scalar, Domain, Mem, detail::transpose::NOT_TRANSPOSED,
-                             detail::transpose::NOT_TRANSPOSED, false, false, true, SubgroupSize, TIn,
-                             TOut>::execute(input_pointer, output_pointer, desc,
-                                            incremented_intermediate_twiddles_offset, incremented_local_twiddles_offset,
-                                            scale_factor, base_offset, batch_num, dependencies);
-    } else {
-      dispatch_kernel_struct<KernelID + 1, Dir, Scalar, Domain, Mem, detail::transpose::TRANSPOSED,
-                             detail::transpose::TRANSPOSED, false, true, false, SubgroupSize, TIn,
-                             TOut>::execute(input_pointer, output_pointer, desc,
-                                            incremented_intermediate_twiddles_offset, incremented_local_twiddles_offset,
-                                            scale_factor, base_offset, batch_num, dependencies);
-    }
-
-    desc.queue.wait();
-    for (std::size_t i = 0; i < desc.num_batches_in_l2 && i + batch_num < desc.params.number_of_transforms; i++) {
-      desc.queue.submit([&](sycl::handler& cgh) {
-        cgh.use_kernel_bundle(desc.transpose_kernel_bundle[KernelID]);
-        auto out_acc_or_usm = &get_access<Scalar>(output_pointer, cgh)[0];
-        out_acc_or_usm = scratch_pointer_2;
-        sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
-        cgh.parallel_for<transpose_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                                          ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, KernelID>>(
-            sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
-                               round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
-                              {16, 16}),
-            [=](sycl::nd_item<2> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto num_factors_spec_const = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
-              auto outer_batch_product = get_outer_batch_product<KernelID>(device_factors, num_factors_spec_const);
-              for (std::size_t sub_batch = 0; sub_batch < outer_batch_product; sub_batch++) {
-                auto outer_batch_offset = get_outer_batch_offset<KernelID>(device_factors, num_factors_spec_const,
-                                                                           sub_batch, outer_batch_product);
-                generic_transpose(fft_size, batch_size, 16,
-                                  scratch_pointer + 2 * i * committed_size + base_offset + outer_batch_offset,
-                                  out_acc_or_usm + base_offset + 2 * i * committed_size + outer_batch_offset, loc, it);
-              }
-            });
-      });
-    }
-    desc.queue.wait();
-    desc.scratch_1.swap(desc.scratch_2);
-    return event;
-  }
-};
-
-template <direction Dir, typename Scalar, domain Domain, memory Mem, transpose TransposeIn, transpose TransposeOut,
-          bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor, int SubgroupSize, typename TIn,
-          typename TOut>
-struct dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                              ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, TIn, TOut> {
-  static sycl::event execute(TIn input_pointer, TOut output_pointer, committed_descriptor<Scalar, Domain>& desc,
-                             std::size_t intermediate_twiddles_offset, std::size_t local_twiddles_offset,
-                             Scalar scale_factor, std::size_t base_offset, std::size_t batch_num,
-                             const std::vector<sycl::event>& dependencies = {}) {
-    sycl::event event;
-    std::size_t fft_size = desc.factors[0];
-    std::size_t committed_size = desc.params.lengths[0];
-    std::size_t batch_size = desc.sub_batches[0];
-    Scalar* scratch_pointer = desc.scratch_1.get();
-    auto global_range = desc.launch_configurations[0].first;
-    auto local_range = desc.launch_configurations[0].second;
-    std::size_t local_mem_usage = desc.local_mem_per_factor[0];
-    const Scalar* twiddles_ptr = static_cast<const Scalar*>(desc.twiddles_forward.get());
-    detail::level level_id = desc.levels[0];
-    for (std::size_t i = 0; i < desc.num_batches_in_l2 && i + batch_num < desc.params.number_of_transforms; i++) {
-      desc.queue.submit([&](sycl::handler& cgh) {
-        sycl::local_accessor<Scalar, 1> loc(local_mem_usage, cgh);
-        sycl::local_accessor<Scalar, 1> loc_twiddles(
-            [=]() {
-              if (level_id == detail::level::WORKITEM || level_id == detail::level::WORKGROUP) {
-                return static_cast<std::size_t>(0);
-              }
-              return 2 * fft_size;
-            }(),
-            cgh);
-        sycl::local_accessor<Scalar, 1> loc_store_modifier(local_mem_usage, cgh);
-        cgh.use_kernel_bundle(desc.exec_bundle[0]);
-        auto in_ptr_or_acc = get_access<const Scalar>(input_pointer, cgh);
-        cgh.depends_on(dependencies);
-        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                                       ApplyStoreModifier, ApplyScaleFactor, SubgroupSize>>(
+      } else {
+        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, transpose::TRANSPOSED, transpose::TRANSPOSED,
+                                       load_modifier::NOT_APPLIED, store_modifier::APPLIED, scale_factor::NOT_APPLIED>>(
             sycl::nd_range<1>(global_range, local_range),
             [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              auto level_spec_const = kh.get_specialization_constant<GlobalSpecConstLevel>();
-              if (level_spec_const == detail::level::WORKITEM) {
-                std::size_t problem_size = kh.get_specialization_constant<GlobalSpecConstFftSize>();
-                workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
-                                       ApplyScaleFactor, SubgroupSize, cooley_tukey_size_list_t, Scalar>(
-                    static_cast<const Scalar*>(&in_ptr_or_acc[0] + base_offset + 2 * i * committed_size),
-                    &scratch_pointer[0] + base_offset + 2 * i * committed_size, &loc[0], batch_size, it, scale_factor,
-                    problem_size, static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
-                    static_cast<Scalar*>(nullptr), &loc_store_modifier[0]);
-              } else if (level_spec_const == detail::level::SUBGROUP) {
-                int factor_wi = kh.get_specialization_constant<GlobalSpecConstSGFactorWI>();
-                int factor_sg = kh.get_specialization_constant<GlobalSpecConstSGFactorSG>();
-                subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier,
-                                       ApplyScaleFactor, SubgroupSize, Scalar, cooley_tukey_size_list_t>(
-                    factor_wi, factor_sg, &in_ptr_or_acc[0] + base_offset + 2 * i * committed_size,
-                    &scratch_pointer[0] + base_offset + 2 * i * committed_size, &loc[0], &loc_twiddles[0], batch_size,
-                    it, twiddles_ptr + local_twiddles_offset, scale_factor, static_cast<const Scalar*>(nullptr),
-                    twiddles_ptr + intermediate_twiddles_offset, static_cast<Scalar*>(nullptr), &loc_store_modifier[0]);
-              }
+              dispatch_level<Dir, Scalar, transpose::TRANSPOSED, transpose::TRANSPOSED, load_modifier::NOT_APPLIED,
+                             store_modifier::APPLIED, scale_factor::NOT_APPLIED, SubgroupSize>(
+                  &in[0] + 2 * (batch_in_l2 + batch) * committed_size,
+                  scratch_1 + 2 * (batch_in_l2 + batch) * committed_size, twiddles_ptr + implementation_twiddle_offset,
+                  static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddle_offset, &loc[0],
+                  &loc_twiddles[0], static_cast<const Scalar*>(nullptr), &loc_store_modifier[0], device_factors,
+                  scale_factor, batch_size, it, kh);
             });
-      });
-    }
-    std::size_t incremented_local_twiddles_offset;
-    if (level_id == detail::level::SUBGROUP) {
-      incremented_local_twiddles_offset = local_twiddles_offset + 2 * fft_size;
-    }
-    std::size_t incremented_intermediate_twiddles_offset = intermediate_twiddles_offset + 2 * fft_size * batch_size;
-    if (0 == (desc.factors.size() - 2)) {
-      dispatch_kernel_struct<1, Dir, Scalar, Domain, Mem, detail::transpose::NOT_TRANSPOSED,
-                             detail::transpose::NOT_TRANSPOSED, false, false, true, SubgroupSize, TIn,
-                             TOut>::execute(input_pointer, output_pointer, desc,
-                                            incremented_intermediate_twiddles_offset, incremented_local_twiddles_offset,
-                                            scale_factor, base_offset, batch_num, dependencies);
-    } else {
-      dispatch_kernel_struct<1, Dir, Scalar, Domain, Mem, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED,
-                             false, true, false, SubgroupSize, TIn,
-                             TOut>::execute(input_pointer, output_pointer, desc,
-                                            incremented_intermediate_twiddles_offset, incremented_local_twiddles_offset,
-                                            scale_factor, base_offset, batch_num, dependencies);
-    }
-    desc.queue.wait();
-    // TODO: This is not a good way to do it,
-    //  This should be a single kernel, a batched matrix tranpose routine is the way to go
-    if ((desc.factors.size() - 1) % 2 != 0 && 0 != (desc.factors.size() - 2)) {
-      desc.scratch_1.swap(desc.scratch_2);
-    }
-    for (std::size_t i = 0; i < desc.num_batches_in_l2 && i + batch_num < desc.params.number_of_transforms; i++) {
-      desc.queue.submit([&](sycl::handler& cgh) {
-        cgh.use_kernel_bundle(desc.transpose_kernel_bundle[0]);
-        auto out_acc_or_usm = get_access<Scalar>(output_pointer, cgh);
-        sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
-        cgh.parallel_for<transpose_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                                          ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, 0>>(
-            sycl::nd_range<2>({round_up_to_multiple(fft_size, static_cast<std::size_t>(16)),
-                               round_up_to_multiple(batch_size, static_cast<std::size_t>(16))},
-                              {16, 16}),
-            [=](sycl::nd_item<2> it) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              generic_transpose(fft_size, batch_size, 16, scratch_pointer + 2 * i * committed_size + base_offset,
-                                &out_acc_or_usm[0] + base_offset + 2 * i * committed_size, loc, it);
-            });
-      });
-    }
-    return event;
+      }
+    }));
   }
-};
+}
 
-template <direction Dir, typename Scalar, domain Domain, memory Mem, transpose TransposeIn, transpose TransposeOut,
-          bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor, int SubgroupSize, typename TIn,
-          typename TOut>
-struct dispatch_kernel_struct<MaxFactors, Dir, Scalar, Domain, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
-                              ApplyStoreModifier, ApplyScaleFactor, SubgroupSize, TIn, TOut> {
-  static sycl::event execute(TIn, TOut, committed_descriptor<Scalar, Domain>&, std::size_t, std::size_t, Scalar,
-                             std::size_t, std::size_t, const std::vector<sycl::event>&) {
-    sycl::event event;
-    return event;
-  }
-};
 }  // namespace detail
 }  // namespace portfft
 

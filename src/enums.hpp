@@ -41,6 +41,12 @@ enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
 enum class memory { BUFFER, USM };
 
 enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
+
+enum class load_modifier { APPLIED, NOT_APPLIED };
+
+enum class store_modifier { APPLIED, NOT_APPLIED };
+
+enum class scale_factor { APPLIED, NOT_APPLIED };
 }  // namespace detail
 
 }  // namespace portfft

@@ -171,22 +171,53 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
+    auto increment_twiddle_offset = [&](std::size_t level_num, std::size_t& offset) {
+      if (desc.levels[level_num] == detail::level::SUBGROUP) {
+        offset += 2 * desc.factors[level_num];
+      } else if (desc.levels[level_num] == detail::level::WORKGROUP) {
+        offset +=
+            2 *
+            (desc.factors[level_num] +
+             static_cast<std::size_t>(detail::factorize_sg(static_cast<int>(desc.factors[level_num]), SubgroupSize)) +
+             desc.factors[level_num] / static_cast<std::size_t>(detail::factorize_sg(
+                                           static_cast<int>(desc.factors[level_num]), SubgroupSize)));
+      }
+    };
+
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
+    std::vector<sycl::event> dependency_copy(dependencies);
     num_scalars_in_local_mem_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(desc);
     std::size_t local_mem_twiddle_offset = 0;
+    const Scalar* scratch_input = static_cast<const Scalar*>(desc.scratch_1.get());
+    Scalar* scratch_output = static_cast<const Scalar*>(desc.scratch_2.get());
     for (std::size_t i = 0; i < desc.factors.size() - 1; i++) {
       local_mem_twiddle_offset += static_cast<std::size_t>(desc.factors[i] * desc.sub_batches[i]);
     }
-    std::size_t fft_size = desc.params.lengths[0];
     for (std::size_t batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
-      detail::dispatch_kernel_struct<0, Dir, Scalar, Domain, Mem, detail::transpose::TRANSPOSED,
-                                     detail::transpose::TRANSPOSED, false, true, false, SubgroupSize, TIn,
-                                     TOut>::execute(in, out, desc, 0, 2 * local_mem_twiddle_offset, scale_factor,
-                                                    2 * fft_size * batch, batch, dependencies);
+      std::size_t twiddle_between_factors_offset = 0;
+      std::size_t impl_twiddles_offset = local_mem_twiddle_offset;
+      detail::dispatch_compute_kernels<Scalar, Domain, SubgroupSize>(
+          desc, in, scale_factor, 0, impl_twiddles_offset, twiddle_between_factors_offset, batch, dependency_copy);
+      twiddle_between_factors_offset += 2 * desc.factors[0] * desc.sub_batches[0];
+      increment_twiddle_offset(0, impl_twiddles_offset);
+      for (std::size_t level_num = 1; level_num < desc.factors.size(); level_num++) {
+        detail::dispatch_compute_kernels<Scalar, detail::mem::, Domain, SubgroupSize>(
+            desc, scratch_input, scale_factor, level_num, impl_twiddles_offset, twiddle_between_factors_offset, batch,
+            dependency_copy);
+        twiddle_between_factors_offset += 2 * desc.factors[level_num] * desc.sub_batches[level_num];
+        increment_twiddle_offset(level_num, impl_twiddles_offset);
+      }
+      for (std::size_t level_num = desc.factors.size() - 2; level_num > 0; level_num--) {
+        detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, scratch_input, scratch_output, level_num,
+                                                                         batch, dependency_copy);
+      }
+      detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, scratch_input, out, 0, batch,
+                                                                       dependency_copy);
     }
-    desc.queue.wait();
-    sycl::event event;
-    return event;
+    return desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(dependency_copy);
+      cgh.host_task([&]() {});
+    });
   }
 };
 
@@ -280,6 +311,7 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
       auto& in_bundle = in_bundles[i];
       in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevel>(level_id);
       in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(desc.factors.size());
+      in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(i);
       switch (level_id) {
         case detail::level::WORKITEM: {
           in_bundle.template set_specialization_constant<detail::GlobalSpecConstFftSize>(factor);

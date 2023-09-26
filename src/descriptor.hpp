@@ -38,33 +38,39 @@
 
 namespace portfft {
 
+// template <typename, domain>
+// class committed_descriptor;
+
 namespace detail {
 
 // kernel names
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int KernelID = 0>
+          int SubgroupSize>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int KernelID = 0>
+          int SubgroupSize>
 class subgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int KernelID = 0>
+          int SubgroupSize>
 class workgroup_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
           detail::transpose TransposeOut, bool ApplyLoadCallback, bool ApplyStoreCallback, bool ApplyScaleFactor,
-          int SubgroupSize, int KernelID = 0>
+          int SubgroupSize>
 class global_kernel;
 
-template <int, direction, typename, domain, memory, transpose, transpose, bool, bool, bool, int, typename, typename>
-struct dispatch_kernel_struct;
-
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          detail::transpose TransposeOut, bool ApplyLoadModifier, bool ApplyStoreModifier, bool ApplyScaleFactor,
-          int SubgroupSize, int KernelID = 0>
+template <typename Scalar, domain Domain, detail::memory Mem, int SubgroupSize>
 class transpose_kernel;
+
+// template <typename Scalar, domain Domain, int, typename TOut>
+// void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>&, const Scalar*, TOut, std::size_t, std::size_t,
+//                                 std::vector<sycl::event>&);
+
+// template <typename Scalar, domain Domain, int SubgroupSize, typename TIn>
+// void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>&, const TIn&, Scalar, std::size_t, std::size_t,
+//                               std::size_t, std::size_t, std::vector<sycl::event>&);
 
 }  // namespace detail
 
@@ -111,9 +117,13 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
-  template <int, direction, typename, domain, detail::memory, detail::transpose, detail::transpose, bool, bool, bool,
-            int, typename, typename>
-  friend struct detail::dispatch_kernel_struct;
+  template <typename Scalar_, domain Domain_, int, typename TOut>
+  friend void dispatch_transpose_kernels(committed_descriptor<Scalar_, Domain_>&, const Scalar_*, TOut, std::size_t,
+                                         std::size_t, std::vector<sycl::event>&);
+
+  template <typename Scalar_, domain Domain_, int SubgroupSize, typename TIn>
+  friend void dispatch_compute_kernels(committed_descriptor<Scalar_, Domain_>&, const TIn&, Scalar, std::size_t,
+                                       std::size_t, std::size_t, std::size_t, std::vector<sycl::event>&);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -181,8 +191,7 @@ class committed_descriptor {
    * @return detail::level
    */
   template <int SubgroupSize>
-  detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids,
-                                       std::vector<std::vector<sycl::kernel_id>>& transpose_kernel_ids) {
+  detail::level prepare_implementation(std::vector<std::vector<sycl::kernel_id>>& ids) {
     factors.clear();
 
     // TODO: check and support all the parameter values
@@ -246,25 +255,21 @@ class committed_descriptor {
       }() && !PORTFFT_SLOW_SG_SHUFFLES;
     };
 
-    auto select_impl = [&]<int KernelID>(std::size_t input_size) -> void {
+    auto select_impl = [&](std::size_t input_size) -> void {
       if (detail::fits_in_wi<Scalar>(input_size)) {
-        transpose_kernel_ids.push_back(
-            detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         levels.push_back(detail::level::WORKITEM);
-        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
+        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>());
         factors.push_back(input_size);
         return;
       }
       if (detail::fits_in_sg<Scalar>(input_size, SubgroupSize)) {
-        transpose_kernel_ids.push_back(
-            detail::get_ids<detail::transpose_kernel, Scalar, Domain, SubgroupSize, KernelID>());
         levels.push_back(detail::level::SUBGROUP);
-        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize, KernelID>());
+        ids.push_back(detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>());
         factors.push_back(input_size);
         return;
       }
     };
-    detail::factorize_input_struct<0, decltype(fits_in_target_level), decltype(select_impl)>::execute(
+    detail::factorize_input_struct<decltype(fits_in_target_level), decltype(select_impl)>::execute(
         params.lengths[0], fits_in_target_level, select_impl);
     std::size_t num_twiddles = 0;
     for (std::size_t i = 0; i < factors.size() - 1; i++) {
@@ -384,8 +389,7 @@ class committed_descriptor {
     // member that is initialized by this function.
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
-    std::vector<std::vector<sycl::kernel_id>> transpose_kernel_ids;
-    level = prepare_implementation<SubgroupSize>(ids, transpose_kernel_ids);
+    level = prepare_implementation<SubgroupSize>(ids);
     for (const auto& kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
@@ -397,18 +401,23 @@ class committed_descriptor {
     }
 
     if (level == detail::level::GLOBAL) {
-      for (auto& transpose_kernel_id : transpose_kernel_ids) {
-        transpose_kernel_bundle.push_back(build_transpose_kernel<SubgroupSize, OtherSGSizes...>(transpose_kernel_id));
+      std::vector<sycl::kernel_id> transpose_kernel_ids;
+      for (std::size_t i = 0; i < factors.size(); i++) {
+        transpose_kernel_ids.clear();
+        detail::get_transpose_kernel_ids<Scalar, Domain, SubgroupSize>(transpose_kernel_ids);
+        transpose_kernel_bundle.push_back(
+            build_transpose_kernel<SubgroupSize, OtherSGSizes...>(transpose_kernel_ids, i));
       }
     }
   }
 
   template <int SubgroupSize, int... OtherSGSizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_transpose_kernel(
-      std::vector<sycl::kernel_id>& transpose_kernel_id) {
+      std::vector<sycl::kernel_id>& transpose_kernel_id, std::size_t level_num) {
     auto transpose_in_bundle =
         sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), transpose_kernel_id);
-    // transpose_in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(factors.size());
+    transpose_in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(level_num);
+    transpose_in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(factors.size());
     return build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(transpose_in_bundle);
   }
 
@@ -887,9 +896,6 @@ struct descriptor {
   std::size_t get_total_length() const noexcept {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
   }
-
-  descriptor<Scalar, Domain>(const descriptor<Scalar, Domain>&) = default;
-  descriptor<Scalar, Domain>& operator=(const descriptor<Scalar, Domain>&) = default;
 };
 
 }  // namespace portfft

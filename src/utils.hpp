@@ -37,16 +37,16 @@ namespace detail {
  * @tparam SubgroupSize size of the subgroup
  * @param ids vector of kernel ids
  */
-template <template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, bool,
-                    int, int>
-          class Kernel,
-          typename Scalar, domain Domain, int SubgroupSize, int KernelID = 0>
+template <
+    template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, bool, int>
+    class Kernel,
+    typename Scalar, domain Domain, int SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR)    \
-  try {                                                                                                                \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT,           \
-                                             LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR, SubgroupSize, KernelID>>()); \
-  } catch (...) {                                                                                                      \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR) \
+  try {                                                                                                             \
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT,        \
+                                             LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR, SubgroupSize>>());        \
+  } catch (...) {                                                                                                   \
   }
 
 #define GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER) \
@@ -84,12 +84,19 @@ std::vector<sycl::kernel_id> get_ids() {
 #undef INSTANTIATE_DIRECTION_MEM_TRANSPOSES_MODIFIERS
   return ids;
 }
-template <int KernelID, typename F, typename G>
+
+template <typename Scalar, domain Domain, int SubgroupSize>
+void get_transpose_kernel_ids(std::vector<sycl::kernel_id>& ids) {
+  ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, Domain, memory::USM, SubgroupSize>>());
+  ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, Domain, memory::BUFFER, SubgroupSize>>());
+}
+
+template <typename F, typename G>
 struct factorize_input_struct {
   static void execute(std::size_t input_size, F fits_in_target_level, G select_impl) {
     std::size_t fact_1 = input_size;
     if (fits_in_target_level(input_size)) {
-      select_impl.template operator()<KernelID>(input_size);
+      select_impl(input_size);
       return;
     }
     if ((detail::factorize(fact_1) == 1)) {
@@ -98,13 +105,9 @@ struct factorize_input_struct {
     do {
       fact_1 = detail::factorize(fact_1);
     } while (!fits_in_target_level(fact_1));
-    select_impl.template operator()<KernelID>(fact_1);
-    factorize_input_struct<KernelID + 1, F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
+    select_impl(fact_1);
+    factorize_input_struct<F, G>::execute(input_size / fact_1, fits_in_target_level, select_impl);
   }
-};
-template <typename F, typename G>
-struct factorize_input_struct<MaxFactors, F, G> {
-  static void execute(std::size_t, F, G) { throw std::runtime_error("No more than 33 factors are supported!"); }
 };
 
 }  // namespace detail
