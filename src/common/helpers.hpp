@@ -123,9 +123,8 @@ template <typename T>
 __attribute__((always_inline)) inline void multiply_complex(const T input_real, const T input_imag,
                                                             const T multiplier_real, const T multiplier_imag,
                                                             T& output_real, T& output_imag) {
-  T temp = input_real;
-  output_real = temp * multiplier_real - input_imag * multiplier_imag;
-  output_imag = temp * multiplier_imag + input_imag * multiplier_real;
+  output_real = input_real * multiplier_real - input_imag * multiplier_imag;
+  output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
 };  // namespace portfft::detail
