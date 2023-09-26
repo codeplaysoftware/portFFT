@@ -23,17 +23,17 @@
 # *
 # **************************************************************************/
 
-set(SYCLFFT_BENCHMARKS
+set(PORTFFT_BENCHMARKS
     bench_float.cpp
     bench_manual_float.cpp
 )
-if(SYCLFFT_ENABLE_DOUBLE_BUILDS)
-    list(APPEND SYCLFFT_BENCHMARKS
+if(PORTFFT_ENABLE_DOUBLE_BUILDS)
+    list(APPEND PORTFFT_BENCHMARKS
         bench_manual_double.cpp
     )
 endif()
 
-foreach(BENCHMARK_FILE ${SYCLFFT_BENCHMARKS})
+foreach(BENCHMARK_FILE ${PORTFFT_BENCHMARKS})
     get_filename_component(BENCHMARK_TARGET ${BENCHMARK_FILE} NAME_WE)
     add_benchmark(${BENCHMARK_TARGET} ${BENCHMARK_FILE})
     add_sycl_to_target(TARGET ${BENCHMARK_TARGET})

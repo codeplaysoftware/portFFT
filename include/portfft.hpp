@@ -18,8 +18,8 @@
  *
  **************************************************************************/
 
-#ifndef SYCL_FFT_HPP
-#define SYCL_FFT_HPP
+#ifndef PORT_FFT_HPP
+#define PORT_FFT_HPP
 
 #include "common/exceptions.hpp"
 #include "common/transfers.hpp"
