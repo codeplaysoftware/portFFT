@@ -35,6 +35,8 @@ template <typename T>
 struct basic_view {
   using element_type = T;
   using reference = T&;
+  using real_type = element_type;
+  static constexpr std::size_t real_count = 1;
   static constexpr bool is_padded = false;
   T* data;
 
@@ -74,6 +76,8 @@ template <pad Pad, std::size_t BankLinesPerPad, typename T>
 struct padded_view {
   using element_type = T;
   using reference = T&;
+  using real_type = element_type;
+  static constexpr std::size_t real_count = 1;
   static constexpr bool is_padded = Pad == pad::DO_PAD;
   T* data;
 
@@ -110,6 +114,8 @@ template <typename BaseView>
 struct complex_complex_view : BaseView {
   using element_type = std::pair<typename BaseView::element_type, typename BaseView::element_type>;
   using reference = std::pair<typename BaseView::element_type&, typename BaseView::element_type&>;
+  using real_type = typename BaseView::real_type;
+  static constexpr std::size_t real_count = BaseView::real_count * 2;
   using BaseView::data;
   using BaseView::is_padded;
 

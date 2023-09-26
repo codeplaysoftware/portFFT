@@ -97,7 +97,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
 
   std::size_t n_ffts_per_sg = SubgroupSize / FactorSG;
   std::size_t max_wis_working = n_ffts_per_sg * FactorSG;
-  std::size_t n_reals_per_fft = FactorSG * NRealsPerWI;
+  std::size_t n_complex_per_fft = FactorSG * FactorWI;
+  std::size_t n_reals_per_fft = n_complex_per_fft * 2;
+  std::size_t n_complex_per_sg = n_ffts_per_sg * n_complex_per_fft;
   std::size_t n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
   std::size_t id_of_fft_in_sg = subgroup_local_id / FactorSG;
   std::size_t id_of_wi_in_fft = subgroup_local_id % FactorSG;
@@ -181,8 +183,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to global memory (SubgroupSize == FactorSG)");
             // Store directly from registers for fully coalesced accesses
-            store_transposed<NRealsPerWI>(global_data, priv, basic_view(output), id_of_wi_in_fft, FactorSG,
-                                          (i + sub_batch) * n_reals_per_fft);
+            store_transposed<FactorWI>(global_data, make_complex_complex_view(priv), make_complex_complex_view(output),
+                                       id_of_wi_in_fft, FactorSG, (i + sub_batch) * n_complex_per_fft);
           }
         } else {
           if (working_inner) {
@@ -238,15 +240,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(
               __func__, "storing transposed data from private to global memory (FactorSG == SubgroupSize)");
-          store_transposed<NRealsPerWI>(global_data, priv, basic_view(output), id_of_wi_in_fft, FactorSG,
-                                        i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+          store_transposed<FactorWI>(global_data, make_complex_complex_view(priv), make_complex_complex_view(output),
+                                     id_of_wi_in_fft, FactorSG,
+                                     i * n_complex_per_sg + id_of_fft_in_sg * n_complex_per_fft);
         }
       } else {
         if (working) {
           global_data.log_message_global(
               __func__, "storing transposed data from private to local memory (FactorSG != SubgroupSize)");
-          store_transposed<NRealsPerWI>(global_data, priv, local_view, id_of_wi_in_fft, FactorSG,
-                                        subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+          store_transposed<FactorWI>(global_data, make_complex_complex_view(priv),
+                                     make_complex_complex_view(local_view), id_of_wi_in_fft, FactorSG,
+                                     subgroup_id * n_complex_per_sg + id_of_fft_in_sg * n_complex_per_fft);
         }
         sycl::group_barrier(global_data.sg);
         global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);

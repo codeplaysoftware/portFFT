@@ -420,29 +420,28 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const 
  * less than the group size)
  * @param destination_offset offset to the destination pointer
  */
-template <int NumElemsPerWI, typename T, typename DestViewT>
-PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, const T* priv, DestViewT destination,
-                                     std::size_t local_id, std::size_t workers_in_group,
+template <int NumElemsPerWI, typename PrivViewT, typename DestViewT>
+PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, const PrivViewT priv,
+                                     DestViewT destination, std::size_t local_id, std::size_t workers_in_group,
                                      std::size_t destination_offset = 0) {
-  static_assert(std::is_same_v<T, typename DestViewT::element_type>, "Source / destination element type mismatch.");
+  static_assert(std::is_same_v<typename PrivViewT::element_type, typename DestViewT::element_type>,
+                "Source / destination element type mismatch.");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "workers_in_group", workers_in_group,
                                 "destination_offset", destination_offset);
   constexpr int VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
-  using T_vec = sycl::vec<T, VecSize>;
-  const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
-  T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
+  using T_vec = sycl::vec<typename PrivViewT::real_type, VecSize>;
+  const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv.data);
+  T_vec* destination_vec = reinterpret_cast<T_vec*>(destination.data);
 
-  detail::unrolled_loop<0, NumElemsPerWI, 2>([&](int i) PORTFFT_INLINE {
-    std::size_t destination_idx = destination_offset + local_id * 2 + static_cast<std::size_t>(i) * workers_in_group;
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](int i) PORTFFT_INLINE {
+    std::size_t destination_idx = destination_offset + local_id + static_cast<std::size_t>(i) * workers_in_group;
     global_data.log_message(func_name, "from", i, "to", destination_idx, "value", priv[i]);
-    global_data.log_message(func_name, "from", i + 1, "to", destination_idx + 1, "value", priv[i + 1]);
-    if (!DestViewT::is_padded &&
-        destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
-      destination_vec[destination_idx / 2] = priv_vec[i / 2];
+    // if the destination address is aligned, we can use vector store:
+    if (!DestViewT::is_padded && (reinterpret_cast<std::uintptr_t>(destination.data) % alignof(T_vec) == 0)) {
+      destination_vec[destination_idx] = priv_vec[i];
     } else {
       destination[destination_idx] = priv[i];
-      destination[destination_idx + 1] = priv[i + 1];
     }
   });
 }
