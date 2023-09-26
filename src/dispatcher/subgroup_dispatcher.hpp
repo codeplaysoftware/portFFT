@@ -116,6 +116,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
+  global_data.log_dump_local("twiddles in local memory:", loc_twiddles, NRealsPerWI * FactorSG);
 
   for (std::size_t i = id_of_fft_in_kernel; i < rounded_up_n_ffts; i += n_ffts_in_kernel) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
@@ -149,6 +150,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
             global_data, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("data loaded to local memory:", loc_twiddles, NRealsPerWI * FactorSG);
       for (std::size_t sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
            sub_batch += n_sgs_in_wg * n_ffts_per_sg) {
         bool working_inner = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
@@ -157,12 +159,19 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
           local2private_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
               global_data, loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch),
               static_cast<int>(max_num_batches_local_mem));
+          global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, global_data.sg, loc_twiddles);
+        if (working_inner) {
+          global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
+        }
         unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
         });
+        if (working_inner) {
+          global_data.log_dump_private("data in registers after scaling:", priv, NRealsPerWI);
+        }
         if constexpr (SubgroupSize == FactorSG) {
           if (working_inner) {
             // Store directly from registers for fully coalesced accesses
@@ -179,6 +188,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         }
       }
       if constexpr (SubgroupSize != FactorSG) {
+        global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
         // store back all loaded batches at once.
         local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, FactorWI * FactorSG, num_batches_in_local_mem,
                                                                       max_num_batches_local_mem, loc, output,
@@ -196,14 +206,21 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       if (working) {
         local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NRealsPerWI,
                                                                  subgroup_id * n_reals_per_sg);
+        global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
       }
       sycl::group_barrier(global_data.sg);
 
       sg_dft<Dir, FactorWI, FactorSG>(priv, global_data.sg, loc_twiddles);
+      if (working){
+        global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
+      }
       unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
+      if (working){
+        global_data.log_dump_private("data in registers after scaling:", priv, NRealsPerWI);
+      }
       if constexpr (FactorSG == SubgroupSize) {
         // in this case we get fully coalesced memory access even without going through local memory
         // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
@@ -217,6 +234,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
               global_data, priv, loc, id_of_wi_in_fft, FactorSG, subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
         sycl::group_barrier(global_data.sg);
+        global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
         local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
             global_data, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
             n_reals_per_fft * (i - id_of_fft_in_sg));
@@ -326,10 +344,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             int factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s
+              s,
 #endif
               it, 
-              it.get_sub_group(),
+              it.get_sub_group()
             };
             detail::subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,

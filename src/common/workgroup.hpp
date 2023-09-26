@@ -130,6 +130,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(global_data, loc_start, priv, wi_id_in_fft, j_inner,
                                                                                StrideWithinDFT);
       }
+      global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
       if (wg_twiddles) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
@@ -147,16 +148,19 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
           priv[2 * i] = tmp_real * twiddle_real - priv[2 * i + 1] * twiddle_imag;
           priv[2 * i + 1] = tmp_real * twiddle_imag + priv[2 * i + 1] * twiddle_real;
         });
+        global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * FactWi);
       }
       if (scaling_factor != static_cast<T>(1)) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
         });
+        global_data.log_dump_private("data in registers after scaling:", priv, 2 * FactWi);
       }
     }
     sg_dft<Dir, FactWi, FactSg>(priv, global_data.sg, loc_twiddles);
     if (working) {
+      global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(StrideWithinDFT),

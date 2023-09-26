@@ -68,16 +68,16 @@ void test() {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
     sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2 * N_sentinel_values, h);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*8, 1024, cgh};
+      sycl::stream s{1024*8, 1024, h};
 #endif
     h.parallel_for<test_transfers_kernel<Pad, BankGroupsPerPad>>(
         sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s
+              s,
 #endif
               it, 
-              it.get_sub_group(),
+              it.get_sub_group()
             };
           std::size_t local_id = it.get_group().get_local_linear_id();
 

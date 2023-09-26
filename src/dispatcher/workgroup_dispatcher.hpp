@@ -93,6 +93,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   }();
   std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
+  global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
       /**
@@ -113,11 +114,13 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
             global_data, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("data loaded to local memory:", loc_twiddles, FFTSize * global_data.it.get_local_range(0) / 2);
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
             loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(global_data.it.get_group());
       }
+      global_data.log_dump_local("computed data local memory:", loc, FFTSize * global_data.it.get_local_range(0) / 2);
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
         // in a strided fashion.
@@ -213,10 +216,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s
+              s,
 #endif
               it,
-              it.get_sub_group(),
+              it.get_sub_group()
             };
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
