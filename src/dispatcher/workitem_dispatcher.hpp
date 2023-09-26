@@ -83,7 +83,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
   std::size_t global_id = global_data.it.get_global_id(0);
   std::size_t global_size = global_data.it.get_global_range(0);
   std::size_t subgroup_id = global_data.sg.get_group_id();
-  std::size_t local_offset = NReals * SubgroupSize * subgroup_id;
+  std::size_t local_offset = N * SubgroupSize * subgroup_id;
   constexpr std::size_t BankLinesPerPad = 1;
   auto loc_view = make_padded_view<pad::DO_PAD, BankLinesPerPad>(loc);
 
@@ -94,7 +94,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, NReals * n_working,
-                                                  NReals * (i - subgroup_local_id), local_offset);
+                                                  NReals * (i - subgroup_local_id), local_offset * 2);
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("data loaded in local memory:", loc, NReals * n_working);
     }
@@ -109,7 +109,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals>(global_data, loc_view, basic_view(priv), subgroup_local_id, NReals, local_offset);
+        local2private<N>(global_data, make_complex_complex_view(loc_view), make_complex_complex_view(priv),
+                         subgroup_local_id, N, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       wi_dft<Dir, N, 1, 1>(priv, priv);
@@ -120,14 +121,15 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       });
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
-      private2local<NReals>(global_data, basic_view(priv), loc_view, subgroup_local_id, NReals, local_offset);
+      private2local<N>(global_data, make_complex_complex_view(priv), make_complex_complex_view(loc_view),
+                       subgroup_local_id, N, local_offset);
     }
     sycl::group_barrier(global_data.sg);
     global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
     global_data.log_message_global(__func__, "storing data from local to global memory");
     // Store back to global in the same manner irrespective of input data layout, as
     //  the transposed case is assumed to be used only in OOP scenario.
-    local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, NReals * n_working, local_offset,
+    local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, NReals * n_working, local_offset * 2,
                                                 NReals * (i - subgroup_local_id));
     sycl::group_barrier(global_data.sg);
   }
