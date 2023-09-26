@@ -286,25 +286,23 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                          sg_calc_twiddles(factor_sg_m, factor_wi_m, n, k, res);
                        });
     });
-    Scalar* global_pointer = res + 2 * (n + m);
-    // Copying from pinned memory to device might be faster than from regular allocation
-    Scalar* temp_host = sycl::malloc_host<Scalar>(2 * fft_size, desc.queue);
-
-    for (std::size_t i = 0; i < n; i++) {
-      for (std::size_t j_wi = 0; j_wi < static_cast<std::size_t>(factor_wi_m); j_wi++) {
-        for (std::size_t j_sg = 0; j_sg < static_cast<std::size_t>(factor_sg_m); j_sg++) {
-          std::size_t j = j_wi + j_sg * static_cast<std::size_t>(factor_wi_m);
-          std::size_t j_loc = j_wi * static_cast<std::size_t>(factor_sg_m) + j_sg;
-          std::size_t index = 2 * (i * m + j_loc);
-          auto tw = detail::calculate_twiddle<Scalar>(i * j, fft_size);
-          temp_host[index] = tw.real();
-          temp_host[index + 1] = tw.imag();
-        }
-      }
-    }
-    desc.queue.copy(temp_host, global_pointer, 2 * fft_size);
+    desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.parallel_for(sycl::range<3>({static_cast<std::size_t>(n), static_cast<std::size_t>(factor_wi_m),
+                                       static_cast<std::size_t>(factor_sg_m)}),
+                       [=](sycl::item<3> it) {
+                         int i = static_cast<int>(it.get_id(0));
+                         int j_wi = static_cast<int>(it.get_id(1));
+                         int j_sg = static_cast<int>(it.get_id(2));
+                         int j = j_wi + j_sg * factor_wi_m;
+                         int j_loc = j_wi * factor_sg_m + j_sg;
+                         std::complex<Scalar> twiddle =
+                             detail::calculate_twiddle<Scalar>(i * j, static_cast<int>(fft_size));
+                         int index = 2 * (static_cast<int>(n + m) + i * static_cast<int>(m) + j_loc);
+                         res[index] = twiddle.real();
+                         res[index + 1] = twiddle.imag();
+                       });
+    });
     desc.queue.wait();
-    sycl::free(temp_host, desc.queue);
     return res;
   }
 };
