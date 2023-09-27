@@ -52,7 +52,7 @@ enum class layout {
 
 enum class memory { BUFFER, USM };
 
-enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
+enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL, GLOBAL_TO_LOCAL, LOCAL_TO_GLOBAL };
 }  // namespace detail
 
 }  // namespace portfft

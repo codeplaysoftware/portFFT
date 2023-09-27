@@ -93,7 +93,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
 
     if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, NReals * n_working,
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, basic_view(input), loc_view, NReals * n_working,
                                                   NReals * (i - subgroup_local_id), local_offset * 2);
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("data loaded in local memory:", loc, NReals * n_working);
@@ -129,8 +129,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     global_data.log_message_global(__func__, "storing data from local to global memory");
     // Store back to global in the same manner irrespective of input data layout, as
     //  the transposed case is assumed to be used only in OOP scenario.
-    local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, NReals * n_working, local_offset * 2,
-                                                NReals * (i - subgroup_local_id));
+    local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, basic_view(output), NReals * n_working,
+                                                local_offset * 2, NReals * (i - subgroup_local_id));
     sycl::group_barrier(global_data.sg);
   }
   global_data.log_message_global(__func__, "exited");

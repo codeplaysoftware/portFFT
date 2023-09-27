@@ -119,7 +119,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   }
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles_view, NRealsPerWI * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, basic_view(twiddles), loc_twiddles_view,
+                                               NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
   global_data.log_dump_local("twiddles in local memory:", loc_twiddles, NRealsPerWI * FactorSG);
 
@@ -211,7 +212,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
 
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize>(
-          global_data, input, local_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
+          global_data, basic_view(input), local_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
           n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
 
       sycl::group_barrier(global_data.sg);
@@ -257,8 +258,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         global_data.log_message_global(
             __func__, "storing transposed data from local to global memory (FactorSG != SubgroupSize)");
         local2global<level::SUBGROUP, SubgroupSize>(
-            global_data, local_view, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
-            n_reals_per_fft * (i - id_of_fft_in_sg));
+            global_data, local_view, basic_view(output), n_ffts_worked_on_by_sg * n_reals_per_fft,
+            subgroup_id * n_reals_per_sg, n_reals_per_fft * (i - id_of_fft_in_sg));
         sycl::group_barrier(global_data.sg);
       }
     }

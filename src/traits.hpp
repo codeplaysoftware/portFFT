@@ -24,6 +24,7 @@
 #include "enums.hpp"
 
 #include <complex>
+#include <sycl/sycl.hpp>
 
 namespace portfft {
 
@@ -48,6 +49,24 @@ struct get_domain<std::complex<T>> {
   // NOLINTNEXTLINE
   static constexpr domain value = domain::COMPLEX;
 };
+
+namespace detail {
+template <typename GroupT>
+struct get_level;
+
+template <>
+struct get_level<sycl::sub_group> {
+  static constexpr level value = level::SUBGROUP;
+};
+
+template <int Dims>
+struct get_level<sycl::group<Dims>> {
+  static constexpr level value = level::WORKGROUP;
+};
+
+template <typename GroupT>
+constexpr detail::level get_level_v = get_level<GroupT>::value;
+}  // namespace detail
 
 }  // namespace portfft
 
