@@ -31,9 +31,6 @@
 
 namespace portfft {
 namespace detail {
-// specialization constants
-constexpr static sycl::specialization_id<std::size_t> WorkgroupSpecConstFftSize{};
-
 /**
  * Calculates the global size needed for given problem.
  *
@@ -71,8 +68,9 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, std::size_t FFTSize, int SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, std::size_t FFTSize, int SubgroupSize, typename T>
 PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
                                           sycl::nd_item<1> it, const T* twiddles, T scaling_factor,
                                           const T* load_modifier_data, const T* store_modifier_data) {
@@ -158,8 +156,9 @@ PORTFFT_ALWAYS_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* 
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, int SubgroupSize, typename T, typename SizeList>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, int SubgroupSize, typename T, typename SizeList>
 PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                             std::size_t n_transforms, sycl::nd_item<1> it, const T* twiddles,
                                             T scaling_factor, std::size_t fft_size,
@@ -213,17 +212,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn,
-                                                detail::transpose::NOT_TRANSPOSED, false, false, true, SubgroupSize>>(
+      cgh.parallel_for<
+          detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
+                                   detail::apply_load_modifier::NOT_APPLIED, detail::apply_store_modifier::NOT_APPLIED,
+                                   detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
-            detail::workgroup_dispatch_impl<Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, false, false, true,
-                                            SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
-                &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size * num_batches_in_local_mem,
-                                                            bank_lines_per_pad)],
-                n_transforms, it, twiddles, scale_factor, fft_size);
+            detail::workgroup_dispatch_impl<
+                Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+                detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
+                detail::cooley_tukey_size_list_t>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
+                                                  &loc[detail::pad_local<detail::pad::DO_PAD>(
+                                                      2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad)],
+                                                  n_transforms, it, twiddles, scale_factor, fft_size);
           });
     });
   }

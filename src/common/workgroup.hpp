@@ -68,9 +68,9 @@ namespace detail {
  * @param sub_batch_num Id of the local memory batch to work on
  * @param it sycl::nd_item<1> for the kernel launch
  */
-template <direction Dir, detail::transpose TransposeIn, bool ApplyLoadModifier, bool ApplyStoreModifier,
-          bool ApplyScaleFactor, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize,
-          std::size_t BankLinesPerPad, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+          detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int DFTSize,
+          int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                                   std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num,
                                   sycl::nd_item<1> it, const T* load_modifier_data, const T* store_modifier_data) {
@@ -150,14 +150,14 @@ PORTFFT_INLINE void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                            priv[2 * i + 1]);
         });
       }
-      if (scaling_factor != static_cast<T>(1)) {
+      if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
         });
       }
 
-      if constexpr (ApplyLoadModifier) {
+      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
           const sycl::vec<T, 2> modifier_priv;
           modifier_priv = *reinterpret_cast<const sycl::vec<T, 2>*>(
@@ -172,7 +172,7 @@ PORTFFT_INLINE void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
     }
     sg_dft<Dir, FactWi, FactSg>(priv, sg, loc_twiddles);
     if (working) {
-      if constexpr (ApplyStoreModifier) {
+      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_ALWAYS_INLINE {
           const sycl::vec<T, 2> modifier_priv;
           modifier_priv = *reinterpret_cast<const sycl::vec<T, 2>*>(
@@ -224,21 +224,23 @@ PORTFFT_INLINE void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
  */
-template <direction Dir, detail::transpose TransposeIn, bool ApplyLoadModifier, bool ApplyStoreModifier,
-          bool ApplyScaleFactor, int FFTSize, int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+          detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int FFTSize,
+          int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it, T scaling_factor,
                            std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num,
                            const T* load_modifier_data, const T* store_modifier_data) {
   // column-wise DFTs
-  detail::dimension_dft<Dir, TransposeIn, ApplyLoadModifier, false, false, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, TransposeIn, ApplyLoadModifier, detail::apply_store_modifier::NOT_APPLIED,
+                        detail::apply_scale_factor::NOT_APPLIED, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, it, load_modifier_data,
       store_modifier_data);
   sycl::group_barrier(it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  detail::dimension_dft<Dir, TransposeIn, false, ApplyStoreModifier, ApplyScaleFactor, M, 1, N, SubgroupSize,
-                        BankLinesPerPad, T>(loc, loc_twiddles, wg_twiddles, scaling_factor,
-                                            max_num_batches_in_local_mem, sub_batch_num, it, load_modifier_data,
-                                            store_modifier_data);
+  detail::dimension_dft<Dir, TransposeIn, detail::apply_load_modifier::NOT_APPLIED, ApplyStoreModifier,
+                        ApplyScaleFactor, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+      loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, it,
+      load_modifier_data, store_modifier_data);
 }
 
 }  // namespace portfft

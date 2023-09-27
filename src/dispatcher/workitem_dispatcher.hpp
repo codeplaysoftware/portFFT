@@ -31,8 +31,6 @@
 
 namespace portfft {
 namespace detail {
-// specialization constants
-constexpr static sycl::specialization_id<std::size_t> WorkitemSpecConstFftSize{};
 
 /**
  * Calculates the global size needed for given problem.
@@ -71,8 +69,9 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  * @param it sycl::nd_item<1> for the kernel launch
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms, sycl::nd_item<1> it,
                                   T scaling_factor, const T* load_modifier_data, const T* store_modifier_data,
                                   T* loc_load_modifier, T* loc_store_modifier) {
@@ -92,13 +91,13 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
     // TODO: There are possibilities where only one subgroup level barrier is required, relying on compliler to replace
     // and remove barriers as of now.
-    if constexpr (ApplyLoadModifier) {
+    if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           it, load_modifier_data, loc_load_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
           local_offset);
       sycl::group_barrier(sg);
     }
-    if constexpr (ApplyStoreModifier) {
+    if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           it, store_modifier_data, loc_store_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
           local_offset);
@@ -120,7 +119,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       } else {
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
       }
-      if constexpr (ApplyLoadModifier) {
+      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
         detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
           std::size_t base_offset = local_offset + subgroup_local_id * NReals + 2 * j;
           T modifier_real = loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)];
@@ -132,7 +131,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       // Relying on compiler optimizations to fuse store_modifier and scale factor.
-      if constexpr (ApplyStoreModifier) {
+      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
           std::size_t base_offset =
               detail::pad_local(local_offset + subgroup_local_id * NReals + 2 * j, BankLinesPerPad);
@@ -146,7 +145,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
                                    priv[2 * j], priv[2 * j + 1]);
         });
       }
-      if constexpr (ApplyScaleFactor) {
+      if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
         unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_ALWAYS_INLINE {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
@@ -186,8 +185,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
 PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                            sycl::nd_item<1> it, T scaling_factor, std::size_t fft_size,
                                            const T* load_modifier_data = nullptr,
@@ -231,14 +231,18 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
-                                               false, false, true, SubgroupSize>>(
+      cgh.parallel_for<
+          detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
+                                  detail::apply_load_modifier::NOT_APPLIED, detail::apply_store_modifier::NOT_APPLIED,
+                                  detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
-            detail::workitem_dispatch_impl<Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, false, false, true,
-                                           SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, it, scale_factor, fft_size);
+            detail::workitem_dispatch_impl<
+                Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+                detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize,
+                detail::cooley_tukey_size_list_t, Scalar>(&in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms,
+                                                          it, scale_factor, fft_size);
           });
     });
   }

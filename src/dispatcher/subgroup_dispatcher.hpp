@@ -31,9 +31,6 @@
 
 namespace portfft {
 namespace detail {
-// specialization constants
-constexpr static sycl::specialization_id<int> FactorWISpecConst{};
-constexpr static sycl::specialization_id<int> FactorSGSpecConst{};
 
 /**
  * Calculates the global size needed for given problem.
@@ -78,8 +75,9 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, int FactorWI, int FactorSG, int SubgroupSize, typename T>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, int FactorWI, int FactorSG, int SubgroupSize, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
                                   sycl::nd_item<1> it, const T* twiddles, T scaling_factor, const T* load_modifier_data,
                                   const T* store_modifier_data, T* loc_load_modifier, T* loc_store_modifier) {
@@ -140,12 +138,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         return n_ffts_per_sg;
       }
     }();
-    if constexpr (ApplyLoadModifier) {
+    if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
       global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
           it, load_modifier_data, loc_load_modifier, n_reals_per_fft * num_batches_in_local_mem,
           it.get_group(0) * max_num_batches_local_mem);
     }
-    if constexpr (ApplyStoreModifier) {
+    if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
       global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
           it, store_modifier_data, loc_store_modifier, n_reals_per_fft * num_batches_in_local_mem,
           it.get_group(0) * max_num_batches_local_mem);
@@ -180,7 +178,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               loc, priv, static_cast<int>(id_of_wi_in_fft), static_cast<int>(sub_batch),
               static_cast<int>(max_num_batches_local_mem));
         }
-        if constexpr (ApplyLoadModifier) {
+        if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
               std::size_t base_index = sub_batch * n_reals_per_fft + NRealsPerWI * id_of_wi_in_fft + 2 * j;
@@ -193,7 +191,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-        if constexpr (ApplyStoreModifier) {
+        if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
               std::size_t base_offset =
@@ -209,7 +207,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             });
           }
         }
-        if constexpr (ApplyScaleFactor) {
+        if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
           unrolled_loop<0, NRealsPerWI, 2>([&](int idx) PORTFFT_ALWAYS_INLINE {
             priv[idx] *= scaling_factor;
             priv[idx + 1] *= scaling_factor;
@@ -256,7 +254,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                                                  subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(sg);
-      if constexpr (ApplyLoadModifier) {
+      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
         if (working) {
           detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
             std::size_t base_index = n_reals_per_fft * (sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg) +
@@ -270,7 +268,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         }
       }
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
-      if constexpr (ApplyStoreModifier) {
+      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         if (working) {
           detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
             std::size_t base_index = n_reals_per_fft * (sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg) +
@@ -286,7 +284,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           });
         }
       }
-      if constexpr (ApplyScaleFactor) {
+      if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
         unrolled_loop<0, NRealsPerWI, 2>([&](int i) PORTFFT_ALWAYS_INLINE {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
@@ -339,8 +337,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, bool ApplyLoadModifier,
-          bool ApplyStoreModifier, bool ApplyScaleFactor, std::size_t SubgroupSize, typename T, typename SizeList>
+template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
+          detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename T, typename SizeList>
 PORTFFT_INLINE void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output, T* loc,
                                            T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
                                            const T* twiddles, T scaling_factor, const T* load_modifier_data = nullptr,
@@ -415,16 +414,19 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
-      cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
-                                               false, false, true, SubgroupSize>>(
+      cgh.parallel_for<
+          detail::subgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, detail::transpose::NOT_TRANSPOSED,
+                                  detail::apply_load_modifier::NOT_APPLIED, detail::apply_store_modifier::NOT_APPLIED,
+                                  detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             int factor_wi = kh.get_specialization_constant<detail::FactorWISpecConst>();
             int factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
-            detail::subgroup_dispatch_impl<Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, false, false, true,
-                                           SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
-                factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,
-                it, twiddles, scale_factor);
+            detail::subgroup_dispatch_impl<
+                Dir, TransposeIn, detail::transpose::NOT_TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+                detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
+                detail::cooley_tukey_size_list_t>(factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
+                                                  &loc_twiddles[0], n_transforms, it, twiddles, scale_factor);
           });
     });
   }

@@ -22,20 +22,13 @@
 #define PORTFFT_COMMON_GLOBAL_HPP
 
 #include <defines.hpp>
-#include <dispatcher/global_dispatcher.hpp>
+#include <descriptor.hpp>
 #include <dispatcher/subgroup_dispatcher.hpp>
 #include <dispatcher/workitem_dispatcher.hpp>
 #include <enums.hpp>
 
 namespace portfft {
 namespace detail {
-
-constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstFftSize{};
-constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorWI{};
-constexpr static sycl::specialization_id<int> GlobalSpecConstSGFactorSG{};
-constexpr static sycl::specialization_id<level> GlobalSpecConstLevel{};
-constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstNumFactors{};
-constexpr static sycl::specialization_id<std::size_t> GlobalSpecConstLevelNum{};
 
 /**
  * Gets the inclusive scan of the factors at a particular index.
@@ -89,7 +82,7 @@ PORTFFT_INLINE std::size_t get_outer_batch_offset(const std::size_t* device_fact
   if (level_num == 1) {
     return 2 * iter_value * device_factors[num_factors];
   }
-  if (level_num == static_cast<int>(num_factors - 1)) {
+  if (level_num == num_factors - 1) {
     return get_outer_batch_offset_impl(level_num - 1);
   }
   return get_outer_batch_offset_impl(level_num);
@@ -102,7 +95,6 @@ void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>& desc, cons
   std::size_t N = desc.factors[level_num];
   std::size_t M = desc.sub_batches[level_num];
   std::size_t committed_size = desc.params.lengths[0];
-  detail::level level_id = desc.levels[0];
   const std::size_t* device_factors = static_cast<const std::size_t*>(desc.dev_factors.get());
   std::vector<sycl::event> dependency_copy(dependencies);
   dependencies.clear();
@@ -136,19 +128,20 @@ void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>& desc, cons
     dependencies.clear();
     dependencies.push_back(desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependency_copy_2);
-      cgh.host_task([=]() { desc.scratch_1.swap(desc.scratch_2); })
+      cgh.host_task([&]() { desc.scratch_1.swap(desc.scratch_2); });
     }));
   }
 }
 
-template <direction Dir, typename Scalar, transpose TransposeIn, transpose TransposeOut, load_modifer ApplyLoadModifier,
-          store_modifier ApplyStoreModifier, scale_factor ApplyScaleFactor, int SubgroupSize>
-PORTFFT_INLINE dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
-                              const Scalar* load_modifier_data, const Scalar* store_modifier_data, Scalar* input_loc,
-                              Scalar* twiddles_loc, Scalar* load_modifier_loc, Scalar* store_modifier_loc,
-                              const std::size_t* device_factors, Scalar scaling_factor, std::size_t batch_size,
-                              sycl::nd_item<1> it, sycl::kernel_handler kh) {
-  auto level = kh.get_specialization_constant<SpecConstLevel>();
+template <direction Dir, typename Scalar, transpose TransposeIn, transpose TransposeOut,
+          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
+                                   const Scalar* load_modifier_data, const Scalar* store_modifier_data,
+                                   Scalar* input_loc, Scalar* twiddles_loc, Scalar* load_modifier_loc,
+                                   Scalar* store_modifier_loc, const std::size_t* device_factors, Scalar scaling_factor,
+                                   std::size_t batch_size, sycl::nd_item<1> it, sycl::kernel_handler kh) {
+  auto level = kh.get_specialization_constant<GlobalSpecConstLevel>();
   std::size_t level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   std::size_t num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
   std::size_t outer_batch_product = get_outer_batch_product(device_factors, num_factors, level_num);
@@ -156,24 +149,26 @@ PORTFFT_INLINE dispatch_level(const Scalar* input, Scalar* output, const Scalar*
     std::size_t outer_batch_offset =
         get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
     if (level == detail::level::WORKITEM) {
-      std::size_t fft_size = kh.get_specialization_constant<SpecConstFftSize>();
+      std::size_t fft_size = kh.get_specialization_constant<GlobalSpecConstFftSize>();
       workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
                              SubgroupSize, cooley_tukey_size_list_t, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, input_loc, batch_size, it, scaling_factor, fft_size,
           load_modifier_data, store_modifier_data, load_modifier_loc, store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
-      int factor_wi = kh.get_specialization_constant<SpecConstSGFactorWI>();
-      int factor_sg = kh.get_specialization_constant<SpecConstSGFactorSG>();
+      int factor_wi = kh.get_specialization_constant<GlobalSpecConstSGFactorWI>();
+      int factor_sg = kh.get_specialization_constant<GlobalSpecConstSGFactorSG>();
       subgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
                              SubgroupSize, Scalar, cooley_tukey_size_list_t>(
           factor_wi, factor_sg, input + outer_batch_offset, output + outer_batch_offset, input_loc, twiddles_loc,
-          batch_size, it, implementation_twiddles, scale_factor, load_modifier_data, store_modifier_data,
+          batch_size, it, implementation_twiddles, scaling_factor, load_modifier_data, store_modifier_data,
           load_modifier_loc, store_modifier_loc);
     }
   }
 }
 
-template <typename Scalar, domain Domain, int SubgroupSize, typename TIn>
+template <typename Scalar, direction Dir, domain Domain, detail::transpose TransposeIn, detail::transpose TransposeOut,
+          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize, typename TIn>
 void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>& desc, const TIn& input, Scalar scale_factor,
                               std::size_t level_num, std::size_t implementation_twiddle_offset,
                               std::size_t intermediate_twiddle_offset, std::size_t batch,
@@ -210,37 +205,22 @@ void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>& desc, const 
             return local_mem_usage;
           }(),
           cgh);
-      auto in_acc_or_usm = get_access<const Scalar*>(in);
+      auto in_acc_or_usm = get_access<const Scalar>(input, cgh);
       cgh.use_kernel_bundle(desc.exec_bundle[level_num]);
       cgh.depends_on(dependency_copy);
-      if (level_num == desc.factors.size() - 1) {
-        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, transpose::NOT_TRANSPOSED, transpose::NOT_TRANSPOSED,
-                                       load_modifier::NOT_APPLIED, store_modifier::NOT_APPLIED, scale_factor::APPLIED>>(
-            sycl::nd_range<1>(global_range, local_range),
-            [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              dispatch_level<Dir, Scalar, transpose::NOT_TRANSPOSED, transpose::NOT_TRANSPOSED,
-                             load_modifier::NOT_APPLIED, store_modifier::NOT_APPLIED, scale_factor::APPLIED,
-                             SubgroupSize>(
-                  &in[0] + 2 * (batch_in_l2 + batch) * committed_size,
-                  scratch_1 + 2 * (batch_in_l2 + batch) * committed_size, twiddles_ptr + implementation_twiddle_offset,
-                  static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddle_offset, &loc[0],
-                  &loc_twiddles[0], static_cast<const Scalar*>(nullptr), &loc_store_modifier[0], device_factors,
-                  scale_factor, batch_size, it, kh);
-            });
-      } else {
-        cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, transpose::TRANSPOSED, transpose::TRANSPOSED,
-                                       load_modifier::NOT_APPLIED, store_modifier::APPLIED, scale_factor::NOT_APPLIED>>(
-            sycl::nd_range<1>(global_range, local_range),
-            [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-              dispatch_level<Dir, Scalar, transpose::TRANSPOSED, transpose::TRANSPOSED, load_modifier::NOT_APPLIED,
-                             store_modifier::APPLIED, scale_factor::NOT_APPLIED, SubgroupSize>(
-                  &in[0] + 2 * (batch_in_l2 + batch) * committed_size,
-                  scratch_1 + 2 * (batch_in_l2 + batch) * committed_size, twiddles_ptr + implementation_twiddle_offset,
-                  static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddle_offset, &loc[0],
-                  &loc_twiddles[0], static_cast<const Scalar*>(nullptr), &loc_store_modifier[0], device_factors,
-                  scale_factor, batch_size, it, kh);
-            });
-      }
+      cgh.parallel_for<global_kernel<Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, ApplyLoadModifier,
+                                     ApplyStoreModifier, ApplyScaleFactor, SubgroupSize>>(
+          sycl::nd_range<1>(global_range, local_range),
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+            dispatch_level<Dir, Scalar, transpose::NOT_TRANSPOSED, transpose::NOT_TRANSPOSED,
+                           apply_load_modifier::NOT_APPLIED, apply_store_modifier::NOT_APPLIED,
+                           apply_scale_factor::APPLIED, SubgroupSize>(
+                &in_acc_or_usm[0] + 2 * (batch_in_l2 + batch) * committed_size,
+                scratch_1 + 2 * (batch_in_l2 + batch) * committed_size, twiddles_ptr + implementation_twiddle_offset,
+                static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddle_offset, &loc[0],
+                &loc_twiddles[0], static_cast<Scalar*>(nullptr), &loc_store_modifier[0], device_factors, scale_factor,
+                batch_size, it, kh);
+          });
     }));
   }
 }

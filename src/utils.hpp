@@ -24,6 +24,7 @@
 #include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
+#include <kernels.hpp>
 #include <vector>
 
 namespace portfft {
@@ -37,10 +38,10 @@ namespace detail {
  * @tparam SubgroupSize size of the subgroup
  * @param ids vector of kernel ids
  */
-template <
-    template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose, bool, bool, bool, int>
-    class Kernel,
-    typename Scalar, domain Domain, int SubgroupSize>
+template <template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose,
+                    detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int>
+          class Kernel,
+          typename Scalar, domain Domain, int SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR) \
   try {                                                                                                             \
@@ -49,17 +50,17 @@ std::vector<sycl::kernel_id> get_ids() {
   } catch (...) {                                                                                                   \
   }
 
-#define GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER) \
-  PORTFFT_GET_ID(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, true)   \
-  PORTFFT_GET_ID(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, false)
+#define GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER)                      \
+  PORTFFT_GET_ID(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::APPLIED) \
+  PORTFFT_GET_ID(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::NOT_APPLIED)
 
-#define INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER) \
-  GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, true)                     \
-  GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, false)
+#define INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER)      \
+  GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, apply_store_modifier::APPLIED) \
+  GENERATE_KERNELS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, LOAD_MODIFIER, apply_store_modifier::NOT_APPLIED)
 
-#define INSTANTIATE_TRANSPOSEOUT_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT)   \
-  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, true) \
-  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, false)
+#define INSTANTIATE_TRANSPOSEOUT_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT)                           \
+  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, apply_load_modifier::APPLIED) \
+  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, TRANSPOSE_IN, TRANSPOSE_OUT, apply_load_modifier::NOT_APPLIED)
 
 #define INSTANTIATE_TRANSPOSEIN_TRANSPOSE_MODIFIERS(DIR, MEM, TRANSPOSE_IN)         \
   INSTANTIATE_TRANSPOSEOUT_MODIFIERS(DIR, MEM, TRANSPOSE_IN, transpose::TRANSPOSED) \
