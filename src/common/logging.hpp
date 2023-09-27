@@ -33,7 +33,7 @@ struct global_data_struct{
   sycl::sub_group sg;
 
 #ifdef PORTFFT_LOG
-  __attribute__((always_inline)) inline void log_ids(){
+  __attribute__((always_inline)) inline void log_ids() const {
     s << "wg_id " << it.get_group(0);
     s << " sg_id_in_wg " << it.get_local_id(0) / sg.get_local_range()[0];
     s << " sg_loc_id " << sg.get_local_linear_id() << " ";

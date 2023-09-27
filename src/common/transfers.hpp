@@ -279,7 +279,7 @@ __attribute__((always_inline)) inline void local2global(detail::global_data_stru
     T_vec to_store;
     detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
-      global_data.log_message("local2global", "aligned chunk from", local_idx, "to", global_offset + i + j, "value", to_store[j]);
+      global_data.log_message("local2global", "aligned chunk from", local_idx, "to", global_offset + i + static_cast<std::size_t>(j), "value", to_store[j]);
       to_store[j] = local[local_idx];
     });
     *reinterpret_cast<T_vec*>(&global[global_offset + i]) = to_store;
@@ -583,14 +583,14 @@ __attribute__((always_inline)) inline void transfer_strided(detail::global_data_
     std::size_t j_size_t = static_cast<std::size_t>(j);
     std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
-      global_data.log_message(__func__, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j, "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
-      global_data.log_message(__func__, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to", 2 * j + 1, "value", loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
+      global_data.log_message("transfer_strided", "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j, "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
+      global_data.log_message("transfer_strided", "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to", 2 * j + 1, "value", loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
       priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
       priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
-      global_data.log_message(__func__, "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "value", priv[2 * j]);
-      global_data.log_message(__func__, "from", 2 * j + 1, "to", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", priv[2 * j + 1]);
+      global_data.log_message("transfer_strided", "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "value", priv[2 * j]);
+      global_data.log_message("transfer_strided", "from", 2 * j + 1, "to", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", priv[2 * j + 1]);
       loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
       loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
     }
