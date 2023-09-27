@@ -73,8 +73,9 @@ class global_local_copy_helper {
    *  @returns The number of reals copied
    */
   template <typename GlobalViewT, typename LocalViewT>
-  static std::size_t sg_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                   std::size_t global_offset, LocalViewT local, std::size_t local_offset) {
+  static PORTFFT_INLINE std::size_t sg_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                                  std::size_t global_offset, LocalViewT local,
+                                                  std::size_t local_offset) {
     // Is the local memory suitable for using Intel's subgroup copy extensions with?
     constexpr bool isSgContiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || !LocalViewT::is_padded;
     const char* func_name = __func__;
@@ -128,9 +129,9 @@ class global_local_copy_helper {
    *  @returns The number of reals copied. May be less than n.
    */
   template <typename GroupT, typename GlobalViewT, typename LocalViewT>
-  static std::size_t sg_block_copy(detail::global_data_struct global_data, GroupT /*group*/, GlobalViewT global,
-                                   std::size_t global_offset, LocalViewT local, std::size_t local_offset,
-                                   std::size_t n) {
+  static PORTFFT_INLINE std::size_t sg_block_copy(detail::global_data_struct global_data, GroupT /*group*/,
+                                                  GlobalViewT global, std::size_t global_offset, LocalViewT local,
+                                                  std::size_t local_offset, std::size_t n) {
     const char* func_name = __func__;
     global_data.log_message_scoped<get_level_v<GroupT>>(func_name, "global_offset", global_offset, "local_offset",
                                                         local_offset, "n", n);
@@ -174,8 +175,9 @@ class global_local_copy_helper {
    *  @returns The number of reals copied
    */
   template <typename GroupT, typename GlobalViewT, typename LocalViewT>
-  static std::size_t vec_aligned_block_copy(detail::global_data_struct global_data, GroupT wg, GlobalViewT global,
-                                            std::size_t global_offset, LocalViewT local, std::size_t local_offset) {
+  static PORTFFT_INLINE std::size_t vec_aligned_block_copy(detail::global_data_struct global_data, GroupT wg,
+                                                           GlobalViewT global, std::size_t global_offset,
+                                                           LocalViewT local, std::size_t local_offset) {
     const char* func_name = __func__;
     global_data.log_message_scoped<get_level_v<GroupT>>(func_name, "global_offset", global_offset, "local_offset",
                                                         local_offset, "copy_block_size",
@@ -217,9 +219,9 @@ class global_local_copy_helper {
    *  @returns The number of reals copied
    */
   template <typename GroupT, typename GlobalViewT, typename LocalViewT>
-  static std::size_t subrange_copy(detail::global_data_struct global_data, GroupT wg, GlobalViewT global,
-                                   std::size_t global_offset, LocalViewT local, std::size_t local_offset,
-                                   std::size_t n) {
+  static PORTFFT_INLINE std::size_t subrange_copy(detail::global_data_struct global_data, GroupT wg, GlobalViewT global,
+                                                  std::size_t global_offset, LocalViewT local, std::size_t local_offset,
+                                                  std::size_t n) {
     const char* func_name = __func__;
     global_data.log_message_scoped<get_level_v<GroupT>>(func_name, "global_offset", global_offset, "local_offset",
                                                         local_offset, "group_size", wg.get_local_range()[0], "n", n);
@@ -251,8 +253,9 @@ class global_local_copy_helper {
    *  @returns The number of reals copied
    */
   template <typename GroupT, typename GlobalViewT, typename LocalViewT>
-  static std::size_t naive_copy(detail::global_data_struct global_data, GroupT wg, GlobalViewT global,
-                                std::size_t global_offset, LocalViewT local, std::size_t local_offset, std::size_t n) {
+  static PORTFFT_INLINE std::size_t naive_copy(detail::global_data_struct global_data, GroupT wg, GlobalViewT global,
+                                               std::size_t global_offset, LocalViewT local, std::size_t local_offset,
+                                               std::size_t n) {
     std::size_t local_id = wg.get_local_id()[0];
     std::size_t local_size = wg.get_local_range()[0];
     std::size_t loop_iters = n / local_size;
@@ -260,11 +263,10 @@ class global_local_copy_helper {
     global_data.log_message_scoped<get_level_v<GroupT>>(func_name, "global_offset", global_offset, "local_offset",
                                                         local_offset);
     for (std::size_t j = 0; j < loop_iters; j++) {
-      // NOTE: This looks like no-coalesced global memory access.
       if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-        local[local_offset + local_id * loop_iters + j] = global[global_offset + local_id * loop_iters + j];
+        local[local_offset + local_id + j * local_size] = global[global_offset + local_id + j * local_size];
       } else {
-        global[global_offset + local_id * loop_iters + j] = local[local_offset + local_id * loop_iters + j];
+        global[global_offset + local_id + j * local_size] = local[local_offset + local_id + j * local_size];
       }
     }
     std::size_t loop_copies = loop_iters * local_size;
@@ -291,9 +293,9 @@ class global_local_copy_helper {
  */
 template <transfer_direction TransferDirection, level Level, int SubgroupSize, typename GlobalViewT,
           typename LocalViewT>
-PORTFFT_INLINE inline void global_local_contiguous_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                                        LocalViewT local, std::size_t total_num_elems,
-                                                        std::size_t global_offset = 0, std::size_t local_offset = 0) {
+PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                                 LocalViewT local, std::size_t total_num_elems,
+                                                 std::size_t global_offset = 0, std::size_t local_offset = 0) {
   using elem_t = std::remove_cv_t<typename LocalViewT::element_type>;
   static_assert(std::is_same_v<std::remove_cv_t<typename GlobalViewT::element_type>, elem_t>,
                 "Different source / destination types.");
@@ -337,9 +339,9 @@ PORTFFT_INLINE inline void global_local_contiguous_copy(detail::global_data_stru
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
     copy_helper_t::vec_aligned_block_copy(group, global, global_offset + i, local, local_offset + i);
   }
-  local_offset += unaligned_elements;
-  global_offset += unaligned_elements;
-  total_num_elems -= unaligned_elements;
+  local_offset += rounded_down_num_elems;
+  global_offset += rounded_down_num_elems;
+  total_num_elems -= rounded_down_num_elems;
 #endif
   // We can not load `ChunkSize`-sized chunks anymore, so we use more naive copy methods.
   copy_helper_t::naive_copy(global_data, group, global, global_offset, local, local_offset, total_num_elems);
