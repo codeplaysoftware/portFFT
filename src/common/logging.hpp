@@ -25,6 +25,9 @@
 
 namespace portfft::detail {
 
+/**
+ * Struct containing objects that are used in almost all functions.
+ */
 struct global_data_struct {
 #ifdef PORTFFT_LOG
   sycl::stream s;
@@ -33,17 +36,35 @@ struct global_data_struct {
   sycl::sub_group sg;
 
 #ifdef PORTFFT_LOG
+  /**
+   * Logs ids of workitem, subgroup and workgroup.
+   */
   __attribute__((always_inline)) inline void log_ids() const {
     s << "wg_id " << it.get_group(0);
     s << " sg_id_in_wg " << it.get_local_id(0) / sg.get_local_range()[0];
     s << " sg_loc_id " << sg.get_local_linear_id() << " ";
   }
 
+  /**
+   * Implementation of log_message. End of recursion - logs the message, adds a newline and flushes the stream.
+   *
+   * @tparam T type of the object to log
+   * @param message message to log
+   */
   template <typename T>
   __attribute__((always_inline)) inline void log_message_impl(T message) {
     s << message << "\n" << sycl::stream_manipulator::flush;
   }
 
+  /**
+   * Implementation of log_message. End of recursion - logs the messages separated by newlines, adds a newline and
+   * flushes the stream.
+   *
+   * @tparam TFirst type of the first object to log
+   * @tparam Ts types of the other objects to log
+   * @param message the first message to log
+   * @param other_messages other messages to log
+   */
   template <typename TFirst, typename... Ts>
   __attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts... other_messages) {
     s << message << " ";
@@ -51,6 +72,16 @@ struct global_data_struct {
   }
 #endif
 
+  /**
+   * Logs content of the local memory. Also outputs the id of the workgroup it is called from.
+   *
+   * Does nothing if logging of dumps is not enabled (PORTFFT_LOG_DUMPS is not defined).
+   *
+   * @tparam T type of the data to log
+   * @param message message to log before the data
+   * @param ptr pointer to data to log
+   * @param num number of elements to log
+   */
   template <typename T>
   __attribute__((always_inline)) inline void log_dump_local([[maybe_unused]] const char* message,
                                                             [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num) {
@@ -69,6 +100,16 @@ struct global_data_struct {
 #endif
   }
 
+  /**
+   * Logs content of the private memory. Also outputs the ids of the workitem, subgroup and workgroup it is called from.
+   *
+   * Does nothing if logging of dumps is not enabled (PORTFFT_LOG_DUMPS is not defined).
+   *
+   * @tparam T type of the data to log
+   * @param message message to log before the data
+   * @param ptr pointer to data to log
+   * @param num number of elements to log
+   */
   template <typename T>
   __attribute__((always_inline)) inline void log_dump_private([[maybe_unused]] const char* message,
                                                               [[maybe_unused]] T* ptr,
@@ -86,6 +127,14 @@ struct global_data_struct {
 #endif
   }
 
+  /**
+   * Logs a message. Can log multiple objects/strings. They will be separated by spaces.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
   template <typename... Ts>
   __attribute__((always_inline)) inline void log_message([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
@@ -94,6 +143,15 @@ struct global_data_struct {
 #endif
   }
 
+  /**
+   * Logs a message from a workgroup - there will be only one output from each workgroup. Can log multiple
+   * objects/strings. They will be separated by spaces. Also outputs the id of the workgroup it is called from.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
   template <typename... Ts>
   __attribute__((always_inline)) inline void log_message_local([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
@@ -104,6 +162,15 @@ struct global_data_struct {
 #endif
   }
 
+  /**
+   * Logs a message from the kernel - there will be only one output from the kernel. Can log multiple objects/strings.
+   * They will be separated by spaces.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
   template <typename... Ts>
   __attribute__((always_inline)) inline void log_message_global([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
