@@ -418,7 +418,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
-    throw std::runtime_error("SYCL_FFT: Real to complex FFTs not yet implemented.");
+    throw std::runtime_error("Real to complex FFTs not yet implemented.");
   }
 
   /**
@@ -491,7 +491,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
                               const std::vector<sycl::event>& /*dependencies*/ = {}) {
-    throw std::runtime_error("SYCL_FFT: Real to complex FFTs not yet implemented.");
+    throw std::runtime_error("Real to complex FFTs not yet implemented.");
     return {};
   }
 
