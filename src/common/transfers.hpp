@@ -129,7 +129,7 @@ __attribute__((always_inline)) inline void global2local(detail::global_data_stru
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        global_data.log_message("global2local", "from", global_offset + i + static_cast<std::size_t>(j), "to", local_idx, "value", loaded[j]);
+        //global_data.log_message("global2local", "from", global_offset + i + static_cast<std::size_t>(j), "to", local_idx, "value", loaded[j]);
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
