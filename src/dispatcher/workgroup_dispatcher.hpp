@@ -114,13 +114,15 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
             global_data, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
-      global_data.log_dump_local("data loaded to local memory:", loc_twiddles, FFTSize * global_data.it.get_local_range(0) / 2);
+      global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
+                                 FFTSize * global_data.it.get_local_range(0) / 2);
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
             loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, sub_batch);
         sycl::group_barrier(global_data.it.get_group());
       }
-      global_data.log_dump_local("computed data in local memory:", loc, FFTSize * global_data.it.get_local_range(0) / 2);
+      global_data.log_dump_local("computed data in local memory:", loc,
+                                 FFTSize * global_data.it.get_local_range(0) / 2);
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
         // in a strided fashion.
@@ -129,7 +131,8 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
-      global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize, offset);
+      global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
+                                                                                 offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
           loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, 0);
@@ -166,8 +169,8 @@ __attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* o
     constexpr size_t ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (!fits_in_sg<T>(ThisSize, SubgroupSize)) {
-        workgroup_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, global_data,
-                                                                 twiddles, scaling_factor);
+        workgroup_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms,
+                                                                 global_data, twiddles, scaling_factor);
       }
     } else {
       workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
@@ -208,7 +211,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*16, 1024, cgh};
+      sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
@@ -216,11 +219,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s << sycl::setprecision(3),
+                s << sycl::setprecision(3),
 #endif
-              it,
-              it.get_sub_group()
-            };
+                it, it.get_sub_group()};
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
                 &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size * num_batches_in_local_mem,

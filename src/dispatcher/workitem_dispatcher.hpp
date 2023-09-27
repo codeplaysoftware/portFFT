@@ -103,7 +103,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
-        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals, local_offset);
+        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals,
+                                                            local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       wi_dft<Dir, N, 1, 1>(priv, priv);
@@ -113,7 +114,8 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
         priv[i + 1] *= scaling_factor;
       });
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
-      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals, local_offset);
+      private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
+                                                          local_offset);
     }
     sycl::group_barrier(global_data.sg);
     global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
@@ -149,7 +151,8 @@ __attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* ou
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (detail::fits_in_wi<T>(ThisSize)) {
-        workitem_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, n_transforms, global_data, scaling_factor);
+        workitem_impl<Dir, TransposeIn, ThisSize, SubgroupSize>(input, output, loc, n_transforms, global_data,
+                                                                scaling_factor);
       }
     } else {
       workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, typename SizeList::child_t, T>(
@@ -180,7 +183,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024*16, 1024, cgh};
+      sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}}, [=
@@ -188,11 +191,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s << sycl::setprecision(3),
+                s << sycl::setprecision(3),
 #endif
-              it, 
-              it.get_sub_group()
-            };
+                it, it.get_sub_group()};
             detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
           });

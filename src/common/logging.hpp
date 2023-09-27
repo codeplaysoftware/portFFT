@@ -25,7 +25,7 @@
 
 namespace portfft::detail {
 
-struct global_data_struct{
+struct global_data_struct {
 #ifdef PORTFFT_LOG
   sycl::stream s;
 #endif
@@ -39,29 +39,29 @@ struct global_data_struct{
     s << " sg_loc_id " << sg.get_local_linear_id() << " ";
   }
 
-  
-  template<typename T>
-  __attribute__((always_inline)) inline void log_message_impl(T message){
+  template <typename T>
+  __attribute__((always_inline)) inline void log_message_impl(T message) {
     s << message << "\n" << sycl::stream_manipulator::flush;
   }
 
-template<typename TFirst, typename... Ts>
-  __attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts... other_messages){
+  template <typename TFirst, typename... Ts>
+  __attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts... other_messages) {
     s << message << " ";
     log_message_impl(other_messages...);
   }
 #endif
 
-  template<typename T>
-  __attribute__((always_inline)) inline void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num){
+  template <typename T>
+  __attribute__((always_inline)) inline void log_dump_local([[maybe_unused]] const char* message,
+                                                            [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
-    if(it.get_local_id(0)==0){
+    if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
       s << " " << message << " ";
-      if(num){
+      if (num) {
         s << ptr[0];
       }
-      for(std::size_t i=1;i<num;i++){
+      for (std::size_t i = 1; i < num; i++) {
         s << ", " << ptr[i];
       }
       s << "\n" << sycl::stream_manipulator::flush;
@@ -69,50 +69,50 @@ template<typename TFirst, typename... Ts>
 #endif
   }
 
-    template<typename T>
-  __attribute__((always_inline)) inline void log_dump_private([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num){
+  template <typename T>
+  __attribute__((always_inline)) inline void log_dump_private([[maybe_unused]] const char* message,
+                                                              [[maybe_unused]] T* ptr,
+                                                              [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
     log_ids();
     s << message << " ";
-    if(num){
+    if (num) {
       s << ptr[0];
     }
-    for(std::size_t i=1;i<num;i++){
+    for (std::size_t i = 1; i < num; i++) {
       s << ", " << ptr[i];
     }
     s << "\n" << sycl::stream_manipulator::flush;
 #endif
   }
 
-  template<typename... Ts>
-  __attribute__((always_inline)) inline void log_message([[maybe_unused]] Ts... messages){
+  template <typename... Ts>
+  __attribute__((always_inline)) inline void log_message([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
     log_ids();
     log_message_impl(messages...);
 #endif
   }
-  
-  template<typename... Ts>
-  __attribute__((always_inline)) inline void log_message_local([[maybe_unused]] Ts... messages){
+
+  template <typename... Ts>
+  __attribute__((always_inline)) inline void log_message_local([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
-    if(it.get_local_id(0) == 0){
+    if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0) << " ";
       log_message_impl(messages...);
     }
 #endif
   }
-  
-  template<typename... Ts>
-  __attribute__((always_inline)) inline void log_message_global([[maybe_unused]] Ts... messages){
+
+  template <typename... Ts>
+  __attribute__((always_inline)) inline void log_message_global([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
-    if(it.get_global_id(0) == 0){
+    if (it.get_global_id(0) == 0) {
       log_message_impl(messages...);
     }
 #endif
   }
 };
-
-
 
 };  // namespace portfft::detail
 
