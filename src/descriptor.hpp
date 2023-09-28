@@ -256,21 +256,6 @@ class committed_descriptor {
     };
     detail::factorize_input_struct<decltype(fits_in_target_level), decltype(select_impl)>::execute(
         params.lengths[0], fits_in_target_level, select_impl);
-    std::size_t num_twiddles = 0;
-    for (std::size_t i = 0; i < factors.size() - 1; i++) {
-      auto batches_at_level = std::accumulate(factors.begin() + static_cast<long>(i) + 1, factors.end(), std::size_t(1),
-                                              std::multiplies<std::size_t>());
-      sub_batches.push_back(batches_at_level);
-      num_twiddles += factors[i] * batches_at_level * 2;
-    }
-    sub_batches.push_back(factors[factors.size() - 2]);
-    num_batches_in_l2 = std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
-                                 std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
-                                                                           (2 * sizeof(Scalar) * params.lengths[0])));
-    inclusive_scan.push_back(factors[0]);
-    for (std::size_t i = 1; i < factors.size(); i++) {
-      inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
-    }
     return detail::level::GLOBAL;
   }
 
@@ -346,7 +331,6 @@ class committed_descriptor {
   sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const_impl(
       sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      used_sg_size = SubgroupSize;
       try {
         return sycl::build(in_bundle);
       } catch (std::exception& e) {
@@ -374,7 +358,12 @@ class committed_descriptor {
     // member that is initialized by this function.
     std::vector<std::vector<sycl::kernel_id>> ids;
     std::vector<sycl::kernel_bundle<sycl::bundle_state::input>> input_bundles;
+    exec_bundle.clear();
+    transpose_kernel_bundle.clear();
+    factors.clear();
+    used_sg_size = SubgroupSize;
     level = prepare_implementation<SubgroupSize>(ids);
+    bool successful_build = true;
     for (const auto& kernel_ids : ids) {
       if (sycl::is_compatible(kernel_ids, dev)) {
         input_bundles.push_back(sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids));
@@ -382,7 +371,12 @@ class committed_descriptor {
     }
     set_spec_constants(input_bundles);
     for (auto in_bundle : input_bundles) {
-      exec_bundle.push_back(build_w_spec_const_impl<SubgroupSize, OtherSGSizes...>(in_bundle));
+      try {
+        exec_bundle.push_back(build_w_spec_const_impl<SubgroupSize>(in_bundle));
+      } catch (...) {
+        successful_build = false;
+        break;
+      }
     }
 
     if (level == detail::level::GLOBAL) {
@@ -390,8 +384,21 @@ class committed_descriptor {
       for (std::size_t i = 0; i < factors.size(); i++) {
         transpose_kernel_ids.clear();
         detail::get_transpose_kernel_ids<Scalar, Domain, SubgroupSize>(transpose_kernel_ids);
-        transpose_kernel_bundle.push_back(
-            build_transpose_kernel<SubgroupSize, OtherSGSizes...>(transpose_kernel_ids, i));
+        try {
+          transpose_kernel_bundle.push_back(
+              build_transpose_kernel<SubgroupSize>(transpose_kernel_ids, i));
+        } catch (...) {
+          successful_build = false;
+          break;
+        }
+      }
+    }
+
+    if (!successful_build) {
+      if constexpr (sizeof...(OtherSGSizes) == 0) {
+        throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
+      } else {
+        build_w_spec_const<OtherSGSizes...>();
       }
     }
   }
@@ -456,6 +463,23 @@ class committed_descriptor {
       }
     });
     if (level == detail::level::GLOBAL) {
+      std::size_t num_twiddles = 0;
+      for (std::size_t i = 0; i < factors.size() - 1; i++) {
+        auto batches_at_level = std::accumulate(factors.begin() + static_cast<long>(i) + 1, factors.end(),
+                                                std::size_t(1), std::multiplies<std::size_t>());
+        sub_batches.push_back(batches_at_level);
+        num_twiddles += factors[i] * batches_at_level * 2;
+      }
+      sub_batches.push_back(factors[factors.size() - 2]);
+      num_batches_in_l2 =
+          std::min(static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
+                   std::max(static_cast<std::size_t>(1), (l2_cache_size - num_twiddles * sizeof(Scalar)) /
+                                                             (2 * sizeof(Scalar) * params.lengths[0])));
+      inclusive_scan.push_back(factors[0]);
+      for (std::size_t i = 1; i < factors.size(); i++) {
+        inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
+      }
+
       scratch_1 = std::shared_ptr<Scalar>(
           sycl::malloc_device<Scalar>(2 * params.lengths[0] * params.number_of_transforms, queue),
           [queue](Scalar* ptr) {
