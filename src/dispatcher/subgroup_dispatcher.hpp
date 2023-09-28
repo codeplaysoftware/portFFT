@@ -110,7 +110,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
 
   std::size_t id_of_fft_in_kernel;
   std::size_t n_ffts_in_kernel;
-  if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+  if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     id_of_fft_in_kernel = it.get_group(0) * it.get_local_range(0) / 2;
     n_ffts_in_kernel = it.get_group_range(0) * it.get_local_range(0) / 2;
   } else {
@@ -126,7 +126,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
     std::size_t batch_id = i - id_of_fft_in_sg;
     std::size_t n_ffts_worked_on_by_sg = sycl::min(n_transforms - batch_id, n_ffts_per_sg);
 
-    if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
        * Codepath taken if the input is transposed
        * The number of batches that are loaded, is equal to half of the workgroup size.
@@ -368,7 +368,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
   static std::size_t execute(committed_descriptor& desc, direction dir) {
     auto input_layout = detail::get_layout(desc.params, dir);
     auto output_layout = detail::get_layout(desc.params, inv(dir));
-    if (input_layout == detail::layout::TRANSPOSED && output_layout == detail::layout::PACKED) {
+    if (input_layout == detail::layout::BATCH_INTERLEAVED && output_layout == detail::layout::PACKED) {
       // Input is transposed and not the output
       std::size_t twiddle_bytes = 2 * desc.params.lengths[0] * sizeof(Scalar);
       std::size_t padded_fft_bytes = detail::pad_local(2 * desc.params.lengths[0]) * sizeof(Scalar);

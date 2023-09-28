@@ -40,7 +40,7 @@ class InvalidFFTTest : public ::testing::TestWithParam<test_params> {};
 auto ip_and_oop = ::testing::Values(placement::IN_PLACE, placement::OUT_OF_PLACE);
 auto ip = ::testing::Values(placement::IN_PLACE);
 auto oop = ::testing::Values(placement::OUT_OF_PLACE);
-auto packed_and_transposed = ::testing::Values(detail::layout::PACKED, detail::layout::TRANSPOSED);
+auto packed_and_transposed = ::testing::Values(detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED);
 auto fwd_and_bwd = ::testing::Values(direction::FORWARD, direction::BACKWARD);
 auto fwd_only = ::testing::Values(direction::FORWARD);
 auto bwd_only = ::testing::Values(direction::BACKWARD);

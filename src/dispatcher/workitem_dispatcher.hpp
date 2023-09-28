@@ -94,13 +94,13 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     std::size_t batch_id = i - subgroup_local_id;
     std::size_t batch_size = sycl::min(SubgroupSize, n_transforms - batch_id);
 
-    if constexpr (LayoutIn != detail::layout::TRANSPOSED) {
+    if constexpr (LayoutIn != detail::layout::BATCH_INTERLEAVED) {
       global2local<pad::DO_PAD, level::SUBGROUP, SubgroupSize>(
           it, input, loc, batch_size, N_reals, input_distance * batch_id, local_offset, input_stride, input_distance);
       sycl::group_barrier(sg);
     }
     if (working) {
-      if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, N_reals, 2>([&](const std::size_t j) __attribute__((always_inline)) {

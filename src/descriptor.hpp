@@ -76,7 +76,7 @@ layout get_layout(const Descriptor& desc, direction dir) {
   // For now require the offset to be 0 to consider this direction to be transposed.
   // This could be relaxed if needed.
   if (batch > 1 && distance == 1 && strides.size() == 2 && strides[0] == 0 && strides[1] == batch) {
-    return detail::layout::TRANSPOSED;
+    return detail::layout::BATCH_INTERLEAVED;
   }
   return detail::layout::UNPACKED;
 }
@@ -195,10 +195,10 @@ class committed_descriptor {
     PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::UNPACKED)
     PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::UNPACKED)
     PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::UNPACKED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
 
 #undef PORTFFT_GET_ID
   }
@@ -579,8 +579,8 @@ class committed_descriptor {
       auto output_layout = detail::get_layout(params, inv(Dir));
       if (input_layout == detail::layout::PACKED && output_layout == detail::layout::PACKED) {
         return run_kernel<Dir, detail::layout::PACKED, SubgroupSize>(in, out, dependencies);
-      } else if (input_layout == detail::layout::TRANSPOSED && output_layout == detail::layout::PACKED) {
-        return run_kernel<Dir, detail::layout::TRANSPOSED, SubgroupSize>(in, out, dependencies);
+      } else if (input_layout == detail::layout::BATCH_INTERLEAVED && output_layout == detail::layout::PACKED) {
+        return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(in, out, dependencies);
       } else {
         return run_kernel<Dir, detail::layout::UNPACKED, SubgroupSize>(in, out, dependencies);
       }

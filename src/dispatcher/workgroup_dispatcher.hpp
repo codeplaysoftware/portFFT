@@ -89,7 +89,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
   const T* wg_twiddles = twiddles + 2 * (M + N);
 
   std::size_t max_num_batches_in_local_mem = [=]() {
-    if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       return it.get_local_range(0) / 2;
     } else {
       return 1;
@@ -103,7 +103,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     std::size_t global_input_offset = batch_id * input_distance;
     std::size_t global_output_offset = batch_id * output_distance;
     std::size_t num_batches_in_local_mem = [=]() {
-      if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         if (global_input_offset + it.get_local_range(0) / 2 < n_transforms) {
           return it.get_local_range(0) / 2;
         } else {
@@ -113,7 +113,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
         return 1;
       }
     }();
-    if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       // Load in a transposed manner, similar to subgroup impl.
       global2local_transposed<pad::DO_PAD, level::WORKGROUP, T>(it, input, loc, 2 * global_input_offset, FFTSize,
                                                                 n_transforms, num_batches_in_local_mem);
@@ -127,7 +127,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     for (std::size_t i = 0; i < num_batches_in_local_mem; i++) {
       wg_dft<Dir, FFTSize, N, M, SubgroupSize>(loc + i * 2 * FFTSize, loc_twiddles, wg_twiddles, it, scaling_factor);
       sycl::group_barrier(it.get_group());
-      if constexpr (LayoutIn == detail::layout::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         // Once all batches in local memory have been processed, store all of them back to global memory in one go
         // Viewing it as a rectangle of height as problem size and length as the number of batches in local memory
         // Which needs to read in a transposed manner and stored in a contiguous one.
@@ -248,7 +248,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     // working memory + twiddles for subgroup impl for the two sizes
     auto input_layout = detail::get_layout(desc.params, dir);
     auto output_layout = detail::get_layout(desc.params, inv(dir));
-    if (input_layout == detail::layout::TRANSPOSED && output_layout == detail::layout::PACKED) {
+    if (input_layout == detail::layout::BATCH_INTERLEAVED && output_layout == detail::layout::PACKED) {
       // Input is transposed and not the output
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
       return detail::pad_local(2 * fft_size * num_batches_in_local_mem) + 2 * (M + N);

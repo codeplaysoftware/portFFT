@@ -114,8 +114,8 @@ void operator<<(std::ostream& stream, const test_params& params) {
   stream << ", Layout=";
   if (params.layout == detail::layout::PACKED) {
     stream << "PACKED";
-  } else if (params.layout == detail::layout::TRANSPOSED) {
-    stream << "TRANSPOSED";
+  } else if (params.layout == detail::layout::BATCH_INTERLEAVED) {
+    stream << "BATCH_INTERLEAVED";
   } else if (params.layout == detail::layout::UNPACKED) {
     stream << "UNPACKED";
   }
@@ -193,7 +193,7 @@ auto get_descriptor(const test_params& params) {
     }
     desc.forward_distance = desc.get_flattened_length();
     desc.backward_distance = desc.forward_distance;
-  } else if (params.layout == detail::layout::TRANSPOSED) {
+  } else if (params.layout == detail::layout::BATCH_INTERLEAVED) {
     // Set default strides and distance for the transposed layout
     if (params.fwd_strides || params.bwd_strides || params.fwd_distance || params.bwd_distance) {
       throw std::runtime_error("Transposed layout cannot be used with custom strides or distance");
