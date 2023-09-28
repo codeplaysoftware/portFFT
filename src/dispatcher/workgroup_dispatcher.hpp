@@ -72,9 +72,8 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param scaling_factor scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t FFTSize, int SubgroupSize, typename T>
-PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
-                                                          std::size_t n_transforms, global_data_struct global_data,
-                                                          const T* twiddles, T scaling_factor) {
+PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
+                                   global_data_struct global_data, const T* twiddles, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "n_transforms", n_transforms);
   std::size_t num_workgroups = global_data.it.get_group_range(0);
   std::size_t wg_id = global_data.it.get_group(0);
@@ -170,8 +169,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  */
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T, typename SizeList>
 PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
-                                                            std::size_t n_transforms, global_data_struct global_data,
-                                                            const T* twiddles, T scaling_factor, std::size_t fft_size) {
+                                            std::size_t n_transforms, global_data_struct global_data, const T* twiddles,
+                                            T scaling_factor, std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {
     constexpr size_t ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {

@@ -37,20 +37,22 @@ struct global_data_struct {
 
   /**
    * Constructor.
-   * 
+   *
    * @param s sycl::stream for logging
    * @param it nd_item of the kernel
-  */
+   */
   global_data_struct(
 #ifdef PORTFFT_LOG
-    sycl::stream s,
+      sycl::stream s,
 #endif
-    sycl::nd_item<1> it) : 
+      sycl::nd_item<1> it)
+      :
 #ifdef PORTFFT_LOG
-    s(s << sycl::setprecision(3)),
+        s(s << sycl::setprecision(3)),
 #endif
-    it(it),
-    sg(it.get_sub_group()){}
+        it(it),
+        sg(it.get_sub_group()) {
+  }
 
 #ifdef PORTFFT_LOG
   /**
@@ -103,8 +105,8 @@ struct global_data_struct {
    * @param num number of elements to log
    */
   template <typename T>
-  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message,
-                                                            [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num) {
+  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
+                                     [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
     if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
@@ -131,9 +133,8 @@ struct global_data_struct {
    * @param num number of elements to log
    */
   template <typename T>
-  PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message,
-                                                              [[maybe_unused]] T* ptr,
-                                                              [[maybe_unused]] std::size_t num) {
+  PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
+                                       [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
     log_ids();
     s << message << " ";

@@ -73,7 +73,7 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  */
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                         global_data_struct global_data, T scaling_factor) {
+                                  global_data_struct global_data, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "N", N, "n_transforms", n_transforms);
   constexpr std::size_t NReals = 2 * N;
 
@@ -98,7 +98,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     }
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-      global_data.log_message_global(__func__, "loading transposed data from global to private memory");
+        global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_INLINE {
@@ -152,8 +152,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename SizeList, typename T>
 PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                                           global_data_struct global_data, T scaling_factor,
-                                                           std::size_t fft_size) {
+                                           global_data_struct global_data, T scaling_factor, std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {

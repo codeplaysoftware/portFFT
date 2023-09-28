@@ -73,8 +73,8 @@ template <direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideW
 __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                                                          T scaling_factor, std::size_t max_num_batches_in_local_mem,
                                                          std::size_t sub_batch_num, global_data_struct global_data) {
-  global_data.log_message_global(__func__, "entered", "DFTSize", DFTSize, "StrideWithinDFT", StrideWithinDFT, 
-                                 "NDFTsInOuterDimension", NDFTsInOuterDimension, "max_num_batches_in_local_mem", 
+  global_data.log_message_global(__func__, "entered", "DFTSize", DFTSize, "StrideWithinDFT", StrideWithinDFT,
+                                 "NDFTsInOuterDimension", NDFTsInOuterDimension, "max_num_batches_in_local_mem",
                                  max_num_batches_in_local_mem, "sub_batch_num", sub_batch_num);
   constexpr int OuterStride = DFTSize * StrideWithinDFT;
   // the number of work-items involved in every subgroup fft
@@ -205,10 +205,11 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  */
 template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int M, int SubgroupSize,
           std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
-                                                  detail::global_data_struct global_data, T scaling_factor,
-                                                  std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num) {
-  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M, "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num", sub_batch_num);
+PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail::global_data_struct global_data,
+                           T scaling_factor, std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num) {
+  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M,
+                                 "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num",
+                                 sub_batch_num);
   // column-wise DFTs
   detail::dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, global_data);

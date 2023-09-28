@@ -73,7 +73,8 @@ PORTFFT_INLINE std::size_t pad_local(std::size_t local_idx, std::size_t bank_lin
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
@@ -84,9 +85,9 @@ PORTFFT_INLINE std::size_t pad_local(std::size_t local_idx, std::size_t bank_lin
  * @param local_offset offset to the local pointer
  */
 template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global,
-                                                        T* local, std::size_t total_num_elems,
-                                                        std::size_t global_offset = 0, std::size_t local_offset = 0) {
+PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global, T* local,
+                                 std::size_t total_num_elems, std::size_t global_offset = 0,
+                                 std::size_t local_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
   constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
@@ -194,7 +195,8 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam SubgroupSize size of the subgroup
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
@@ -205,9 +207,9 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
  * @param global_offset offset to the global pointer
  */
 template <detail::level Level, int SubgroupSize, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T* local,
-                                                        T* global, std::size_t total_num_elems,
-                                                        std::size_t local_offset = 0, std::size_t global_offset = 0) {
+PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T* local, T* global,
+                                 std::size_t total_num_elems, std::size_t local_offset = 0,
+                                 std::size_t global_offset = 0) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only implemented for subgroup and workgroup levels!");
   constexpr int ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(T);
@@ -318,7 +320,8 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
@@ -330,9 +333,8 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
  * @param local_offset offset to the local pointer
  */
 template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const T* local,
-                                                         T* priv, std::size_t local_id, std::size_t stride,
-                                                         std::size_t local_offset = 0) {
+PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const T* local, T* priv, std::size_t local_id,
+                                  std::size_t stride, std::size_t local_offset = 0) {
   global_data.log_message_local(__func__, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) PORTFFT_INLINE {
@@ -346,7 +348,8 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const 
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -358,9 +361,8 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const 
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data,
-                                                                    const T* local, T* priv, int thread_id, int col_num,
-                                                                    int stride) {
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, const T* local, T* priv,
+                                             int thread_id, int col_num, int stride) {
   global_data.log_message_local(__func__, "NumElementsPerWI", NumElementsPerWI, "thread_id", thread_id, "col_num",
                                 col_num, "stride", stride);
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
@@ -376,7 +378,8 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -389,9 +392,8 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
  * @param offset offset to the global memory pointer
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data,
-                                                                   std::size_t N, std::size_t M, std::size_t stride,
-                                                                   T* local, T* global, std::size_t offset) {
+PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, std::size_t N, std::size_t M,
+                                            std::size_t stride, T* local, T* global, std::size_t offset) {
   global_data.log_message_local(__func__, "N", N, "M", M, "stride", stride, "offset", offset);
   std::size_t num_threads = global_data.it.get_local_range(0);
   for (std::size_t i = global_data.it.get_local_linear_id(); i < N * M; i += num_threads) {
@@ -408,7 +410,8 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
  * Loads data from global memory where consecutive elements of a problem are separated by stride.
  * Loads half of workgroup size equivalent number of consecutive batches from global memory.
  *
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
@@ -422,11 +425,9 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
  * @param stride_local Stride Value for Local Memory
  */
 template <detail::level Level, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_data,
-                                                                   const T* global_base_ptr, T* local_ptr,
-                                                                   std::size_t offset, std::size_t num_complex,
-                                                                   std::size_t stride_global,
-                                                                   std::size_t stride_local) {
+PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_data, const T* global_base_ptr,
+                                            T* local_ptr, std::size_t offset, std::size_t num_complex,
+                                            std::size_t stride_global, std::size_t stride_local) {
   global_data.log_message_local(__func__, "offset", offset, "num_complex", num_complex, "stride_global", stride_global,
                                 "stride_local", stride_local);
   std::size_t local_id;
@@ -448,7 +449,8 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
@@ -461,9 +463,8 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data,
-                                                                    const T* priv, T* local, int thread_id,
-                                                                    int num_workers, int col_num, int stride) {
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const T* priv, T* local,
+                                             int thread_id, int num_workers, int col_num, int stride) {
   global_data.log_message_local(__func__, "thread_id", thread_id, "num_workers", num_workers, "col_num", col_num,
                                 "stride", stride);
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
@@ -496,9 +497,8 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
  * @param stride Stride in local memory between consecutive workitems
  */
 template <int NumElementsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_data, const T* priv,
-                                                                  T* local, int thread_id, int stride_num_workers,
-                                                                  int destination_offset, int stride) {
+PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_data, const T* priv, T* local,
+                                           int thread_id, int stride_num_workers, int destination_offset, int stride) {
   global_data.log_message_local(__func__, "thread_id", thread_id, "stride_num_workers", stride_num_workers,
                                 "destination_offset", destination_offset, "stride", stride);
   detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const int i) PORTFFT_INLINE {
@@ -518,7 +518,8 @@ PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_dat
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
@@ -530,9 +531,8 @@ PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_dat
  * @param local_offset offset to the local pointer
  */
 template <std::size_t NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const T* priv,
-                                                         T* local, std::size_t local_id, std::size_t stride,
-                                                         std::size_t local_offset = 0) {
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const T* priv, T* local, std::size_t local_id,
+                                  std::size_t stride, std::size_t local_offset = 0) {
   global_data.log_message_local(__func__, "local_id", local_id, "stride", stride, "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](std::size_t i) PORTFFT_INLINE {
     std::size_t local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
@@ -546,7 +546,8 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const 
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  * @param global_data global data for the kernel
@@ -558,10 +559,9 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const 
  * @param destination_offset offset to the destination pointer
  */
 template <int NumElemsPerWI, detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, const T* priv,
-                                                            T* destination, std::size_t local_id,
-                                                            std::size_t workers_in_group,
-                                                            std::size_t destination_offset = 0) {
+PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, const T* priv, T* destination,
+                                     std::size_t local_id, std::size_t workers_in_group,
+                                     std::size_t destination_offset = 0) {
   global_data.log_message_local(__func__, "local_id", local_id, "workers_in_group", workers_in_group,
                                 "destination_offset", destination_offset);
   constexpr int VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
@@ -604,11 +604,9 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* priv, T* loc,
-                                                            std::size_t stride_1, std::size_t offset_1,
-                                                            std::size_t stride_2, std::size_t offset_2,
-                                                            std::size_t stride_3, std::size_t offset_3,
-                                                            std::size_t bank_lines_per_pad) {
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* priv, T* loc, std::size_t stride_1,
+                                     std::size_t offset_1, std::size_t stride_2, std::size_t offset_2,
+                                     std::size_t stride_3, std::size_t offset_3, std::size_t bank_lines_per_pad) {
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
   detail::unrolled_loop<0, NumComplexElements, 1>([&](const int j) PORTFFT_INLINE {
@@ -651,9 +649,10 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
  * @param global_data global data for the kernel
  */
 template <detail::pad Pad, typename T>
-PORTFFT_INLINE void local_strided_2_global_strided_transposed(
-    T* loc, T* global, std::size_t global_offset, std::size_t local_stride, std::size_t N, std::size_t M,
-    std::size_t fft_size, std::size_t bank_lines_per_pad, detail::global_data_struct global_data) {
+PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global, std::size_t global_offset,
+                                                              std::size_t local_stride, std::size_t N, std::size_t M,
+                                                              std::size_t fft_size, std::size_t bank_lines_per_pad,
+                                                              detail::global_data_struct global_data) {
   global_data.log_message_local(__func__, "global_offset", global_offset, "local_stride", local_stride, "N", N, "M", M,
                                 "fft_size", fft_size);
   std::size_t batch_num = global_data.it.get_local_linear_id() / 2;
