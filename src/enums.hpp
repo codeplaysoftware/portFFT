@@ -36,7 +36,16 @@ enum class pad { DO_PAD, DONT_PAD };
 
 enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 
-enum class transpose { NOT_TRANSPOSED, TRANSPOSED };
+enum class layout {
+  /// Packed layout represents default strides and distance using row major layout
+  PACKED,
+  /// Unpacked layout represents arbitrary strides or distance
+  // TODO: Add UNPACKED once stride and distance are supported
+  // UNPACKED,
+  /// Batch interleaved is a special case of unpacked with distance=1 stride=[0, batch_size] which can be better
+  /// optimized than the general case
+  BATCH_INTERLEAVED
+};
 
 enum class memory { BUFFER, USM };
 
