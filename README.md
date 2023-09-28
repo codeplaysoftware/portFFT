@@ -12,7 +12,7 @@ portFFT is in early stages of development and will support more options and opti
   * Other SYCL implementations are not tested
 * [Level Zero] drivers
   * OpenCL drivers are not supported
-* CMake 3.16+
+* CMake 3.20+
 * For tests and verifying benchmarks:
   * Python
   * Numpy
