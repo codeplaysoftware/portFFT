@@ -21,7 +21,6 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
-#include <defines.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -37,7 +36,7 @@ namespace portfft::detail {
  * __attribute__((always_inline)).
  */
 template <auto Start, auto Stop, auto Step, typename Functor>
-PORTFFT_INLINE void unrolled_loop(Functor&& funct) {
+__attribute__((always_inline)) inline void unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);
@@ -110,8 +109,9 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
 }
 
 template <typename T>
-PORTFFT_INLINE void multiply_complex(const T& input_real, const T& input_imag, const T& multiplier_real,
-                                     const T& multiplier_imag, T& output_real, T& output_imag) {
+__attribute__((always_inline)) inline void multiply_complex(const T& input_real, const T& input_imag,
+                                                            const T& multiplier_real, const T& multiplier_imag,
+                                                            T& output_real, T& output_imag) {
   T temp = input_real;
   output_real = temp * multiplier_real - input_imag * multiplier_imag;
   output_imag = temp * multiplier_imag + input_imag * multiplier_real;

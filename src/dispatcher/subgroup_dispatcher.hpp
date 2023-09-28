@@ -25,7 +25,6 @@
 #include <common/helpers.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
-#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 
@@ -78,9 +77,11 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, int FactorWI, int FactorSG, int SubgroupSize, typename T>
-PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
-                                  sycl::nd_item<1> it, const T* twiddles, T scaling_factor, const T* load_modifier_data,
-                                  const T* store_modifier_data, T* loc_load_modifier, T* loc_store_modifier) {
+__attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+                                                         std::size_t n_transforms, sycl::nd_item<1> it,
+                                                         const T* twiddles, T scaling_factor,
+                                                         const T* load_modifier_data, const T* store_modifier_data,
+                                                         T* loc_load_modifier, T* loc_store_modifier) {
   constexpr int NRealsPerWI = 2 * FactorWI;
 
   T priv[NRealsPerWI];
@@ -180,7 +181,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         }
         if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
           if (working_inner) {
-            detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
+            detail::unrolled_loop<0, FactorWI, 1>([&](const int j) __attribute__((always_inline)) {
               std::size_t base_index = sub_batch * n_reals_per_fft + NRealsPerWI * id_of_wi_in_fft + 2 * j;
               T modifier_real = loc[detail::pad_local(base_index, BankLinesPerPad)];
               T modifier_complex = loc[detail::pad_local(base_index + 1, BankLinesPerPad)];
@@ -193,7 +194,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
         if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
           if (working_inner) {
-            detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
+            detail::unrolled_loop<0, FactorWI, 1>([&](const int j) __attribute__((always_inline)) {
               std::size_t base_offset =
                   sub_batch * n_reals_per_fft + 2 * id_of_wi_in_fft + static_cast<std::size_t>(j) * FactorSG;
               T modifier_real = loc[detail::pad_local(base_offset, BankLinesPerPad)];
@@ -208,7 +209,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
         if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-          unrolled_loop<0, NRealsPerWI, 2>([&](int idx) PORTFFT_ALWAYS_INLINE {
+          unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
             priv[idx] *= scaling_factor;
             priv[idx + 1] *= scaling_factor;
           });
@@ -256,7 +257,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(sg);
       if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
         if (working) {
-          detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
+          detail::unrolled_loop<0, FactorWI, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index = n_reals_per_fft * (sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg) +
                                      NRealsPerWI * id_of_wi_in_fft + 2 * j;
             T modifier_real = loc_load_modifier[detail::pad_local(base_index, BankLinesPerPad)];
@@ -270,7 +271,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sg_dft<Dir, FactorWI, FactorSG>(priv, sg, loc_twiddles);
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         if (working) {
-          detail::unrolled_loop<0, FactorWI, 1>([&](const int j) PORTFFT_ALWAYS_INLINE {
+          detail::unrolled_loop<0, FactorWI, 1>([&](const int j) __attribute__((always_inline)) {
             std::size_t base_index = n_reals_per_fft * (sg.get_group_id() * n_ffts_per_sg + id_of_fft_in_sg) +
                                      2 * id_of_wi_in_fft + static_cast<std::size_t>(j) * FactorSG;
             T modifier_real = loc_store_modifier[detail::pad_local(base_index, BankLinesPerPad)];
@@ -285,7 +286,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         }
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        unrolled_loop<0, NRealsPerWI, 2>([&](int i) PORTFFT_ALWAYS_INLINE {
+        unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
         });
@@ -340,11 +341,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename T, typename SizeList>
-PORTFFT_INLINE void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output, T* loc,
-                                           T* loc_twiddles, std::size_t n_transforms, sycl::nd_item<1> it,
-                                           const T* twiddles, T scaling_factor, const T* load_modifier_data = nullptr,
-                                           const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
-                                           T* loc_store_modifier = nullptr) {
+__attribute__((always_inline)) inline void subgroup_dispatch_impl(
+    int factor_wi, int factor_sg, const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
+    sycl::nd_item<1> it, const T* twiddles, T scaling_factor, const T* load_modifier_data = nullptr,
+    const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   if constexpr (!SizeList::ListEnd) {
     constexpr int ThisSize = SizeList::Size;
     // This factorization is duplicated in the dispatch logic on the host.

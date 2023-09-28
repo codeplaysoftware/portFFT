@@ -100,14 +100,14 @@ class committed_descriptor {
 
   friend struct descriptor<Scalar, Domain>;
 
-  template <typename Scalar_, direction, domain Domain_, detail::transpose, detail::transpose,
+  template <typename ScalarType, direction, domain DomainType, detail::transpose, detail::transpose,
             detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int, typename TIn>
-  friend void detail::dispatch_compute_kernels(committed_descriptor<Scalar_, Domain_>&, const TIn&, Scalar_,
+  friend void detail::dispatch_compute_kernels(committed_descriptor<ScalarType, DomainType>&, const TIn&, ScalarType,
                                                std::size_t, std::size_t, std::size_t, std::size_t,
                                                std::vector<sycl::event>&);
 
-  template <typename Scalar_, domain Domain_, int SubgroupSize, typename TOut>
-  friend void detail::dispatch_transpose_kernels(committed_descriptor<Scalar_, Domain_>&, TOut&, std::size_t,
+  template <typename ScalarType, domain DomainType, int SubgroupSize, typename TOut>
+  friend void detail::dispatch_transpose_kernels(committed_descriptor<ScalarType, DomainType>&, TOut&, std::size_t,
                                                  std::size_t, std::vector<sycl::event>&);
 
   descriptor<Scalar, Domain> params;

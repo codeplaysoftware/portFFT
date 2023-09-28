@@ -21,11 +21,11 @@
 #ifndef PORTFFT_COMMON_GLOBAL_HPP
 #define PORTFFT_COMMON_GLOBAL_HPP
 
-#include <defines.hpp>
 #include <descriptor.hpp>
 #include <dispatcher/subgroup_dispatcher.hpp>
 #include <dispatcher/workitem_dispatcher.hpp>
 #include <enums.hpp>
+#include <specialization_constants.hpp>
 
 namespace portfft {
 namespace detail {
@@ -39,8 +39,9 @@ namespace detail {
  * @return Outer batch product
  */
 
-PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_factors, std::size_t num_factors,
-                                                   std::size_t level_num) {
+__attribute__((always_inline)) inline std::size_t get_outer_batch_product(const std::size_t* device_factors,
+                                                                          std::size_t num_factors,
+                                                                          std::size_t level_num) {
   if (level_num == 0) {
     return static_cast<std::size_t>(1);
   }
@@ -61,9 +62,10 @@ PORTFFT_INLINE std::size_t get_outer_batch_product(const std::size_t* device_fac
  * @param outer_batch_product Inclusive Scan of factors at position KernelID-1
  * @return
  */
-PORTFFT_INLINE std::size_t get_outer_batch_offset(const std::size_t* device_factors, std::size_t num_factors,
-                                                  std::size_t level_num, std::size_t iter_value,
-                                                  std::size_t outer_batch_product) {
+__attribute__((always_inline)) inline std::size_t get_outer_batch_offset(const std::size_t* device_factors,
+                                                                         std::size_t num_factors, std::size_t level_num,
+                                                                         std::size_t iter_value,
+                                                                         std::size_t outer_batch_product) {
   auto get_outer_batch_offset_impl = [&](std::size_t N) -> std::size_t {
     std::size_t outer_batch_offset = 0;
     for (std::size_t j = 0; j < N; j++) {
@@ -91,11 +93,11 @@ PORTFFT_INLINE std::size_t get_outer_batch_offset(const std::size_t* device_fact
 template <direction Dir, typename Scalar, transpose TransposeIn, transpose TransposeOut,
           apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
           apply_scale_factor ApplyScaleFactor, int SubgroupSize>
-PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
-                                   const Scalar* load_modifier_data, const Scalar* store_modifier_data,
-                                   Scalar* input_loc, Scalar* twiddles_loc, Scalar* load_modifier_loc,
-                                   Scalar* store_modifier_loc, const std::size_t* device_factors, Scalar scaling_factor,
-                                   std::size_t batch_size, sycl::nd_item<1> it, sycl::kernel_handler kh) {
+__attribute__((always_inline)) inline void dispatch_level(
+    const Scalar* input, Scalar* output, const Scalar* implementation_twiddles, const Scalar* load_modifier_data,
+    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc, Scalar* load_modifier_loc,
+    Scalar* store_modifier_loc, const std::size_t* device_factors, Scalar scaling_factor, std::size_t batch_size,
+    sycl::nd_item<1> it, sycl::kernel_handler kh) {
   auto level = kh.get_specialization_constant<GlobalSpecConstLevel>();
   std::size_t level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   std::size_t num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();

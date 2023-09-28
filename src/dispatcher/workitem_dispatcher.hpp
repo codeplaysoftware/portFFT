@@ -25,7 +25,6 @@
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
-#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 
@@ -72,9 +71,10 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
-PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms, sycl::nd_item<1> it,
-                                  T scaling_factor, const T* load_modifier_data, const T* store_modifier_data,
-                                  T* loc_load_modifier, T* loc_store_modifier) {
+__attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
+                                                         sycl::nd_item<1> it, T scaling_factor,
+                                                         const T* load_modifier_data, const T* store_modifier_data,
+                                                         T* loc_load_modifier, T* loc_store_modifier) {
   constexpr std::size_t NReals = 2 * N;
 
   T priv[NReals];
@@ -112,7 +112,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+        unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
@@ -120,7 +120,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(loc, priv, subgroup_local_id, NReals, local_offset);
       }
       if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
-        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) __attribute__((always_inline)) {
           std::size_t base_offset = local_offset + subgroup_local_id * NReals + 2 * j;
           T modifier_real = loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)];
           T modifier_complex = loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
@@ -132,7 +132,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       wi_dft<Dir, N, 1, 1>(priv, priv);
       // Relying on compiler optimizations to fuse store_modifier and scale factor.
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
-        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) __attribute__((always_inline)) {
           std::size_t base_offset =
               detail::pad_local(local_offset + subgroup_local_id * NReals + 2 * j, BankLinesPerPad);
           T modifier_real = loc_store_modifier[base_offset];
@@ -146,7 +146,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         });
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_ALWAYS_INLINE {
+        unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
         });
@@ -154,7 +154,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       if (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
         private2local<NReals, pad::DO_PAD, BankLinesPerPad>(priv, loc, subgroup_local_id, NReals, local_offset);
       } else {
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_ALWAYS_INLINE {
+        unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->store(0, detail::get_global_multi_ptr(&output[i * 2 + j * n_transforms]));
         });
@@ -188,11 +188,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
-PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                           sycl::nd_item<1> it, T scaling_factor, std::size_t fft_size,
-                                           const T* load_modifier_data = nullptr,
-                                           const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
-                                           T* loc_store_modifier = nullptr) {
+__attribute__((always_inline)) inline void workitem_dispatch_impl(
+    const T* input, T* output, T* loc, std::size_t n_transforms, sycl::nd_item<1> it, T scaling_factor,
+    std::size_t fft_size, const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
+    T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   if constexpr (!SizeList::ListEnd) {
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {

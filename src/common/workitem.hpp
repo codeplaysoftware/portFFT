@@ -23,7 +23,6 @@
 
 #include <common/helpers.hpp>
 #include <common/twiddle.hpp>
-#include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 
@@ -61,12 +60,12 @@ strides.
  * @param out pointer to output
  */
 template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
-PORTFFT_INLINE void naive_dft(const T* in, T* out) {
+__attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
   T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) PORTFFT_ALWAYS_INLINE {
+  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) PORTFFT_ALWAYS_INLINE {
+    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::Re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -106,12 +105,12 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out) {
  * @param out pointer to output
  */
 template <direction Dir, int N, int M, int StrideIn, int StrideOut, typename T>
-PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out) {
+__attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out) {
   T tmp_buffer[2 * N * M];
 
-  unrolled_loop<0, M, 1>([&](int i) PORTFFT_ALWAYS_INLINE {
+  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<Dir, N, M * StrideIn, 1>(in + 2 * i * StrideIn, tmp_buffer + 2 * i * N);
-    unrolled_loop<0, N, 1>([&](int j) PORTFFT_ALWAYS_INLINE {
+    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
       auto re_multiplier = twiddle<T>::Re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (Dir == direction::FORWARD) {
@@ -124,7 +123,7 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out) {
                                tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
     });
   });
-  unrolled_loop<0, N, 1>([&](int i) PORTFFT_ALWAYS_INLINE {
+  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
     wi_dft<Dir, M, N, N * StrideOut>(tmp_buffer + 2 * i, out + 2 * i * StrideOut);
   });
 }
@@ -195,7 +194,7 @@ constexpr bool fits_in_wi(TIndex N) {
  * @param out pointer to output
  */
 template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
-PORTFFT_INLINE void wi_dft(const T* in, T* out) {
+__attribute__((always_inline)) inline void wi_dft(const T* in, T* out) {
   constexpr int F0 = detail::factorize(N);
   if constexpr (N == 2) {
     T a = in[0 * StrideIn + 0] + in[2 * StrideIn + 0];

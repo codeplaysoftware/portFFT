@@ -21,7 +21,6 @@
 #ifndef PORTFFT_UTILS_HPP
 #define PORTFFT_UTILS_HPP
 
-#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 #include <kernels.hpp>
@@ -88,8 +87,14 @@ std::vector<sycl::kernel_id> get_ids() {
 
 template <typename Scalar, domain Domain, int SubgroupSize>
 void get_transpose_kernel_ids(std::vector<sycl::kernel_id>& ids) {
-  ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, Domain, memory::USM, SubgroupSize>>());
-  ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, Domain, memory::BUFFER, SubgroupSize>>());
+#define PORTFFT_GET_TRANSPOSE_ID(MEMORY)                                                          \
+  try {                                                                                           \
+    ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, Domain, MEMORY, SubgroupSize>>()); \
+  } catch (...) {                                                                                 \
+  }
+  PORTFFT_GET_TRANSPOSE_ID(memory::USM);
+  PORTFFT_GET_TRANSPOSE_ID(memory::BUFFER);
+#undef PORTFFT_GET_TRANSPOSE_ID
 }
 
 template <typename F, typename G>
