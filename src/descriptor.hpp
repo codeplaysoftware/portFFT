@@ -45,15 +45,15 @@ template <typename, domain>
 class committed_descriptor;
 
 namespace detail {
-template <typename Scalar, domain Domain, int, typename TOut>
-void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>&, const Scalar*, TOut&, std::size_t, std::size_t,
-                                std::vector<sycl::event>&);
-
-template <typename Scalar, direction Dir, domain Domain, detail::transpose TransposeIn, detail::transpose TransposeOut,
-          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
-          detail::apply_scale_factor ApplyScaleFactor, int SubgroupSize, typename TIn>
+template <typename Scalar, direction, domain Domain, detail::transpose, detail::transpose, apply_load_modifier,
+          apply_store_modifier, apply_scale_factor, int, typename TIn>
 void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>&, const TIn&, Scalar, std::size_t, std::size_t,
                               std::size_t, std::size_t, std::vector<sycl::event>&);
+
+template <typename Scalar, domain Domain, int SubgroupSize, typename TOut>
+void dispatch_transpose_kernels(committed_descriptor<Scalar, Domain>&, TOut&, std::size_t, std::size_t,
+                                std::vector<sycl::event>&);
+
 }  // namespace detail
 
 // forward declaration
@@ -99,17 +99,16 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
-  template <typename Scalar_, domain Domain_, int, typename TOut>
-  friend void detail::dispatch_transpose_kernels(committed_descriptor<Scalar_, Domain_>&, const Scalar_*, TOut&,
-                                                 std::size_t, std::size_t, std::vector<sycl::event>&);
 
-  template <typename Scalar_, direction Dir, domain Domain_, detail::transpose TransposeIn,
-            detail::transpose TransposeOut, detail::apply_load_modifier ApplyLoadModifier,
-            detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor,
-            int SubgroupSize, typename TIn>
+  template <typename Scalar_, direction, domain Domain_, detail::transpose, detail::transpose,
+            detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int, typename TIn>
   friend void detail::dispatch_compute_kernels(committed_descriptor<Scalar_, Domain_>&, const TIn&, Scalar_,
                                                std::size_t, std::size_t, std::size_t, std::size_t,
                                                std::vector<sycl::event>&);
+
+  template <typename Scalar_, domain Domain_, int SubgroupSize, typename TOut>
+  friend void detail::dispatch_transpose_kernels(committed_descriptor<Scalar_, Domain_>&, TOut&, std::size_t,
+                                                 std::size_t, std::vector<sycl::event>&);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;

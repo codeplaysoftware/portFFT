@@ -21,12 +21,13 @@
 #define PORTFFT_DISPATCHER_GLOBAL_DISPATCHER_HPP
 
 #include <common/cooley_tukey_compiled_sizes.hpp>
-#include <common/global.hpp>
 #include <common/helpers.hpp>
 #include <common/transfers.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 #include <utils.hpp>
+
+#include <common/global.hpp>
 
 namespace portfft {
 namespace detail {
@@ -222,11 +223,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
         }
       }
       for (std::size_t level_num = desc.factors.size() - 2; level_num > 0; level_num--) {
-        detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, scratch_input, scratch_output, level_num,
-                                                                         batch, dependency_copy);
+        detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, scratch_output, level_num, batch,
+                                                                         dependency_copy);
       }
-      detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, scratch_input, out, 0, batch,
-                                                                       dependency_copy);
+      detail::dispatch_transpose_kernels<Scalar, Domain, SubgroupSize>(desc, out, 0, batch, dependency_copy);
     }
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependency_copy);
