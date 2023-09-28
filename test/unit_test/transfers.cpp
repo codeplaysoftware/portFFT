@@ -76,7 +76,7 @@ void test() {
 #ifdef PORTFFT_LOG
               s,
 #endif
-              it, it.get_sub_group()};
+              it};
           std::size_t local_id = it.get_group().get_local_linear_id();
 
           ftype priv[N];

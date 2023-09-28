@@ -35,6 +35,23 @@ struct global_data_struct {
   sycl::nd_item<1> it;
   sycl::sub_group sg;
 
+  /**
+   * Constructor.
+   * 
+   * @param s sycl::stream for logging
+   * @param it nd_item of the kernel
+  */
+  global_data_struct(
+#ifdef PORTFFT_LOG
+    sycl::stream s,
+#endif
+    sycl::nd_item<1> it) : 
+#ifdef PORTFFT_LOG
+    s(s << sycl::setprecision(3)),
+#endif
+    it(it),
+    sg(it.get_sub_group()){}
+
 #ifdef PORTFFT_LOG
   /**
    * Logs ids of workitem, subgroup and workgroup.

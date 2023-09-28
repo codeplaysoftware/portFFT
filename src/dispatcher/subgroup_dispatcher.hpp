@@ -360,9 +360,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
             int factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-                s << sycl::setprecision(3),
+                s,
 #endif
-                it, it.get_sub_group()};
+                it};
             global_data.log_message_global("Running subgroup kernel");
             detail::subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,
