@@ -76,7 +76,7 @@ __attribute__((always_inline)) inline std::size_t pad_local(std::size_t local_id
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
- * @param it nd_item
+ * @param global_data global data for the kernel
  * @param global pointer to global memory
  * @param local pointer to local memory
  * @param total_num_elems total number of values to copy per group
@@ -130,8 +130,6 @@ __attribute__((always_inline)) inline void global2local(detail::global_data_stru
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) __attribute__((always_inline)) {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        // global_data.log_message("global2local", "from", global_offset + i + static_cast<std::size_t>(j), "to",
-        // local_idx, "value", loaded[j]);
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_idx]), loaded[j]);
       });
     } else {
@@ -199,7 +197,7 @@ __attribute__((always_inline)) inline void global2local(detail::global_data_stru
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
- * @param it nd_item
+ * @param global_data global data for the kernel
  * @param local pointer to local memory
  * @param global pointer to global memory
  * @param total_num_elems total number of values to copy per group
@@ -323,6 +321,7 @@ __attribute__((always_inline)) inline void local2global(detail::global_data_stru
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @param global_data global data for the kernel
  * @param local pointer to local memory
  * @param priv pointer to private memory
  * @param local_id local id of work item
@@ -351,6 +350,7 @@ __attribute__((always_inline)) inline void local2private(detail::global_data_str
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
+ * @param global_data global data for the kernel
  * @param local Pointer to local memory
  * @param priv Pointer to private memory
  * @param thread_id ID of the working thread in FFT
@@ -380,7 +380,7 @@ __attribute__((always_inline)) inline void local2private_transposed(detail::glob
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
- * @param it Associated nd_item
+ * @param global_data global data for the kernel
  * @param N Number of rows
  * @param M Number of Cols
  * @param stride Stride between two contiguous elements in global memory in local memory.
@@ -413,7 +413,7 @@ __attribute__((always_inline)) inline void local2global_transposed(detail::globa
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
  *
- * @param it Associated nd_item
+ * @param global_data global data for the kernel
  * @param global_base_ptr Global Pointer
  * @param local_ptr Local Pointer
  * @param offset Offset from which the strided loads would begin
@@ -452,6 +452,7 @@ __attribute__((always_inline)) inline void global2local_transposed(detail::globa
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
+ * @param global_data global data for the kernel
  * @param priv Pointer to private memory
  * @param local Pointer to local memory
  * @param thread_id Id of the working thread for the FFT
@@ -486,6 +487,7 @@ __attribute__((always_inline)) inline void private2local_transposed(detail::glob
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
  *
+ * @param global_data global data for the kernel
  * @param priv Pointer to private memory
  * @param local Pointer to local memory
  * @param thread_id Id of the working thread for the FFT
@@ -519,6 +521,7 @@ __attribute__((always_inline)) inline void private2local_2strides(detail::global
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @param global_data global data for the kernel
  * @param priv pointer to private memory
  * @param local pointer to local memory
  * @param local_id local id of work item
@@ -546,6 +549,7 @@ __attribute__((always_inline)) inline void private2local(detail::global_data_str
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to avoid bank conflicts.
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam T type of the scalar used for computations
+ * @param global_data global data for the kernel
  * @param priv pointer to private memory
  * @param destination pointer to destination - local or global memory
  * @param local_id local id of work item
@@ -588,6 +592,7 @@ __attribute__((always_inline)) inline void store_transposed(detail::global_data_
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TransferDirection Direction of Transfer
  *
+ * @param global_data global data for the kernel
  * @param priv Pointer to private memory
  * @param loc Pointer to local memory
  * @param stride_1 Innermost stride
@@ -643,7 +648,7 @@ __attribute__((always_inline)) inline void transfer_strided(detail::global_data_
  * @param M Number of Columns
  * @param fft_size Size of the problem
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
- * @param it Associated nd_item
+ * @param global_data global data for the kernel
  */
 template <detail::pad Pad, typename T>
 __attribute__((always_inline)) inline void local_strided_2_global_strided_transposed(

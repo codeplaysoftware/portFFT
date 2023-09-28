@@ -68,7 +68,7 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  * @param loc local memory pointer. Must have enough space for 2*N*SubgroupSize
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
@@ -146,7 +146,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  * @param output accessor or pointer to global memory for output data
  * @param loc local memory pointer. Must have enough space for 2*N*SubgroupSize values
  * @param n_transforms number of FT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
  */

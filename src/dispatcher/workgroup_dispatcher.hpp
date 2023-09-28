@@ -67,7 +67,7 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to local allocation for subgroup level twiddles
  * @param n_transforms number of fft batches
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
  */
@@ -163,7 +163,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to twiddles residing in the local memory
  * @param n_transforms number of fft batches
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size

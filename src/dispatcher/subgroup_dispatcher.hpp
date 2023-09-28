@@ -74,7 +74,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*FactorSG
  * values
  * @param n_transforms number of FT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
@@ -276,7 +276,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*factor_wi*factor_sg
  * values
  * @param n_transforms number of FFT transforms to do in one call
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */

@@ -66,7 +66,7 @@ namespace detail {
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  */
 template <direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension,
           int SubgroupSize, std::size_t BankLinesPerPad, typename T>
@@ -198,7 +198,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param loc local accessor containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
