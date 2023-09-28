@@ -46,7 +46,7 @@ option(PORTFFT_CLANG_TIDY "Enable clang-tidy checks on portFFT source when build
 option(PORTFFT_CLANG_TIDY_AUTOFIX "Attempt to fix defects found by clang-tidy" OFF)
 option(PORTFFT_LOG_DUMPS "Whether to enable logging of data dumps" OFF)
 option(PORTFFT_LOG_TRANSFERS "Whether to enable logging of memory transfers" OFF)
-option(PORTFFT_LOG_TRACE "Whether to enable tracing pf function calls" OFF)
+option(PORTFFT_LOG_TRACE "Whether to enable tracing of function calls" OFF)
 set(PORTFFT_REGISTERS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
 set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
 set(PORTFFT_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
