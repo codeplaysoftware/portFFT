@@ -166,14 +166,14 @@ struct global_data_struct {
    * Logs a message from the kernel - there will be only one output from the kernel. Can log multiple objects/strings.
    * They will be separated by spaces.
    *
-   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRACE is not defined).
    *
    * @tparam Ts types of the objects to log
    * @param messages objects to log
    */
   template <typename... Ts>
   __attribute__((always_inline)) inline void log_message_global([[maybe_unused]] Ts... messages) {
-#ifdef PORTFFT_LOG_TRANSFERS
+#ifdef PORTFFT_LOG_TRACE
     if (it.get_global_id(0) == 0) {
       log_message_impl(messages...);
     }

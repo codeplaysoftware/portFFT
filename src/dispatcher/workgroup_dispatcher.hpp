@@ -75,6 +75,7 @@ template <direction Dir, detail::transpose TransposeIn, std::size_t FFTSize, int
 __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                           std::size_t n_transforms, global_data_struct global_data,
                                                           const T* twiddles, T scaling_factor) {
+  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "n_transforms", n_transforms);
   std::size_t num_workgroups = global_data.it.get_group_range(0);
   std::size_t wg_id = global_data.it.get_group(0);
   std::size_t max_global_offset = 2 * (n_transforms - 1) * FFTSize;
@@ -92,6 +93,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
     }
   }();
   std::size_t offset_increment = 2 * FFTSize * num_workgroups * max_num_batches_in_local_mem;
+  global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
@@ -109,6 +111,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       }();
       // Load in a transposed manner, similar to subgroup impl.
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // transposition requested by the caller
         global2local_transposed<level::WORKGROUP, pad::DO_PAD, BankLinesPerPad>(
             global_data, input, loc, offset / FFTSize, FFTSize, n_transforms, max_num_batches_in_local_mem);
@@ -124,6 +127,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       global_data.log_dump_local("computed data in local memory:", loc,
                                  FFTSize * global_data.it.get_local_range(0) / 2);
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
+        global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also stored
         // in a strided fashion.
         local_strided_2_global_strided_transposed<detail::pad::DO_PAD>(
@@ -131,17 +135,20 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
+      global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
                                                                                  offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, TransposeIn, FFTSize, N, M, SubgroupSize, BankLinesPerPad>(
           loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem, 0);
       sycl::group_barrier(global_data.it.get_group());
+      global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
       local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, N, M, M, loc, output, offset);
       sycl::group_barrier(global_data.it.get_group());
     }
   }
+  global_data.log_message_global(__func__, "exited");
 }
 
 /**
@@ -222,11 +229,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                 s << sycl::setprecision(3),
 #endif
                 it, it.get_sub_group()};
+            global_data.log_message_global("Running workgroup kernel");
             detail::workgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
                 &loc[detail::pad_local<detail::pad::DO_PAD>(2 * fft_size * num_batches_in_local_mem,
                                                             bank_lines_per_pad)],
                 n_transforms, global_data, twiddles, scale_factor, fft_size);
+            global_data.log_message_global("Exiting workgroup kernel");
           });
     });
   }

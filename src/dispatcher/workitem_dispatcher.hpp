@@ -74,6 +74,7 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
 __attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          global_data_struct global_data, T scaling_factor) {
+  global_data.log_message_global(__func__, "entered", "N", N, "n_transforms", n_transforms);
   constexpr std::size_t NReals = 2 * N;
 
   T priv[NReals];
@@ -89,6 +90,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
 
     if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
+      global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           global_data, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
       sycl::group_barrier(global_data.sg);
@@ -96,6 +98,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
     }
     if (working) {
       if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
@@ -103,6 +106,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
       } else {
+        global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals,
                                                             local_offset);
       }
@@ -114,17 +118,20 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
         priv[i + 1] *= scaling_factor;
       });
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
+      global_data.log_message_global(__func__, "loading data from private to local memory");
       private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
                                                           local_offset);
     }
     sycl::group_barrier(global_data.sg);
     global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
+    global_data.log_message_global(__func__, "storing data from local to global memory");
     // Store back to global in the same manner irrespective of input data layout, as
     //  the transposed case is assumed to be used only in OOP scenario.
     local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
         global_data, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
     sycl::group_barrier(global_data.sg);
   }
+  global_data.log_message_global(__func__, "exited");
 }
 
 /**
@@ -194,8 +201,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                 s << sycl::setprecision(3),
 #endif
                 it, it.get_sub_group()};
+            global_data.log_message_global("Running workitem kernel");
             detail::workitem_dispatch_impl<Dir, TransposeIn, SubgroupSize, detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
+            global_data.log_message_global("Exiting workitem kernel");
           });
     });
   }
