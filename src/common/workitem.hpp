@@ -29,13 +29,13 @@
 namespace portfft {
 
 // forward declaration
-template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
+template <direction Dir, Idx N, Idx StrideIn, Idx StrideOut, typename T>
 inline void wi_dft(const T* in, T* out);
 
 namespace detail {
 
 // Maximum size of an FFT that can fit in the workitem implementation
-static constexpr std::size_t MaxFftSizeWi = 56;
+static constexpr Idx MaxFftSizeWi = 56;
 
 /*
 `wi_dft` calculates a DFT by a workitem on values that are already loaded into its private memory.
@@ -59,7 +59,7 @@ strides.
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
+template <direction Dir, Idx N, Idx StrideIn, Idx StrideOut, typename T>
 __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
   T tmp[2 * N];
   unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
@@ -104,7 +104,7 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction Dir, int N, int M, int StrideIn, int StrideOut, typename T>
+template <direction Dir, Idx N, Idx M, Idx StrideIn, Idx StrideOut, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out) {
   T tmp_buffer[2 * N * M];
 
@@ -129,14 +129,12 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
 
 /**
  * Factorizes a number into two roughly equal factors.
- * @tparam TIndex Index type
  * @param N the number to factorize
  * @return the smaller of the factors
  */
-template <typename TIndex>
-constexpr TIndex factorize(TIndex N) {
-  TIndex res = 1;
-  for (TIndex i = 2; i * i <= N; i++) {
+constexpr Idx factorize(Idx N) {
+  Idx res = 1;
+  for (Idx i = 2; i * i <= N; i++) {
     if (N % i == 0) {
       res = i;
     }
@@ -148,18 +146,16 @@ constexpr TIndex factorize(TIndex N) {
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
  * @param N size of the FFT problem
- * @tparam TIndex Index type
  * @return Number of temporary complex values
  */
-template <typename TIndex>
-constexpr TIndex wi_temps(TIndex N) {
-  TIndex f0 = factorize(N);
-  TIndex f1 = N / f0;
+constexpr Idx wi_temps(Idx N) {
+  Idx f0 = factorize(N);
+  Idx f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
     return N;
   }
-  TIndex a = wi_temps(f0);
-  TIndex b = wi_temps(f1);
+  Idx a = wi_temps(f0);
+  Idx b = wi_temps(f1);
   return (a > b ? a : b) + N;
 }
 
@@ -167,15 +163,14 @@ constexpr TIndex wi_temps(TIndex N) {
  * Checks whether a problem can be solved with workitem implementation without
  * registers spilling.
  * @tparam Scalar type of the real scalar used for the computation
- * @tparam TIndex Index type
  * @param N Size of the problem, in complex values
  * @return true if the problem fits in the registers
  */
-template <typename Scalar, typename TIndex>
-constexpr bool fits_in_wi(TIndex N) {
-  TIndex n_complex = N + wi_temps(N);
-  TIndex complex_size = 2 * sizeof(Scalar);
-  TIndex register_space = PORTFFT_REGISTERS_PER_WI * 4;
+template <typename Scalar>
+constexpr bool fits_in_wi(IdxGlobal N) {
+  IdxGlobal n_complex = N + wi_temps(N);
+  IdxGlobal complex_size = 2 * sizeof(Scalar);
+  IdxGlobal register_space = PORTFFT_REGISTERS_PER_WI * 4;
   return n_complex * complex_size <= register_space;
 }
 
@@ -192,9 +187,9 @@ constexpr bool fits_in_wi(TIndex N) {
  * @param in pointer to input
  * @param out pointer to output
  */
-template <direction Dir, int N, int StrideIn, int StrideOut, typename T>
+template <direction Dir, Idx N, Idx StrideIn, Idx StrideOut, typename T>
 __attribute__((always_inline)) inline void wi_dft(const T* in, T* out) {
-  constexpr int F0 = detail::factorize(N);
+  constexpr Idx F0 = detail::factorize(N);
   if constexpr (N == 2) {
     T a = in[0 * StrideIn + 0] + in[2 * StrideIn + 0];
     T b = in[0 * StrideIn + 1] + in[2 * StrideIn + 1];

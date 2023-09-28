@@ -24,7 +24,13 @@
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
-namespace portfft::detail {
+namespace portfft {
+
+using Idx = std::size_t;
+using IdxGlobal = std::size_t;
+
+namespace detail {
+
 
 /**
  * Implements a loop that will be fully unrolled.
@@ -35,7 +41,7 @@ namespace portfft::detail {
  * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
  * __attribute__((always_inline)).
  */
-template <auto Start, auto Stop, auto Step, typename Functor>
+template <Idx Start, Idx Stop, Idx Step, typename Functor>
 void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
@@ -127,6 +133,7 @@ __attribute__((always_inline)) inline void multiply_complex(const T input_real, 
   output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
-};  // namespace portfft::detail
+};  // namespace detail
+};  // namespace portfft
 
 #endif
