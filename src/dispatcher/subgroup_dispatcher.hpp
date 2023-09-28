@@ -208,7 +208,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
-      if constexpr (FactorSG == SubgroupSize && LayoutIn == detail::layout::PACKED) {
+      if constexpr (FactorSG == SubgroupSize) {
         // in this case we get fully coalesced memory access even without going through local memory
         // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
         if (working) {
