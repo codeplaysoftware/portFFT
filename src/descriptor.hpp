@@ -119,7 +119,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       default:
-        throw std::runtime_error("Unimplemented!");
+        throw unsupported_configuration("Unimplemented!");
     }
   }
 
@@ -133,7 +133,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
       default:
-        throw std::runtime_error("Unimplemented!");
+        throw unsupported_configuration("Unimplemented!");
     }
   }
 
@@ -187,7 +187,7 @@ class committed_descriptor {
     }
     std::size_t fft_size = params.lengths[0];
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
+      throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
     }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
@@ -221,7 +221,7 @@ class committed_descriptor {
       return detail::level::WORKGROUP;
     }
     // TODO global
-    throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
+    throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
   }
 
   /**
@@ -312,7 +312,7 @@ class committed_descriptor {
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return build_w_spec_const<OtherSGSizes...>();
     }
@@ -345,8 +345,8 @@ class committed_descriptor {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
     }
     if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                               "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      throw invalid_configuration("Insufficient amount of local memory available: ", local_memory_size,
+                                  "B. Required: ", minimum_local_mem_required, "B.");
     }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
@@ -418,7 +418,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
-    throw std::runtime_error("Real to complex FFTs not yet implemented.");
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
   }
 
   /**
@@ -491,7 +491,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
                               const std::vector<sycl::event>& /*dependencies*/ = {}) {
-    throw std::runtime_error("Real to complex FFTs not yet implemented.");
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
     return {};
   }
 
@@ -563,7 +563,7 @@ class committed_descriptor {
       throw unsupported_configuration("Only contiguous or transposed transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return dispatch_kernel_helper<Dir, TIn, TOut, OtherSGSizes...>(in, out, dependencies);
     }
