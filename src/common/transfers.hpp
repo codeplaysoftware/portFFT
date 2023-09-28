@@ -139,8 +139,8 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
         std::size_t local_idx = detail::pad_local<Pad>(
             local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
         local[local_idx] = loaded[j];
-        global_data.log_message(func_name, "from", global_offset + i + static_cast<std::size_t>(j), "to",
-                                local_idx, "value", loaded[j]);
+        global_data.log_message(func_name, "from", global_offset + i + static_cast<std::size_t>(j), "to", local_idx,
+                                "value", loaded[j]);
       });
     }
   }
@@ -166,8 +166,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
     loaded = *reinterpret_cast<const T_vec*>(&global[global_offset + i]);
     detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
       std::size_t local_idx = detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j), BankLinesPerPad);
-      global_data.log_message(func_name, "aligned chunk from", global_offset + i, "to", local_idx, "value",
-                              loaded[j]);
+      global_data.log_message(func_name, "aligned chunk from", global_offset + i, "to", local_idx, "value", loaded[j]);
       local[local_idx] = loaded[j];
     });
   }
@@ -255,16 +254,16 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
         std::size_t local_idx =
             detail::pad_local<Pad>(local_offset + i + static_cast<std::size_t>(j) * local_size, BankLinesPerPad);
-        global_data.log_message(func_name, "from", local_idx, "to",
-                                global_offset + i + static_cast<std::size_t>(j), "value", to_store[j]);
+        global_data.log_message(func_name, "from", local_idx, "to", global_offset + i + static_cast<std::size_t>(j),
+                                "value", to_store[j]);
         to_store[j] = global_data.sg.load(detail::get_local_multi_ptr(&local[local_idx]));
       });
     } else {
       detail::unrolled_loop<0, ChunkSize, 1>([&](int j) PORTFFT_INLINE {
         std::size_t local_idx = detail::pad_local<Pad>(
             local_offset + i + static_cast<std::size_t>(j) * local_size + local_id, BankLinesPerPad);
-        global_data.log_message(func_name, "from", local_idx, "to",
-                                global_offset + i + static_cast<std::size_t>(j), "value", to_store[j]);
+        global_data.log_message(func_name, "from", local_idx, "to", global_offset + i + static_cast<std::size_t>(j),
+                                "value", to_store[j]);
         to_store[j] = local[local_idx];
       });
     }
@@ -373,8 +372,7 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
     std::size_t local_idx = detail::pad_local<Pad>(
         static_cast<std::size_t>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num), BankLinesPerPad);
     global_data.log_message(func_name, "from", local_idx, "to", 2 * i, "value", local[local_idx]);
-    global_data.log_message(func_name, "from", local_idx + 1, "to", 2 * i + 1, "value",
-                            local[local_idx + 1]);
+    global_data.log_message(func_name, "from", local_idx + 1, "to", 2 * i + 1, "value", local[local_idx + 1]);
     priv[2 * i] = local[local_idx];
     priv[2 * i + 1] = local[local_idx + 1];
   });
@@ -478,8 +476,7 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
     std::size_t loc_base_offset = detail::pad_local<Pad>(
         static_cast<std::size_t>(2L * stride * (i * num_workers + thread_id) + 2L * col_num), BankLinesPerPad);
     global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value",
-                            priv[2 * i + 1]);
+    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -514,8 +511,7 @@ PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_dat
         2 * static_cast<std::size_t>(stride_num_workers * i + stride * thread_id + destination_offset),
         BankLinesPerPad);
     global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value",
-                            priv[2 * i + 1]);
+    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
     local[loc_base_offset] = priv[2 * i];
     local[loc_base_offset + 1] = priv[2 * i + 1];
   });
@@ -624,17 +620,16 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
     std::size_t j_size_t = static_cast<std::size_t>(j);
     std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
-      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to",
-                              2 * j, "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
-      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad),
-                              "to", 2 * j + 1, "value",
-                              loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
+      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j,
+                              "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
+      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to",
+                              2 * j + 1, "value", loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
       priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
       priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
-      global_data.log_message(func_name, "from", 2 * j, "to",
-                              detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "value", priv[2 * j]);
+      global_data.log_message(func_name, "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad),
+                              "value", priv[2 * j]);
       global_data.log_message(func_name, "from", 2 * j + 1, "to",
                               detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", priv[2 * j + 1]);
       loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
