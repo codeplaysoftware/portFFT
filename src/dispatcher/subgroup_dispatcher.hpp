@@ -79,7 +79,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, int FactorWI, int FactorSG, int SubgroupSize, typename T>
-__attribute__((always_inline)) inline void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                          std::size_t n_transforms, global_data_struct global_data,
                                                          const T* twiddles, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "FactorWI", FactorWI, "FactorSG", FactorSG, "n_transforms", n_transforms);
@@ -169,7 +169,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
         }
-        unrolled_loop<0, NRealsPerWI, 2>([&](int idx) __attribute__((always_inline)) {
+        unrolled_loop<0, NRealsPerWI, 2>([&](int idx) PORTFFT_INLINE {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
         });
@@ -223,7 +223,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
       }
-      unrolled_loop<0, NRealsPerWI, 2>([&](int i) __attribute__((always_inline)) {
+      unrolled_loop<0, NRealsPerWI, 2>([&](int i) PORTFFT_INLINE {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
@@ -281,7 +281,7 @@ __attribute__((always_inline)) inline void subgroup_impl(const T* input, T* outp
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename T, typename SizeList>
-__attribute__((always_inline)) void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
+PORTFFT_INLINE void subgroup_dispatch_impl(int factor_wi, int factor_sg, const T* input, T* output,
                                                            T* loc, T* loc_twiddles, std::size_t n_transforms,
                                                            global_data_struct global_data, const T* twiddles,
                                                            T scaling_factor) {

@@ -70,6 +70,9 @@ struct global_data_struct {
     s << message << " ";
     log_message_impl(other_messages...);
   }
+#define PORTFFT_INLINE __attribute__((noinline))
+#else
+#define PORTFFT_INLINE __attribute__((always_inline))
 #endif
 
   /**
@@ -83,7 +86,7 @@ struct global_data_struct {
    * @param num number of elements to log
    */
   template <typename T>
-  __attribute__((always_inline)) inline void log_dump_local([[maybe_unused]] const char* message,
+  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message,
                                                             [[maybe_unused]] T* ptr, [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
     if (it.get_local_id(0) == 0) {
@@ -111,7 +114,7 @@ struct global_data_struct {
    * @param num number of elements to log
    */
   template <typename T>
-  __attribute__((always_inline)) inline void log_dump_private([[maybe_unused]] const char* message,
+  PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message,
                                                               [[maybe_unused]] T* ptr,
                                                               [[maybe_unused]] std::size_t num) {
 #ifdef PORTFFT_LOG_DUMPS
@@ -136,7 +139,7 @@ struct global_data_struct {
    * @param messages objects to log
    */
   template <typename... Ts>
-  __attribute__((always_inline)) inline void log_message([[maybe_unused]] Ts... messages) {
+  PORTFFT_INLINE void log_message([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
     log_ids();
     log_message_impl(messages...);
@@ -153,7 +156,7 @@ struct global_data_struct {
    * @param messages objects to log
    */
   template <typename... Ts>
-  __attribute__((always_inline)) inline void log_message_local([[maybe_unused]] Ts... messages) {
+  PORTFFT_INLINE void log_message_local([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
     if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0) << " ";
@@ -172,7 +175,7 @@ struct global_data_struct {
    * @param messages objects to log
    */
   template <typename... Ts>
-  __attribute__((always_inline)) inline void log_message_global([[maybe_unused]] Ts... messages) {
+  PORTFFT_INLINE void log_message_global([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRACE
     if (it.get_global_id(0) == 0) {
       log_message_impl(messages...);

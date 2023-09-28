@@ -72,7 +72,7 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  * @param scaling_factor Scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, int N, std::size_t SubgroupSize, typename T>
-__attribute__((always_inline)) inline void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
+PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                          global_data_struct global_data, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "N", N, "n_transforms", n_transforms);
   constexpr std::size_t NReals = 2 * N;
@@ -101,7 +101,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) __attribute__((always_inline)) {
+        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
         });
@@ -113,7 +113,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       wi_dft<Dir, N, 1, 1>(priv, priv);
       global_data.log_dump_private("data in registers after computation:", priv, NReals);
-      unrolled_loop<0, NReals, 2>([&](int i) __attribute__((always_inline)) {
+      unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_INLINE {
         priv[i] *= scaling_factor;
         priv[i + 1] *= scaling_factor;
       });
@@ -151,7 +151,7 @@ __attribute__((always_inline)) inline void workitem_impl(const T* input, T* outp
  * @param fft_size The size of the FFT.
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t SubgroupSize, typename SizeList, typename T>
-__attribute__((always_inline)) void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
+PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
                                                            global_data_struct global_data, T scaling_factor,
                                                            std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {

@@ -138,7 +138,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
       if (wg_twiddles) {
-        detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_INLINE {
           // Unintuitive indexing to ensure coalesced access
           int twiddle_i = i * FactSg + wi_id_in_fft;
           int twiddle_j = j_outer;
@@ -154,7 +154,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * FactWi);
       }
       if (scaling_factor != static_cast<T>(1)) {
-        detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_INLINE {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
         });
@@ -205,7 +205,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  */
 template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int M, int SubgroupSize,
           std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
+PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                                                   detail::global_data_struct global_data, T scaling_factor,
                                                   std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num) {
   global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M, "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num", sub_batch_num);

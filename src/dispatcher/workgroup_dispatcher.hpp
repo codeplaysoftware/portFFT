@@ -72,7 +72,7 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param scaling_factor scaling factor applied to the result
  */
 template <direction Dir, detail::transpose TransposeIn, std::size_t FFTSize, int SubgroupSize, typename T>
-__attribute__((always_inline)) inline void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                           std::size_t n_transforms, global_data_struct global_data,
                                                           const T* twiddles, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "n_transforms", n_transforms);
@@ -169,7 +169,7 @@ __attribute__((always_inline)) inline void workgroup_impl(const T* input, T* out
  * @tparam fft_size Problem size
  */
 template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename T, typename SizeList>
-__attribute__((always_inline)) void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
+PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
                                                             std::size_t n_transforms, global_data_struct global_data,
                                                             const T* twiddles, T scaling_factor, std::size_t fft_size) {
   if constexpr (!SizeList::ListEnd) {
