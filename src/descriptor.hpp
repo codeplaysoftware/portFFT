@@ -345,8 +345,8 @@ class committed_descriptor {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
     }
     if (minimum_local_mem_required > local_memory_size) {
-      throw invalid_configuration("Insufficient amount of local memory available: ", local_memory_size,
-                                  "B. Required: ", minimum_local_mem_required, "B.");
+      throw unsupported_configuration("Insufficient amount of local memory available: ", local_memory_size,
+                                      "B. Required: ", minimum_local_mem_required, "B.");
     }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
