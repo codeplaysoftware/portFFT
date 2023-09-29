@@ -187,7 +187,7 @@ class committed_descriptor {
     }
     std::size_t fft_size = params.lengths[0];
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
+      throw unsupported_configuration("FFT size ", fft_size, " is not compiled in!");
     }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
