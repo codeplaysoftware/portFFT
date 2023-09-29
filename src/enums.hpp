@@ -39,14 +39,14 @@ enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 enum class layout {
   /// Packed layout represents default strides and distance.
   /// Each FFT is in row major layout and each FFT is stored one after the other.
-  /// dftInput[Idx, BatchId] = *(ptr[Idx + InputSize * BatchId)
+  /// dftInput[Idx, BatchId] = ptr[Idx + InputSize * BatchId]
   PACKED,
   /// Unpacked layout represents arbitrary strides or distance.
   // TODO: Add UNPACKED once stride and distance are supported
   // UNPACKED,
   /// Batch interleaved is a special case of unpacked with distance=1 stride=[0, batch_size] which can be better
   /// optimized than the general case.
-  /// dftInput[Idx, BatchId] = *(ptr + Idx * BatchCount + BatchId)
+  /// dftInput[Idx, BatchId] = ptr[Idx * BatchCount + BatchId]
   BATCH_INTERLEAVED
 };
 
