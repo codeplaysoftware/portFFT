@@ -38,7 +38,7 @@ enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
 
 enum class layout {
   /// Packed layout represents default strides and distance.
-  /// Each FFT is in row major layout and each FFT is stored one after the other.
+  /// Each FFT is contiguous and each FFT is stored one after the other.
   /// dftInput[Idx, BatchId] = ptr[Idx + InputSize * BatchId]
   PACKED,
   /// Unpacked layout represents arbitrary strides or distance.
