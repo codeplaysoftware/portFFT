@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
+#include <common/logging.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -42,7 +43,7 @@ namespace detail {
  * __attribute__((always_inline)).
  */
 template <Idx Start, Idx Stop, Idx Step, typename Functor>
-void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+PORTFFT_INLINE void unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);
@@ -126,9 +127,8 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
  * @param output_imag output imag part
  */
 template <typename T>
-__attribute__((always_inline)) inline void multiply_complex(const T input_real, const T input_imag,
-                                                            const T multiplier_real, const T multiplier_imag,
-                                                            T& output_real, T& output_imag) {
+PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, const T multiplier_real,
+                                     const T multiplier_imag, T& output_real, T& output_imag) {
   output_real = input_real * multiplier_real - input_imag * multiplier_imag;
   output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
