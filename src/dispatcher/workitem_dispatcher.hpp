@@ -141,9 +141,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, NReals, 2>([&](const std::size_t j) PORTFFT_INLINE {
+        unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + j * n_transforms]));
+          reinterpret_cast<T_vec*>(&priv[2 * j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
@@ -182,7 +182,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->store(0, detail::get_global_multi_ptr(&output[i * 2 + j * n_transforms]));
+              ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
         });
       }
     }
