@@ -244,7 +244,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
       }
-      if constexpr (SubgroupSize != FactorSG) {
+      sycl::group_barrier(global_data.it.get_group());
+      if constexpr (SubgroupSize != FactorSG || TransposeOut == detail::transpose::TRANSPOSED) {
         global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
         global_data.log_message_global(
             __func__, "storing transposed data from local to global memory (SubgroupSize != FactorSG)");
@@ -256,7 +257,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         } else {
           if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
             local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
-                global_data.it, output, loc, i * n_reals_per_fft, FactorWI * FactorSG, n_transforms,
+                global_data.it, output, loc, 2 * i, FactorWI * FactorSG, n_transforms,
                 max_num_batches_local_mem, global_data);
           }
         }

@@ -136,7 +136,7 @@ class verif_data_spec {
       auto referenceData = load_data_fourier(desc);
       auto referenceData_copy = referenceData;
       if (transpose_out) {
-        transpose(referenceData.data(), referenceData_copy.data(), dftLen, descBatches);
+        transpose(referenceData.data(), referenceData_copy.data(), descBatches, dftLen);
       }
       if constexpr (std::is_same_v<complex_type, ElemT>) {
         compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
@@ -147,7 +147,7 @@ class verif_data_spec {
       auto referenceData = load_data_time(desc);
       auto referenceData_copy = referenceData;
       if (transpose_out) {
-        transpose(referenceData.data(), referenceData_copy.data(), dftLen, descBatches);
+        transpose(referenceData.data(), referenceData_copy.data(), descBatches, dftLen);
       }
       if constexpr (std::is_same_v<forward_type, ElemT>) {
         compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
