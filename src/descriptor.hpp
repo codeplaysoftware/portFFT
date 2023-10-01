@@ -25,6 +25,7 @@
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
+#include <utils.hpp>
 
 #include <sycl/sycl.hpp>
 
@@ -39,14 +40,14 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          int SubgroupSize>
+template <typename, domain, direction, detail::memory, detail::transpose, detail::transpose,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int>
 class workgroup_kernel;
 
 }  // namespace detail
@@ -138,35 +139,6 @@ class committed_descriptor {
   }
 
   /**
-   * Get kernel ids for the implementation used.
-   *
-   * @tparam kernel which base template for kernel to use
-   * @tparam SubgroupSize size of the subgroup
-   * @param ids vector of kernel ids
-   */
-  template <template <typename, domain, direction, detail::memory, detail::transpose, int> class Kernel,
-            int SubgroupSize>
-  void get_ids(std::vector<sycl::kernel_id>& ids) {
-// if not used, some kernels might be optimized away in AOT compilation and not available here
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                          \
-  try {                                                                                                       \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
-  } catch (...) {                                                                                             \
-  }
-
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-
-#undef PORTFFT_GET_ID
-  }
-
-  /**
    * Prepares the implementation for the particular problem size. That includes factorizing it and getting ids for the
    * set of kernels that need to be JIT compiled.
    *
@@ -191,7 +163,7 @@ class committed_descriptor {
     }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
-      get_ids<detail::workitem_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKITEM;
     }
     int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
@@ -201,7 +173,7 @@ class committed_descriptor {
       // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
-      get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
     std::size_t n = detail::factorize(fft_size);
@@ -217,7 +189,7 @@ class committed_descriptor {
       factors.push_back(factor_sg_m);
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
-      get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKGROUP;
     }
     // TODO global
@@ -555,10 +527,20 @@ class committed_descriptor {
         scale_factor = params.backward_scale;
       }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
       }
       if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::transpose::TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
+      }
+      if (input_distance == fft_size && output_distance == 1 && in != out) {
+        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
+      }
+      if (input_distance == 1 && output_distance == 1) {
+        return run_kernel<Dir, detail::transpose::TRANSPOSED, detail::transpose::TRANSPOSED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
       }
       throw unsupported_configuration("Only contiguous or transposed transforms are supported");
     }
@@ -578,7 +560,8 @@ class committed_descriptor {
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize,
+            typename TIn, typename TOut>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
@@ -602,9 +585,11 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize,
+            typename TIn, typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, TIn, TOut>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize, TIn, TOut>>(in, out, scale_factor,
+                                                                                                dependencies);
   }
 };
 

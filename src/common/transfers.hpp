@@ -599,8 +599,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @tparam TransferDirection Direction of Transfer
  *
  * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param loc Pointer to local memory
+ * @param input Pointer to private memory
+ * @param output Pointer to local memory
  * @param stride_1 Innermost stride
  * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
@@ -610,7 +610,7 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* priv, T* loc, std::size_t stride_1,
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, std::size_t stride_1,
                                      std::size_t offset_1, std::size_t stride_2, std::size_t offset_2,
                                      std::size_t stride_3, std::size_t offset_3, std::size_t bank_lines_per_pad) {
   const char* func_name = __func__;
@@ -621,19 +621,23 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
     std::size_t base_offset = stride_1 * (stride_2 * (j_size_t * stride_3 + offset_3) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
       global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j,
-                              "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
+                              "value", input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
       global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to",
-                              2 * j + 1, "value", loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
-      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
-      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+                              2 * j + 1, "value", input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
+      output[2 * j] = input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      output[2 * j + 1] = input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
       global_data.log_message(func_name, "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad),
-                              "value", priv[2 * j]);
+                              "value", input[2 * j]);
       global_data.log_message(func_name, "from", 2 * j + 1, "to",
-                              detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", priv[2 * j + 1]);
-      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
-      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+                              detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", input[2 * j + 1]);
+      output[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = input[2 * j];
+      output[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = input[2 * j + 1];
+    }
+    if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+      output[base_offset] = input[2 * j];
+      output[base_offset + 1] = input[2 * j + 1];
     }
   });
 }
@@ -672,6 +676,43 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
         global_offset + 2 * batch_num * fft_size + 2 * i + global_data.it.get_local_linear_id() % 2;
     global_data.log_message(func_name, "from", local_idx, "to", global_idx, "value", loc[local_idx]);
     global[global_idx] = loc[local_idx];
+  }
+}
+
+/**
+ * Stores data to global memory where consecutive elements of a problem are separated by stride.
+ * Stores half of workgroup size equivalent number of consecutive batches to global memory.
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ *
+ * @param it Associated nd_item
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad Pad, detail::level Level, std::size_t BankLinesPerPad, typename T>
+PORTFFT_INLINE void local_transposed2_global_transposed(sycl::nd_item<1> it, T* global_base_ptr, T* local_ptr,
+                                                        std::size_t offset, std::size_t num_complex,
+                                                        std::size_t stride_global, std::size_t stride_local,
+                                                        detail::global_data_struct global_data) {
+  global_data.log_message_local(__func__);
+  sycl::sub_group sg = it.get_sub_group();
+  std::size_t local_id;
+
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = sg.get_local_linear_id();
+  } else {
+    local_id = it.get_local_id(0);
+  }
+  for (std::size_t i = 0; i < num_complex; i++) {
+    std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
+    std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    global_base_ptr[global_index] = local_ptr[local_index];
   }
 }
 

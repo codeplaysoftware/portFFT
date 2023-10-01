@@ -62,7 +62,7 @@ std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_
 }
 
 // test for out-of-place and in-place ffts.
-template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
+template <typename FType, placement Place, direction Dir, bool TransposeIn = false, bool TransposeOut = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
@@ -85,13 +85,24 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   descriptor<FType, domain::COMPLEX> desc{{params.length}};
   desc.number_of_transforms = params.batch;
-  if constexpr (TransposeIn) {
-    if constexpr (Dir == direction::FORWARD) {
+  if constexpr (Dir == direction::FORWARD) {
+    if constexpr (TransposeIn) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};
       desc.forward_distance = 1;
-    } else {
-      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (TransposeOut) {
       desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+  }
+  if constexpr (Dir == direction::BACKWARD) {
+    if constexpr (TransposeIn) {
+      desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (TransposeOut) {
+      desc.forward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.forward_distance = 1;
     }
   }
 
@@ -131,10 +142,9 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
     }
   }();
 
-  queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
-             {fft_event});
+  queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verifSpec.verify_dft(desc, buffer, Dir, 1e-3);
+  verifSpec.template verify_dft<TransposeOut>(desc, buffer, Dir, params.length, params.batch, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -142,7 +152,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
 }
 
-template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
+template <typename FType, placement Place, direction Dir, bool TransposeIn = false, bool TransposeOut = false>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
@@ -159,13 +169,25 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   descriptor<FType, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
   desc.number_of_transforms = params.batch;
-  if constexpr (TransposeIn) {
-    if constexpr (Dir == direction::FORWARD) {
+
+  if constexpr (Dir == direction::FORWARD) {
+    if constexpr (TransposeIn) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};
       desc.forward_distance = 1;
-    } else {
-      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (TransposeOut) {
       desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+  }
+  if constexpr (Dir == direction::BACKWARD) {
+    if constexpr (TransposeIn) {
+      desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (TransposeOut) {
+      desc.forward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.forward_distance = 1;
     }
   }
 
@@ -209,7 +231,8 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     }
     queue.wait_and_throw();
   }
-  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, 1e-3);
+  verifSpec.template verify_dft<TransposeOut>(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir,
+                                              params.length, params.batch, 1e-3);
 }
 
 #endif

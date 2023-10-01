@@ -32,6 +32,15 @@
 #include <string>
 #include <vector>
 
+template <typename T>
+void transpose(T* input, T* output, std::size_t N, std::size_t M) {
+  for (std::size_t i = 0; i < N * M; i++) {
+    std::size_t j = i / N;
+    std::size_t k = i % N;
+    output[i] = input[k * M + j];
+  }
+}
+
 /**
  * Represents a verification data file, with information on the DFT represented, and the path at which to find the file.
  * Also routines for loading the data and using it as a reference.
@@ -107,9 +116,9 @@ class verif_data_spec {
    * @param dir The DFT direction.
    * @param comparisonTolerance The tolerance for error.
    **/
-  template <typename ElemT, typename Scalar, portfft::domain Domain>
+  template <bool TransposeOut, typename ElemT, typename Scalar, portfft::domain Domain>
   void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
-                  const double comparisonTolerance) {
+                  std::size_t fft_size, std::size_t batches, const double comparisonTolerance) {
     if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
       throw std::runtime_error("Can't use this verification data to verify this DFT!");
     }
@@ -125,15 +134,23 @@ class verif_data_spec {
     auto scaling = isForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dftLen);
     if (isForward) {
       auto referenceData = load_data_fourier(desc);
+      auto referenceData_copy = referenceData;
+      if constexpr (TransposeOut) {
+        transpose(referenceData_copy.data(), referenceData.data(), fft_size, batches);
+      }
       if constexpr (std::is_same_v<complex_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
+        compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {
         throw std::runtime_error("Expected real input data type for forward dft verification.");
       }
     } else {
       auto referenceData = load_data_time(desc);
+      auto referenceData_copy = referenceData;
+      if constexpr (TransposeOut) {
+        transpose(referenceData_copy.data(), referenceData.data(), fft_size, batches);
+      }
       if constexpr (std::is_same_v<forward_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
+        compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
       } else {
         throw std::runtime_error("Expected complex input data type for backward dft verification.");
       }
