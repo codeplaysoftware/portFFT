@@ -89,7 +89,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, false, _in_contiguous, false, _out_contiguous) \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, true, _in_transposed, false, _out_contiguous)  \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, true, _in_transposed, true, _out_transposed)        \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, false, _in_contiguous, true, _out_transposed)  \
-  // transpose in place is not supported (yet?)
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, false, _in_contiguous, true, _out_transposed)
+// transpose in place is not supported (yet?)
 
 #endif

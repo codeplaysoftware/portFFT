@@ -116,9 +116,9 @@ class verif_data_spec {
    * @param dir The DFT direction.
    * @param comparisonTolerance The tolerance for error.
    **/
-  template <bool TransposeOut, typename ElemT, typename Scalar, portfft::domain Domain>
+  template <typename ElemT, typename Scalar, portfft::domain Domain>
   void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
-                  std::size_t fft_size, std::size_t batches, const double comparisonTolerance) {
+                  bool transpose_out, const double comparisonTolerance) {
     if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
       throw std::runtime_error("Can't use this verification data to verify this DFT!");
     }
@@ -135,8 +135,8 @@ class verif_data_spec {
     if (isForward) {
       auto referenceData = load_data_fourier(desc);
       auto referenceData_copy = referenceData;
-      if constexpr (TransposeOut) {
-        transpose(referenceData_copy.data(), referenceData.data(), fft_size, batches);
+      if (transpose_out) {
+        transpose(referenceData.data(), referenceData_copy.data(), dftLen, descBatches);
       }
       if constexpr (std::is_same_v<complex_type, ElemT>) {
         compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
@@ -146,8 +146,8 @@ class verif_data_spec {
     } else {
       auto referenceData = load_data_time(desc);
       auto referenceData_copy = referenceData;
-      if constexpr (TransposeOut) {
-        transpose(referenceData_copy.data(), referenceData.data(), fft_size, batches);
+      if (transpose_out) {
+        transpose(referenceData.data(), referenceData_copy.data(), dftLen, descBatches);
       }
       if constexpr (std::is_same_v<forward_type, ElemT>) {
         compare_arrays(referenceData_copy.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);

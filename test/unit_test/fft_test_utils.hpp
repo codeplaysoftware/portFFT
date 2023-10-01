@@ -144,7 +144,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verifSpec.template verify_dft<TransposeOut>(desc, buffer, Dir, params.length, params.batch, 1e-3);
+  verifSpec.verify_dft(desc, buffer, Dir, TransposeOut, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -231,8 +231,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
     }
     queue.wait_and_throw();
   }
-  verifSpec.template verify_dft<TransposeOut>(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir,
-                                              params.length, params.batch, 1e-3);
+  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, TransposeOut, 1e-3);
 }
 
 #endif
