@@ -169,7 +169,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
              idx += global_data.it.get_local_range(0)) {
           std::size_t source_row = idx / N;
           std::size_t source_col = idx % N;
-          std::size_t base_offset = source_col * M + source_row;
+          std::size_t base_offset = 2 * source_col * M + 2 * source_row;
           output[2 * n_transforms * idx + 2 * current_batch] = loc[detail::pad_local(base_offset, BankLinesPerPad)];
           output[2 * n_transforms * idx + 2 * current_batch + 1] =
               loc[detail::pad_local(base_offset + 1, BankLinesPerPad)];

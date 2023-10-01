@@ -310,16 +310,6 @@ class committed_descriptor {
     // get some properties we will use for tuning
     n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
     local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
-    std::size_t minimum_local_mem_required;
-    if (params.forward_distance == 1 || params.backward_distance == 1) {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
-    } else {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
-    }
-    if (minimum_local_mem_required > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                               "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
-    }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);
@@ -525,6 +515,15 @@ class committed_descriptor {
         input_distance = params.backward_distance;
         output_distance = params.forward_distance;
         scale_factor = params.backward_scale;
+      }
+      if ((Dir == direction::FORWARD && input_distance == 1) || (Dir == direction::BACKWARD && output_distance == 1)) {
+        std::size_t minimum_local_mem_required =
+            num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+        if (minimum_local_mem_required > local_memory_size) {
+          throw std::runtime_error(
+              "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+              "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+        }
       }
       if (input_distance == fft_size && output_distance == fft_size) {
         return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(

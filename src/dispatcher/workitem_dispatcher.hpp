@@ -143,7 +143,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         // No need of going through local memory either as it is an unnecessary extra write step.
         unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
+          reinterpret_cast<T_vec*>(&priv[2 * j])
+              ->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
