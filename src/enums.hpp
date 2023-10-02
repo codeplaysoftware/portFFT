@@ -36,7 +36,7 @@ enum class direction { FORWARD, BACKWARD };
  * Useful to get the output of descriptor::get_strides, descriptor::get_distance, or similar functions.
  * @param dir Direction
  */
-inline direction inv(direction dir) { return dir == direction::FORWARD ? direction::BACKWARD : direction::FORWARD; }
+constexpr direction inv(direction dir) { return dir == direction::FORWARD ? direction::BACKWARD : direction::FORWARD; }
 
 namespace detail {
 enum class pad { DO_PAD, DONT_PAD };
