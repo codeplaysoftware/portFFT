@@ -32,8 +32,8 @@
 
 namespace portfft {
 
-using Idx = unsigned long long;
-using IdxGlobal = unsigned long long;
+using Idx = int;
+using IdxGlobal = long long;
 
 namespace detail {
 
