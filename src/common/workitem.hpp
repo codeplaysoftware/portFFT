@@ -133,7 +133,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
  * @param N the number to factorize
  * @return the smaller of the factors
  */
-template<typename T>
+template <typename T>
 constexpr T factorize(T N) {
   T res = 1;
   for (T i = 2; i * i <= N; i++) {

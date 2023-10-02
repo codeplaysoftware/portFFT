@@ -90,7 +90,7 @@ struct global_data_struct {
     s << message << " ";
     log_message_impl(other_messages...);
   }
-  #endif
+#endif
 
   /**
    * Logs content of the local memory. Also outputs the id of the workgroup it is called from.

@@ -47,8 +47,8 @@ constexpr static sycl::specialization_id<Idx> FactorSGSpecConst{};
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T>
-IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx subgroup_size,
-                                     Idx num_sgs_per_wg, Idx n_compute_units) {
+IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx subgroup_size, Idx num_sgs_per_wg,
+                                   Idx n_compute_units) {
   Idx maximum_n_sgs = 2 * n_compute_units * 64;
   Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   Idx wg_size = subgroup_size * num_sgs_per_wg;
@@ -100,14 +100,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   Idx id_of_wi_in_fft = subgroup_local_id % FactorSG;
   // the +1 is needed for workitems not working on useful data so they also
   // contribute to subgroup algorithms and data transfers in last iteration
-  IdxGlobal rounded_up_n_ffts =
-      round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(n_ffts_per_sg)) + (subgroup_local_id >= max_wis_working);
+  IdxGlobal rounded_up_n_ffts = round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(n_ffts_per_sg)) +
+                                (subgroup_local_id >= max_wis_working);
 
   IdxGlobal id_of_fft_in_kernel;
   IdxGlobal n_ffts_in_kernel;
   if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
-    n_ffts_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
+    n_ffts_in_kernel =
+        static_cast<IdxGlobal>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
   } else {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg);
     n_ffts_in_kernel = static_cast<IdxGlobal>(n_sgs_in_kernel * n_ffts_per_sg);
@@ -161,8 +162,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "loading transposed data from local to private memory");
           // load from local memory in a transposed manner
           local2private_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-              global_data, loc, priv, id_of_wi_in_fft, sub_batch,
-              max_num_batches_local_mem);
+              global_data, loc, priv, id_of_wi_in_fft, sub_batch, max_num_batches_local_mem);
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
         sg_dft<Dir, FactorWI, FactorSG>(priv, global_data.sg, loc_twiddles);
@@ -181,8 +181,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to global memory (SubgroupSize == FactorSG)");
             // Store directly from registers for fully coalesced accesses
-            store_transposed<NRealsPerWI, detail::pad::DONT_PAD, 0>(global_data, priv, output, id_of_wi_in_fft,
-                                                                    FactorSG, (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
+            store_transposed<NRealsPerWI, detail::pad::DONT_PAD, 0>(
+                global_data, priv, output, id_of_wi_in_fft, FactorSG,
+                (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
           }
         } else {
           if (working_inner) {
@@ -190,8 +191,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                 __func__, "storing transposed data from private to local memory (SubgroupSize != FactorSG)");
             // Store back to local memory only
             private2local_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-                global_data, priv, loc, id_of_wi_in_fft, FactorSG, sub_batch,
-                max_num_batches_local_mem);
+                global_data, priv, loc, id_of_wi_in_fft, FactorSG, sub_batch, max_num_batches_local_mem);
           }
         }
       }
@@ -210,7 +210,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
 
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft, static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
+          global_data, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+          static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
           subgroup_id * n_reals_per_sg);
 
       sycl::group_barrier(global_data.sg);
@@ -359,8 +360,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, Su
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}}, [=
-      ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}},
+          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx factor_wi = kh.get_specialization_constant<detail::FactorWISpecConst>();
             Idx factor_sg = kh.get_specialization_constant<detail::FactorSGSpecConst>();
             detail::global_data_struct global_data{
@@ -398,8 +399,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       Idx padded_fft_bytes = detail::pad_local(2 * dft_length, Idx(1)) * static_cast<Idx>(sizeof(Scalar));
       Idx max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
       Idx batches_per_sg = desc.used_sg_size / 2;
-      Idx num_sgs_required = std::min(Idx(PORTFFT_SGS_IN_WG),
-                                              std::max(Idx(1), max_batches_in_local_mem / batches_per_sg));
+      Idx num_sgs_required =
+          std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_batches_in_local_mem / batches_per_sg));
       desc.num_sgs_per_wg = num_sgs_required;
       Idx num_batches_in_local_mem = desc.used_sg_size * desc.num_sgs_per_wg / 2;
       return static_cast<std::size_t>(detail::pad_local(2 * dft_length * num_batches_in_local_mem, 1));

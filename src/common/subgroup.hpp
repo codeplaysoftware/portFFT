@@ -226,7 +226,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-template<typename T>
+template <typename T>
 constexpr T factorize_sg(T N, Idx sg_size) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;

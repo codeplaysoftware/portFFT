@@ -39,14 +39,11 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          Idx SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          Idx SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          Idx SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail
@@ -144,8 +141,7 @@ class committed_descriptor {
    * @tparam SubgroupSize size of the subgroup
    * @param ids vector of kernel ids
    */
-  template <template <typename, domain, direction, detail::memory, detail::layout, Idx> class Kernel,
-            Idx SubgroupSize>
+  template <template <typename, domain, direction, detail::memory, detail::layout, Idx> class Kernel, Idx SubgroupSize>
   void get_ids(std::vector<sycl::kernel_id>& ids) {
 // if not used, some kernels might be optimized away in AOT compilation and not available here
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                          \

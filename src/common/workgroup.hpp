@@ -126,9 +126,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
-            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
-            StrideWithinDFT, j_inner + j_outer * OuterStride, 1,
-            wi_id_in_fft * FactWi, BankLinesPerPad);
+            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, StrideWithinDFT,
+            j_inner + j_outer * OuterStride, 1, wi_id_in_fft * FactWi, BankLinesPerPad);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
@@ -167,9 +166,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
-            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
-            StrideWithinDFT, j_inner + j_outer * OuterStride,
-            FactSg, wi_id_in_fft, BankLinesPerPad);
+            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, StrideWithinDFT,
+            j_inner + j_outer * OuterStride, FactSg, wi_id_in_fft, BankLinesPerPad);
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
@@ -203,8 +201,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
  */
-template <direction Dir, detail::layout LayoutIn, Idx FFTSize, Idx N, Idx M, Idx SubgroupSize,
-          Idx BankLinesPerPad, typename T>
+template <direction Dir, detail::layout LayoutIn, Idx FFTSize, Idx N, Idx M, Idx SubgroupSize, Idx BankLinesPerPad,
+          typename T>
 PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail::global_data_struct global_data,
                            T scaling_factor, Idx max_num_batches_in_local_mem, Idx sub_batch_num) {
   global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M,

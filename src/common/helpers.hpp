@@ -37,7 +37,6 @@ using IdxGlobal = long long;
 
 namespace detail {
 
-
 /**
  * Implements a loop that will be fully unrolled.
  * @tparam Start starting value of loop counter
