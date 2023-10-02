@@ -61,6 +61,50 @@ std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_
   }
 }
 
+template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
+std::pair<std::optional<sycl::event>, std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input,
+                                                               T& output, sycl::event& copy_event) {
+  try {
+    if constexpr (Place == placement::OUT_OF_PLACE) {
+      if constexpr (Dir == direction::FORWARD) {
+        return std::make_pair(desc.compute_forward(input, output, {copy_event}), "");
+      } else {
+        return std::make_pair(desc.compute_backward(input, output, {copy_event}), "");
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        return std::make_pair(desc.compute_forward(input, {copy_event}), "");
+      } else {
+        return std::make_pair(desc.compute_backward(input, {copy_event}), "");
+      }
+    }
+  } catch (portfft::inadequate_local_memory_error& error) {
+    return std::make_pair(std::nullopt, error.what());
+  }
+}
+
+template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
+std::optional<std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input, T& output) {
+  try {
+    if constexpr (Place == placement::OUT_OF_PLACE) {
+      if constexpr (Dir == direction::FORWARD) {
+        desc.compute_forward(input, output);
+      } else {
+        desc.compute_backward(input, output);
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        desc.compute_forward(input);
+      } else {
+        desc.compute_backward(input);
+      }
+    }
+    return std::nullopt;
+  } catch (portfft::inadequate_local_memory_error& error) {
+    return error.what();
+  }
+}
+
 // test for out-of-place and in-place ffts.
 template <typename FType, placement Place, direction Dir, bool TransposeIn = false, bool TransposeOut = false>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
@@ -126,22 +170,12 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   auto copy_event =
       queue.copy(TransposeIn ? host_input_transposed.data() : host_input.data(), device_input, num_elements);
 
-  auto fft_event = [&]() {
-    if constexpr (Place == placement::OUT_OF_PLACE) {
-      if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
-      } else {
-        return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
-      }
-    } else {
-      if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, {copy_event});
-      } else {
-        return committed_descriptor.compute_backward(device_input, {copy_event});
-      }
-    }
-  }();
-
+  auto potential_fft_event =
+      run_compute<FType, domain::COMPLEX, Dir, Place>(committed_descriptor, device_input, device_output, copy_event);
+  if (!potential_fft_event.first.has_value()) {
+    GTEST_SKIP() << potential_fft_event.second;
+  }
+  sycl::event fft_event = potential_fft_event.first.value();
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
   verifSpec.verify_dft(desc, buffer, Dir, TransposeOut, 1e-3);
@@ -216,20 +250,12 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       output_buffer = sycl::buffer<std::complex<FType>, 1>(buffer.data(), num_elements);
     }
 
-    if constexpr (Place == placement::OUT_OF_PLACE) {
-      if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer, output_buffer);
-      } else {
-        committed_descriptor.compute_backward(input_buffer, output_buffer);
-      }
-    } else {
-      if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer);
-      } else {
-        committed_descriptor.compute_backward(input_buffer);
-      }
-    }
+    auto possible_error =
+        run_compute<FType, portfft::domain::COMPLEX, Dir, Place>(committed_descriptor, input_buffer, output_buffer);
     queue.wait_and_throw();
+    if (possible_error.has_value()) {
+      GTEST_SKIP() << possible_error.value();
+    }
   }
   verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, TransposeOut, 1e-3);
 }

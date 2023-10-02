@@ -33,6 +33,13 @@ struct unsupported_configuration : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
+/**
+ * Exception class to be thrown when more than available local memory is required
+ */
+struct inadequate_local_memory_error : public std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
 };  // namespace portfft
 
 #endif

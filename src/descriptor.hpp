@@ -517,14 +517,15 @@ class committed_descriptor {
         scale_factor = params.backward_scale;
       }
       std::size_t minimum_local_mem_required;
-      if ((Dir == direction::FORWARD && input_distance == 1) || (Dir == direction::BACKWARD && output_distance == 1)) {
+      if (input_distance == 1) {
         minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
       } else {
         minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
       }
       if (minimum_local_mem_required > local_memory_size) {
-        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                                 "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+        throw inadequate_local_memory_error(
+            "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+            "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
       }
       if (input_distance == fft_size && output_distance == fft_size) {
         return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
