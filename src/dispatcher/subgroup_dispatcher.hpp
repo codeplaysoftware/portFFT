@@ -340,7 +340,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
                              const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t fft_size = desc.params.lengths[0];
-    std::size_t n_transforms = desc.params.number_of_transforms;
+    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     Scalar* twiddles = desc.twiddles_forward.get();
     Idx factor_sg = desc.factors[1];
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(

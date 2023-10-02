@@ -178,7 +178,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    IdxGlobal n_transforms = desc.params.number_of_transforms;
+    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     std::size_t global_size =
         static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =

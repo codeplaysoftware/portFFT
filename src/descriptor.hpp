@@ -185,7 +185,7 @@ class committed_descriptor {
     if (params.lengths.size() != 1) {
       throw unsupported_configuration("portFFT only supports 1D FFT for now");
     }
-    IdxGlobal fft_size = params.lengths[0];
+    IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[0]);
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
       throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
     }
