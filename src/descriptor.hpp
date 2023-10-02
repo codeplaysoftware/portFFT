@@ -663,11 +663,13 @@ struct descriptor {
   /**
    * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
    * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> forward_strides;
   /**
    * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
    * forward_strides.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> backward_strides;
   /**
