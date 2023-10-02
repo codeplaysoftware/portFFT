@@ -80,8 +80,8 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * Implementation of FFT for sizes that can be done by independent work items.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -100,7 +100,7 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to load modifier data in local memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
@@ -121,7 +121,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     bool working = i < n_transforms;
     std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
 
-    if constexpr (TransposeIn == detail::transpose::NOT_TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           global_data, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
@@ -156,7 +156,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     sycl::group_barrier(global_data.sg);
 
     if (working) {
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
@@ -195,7 +195,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       }
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
-      if constexpr (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+      if constexpr (LayoutOut == detail::layout::PACKED) {
         private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
                                                             local_offset);
       } else {
@@ -206,7 +206,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         });
       }
     }
-    if constexpr (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+    if constexpr (LayoutOut == detail::layout::PACKED) {
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
       global_data.log_message_global(__func__, "storing data from local to global memory");
@@ -222,8 +222,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * Launch specialized WI DFT size matching fft_size if one is available.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -242,7 +242,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to load modifier data in local memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
 PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
@@ -254,12 +254,12 @@ PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, st
     constexpr int ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (detail::fits_in_wi<T>(ThisSize)) {
-        workitem_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, ThisSize,
+        workitem_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, ThisSize,
                       SubgroupSize>(input, output, loc, n_transforms, global_data, scaling_factor, load_modifier_data,
                                     store_modifier_data, loc_load_modifier, loc_store_modifier);
       }
     } else {
-      workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
+      workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
                              SubgroupSize, typename SizeList::child_t, T>(
           input, output, loc, n_transforms, global_data, scaling_factor, fft_size, load_modifier_data,
           store_modifier_data, loc_load_modifier, loc_store_modifier);
@@ -270,10 +270,10 @@ PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, st
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize, typename TIn,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
           typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
@@ -282,7 +282,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t global_size =
         detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, TransposeIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -293,7 +293,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workitem_kernel<
-          Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, detail::apply_load_modifier::NOT_APPLIED,
+          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
           detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
@@ -304,7 +304,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 #endif
                 it};
             global_data.log_message_global("Running workitem kernel");
-            detail::workitem_dispatch_impl<Dir, TransposeIn, TransposeOut, detail::apply_load_modifier::NOT_APPLIED,
+            detail::workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
                                            detail::apply_store_modifier::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
@@ -324,9 +324,9 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
-                                                                                    TransposeIn, Dummy> {
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
+                                                                                    Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     std::size_t num_scalars_per_sg =
         detail::pad_local(2 * desc.params.lengths[0] * static_cast<std::size_t>(desc.used_sg_size), 1);

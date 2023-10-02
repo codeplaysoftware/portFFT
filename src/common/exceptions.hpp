@@ -21,23 +21,59 @@
 #ifndef PORTFFT_COMMON_EXCEPTIONS_HPP
 #define PORTFFT_COMMON_EXCEPTIONS_HPP
 
+#include <sstream>
 #include <stdexcept>
 
 namespace portfft {
 
 /**
+ * Base exception class for all portFFT exceptions
+ */
+class base_error : public std::runtime_error {
+ private:
+  template <typename... Ts>
+  std::string concat(const Ts&... args) {
+    std::stringstream ss;
+    (ss << ... << args);
+    return ss.str();
+  }
+
+ public:
+  template <typename... Ts>
+  explicit base_error(const Ts&... args) : std::runtime_error{concat(args...)} {}
+};
+
+/**
+ * Exception internal to the portFFT library.
+ */
+struct internal_error : public base_error {
+  template <typename... Ts>
+  explicit internal_error(const Ts&... args) : base_error(args...) {}
+};
+
+/**
+ * Exception thrown when the descriptor provided by the user is invalid.
+ */
+struct invalid_configuration : public base_error {
+  template <typename... Ts>
+  explicit invalid_configuration(const Ts&... args) : base_error(args...) {}
+};
+
+/**
  * Exception thrown if the provided descriptor is not supported at the moment or cannot be supported on a particular
  * device or with the particular CMake configuration.
  */
-struct unsupported_configuration : public std::runtime_error {
-  using std::runtime_error::runtime_error;
+struct unsupported_configuration : public base_error {
+  template <typename... Ts>
+  explicit unsupported_configuration(const Ts&... args) : base_error(args...) {}
 };
 
 /**
  * Exception class to be thrown when more than available local memory is required
  */
-struct inadequate_local_memory_error : public std::runtime_error {
-  using std::runtime_error::runtime_error;
+struct inadequate_local_memory_error : public base_error {
+  template <typename... Ts>
+  explicit inadequate_local_memory_error(const Ts&... args) : base_error(args...) {}
 };
 
 };  // namespace portfft

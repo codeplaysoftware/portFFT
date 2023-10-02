@@ -114,11 +114,12 @@ class verif_data_spec {
    * @param hostOutput The data to be checked. Expects that distance between
    * batches == the length of the DFT.
    * @param dir The DFT direction.
+   * @param layout_out Output data layout
    * @param comparisonTolerance The tolerance for error.
    **/
   template <typename ElemT, typename Scalar, portfft::domain Domain>
   void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
-                  bool transpose_out, const double comparisonTolerance) {
+                  portfft::detail::layout layout_out, const double comparisonTolerance) {
     if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
       throw std::runtime_error("Can't use this verification data to verify this DFT!");
     }
@@ -135,7 +136,7 @@ class verif_data_spec {
     if (isForward) {
       auto referenceData = load_data_fourier(desc);
       auto referenceData_copy = referenceData;
-      if (transpose_out) {
+      if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
         transpose(referenceData.data(), referenceData_copy.data(), descBatches, dftLen);
       }
       if constexpr (std::is_same_v<complex_type, ElemT>) {
@@ -146,7 +147,7 @@ class verif_data_spec {
     } else {
       auto referenceData = load_data_time(desc);
       auto referenceData_copy = referenceData;
-      if (transpose_out) {
+      if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
         transpose(referenceData.data(), referenceData_copy.data(), descBatches, dftLen);
       }
       if constexpr (std::is_same_v<forward_type, ElemT>) {

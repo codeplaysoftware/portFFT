@@ -53,7 +53,7 @@ namespace detail {
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Whether or not the input is transposed
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -74,7 +74,7 @@ namespace detail {
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  * @param current_batch Absosulte batch being currently processed.
  */
-template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+template <direction Dir, detail::layout LayoutIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int DFTSize,
           int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
@@ -132,7 +132,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       working = working && global_data.sg.get_local_linear_id() < MaxWorkingTidInSg;
     }
     if (working) {
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
@@ -194,14 +194,14 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         });
       }
       global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        global_data.log_message_global(__func__, "storing transposed data from private to loval memory");
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+        global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
             static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride),
             static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
       } else {
-        global_data.log_message_global(__func__, "storing non-transposed data from private to loval memory");
+        global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
         private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride,
@@ -217,7 +217,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Whether or not the input is transposed
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -239,7 +239,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+template <direction Dir, detail::layout LayoutIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int FFTSize,
           int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail::global_data_struct global_data,
@@ -249,14 +249,14 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num",
                                  sub_batch_num);
   // column-wise DFTs
-  detail::dimension_dft<Dir, TransposeIn, ApplyLoadModifier, detail::apply_store_modifier::NOT_APPLIED,
+  detail::dimension_dft<Dir, LayoutIn, ApplyLoadModifier, detail::apply_store_modifier::NOT_APPLIED,
                         detail::apply_scale_factor::NOT_APPLIED, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, global_data,
       load_modifier_data, store_modifier_data, current_batch);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  detail::dimension_dft<Dir, TransposeIn, detail::apply_load_modifier::NOT_APPLIED, ApplyStoreModifier,
-                        ApplyScaleFactor, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, LayoutIn, detail::apply_load_modifier::NOT_APPLIED, ApplyStoreModifier, ApplyScaleFactor,
+                        M, 1, N, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, global_data,
       load_modifier_data, store_modifier_data, current_batch);
   global_data.log_message_global(__func__, "exited");

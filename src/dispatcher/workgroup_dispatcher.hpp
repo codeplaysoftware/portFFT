@@ -57,9 +57,9 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
- * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Whether or not the input is transposed
+ * @tparam LayoutIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -78,7 +78,7 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, std::size_t FFTSize, int SubgroupSize, typename T>
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, std::size_t n_transforms,
@@ -95,7 +95,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   constexpr std::size_t BankLinesPerPad = bank_lines_per_pad_wg(2 * sizeof(T) * M);
 
   std::size_t max_num_batches_in_local_mem = [=]() {
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       return global_data.it.get_local_range(0) / 2;
     } else {
       return 1;
@@ -106,7 +106,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
   for (std::size_t offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
        * In the transposed case, the data is laid out in the local memory column-wise, veiwing it as a FFT_Size x
        * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
@@ -129,7 +129,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
                                  FFTSize * global_data.it.get_local_range(0) / 2);
       for (std::size_t sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<Dir, TransposeIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
+        wg_dft<Dir, LayoutIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
                BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, global_data, scaling_factor,
                                 max_num_batches_in_local_mem, sub_batch, offset / (2 * FFTSize), load_modifier_data,
                                 store_modifier_data);
@@ -139,7 +139,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
                                  FFTSize * global_data.it.get_local_range(0) / 2);
 
       if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
-        if constexpr (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+        if constexpr (LayoutOut == detail::layout::PACKED) {
           global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
           // local2global_transposed cannot be used over here. This is because the data in the local memory is also
           // stored in a strided fashion.
@@ -162,13 +162,13 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
                                                                                  offset);
       sycl::group_barrier(global_data.it.get_group());
-      wg_dft<Dir, TransposeIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
+      wg_dft<Dir, LayoutIn, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
              BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, global_data, scaling_factor, max_num_batches_in_local_mem,
                               0, offset / (2 * FFTSize), load_modifier_data, store_modifier_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
-      if constexpr (TransposeOut == detail::transpose::NOT_TRANSPOSED) {
+      if constexpr (LayoutOut == detail::layout::PACKED) {
         local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, N, M, M, loc, output, offset);
       } else {
         std::size_t current_batch = offset / (2 * FFTSize);
@@ -192,8 +192,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  * Launch specialized subgroup DFT size matching fft_size if one is available.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -212,7 +212,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
           detail::apply_scale_factor ApplyScaleFactor, int SubgroupSize, typename T, typename SizeList>
 PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T* loc_twiddles,
@@ -224,12 +224,12 @@ PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T
     constexpr size_t ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (!fits_in_sg<T>(ThisSize, SubgroupSize)) {
-        workgroup_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
-                       ThisSize, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, global_data, twiddles,
-                                               scaling_factor, load_modifier_data, store_modifier_data);
+        workgroup_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, ThisSize,
+                       SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, global_data, twiddles,
+                                     scaling_factor, load_modifier_data, store_modifier_data);
       }
     } else {
-      workgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
+      workgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
                               SubgroupSize, T, typename SizeList::child_t>(
           input, output, loc, loc_twiddles, n_transforms, global_data, twiddles, scaling_factor, fft_size,
           load_modifier_data, store_modifier_data);
@@ -240,15 +240,15 @@ PORTFFT_INLINE void workgroup_dispatch_impl(const T* input, T* output, T* loc, T
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut, int SubgroupSize, typename TIn,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
           typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, TransposeOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
     std::size_t num_batches_in_local_mem = [=]() {
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return static_cast<std::size_t>(desc.used_sg_size * PORTFFT_SGS_IN_WG / 2);
       } else {
         return static_cast<std::size_t>(1);
@@ -260,7 +260,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t global_size =
         detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units);
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, TransposeIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(desc);
     const std::size_t bank_lines_per_pad =
         bank_lines_per_pad_wg(2 * sizeof(Scalar) * static_cast<std::size_t>(desc.factors[2] * desc.factors[3]));
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -273,7 +273,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workgroup_kernel<
-          Scalar, Domain, Dir, Mem, TransposeIn, TransposeOut, detail::apply_load_modifier::NOT_APPLIED,
+          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
           detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {SubgroupSize * PORTFFT_SGS_IN_WG}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
@@ -284,7 +284,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 #endif
                 it};
             global_data.log_message_global("Running workgroup kernel");
-            detail::workgroup_dispatch_impl<Dir, TransposeIn, TransposeOut, detail::apply_load_modifier::NOT_APPLIED,
+            detail::workgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
                                             detail::apply_store_modifier::NOT_APPLIED,
                                             detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                             detail::cooley_tukey_size_list_t>(
@@ -307,15 +307,15 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <typename detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
-                                                                                    TransposeIn, Dummy> {
+template <typename detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
+                                                                                    Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     std::size_t fft_size = desc.params.lengths[0];
     std::size_t n = static_cast<std::size_t>(desc.factors[0] * desc.factors[1]);
     std::size_t m = static_cast<std::size_t>(desc.factors[2] * desc.factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
-    if (TransposeIn == detail::transpose::TRANSPOSED) {
+    if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       std::size_t num_batches_in_local_mem = static_cast<std::size_t>(desc.used_sg_size) * PORTFFT_SGS_IN_WG / 2;
       return detail::pad_local(2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad_wg(2 * sizeof(Scalar) * m)) +
              2 * (m + n);
