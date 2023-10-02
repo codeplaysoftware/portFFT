@@ -278,9 +278,10 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   // store the first few unaligned elements
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     Idx local_idx = detail::pad_local<Pad>(local_offset + local_id, BankLinesPerPad);
-    global_data.log_message(func_name, "first unaligned from", local_idx, "to", global_offset + local_id, "value",
+    IdxGlobal global_idx = global_offset + static_cast<IdxGlobal>(local_id);
+    global_data.log_message(func_name, "first unaligned from", local_idx, "to", global_idx, "value",
                             local[local_idx]);
-    global[global_offset + static_cast<IdxGlobal>(local_id)] = local[local_idx];
+    global[global_idx] = local[local_idx];
   }
   local_offset += unaligned_elements;
   global_offset += static_cast<IdxGlobal>(unaligned_elements);
@@ -291,7 +292,7 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
     detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
       Idx local_idx = detail::pad_local<Pad>(local_offset + i + j, BankLinesPerPad);
       global_data.log_message(func_name, "aligned chunk from", local_idx, "to",
-                              global_offset + static_cast<IdxGlobal>(i + j), "value", to_store[j]);
+                              global_offset + static_cast<IdxGlobal>(i + j), "value", to_store[static_cast<int>(j)]);
       to_store[static_cast<int>(j)] = local[local_idx];
     });
     *reinterpret_cast<T_vec*>(&global[global_offset + static_cast<IdxGlobal>(i)]) = to_store;

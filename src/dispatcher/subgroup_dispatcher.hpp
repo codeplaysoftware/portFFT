@@ -106,8 +106,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   IdxGlobal id_of_fft_in_kernel;
   IdxGlobal n_ffts_in_kernel;
   if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-    id_of_fft_in_kernel = global_data.it.get_group(0) * global_data.it.get_local_range(0) / 2;
-    n_ffts_in_kernel = global_data.it.get_group_range(0) * global_data.it.get_local_range(0) / 2;
+    id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
+    n_ffts_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
   } else {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg);
     n_ffts_in_kernel = static_cast<IdxGlobal>(n_sgs_in_kernel * n_ffts_per_sg);
