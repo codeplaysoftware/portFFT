@@ -24,6 +24,7 @@
 #include "instantiate_fft_tests.hpp"
 #include "utils.hpp"
 #include <portfft.hpp>
+#include <reference_data_wrangler.hpp>
 
 #include <gtest/gtest.h>
 #include <sycl/sycl.hpp>
@@ -119,11 +120,15 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto verifSpec = get_matching_spec(verification_data, desc);
+  
+  auto [forward_data, backward_data] = gen_fourier_data(desc);
+
   if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input = verifSpec.template load_data_time(desc);
+    host_input = forward_data; 
+    host_reference_output = backward_data;
   } else {
-    host_input = verifSpec.template load_data_fourier(desc);
+    host_input = backward_data;
+    host_reference_output = forward_data;
   }
   if constexpr (IsBatchInterleaved) {
     host_input_transposed = std::vector<std::complex<FType>>(num_elements);
@@ -150,7 +155,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }();
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verifSpec.verify_dft(desc, buffer, Dir, LayoutOut, 1e-3);
+  verify_dft(desc, host_reference_output, buffer, Dir, LayoutOut, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -210,11 +215,13 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto verifSpec = get_matching_spec(verification_data, desc);
+  auto [forward_data, backward_data] = gen_fourier_data(desc);
   if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input_raw = verifSpec.template load_data_time(desc);
+    host_input_raw = forward_data; 
+    host_reference_output = backward_data;
   } else {
-    host_input_raw = verifSpec.template load_data_fourier(desc);
+    host_input_raw = backward_data;
+    host_reference_output = forward_data;
   }
   std::vector<std::complex<FType>> host_input(host_input_raw);
   if constexpr (IsBatchInterleaved) {
@@ -242,7 +249,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       }
     }
   }
-  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, LayoutOut, 1e-3);
+  verify_dft(desc, host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, Dir, LayoutOut, 1e-3);
 }
 
 #endif

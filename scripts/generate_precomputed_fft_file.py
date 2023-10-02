@@ -19,11 +19,11 @@
  ************************************************************************"""
 import numpy as np
 from verification_data_config import *
+from sys import stdout
 
-
-def generate_and_write_data(validation_config, verbose=False):
-    """For a validation config, generate random input data, compute the 
-    FFT and write both to file. Verbose prints information on what
+def generate_data(validation_config, verbose=False):
+    """For a validation config, generate random input data and compute the 
+    FFT. returns a tuple of (inputData, outputData). Verbose prints information on what
     the function is doing.
     """
 
@@ -40,6 +40,16 @@ def generate_and_write_data(validation_config, verbose=False):
     fileOutData = np.fft.fftn(fileInData, axes=range(1, len(dims) + 1))
     fileInData.reshape(-1, 1)
     fileOutData.reshape(-1, 1)
+    return fileInData, fileOutData
+
+
+def generate_and_write_data(validation_config, verbose=False):
+    """For a validation config, generate random input data, compute the 
+    FFT and write both to file. Verbose prints information on what
+    the function is doing.
+    """
+
+    fileInData, fileOutData = generate_data(validation_config, verbose)
     # Now output to file - write binary files since the files are typically
     # multiple GB in size.
     if verbose:
@@ -54,3 +64,8 @@ def generate_and_write_data(validation_config, verbose=False):
     with validation_config.file_path.open(mode="wb") as f:
         fileInData.tofile(f)
         fileOutData.tofile(f)
+
+def generate_and_dump_data(batch, input_dimensions, transform_type):
+    a, b = generate_data(ValidationDataConfig({'batch':batch, 'input_dimensions':input_dimensions, 'transform_type':transform_type}))
+    stdout.buffer.write(a.tobytes())
+    stdout.buffer.write(b.tobytes())

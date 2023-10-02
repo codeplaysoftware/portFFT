@@ -34,7 +34,8 @@
 #ifdef PORTFFT_VERIFY_BENCHMARKS
 // The following file in generated during the build and located at
 // ${BUILD_DIR}/ref_data_include/
-#include <benchmark_reference.hpp>
+// #include <benchmark_reference.hpp>
+#include <reference_data_wrangler.hpp>
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
 /**
