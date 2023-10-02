@@ -618,7 +618,7 @@ template <typename DescScalar, domain DescDomain>
 struct descriptor {
   /// Scalar type to determine the FFT precision.
   using Scalar = DescScalar;
-  static_assert(std::is_scalar_v<Scalar>, "Precision must be a scalar type");
+  static_assert(std::is_floating_point_v<Scalar>, "Precision must be a scalar type");
 
   /**
    * FFT domain.
