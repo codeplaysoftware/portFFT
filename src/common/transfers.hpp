@@ -186,8 +186,8 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   if (my_last_idx < total_num_elems) {
     Idx local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
     IdxGlobal global_idx =
-        global_offset + static_cast<IdxGlobal>(my_last_idx) global_data.log_message(
-                            func_name, "last element from", global_idx, "to", local_idx, "value", global[global_idx]);
+        global_offset + static_cast<IdxGlobal>(my_last_idx);
+    global_data.log_message(func_name, "last element from", global_idx, "to", local_idx, "value", global[global_idx]);
     local[local_idx] = global[global_idx];
   }
 }
