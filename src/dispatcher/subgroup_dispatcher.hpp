@@ -63,6 +63,10 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam SubgroupSize size of the subgroup
@@ -77,6 +81,10 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param global_data global data for the kernel
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param loc_load_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to load modifier data in local memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
@@ -121,6 +129,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   constexpr std::size_t BankLinesPerPad = 1;
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
+  // TODO: Change twiddles layout shape to FactWI x FactSG
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles,
                                                                  NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
@@ -369,6 +378,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize size of the subgroup
  * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam T type of the scalar used for computations
  * @tparam SizeList The list of sizes that will be specialized.
  * @param factor_wi factor of fft size. How many elements are processed by 1 work-item.
@@ -383,6 +397,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @param global_data global data for the kernel
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param loc_load_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to load modifier data in local memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,

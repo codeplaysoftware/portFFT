@@ -54,7 +54,18 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
   std::size_t n_wgs_we_can_utilize = divide_ceil(n_transforms, wg_size);
   return wg_size * sycl::min(maximum_n_wgs, n_wgs_we_can_utilize);
 }
-
+/**
+ * Utility function for applying load/store modifiers for workitem impl
+ *
+ * @tparam N FFTSize, the number of elements each workitem holds
+ * @tparam T Type of Scalar
+ * @param priv pointer to private memory
+ * @param loc_modifier Pointer to local memory in which modifier data is stored
+ * @param id_of_wi_in_wg workitem id in workgroup
+ * @param num_batches_in_local_mem number of batches in local memory
+ * @param bank_lines_per_pad Number of 32 bit banks after which padding is applied
+ * @return void
+ */
 template <int N, typename T>
 PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_wi_in_wg,
                                    std::size_t num_batches_in_local_mem, std::size_t bank_lines_per_pad) {
@@ -70,6 +81,10 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam N size of each transform
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
@@ -80,6 +95,10 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param loc_load_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to load modifier data in local memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
@@ -191,8 +210,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
       global_data.log_message_global(__func__, "storing data from local to global memory");
-      // Store back to global in the same manner irrespective of input data layout, as
-      //  the transposed case is assumed to be used only in OOP scenario.
       local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           global_data, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
       sycl::group_barrier(global_data.sg);
@@ -206,6 +223,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam SubgroupSize size of the subgroup
  * @tparam SizeList The list of sizes that will be specialized.
  * @tparam T type of the scalar used for computations
@@ -216,6 +237,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param loc_load_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to load modifier data in local memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,

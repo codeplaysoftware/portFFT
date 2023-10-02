@@ -54,6 +54,9 @@ namespace detail {
  *
  * @tparam Dir Direction of the FFT
  * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam DFTSize Size of each DFT to calculate
  * @tparam StrideWithinDFT Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @tparam NDFTsInOuterDimension Number of DFTs in outer dimension
@@ -67,6 +70,9 @@ namespace detail {
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
  * @param global_data global data for the kernel
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param current_batch Absosulte batch being currently processed.
  */
 template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int DFTSize,
@@ -212,6 +218,9 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  *
  * @tparam Dir Direction of the FFT
  * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam FFTSize Problem Size
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
@@ -226,6 +235,9 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
+ * @param current_batch Absosulte batch being currently processed.
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int FFTSize,

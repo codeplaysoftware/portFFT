@@ -58,6 +58,11 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  *
  * @tparam Dir Direction of the FFT
  * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam FFTSize Problem size
  * @tparam SubgroupSize size of the subgroup
  * @tparam T Scalar type
@@ -70,6 +75,8 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * @param global_data global data for the kernel
  * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
@@ -185,6 +192,11 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  * Launch specialized subgroup DFT size matching fft_size if one is available.
  *
  * @tparam Dir Direction of the FFT
+ * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam SubgroupSize size of the subgroup
  * @tparam T Scalar type
  * @tparam SizeList The list of sizes that will be specialized.
@@ -197,6 +209,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  * @param twiddles Pointer to twiddles residing in the global memory
  * @param scaling_factor scaling factor applied to the result
  * @tparam fft_size Problem size
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
 template <direction Dir, detail::transpose TransposeIn, detail::transpose TransposeOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,

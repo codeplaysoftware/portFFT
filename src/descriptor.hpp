@@ -516,14 +516,15 @@ class committed_descriptor {
         output_distance = params.forward_distance;
         scale_factor = params.backward_scale;
       }
+      std::size_t minimum_local_mem_required;
       if ((Dir == direction::FORWARD && input_distance == 1) || (Dir == direction::BACKWARD && output_distance == 1)) {
-        std::size_t minimum_local_mem_required =
-            num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
-        if (minimum_local_mem_required > local_memory_size) {
-          throw std::runtime_error(
-              "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-              "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
-        }
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+      } else {
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
+      }
+      if (minimum_local_mem_required > local_memory_size) {
+        throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                                 "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
       }
       if (input_distance == fft_size && output_distance == fft_size) {
         return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(
@@ -555,6 +556,7 @@ class committed_descriptor {
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
@@ -575,6 +577,7 @@ class committed_descriptor {
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam TransposeOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer

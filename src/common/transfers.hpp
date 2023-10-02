@@ -694,13 +694,16 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
  * @param num_complex Number of complex numbers per workitem
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
+ * @param global_data  global data for the kernel
  */
 template <detail::pad Pad, detail::level Level, std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE void local_transposed2_global_transposed(sycl::nd_item<1> it, T* global_base_ptr, T* local_ptr,
                                                         std::size_t offset, std::size_t num_complex,
                                                         std::size_t stride_global, std::size_t stride_local,
                                                         detail::global_data_struct global_data) {
-  global_data.log_message_local(__func__);
+  global_data.log_message_local(__func__,
+                                "Tranferring data from local to global memory with global_stride:", stride_global,
+                                " and local stride:", stride_local);
   sycl::sub_group sg = it.get_sub_group();
   std::size_t local_id;
 
