@@ -53,7 +53,7 @@ namespace detail {
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Input layout
  * @tparam DFTSize Size of each DFT to calculate
  * @tparam StrideWithinDFT Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @tparam NDFTsInOuterDimension Number of DFTs in outer dimension
@@ -68,7 +68,7 @@ namespace detail {
  * @param sub_batch_num Id of the local memory batch to work on
  * @param global_data global data for the kernel
  */
-template <direction Dir, detail::transpose TransposeIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension,
+template <direction Dir, detail::layout LayoutIn, int DFTSize, int StrideWithinDFT, int NDFTsInOuterDimension,
           int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                                                          T scaling_factor, std::size_t max_num_batches_in_local_mem,
@@ -123,7 +123,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       working = working && global_data.sg.get_local_linear_id() < MaxWorkingTidInSg;
     }
     if (working) {
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
@@ -164,14 +164,14 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     sg_dft<Dir, FactWi, FactSg>(priv, global_data.sg, loc_twiddles);
     if (working) {
       global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
-        global_data.log_message_global(__func__, "storing transposed data from private to loval memory");
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+        global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
             static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride),
             static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
       } else {
-        global_data.log_message_global(__func__, "storing non-transposed data from private to loval memory");
+        global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
         private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride,
@@ -187,7 +187,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Input layout
  * @tparam FFTSize Problem Size
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
@@ -203,7 +203,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
  */
-template <direction Dir, detail::transpose TransposeIn, int FFTSize, int N, int M, int SubgroupSize,
+template <direction Dir, detail::layout LayoutIn, int FFTSize, int N, int M, int SubgroupSize,
           std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail::global_data_struct global_data,
                            T scaling_factor, std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num) {
@@ -211,11 +211,11 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num",
                                  sub_batch_num);
   // column-wise DFTs
-  detail::dimension_dft<Dir, TransposeIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, LayoutIn, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  detail::dimension_dft<Dir, TransposeIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+  detail::dimension_dft<Dir, LayoutIn, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, global_data);
   global_data.log_message_global(__func__, "exited");
 }
