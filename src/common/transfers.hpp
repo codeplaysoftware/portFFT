@@ -151,9 +151,10 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   // load the first few unaligned elements
   if (local_id < unaligned_elements) {  // assuming unaligned_elements <= local_size
     Idx local_idx = detail::pad_local<Pad>(local_offset + local_id, BankLinesPerPad);
-    global_data.log_message(func_name, "first unaligned from", global_offset + static_cast<IdxGlobal>(local_id), "to",
-                            local_idx, "value", global[global_offset + static_cast<IdxGlobal>(local_id)]);
-    local[local_idx] = global[global_offset + static_cast<IdxGlobal>(local_id)];
+    IdxGlobal global_idx = global_offset + static_cast<IdxGlobal>(local_id);
+    global_data.log_message(func_name, "first unaligned from", global_idx, "to",
+                            local_idx, "value", global[global_idx]);
+    local[local_idx] = global[global_idx];
   }
   local_offset += unaligned_elements;
   global_offset += static_cast<IdxGlobal>(unaligned_elements);
@@ -184,9 +185,10 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   Idx my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     Idx local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
-    global_data.log_message(func_name, "last element from", global_offset + static_cast<IdxGlobal>(my_last_idx), "to",
-                            local_idx, "value", global[global_offset + static_cast<IdxGlobal>(my_last_idx)]);
-    local[local_idx] = global[global_offset + static_cast<IdxGlobal>(my_last_idx)];
+    IdxGlobal global_idx = global_offset + static_cast<IdxGlobal>(my_last_idx)
+    global_data.log_message(func_name, "last element from", global_idx, "to",
+                            local_idx, "value", global[global_idx]);
+    local[local_idx] = global[global_idx];
   }
 }
 
@@ -308,9 +310,10 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
   Idx my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     Idx local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
+    IdxGlobal global_idx = global_offset + static_cast<IdxGlobal>(my_last_idx);
     global_data.log_message(func_name, "last element from", local_idx, "to",
-                            global_offset + static_cast<IdxGlobal>(my_last_idx), "value", local[local_idx]);
-    global[global_offset + static_cast<IdxGlobal>(my_last_idx)] = local[local_idx];
+                            global_idx, "value", local[local_idx]);
+    global[global_idx] = local[local_idx];
   }
 }
 

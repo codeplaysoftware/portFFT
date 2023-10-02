@@ -87,7 +87,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
     bool working = i < n_transforms;
-    Idx n_working = std::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
+    Idx n_working = sycl::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
 
     IdxGlobal global_offset = static_cast<IdxGlobal>(NReals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if constexpr (LayoutIn == detail::layout::PACKED) {

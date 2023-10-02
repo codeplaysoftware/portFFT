@@ -39,6 +39,8 @@ namespace portfft {
 namespace detail {
 
 // kernel names
+// TODO: Remove LayoutIn once strides and distance are spec constants
+// TODO: Change direction to a spec constant parameter
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
 class workitem_kernel;
 template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
