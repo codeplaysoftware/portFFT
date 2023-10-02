@@ -21,13 +21,18 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
-#include <common/logging.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
+#ifdef PORTFFT_LOG
+#define PORTFFT_INLINE __attribute__((noinline))
+#else
+#define PORTFFT_INLINE __attribute__((always_inline))
+#endif
+
 namespace portfft {
 
-using Idx = std::size_t;
+using Idx = int;
 using IdxGlobal = std::size_t;
 
 namespace detail {

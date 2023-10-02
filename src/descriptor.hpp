@@ -204,8 +204,9 @@ class committed_descriptor {
       get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
-    Idx n = static_cast<Idx>(detail::factorize(fft_size));
-    Idx m = static_cast<Idx>(fft_size / n);
+    IdxGlobal n_idx_global = detail::factorize(fft_size);
+    Idx n = static_cast<Idx>(n_idx_global);
+    Idx m = static_cast<Idx>(fft_size / n_idx_global);
     Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
     Idx factor_wi_n = n / factor_sg_n;
     Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
@@ -259,10 +260,10 @@ class committed_descriptor {
    * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg`
    * to make the problem fit in the local memory.
    *
-   * @return std::size_t the number of scalars
+   * @return the number of scalars
    */
   template <detail::transpose TransposeIn>
-  Idx num_scalars_in_local_mem() {
+  std::size_t num_scalars_in_local_mem() {
     return dispatch<num_scalars_in_local_mem_struct, TransposeIn>();
   }
 
@@ -337,13 +338,13 @@ class committed_descriptor {
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
     // get some properties we will use for tuning
     local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
-    Idx minimum_local_mem_required;
+    std::size_t minimum_local_mem_required;
     if (params.forward_distance == 1 || params.backward_distance == 1) {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
     } else {
       minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
     }
-    if (minimum_local_mem_required > local_memory_size) {
+    if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
       throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
                                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
     }
@@ -537,7 +538,7 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, typename TIn, typename TOut, int SubgroupSize, int... OtherSGSizes>
+  template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
     if (SubgroupSize == used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now

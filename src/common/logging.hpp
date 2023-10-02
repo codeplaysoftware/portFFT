@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_LOGGING_HPP
 #define PORTFFT_COMMON_LOGGING_HPP
 
+#include <common/helpers.hpp>
 #include <sycl/sycl.hpp>
 
 namespace portfft::detail {
@@ -89,10 +90,7 @@ struct global_data_struct {
     s << message << " ";
     log_message_impl(other_messages...);
   }
-#define PORTFFT_INLINE __attribute__((noinline))
-#else
-#define PORTFFT_INLINE __attribute__((always_inline))
-#endif
+  #endif
 
   /**
    * Logs content of the local memory. Also outputs the id of the workgroup it is called from.
@@ -106,7 +104,7 @@ struct global_data_struct {
    */
   template <typename T>
   PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
-                                     [[maybe_unused]] std::size_t num) {
+                                     [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
     if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
@@ -114,7 +112,7 @@ struct global_data_struct {
       if (num) {
         s << ptr[0];
       }
-      for (std::size_t i = 1; i < num; i++) {
+      for (Idx i = 1; i < num; i++) {
         s << ", " << ptr[i];
       }
       s << "\n" << sycl::stream_manipulator::flush;
@@ -134,14 +132,14 @@ struct global_data_struct {
    */
   template <typename T>
   PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
-                                       [[maybe_unused]] std::size_t num) {
+                                       [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
     log_ids();
     s << message << " ";
     if (num) {
       s << ptr[0];
     }
-    for (std::size_t i = 1; i < num; i++) {
+    for (Idx i = 1; i < num; i++) {
       s << ", " << ptr[i];
     }
     s << "\n" << sycl::stream_manipulator::flush;

@@ -62,10 +62,10 @@ strides.
 template <direction Dir, Idx N, Idx StrideIn, Idx StrideOut, typename T>
 __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
   T tmp[2 * N];
-  unrolled_loop<0, N, 1>([&](int idx_out) __attribute__((always_inline)) {
+  unrolled_loop<0, N, 1>([&](Idx idx_out) __attribute__((always_inline)) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
-    unrolled_loop<0, N, 1>([&](int idx_in) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1>([&](Idx idx_in) __attribute__((always_inline)) {
       // this multiplier is not really a twiddle factor, but it is calculated the same way
       auto re_multiplier = twiddle<T>::Re[N][idx_in * idx_out % N];
       auto im_multiplier = [&]() {
@@ -84,7 +84,7 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
       tmp[2 * idx_out + 1] += tmp_complex;
     });
   });
-  unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
+  unrolled_loop<0, 2 * N, 2>([&](Idx idx_out) {
     out[idx_out * StrideOut + 0] = tmp[idx_out + 0];
     out[idx_out * StrideOut + 1] = tmp[idx_out + 1];
   });
@@ -108,9 +108,9 @@ template <direction Dir, Idx N, Idx M, Idx StrideIn, Idx StrideOut, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out) {
   T tmp_buffer[2 * N * M];
 
-  unrolled_loop<0, M, 1>([&](int i) __attribute__((always_inline)) {
+  unrolled_loop<0, M, 1>([&](Idx i) __attribute__((always_inline)) {
     wi_dft<Dir, N, M * StrideIn, 1>(in + 2 * i * StrideIn, tmp_buffer + 2 * i * N);
-    unrolled_loop<0, N, 1>([&](int j) __attribute__((always_inline)) {
+    unrolled_loop<0, N, 1>([&](Idx j) __attribute__((always_inline)) {
       auto re_multiplier = twiddle<T>::Re[N * M][i * j];
       auto im_multiplier = [&]() {
         if constexpr (Dir == direction::FORWARD) {
@@ -122,19 +122,21 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
                                im_multiplier, tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
     });
   });
-  unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {
+  unrolled_loop<0, N, 1>([&](Idx i) __attribute__((always_inline)) {
     wi_dft<Dir, M, N, N * StrideOut>(tmp_buffer + 2 * i, out + 2 * i * StrideOut);
   });
 }
 
 /**
  * Factorizes a number into two roughly equal factors.
+ * @tparam T type of the number to factorize
  * @param N the number to factorize
  * @return the smaller of the factors
  */
-constexpr Idx factorize(Idx N) {
-  Idx res = 1;
-  for (Idx i = 2; i * i <= N; i++) {
+template<typename T>
+constexpr T factorize(T N) {
+  T res = 1;
+  for (T i = 2; i * i <= N; i++) {
     if (N % i == 0) {
       res = i;
     }
@@ -145,17 +147,19 @@ constexpr Idx factorize(Idx N) {
 /**
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
+ * @tparam TIdx type of the size
  * @param N size of the FFT problem
  * @return Number of temporary complex values
  */
-constexpr Idx wi_temps(Idx N) {
-  Idx f0 = factorize(N);
-  Idx f1 = N / f0;
+template <typename TIdx>
+constexpr TIdx wi_temps(TIdx N) {
+  TIdx f0 = factorize(N);
+  TIdx f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
     return N;
   }
-  Idx a = wi_temps(f0);
-  Idx b = wi_temps(f1);
+  TIdx a = wi_temps(f0);
+  TIdx b = wi_temps(f1);
   return (a > b ? a : b) + N;
 }
 
@@ -163,14 +167,15 @@ constexpr Idx wi_temps(Idx N) {
  * Checks whether a problem can be solved with workitem implementation without
  * registers spilling.
  * @tparam Scalar type of the real scalar used for the computation
+ * @tparam TIdx type of the size
  * @param N Size of the problem, in complex values
  * @return true if the problem fits in the registers
  */
-template <typename Scalar>
-constexpr bool fits_in_wi(IdxGlobal N) {
-  IdxGlobal n_complex = N + wi_temps(N);
-  IdxGlobal complex_size = 2 * sizeof(Scalar);
-  IdxGlobal register_space = PORTFFT_REGISTERS_PER_WI * 4;
+template <typename Scalar, typename TIdx>
+constexpr bool fits_in_wi(TIdx N) {
+  TIdx n_complex = N + wi_temps(N);
+  TIdx complex_size = 2 * sizeof(Scalar);
+  TIdx register_space = PORTFFT_REGISTERS_PER_WI * 4;
   return n_complex * complex_size <= register_space;
 }
 

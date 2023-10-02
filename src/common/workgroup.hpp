@@ -36,7 +36,7 @@ namespace portfft {
  * without bank conflicts.
  *
  * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
- * @return constexpr std::size_t the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
+ * @return the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
 constexpr Idx bank_lines_per_pad_wg(Idx row_size) {
   constexpr Idx BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
@@ -86,7 +86,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
   constexpr bool ExcessWIs = SubgroupSize % FactSg > 0;
   constexpr bool ExcessSGs = StrideWithinDFT % FFTsPerSG > 0;
   // only needed when there are excess work-items
-  constexpr std::size_t MaxWorkingTidInSg = FFTsPerSG * FactSg;
+  constexpr Idx MaxWorkingTidInSg = FFTsPerSG * FactSg;
 
   const Idx num_sgs = static_cast<Idx>(global_data.it.get_local_range(0)) / SubgroupSize;
   const Idx fft_in_subgroup = static_cast<Idx>(global_data.sg.get_local_linear_id()) / FactSg;

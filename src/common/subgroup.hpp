@@ -221,15 +221,17 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, sycl::
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
+ * @tparam T type of the number to factorize
  * @param N the number to factorize
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-constexpr Idx factorize_sg(Idx N, Idx sg_size) {
+template<typename T>
+constexpr T factorize_sg(T N, Idx sg_size) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
-    for (Idx i = sg_size; i > 1; i--) {
+    for (T i = static_cast<T>(sg_size); i > 1; i--) {
       if (N % i == 0) {
         return i;
       }
@@ -247,7 +249,7 @@ constexpr Idx factorize_sg(Idx N, Idx sg_size) {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar>
-constexpr bool fits_in_sg(Idx N, IdxGlobal sg_size) {
+constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
   IdxGlobal factor_sg = factorize_sg(N, sg_size);
   IdxGlobal factor_wi = N / factor_sg;
   return fits_in_wi<Scalar>(factor_wi);
