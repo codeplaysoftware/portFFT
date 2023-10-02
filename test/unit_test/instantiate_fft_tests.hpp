@@ -91,7 +91,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                                  detail::layout::PACKED, _out_packed)                                              \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
                                  _in_batch_interleaved, detail::layout::PACKED, _out_packed)                       \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::BATCH_INTERLEAVED,                 \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
                                  _in_batch_interleaved, detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved) \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
                                  detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved)
