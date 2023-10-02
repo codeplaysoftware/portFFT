@@ -107,8 +107,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   IdxGlobal n_ffts_in_kernel;
   if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
-    n_ffts_in_kernel =
-        static_cast<Idx>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
+    n_ffts_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
   } else {
     id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
     n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
@@ -122,7 +121,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   sycl::group_barrier(global_data.it.get_group());
   global_data.log_dump_local("twiddles in local memory:", loc_twiddles, NRealsPerWI * FactorSG);
 
-  for (IdxGlobal i = static_cast<IdxGlobal>(id_of_fft_in_kernel); i < rounded_up_n_ffts; i += static_cast<IdxGlobal>(n_ffts_in_kernel)) {
+  for (IdxGlobal i = static_cast<IdxGlobal>(id_of_fft_in_kernel); i < rounded_up_n_ffts;
+       i += static_cast<IdxGlobal>(n_ffts_in_kernel)) {
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     Idx n_ffts_worked_on_by_sg = sycl::min(static_cast<Idx>(n_transforms - i) + id_of_fft_in_sg, n_ffts_per_sg);
 
