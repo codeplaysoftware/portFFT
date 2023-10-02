@@ -39,13 +39,13 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
           Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
           Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
           Idx SubgroupSize>
 class workgroup_kernel;
 
@@ -119,21 +119,21 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       default:
-        throw std::runtime_error("Unimplemented!");
+        throw unsupported_configuration("Unimplemented!");
     }
   }
 
-  template <typename Impl, detail::transpose TransposeIn, typename... Args>
+  template <typename Impl, detail::layout LayoutIn, typename... Args>
   auto dispatch(Args&&... args) {
     switch (level) {
       case detail::level::WORKITEM:
-        return Impl::template inner<detail::level::WORKITEM, TransposeIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::WORKITEM, LayoutIn, void>::execute(*this, args...);
       case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, TransposeIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::SUBGROUP, LayoutIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, TransposeIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
       default:
-        throw std::runtime_error("Unimplemented!");
+        throw unsupported_configuration("Unimplemented!");
     }
   }
 
@@ -144,7 +144,7 @@ class committed_descriptor {
    * @tparam SubgroupSize size of the subgroup
    * @param ids vector of kernel ids
    */
-  template <template <typename, domain, direction, detail::memory, detail::transpose, Idx> class Kernel,
+  template <template <typename, domain, direction, detail::memory, detail::layout, Idx> class Kernel,
             Idx SubgroupSize>
   void get_ids(std::vector<sycl::kernel_id>& ids) {
 // if not used, some kernels might be optimized away in AOT compilation and not available here
@@ -154,14 +154,14 @@ class committed_descriptor {
   } catch (...) {                                                                                             \
   }
 
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::NOT_TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::transpose::TRANSPOSED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::PACKED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::PACKED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::PACKED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::PACKED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
+    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
 
 #undef PORTFFT_GET_ID
   }
@@ -187,7 +187,7 @@ class committed_descriptor {
     }
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[0]);
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
+      throw unsupported_configuration("FFT size ", fft_size, " is not compiled in!");
     }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
@@ -222,7 +222,7 @@ class committed_descriptor {
       return detail::level::WORKGROUP;
     }
     // TODO global
-    throw unsupported_configuration("FFT size " + std::to_string(fft_size) + " is not supported!");
+    throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
   }
 
   /**
@@ -250,7 +250,7 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template <detail::level Lev, detail::transpose TransposeIn, typename Dummy>
+    template <detail::level Lev, detail::layout LayoutIn, typename Dummy>
     struct inner {
       static std::size_t execute(committed_descriptor& desc);
     };
@@ -262,9 +262,9 @@ class committed_descriptor {
    *
    * @return the number of scalars
    */
-  template <detail::transpose TransposeIn>
+  template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem() {
-    return dispatch<num_scalars_in_local_mem_struct, TransposeIn>();
+    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>();
   }
 
   /**
@@ -313,7 +313,7 @@ class committed_descriptor {
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return build_w_spec_const<OtherSGSizes...>();
     }
@@ -340,13 +340,13 @@ class committed_descriptor {
     local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
     std::size_t minimum_local_mem_required;
     if (params.forward_distance == 1 || params.backward_distance == 1) {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::TRANSPOSED>() * sizeof(Scalar);
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>() * sizeof(Scalar);
     } else {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::transpose::NOT_TRANSPOSED>() * sizeof(Scalar);
+      minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>() * sizeof(Scalar);
     }
     if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
-      throw std::runtime_error("Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-                               "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      throw unsupported_configuration("Insufficient amount of local memory available: ", local_memory_size,
+                                      "B. Required: ", minimum_local_mem_required, "B.");
     }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
@@ -418,7 +418,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
-    throw std::runtime_error("Real to complex FFTs not yet implemented.");
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
   }
 
   /**
@@ -491,7 +491,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
                               const std::vector<sycl::event>& /*dependencies*/ = {}) {
-    throw std::runtime_error("Real to complex FFTs not yet implemented.");
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
     return {};
   }
 
@@ -555,15 +555,15 @@ class committed_descriptor {
         scale_factor = params.backward_scale;
       }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<Dir, detail::transpose::NOT_TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::layout::PACKED, SubgroupSize>(in, out, scale_factor, dependencies);
       }
       if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<Dir, detail::transpose::TRANSPOSED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(in, out, scale_factor, dependencies);
       }
-      throw unsupported_configuration("Only contiguous or transposed transforms are supported");
+      throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw std::runtime_error("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return dispatch_kernel_helper<Dir, TIn, TOut, OtherSGSizes...>(in, out, dependencies);
     }
@@ -573,12 +573,12 @@ class committed_descriptor {
    * Struct for dispatching `run_kernel()` call.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam LayoutIn Input layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::transpose TransposeIn, Idx SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename TIn, typename TOut>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
@@ -592,7 +592,7 @@ class committed_descriptor {
    * Common interface to run the kernel called by compute_forward and compute_backward
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam TransposeIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
+   * @tparam LayoutIn Input layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
@@ -602,9 +602,9 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::transpose TransposeIn, Idx SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename TIn, typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, TransposeIn, SubgroupSize, TIn, TOut>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct<Dir, LayoutIn, SubgroupSize, TIn, TOut>>(in, out, scale_factor, dependencies);
   }
 };
 

@@ -62,7 +62,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Input layout
  * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam SubgroupSize size of the subgroup
@@ -78,7 +78,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, Idx FactorWI, Idx FactorSG, Idx SubgroupSize, typename T>
+template <direction Dir, detail::layout LayoutIn, Idx FactorWI, Idx FactorSG, Idx SubgroupSize, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
                                   global_data_struct global_data, const T* twiddles, T scaling_factor) {
   global_data.log_message_global(__func__, "entered", "FactorWI", FactorWI, "FactorSG", FactorSG, "n_transforms",
@@ -105,7 +105,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
 
   IdxGlobal id_of_fft_in_kernel;
   IdxGlobal n_ffts_in_kernel;
-  if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+  if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
     n_ffts_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
   } else {
@@ -125,7 +125,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
     bool working = subgroup_local_id < max_wis_working && i < n_transforms;
     Idx n_ffts_worked_on_by_sg = sycl::min(static_cast<Idx>(n_transforms - i) + id_of_fft_in_sg, n_ffts_per_sg);
 
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
        * Codepath taken if the input is transposed
        * The number of batches that are loaded, is equal to half of the workgroup size.
@@ -270,7 +270,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize size of the subgroup
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Input layout
  * @tparam T type of the scalar used for computations
  * @tparam SizeList The list of sizes that will be specialized.
  * @param factor_wi factor of fft size. How many elements are processed by 1 work-item.
@@ -286,7 +286,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  */
-template <direction Dir, detail::transpose TransposeIn, Idx SubgroupSize, typename T, typename SizeList>
+template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename T, typename SizeList>
 PORTFFT_INLINE void subgroup_dispatch_impl(Idx factor_wi, Idx factor_sg, const T* input, T* output, T* loc,
                                            T* loc_twiddles, IdxGlobal n_transforms, global_data_struct global_data,
                                            const T* twiddles, T scaling_factor) {
@@ -298,11 +298,11 @@ PORTFFT_INLINE void subgroup_dispatch_impl(Idx factor_wi, Idx factor_sg, const T
     constexpr Idx CtFactorWi = ThisSize / CtFactorSg;
     if (factor_sg * factor_wi == ThisSize) {
       if constexpr (!fits_in_wi<T>(ThisSize) && fits_in_wi<T>(CtFactorWi) && (CtFactorSg <= SubgroupSize)) {
-        detail::subgroup_impl<Dir, TransposeIn, CtFactorWi, CtFactorSg, SubgroupSize>(
+        detail::subgroup_impl<Dir, LayoutIn, CtFactorWi, CtFactorSg, SubgroupSize>(
             input, output, loc, loc_twiddles, n_transforms, global_data, twiddles, scaling_factor);
       }
     } else {
-      subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, T, typename SizeList::child_t>(
+      subgroup_dispatch_impl<Dir, LayoutIn, SubgroupSize, T, typename SizeList::child_t>(
           factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, global_data, twiddles, scaling_factor);
     }
   }
@@ -332,9 +332,9 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::transpose TransposeIn, Idx SubgroupSize, typename TIn, typename TOut>
+template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
@@ -346,7 +346,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
         n_transforms, factor_sg, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, TransposeIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(desc);
     std::size_t twiddle_elements = 2 * fft_size;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -358,7 +358,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
-      cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, TransposeIn, SubgroupSize>>(
+      cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}}, [=
       ](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx factor_wi = kh.get_specialization_constant<detail::FactorWISpecConst>();
@@ -369,7 +369,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 #endif
                 it};
             global_data.log_message_global("Running subgroup kernel");
-            detail::subgroup_dispatch_impl<Dir, TransposeIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
+            detail::subgroup_dispatch_impl<Dir, LayoutIn, SubgroupSize, Scalar, detail::cooley_tukey_size_list_t>(
                 factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,
                 global_data, twiddles, scale_factor);
             global_data.log_message_global("Exiting subgroup kernel");
@@ -388,12 +388,12 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP,
-                                                                                    TransposeIn, Dummy> {
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP, LayoutIn,
+                                                                                    Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
     Idx dft_length = static_cast<Idx>(desc.params.lengths[0]);
-    if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
       Idx padded_fft_bytes = detail::pad_local(2 * dft_length, Idx(1)) * static_cast<Idx>(sizeof(Scalar));
       Idx max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
