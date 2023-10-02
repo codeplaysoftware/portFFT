@@ -715,7 +715,7 @@ struct descriptor {
   }
 
   /**
-   * Get the number of elements required in the input buffer for a given direction.
+   * Get the size of the input buffer for a given direction in terms of the number of elements.
    * The number of elements is the same irrespective of the FFT domain.
    * Takes into account the lengths, number of transforms, strides and direction.
    *
@@ -726,7 +726,7 @@ struct descriptor {
   }
 
   /**
-   * Get the number of elements required in the output buffer for a given direction.
+   * Get the size of the output buffer for a given direction in terms of the number of elements.
    * The number of elements is the same irrespective of the FFT domain.
    * Takes into account the lengths, number of transforms, strides and direction.
    *
