@@ -177,7 +177,7 @@ struct global_data_struct {
   PORTFFT_INLINE void log_message_subgroup([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
     if (sg.leader()) {
-      s << "sg_id " << sg.get_group_linear_id(0) << " "
+      s << "sg_id " << sg.get_group_linear_id() << " "
         << "wg_id " << it.get_group(0) << " ";
       log_message_impl(messages...);
     }
