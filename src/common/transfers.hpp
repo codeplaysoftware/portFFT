@@ -362,7 +362,7 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   IdxGlobal unaligned_elements = static_cast<IdxGlobal>(global_aligned_ptr - global_ptr);
 
   // Load the first few unaligned elements. Assumes group size > alignof(vec_t) / sizeof(vec_t).
-  copy_helper_t::subrange_copy(group, global, global_offset, local, local_offset, unaligned_elements);
+  copy_helper_t::subrange_copy(global_data, group, global, global_offset, local, local_offset, unaligned_elements);
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
   total_num_elems -= unaligned_elements;
@@ -372,7 +372,7 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   IdxGlobal stride = static_cast<IdxGlobal>(local_size * copy_helper_t::ChunkSize);
   IdxGlobal rounded_down_num_elems = (total_num_elems / stride) * stride;
   for (std::size_t i = 0; i < rounded_down_num_elems; i += stride) {
-    copy_helper_t::vec_aligned_block_copy(group, global, global_offset + i, local, local_offset + i);
+    copy_helper_t::vec_aligned_block_copy(global_data, group, global, global_offset + i, local, local_offset + i);
   }
   local_offset += rounded_down_num_elems;
   global_offset += rounded_down_num_elems;
