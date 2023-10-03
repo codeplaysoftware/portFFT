@@ -59,7 +59,13 @@ enum class layout {
 
 enum class memory { BUFFER, USM };
 
-enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL, PRIVATE_TO_GLOBAL };
+enum class transfer_direction {
+  LOCAL_TO_PRIVATE,
+  PRIVATE_TO_LOCAL,
+  PRIVATE_TO_GLOBAL,
+  LOCAL_TO_GLOBAL,
+  GLOBAL_TO_LOCAL
+};
 
 enum class elementwise_multiply { APPLIED, NOT_APPLIED };
 

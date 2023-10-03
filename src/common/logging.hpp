@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_LOGGING_HPP
 
 #include <defines.hpp>
+#include <enums.hpp>
 #include <sycl/sycl.hpp>
 
 namespace portfft::detail {
@@ -163,6 +164,27 @@ struct global_data_struct {
   }
 
   /**
+   * Logs a message from a subgroup - there will be only one output from each subgroup. Can log multiple
+   * objects/strings. They will be separated by spaces. Also outputs the id of the subgroup and workgroup it is called
+   * from.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <typename... Ts>
+  PORTFFT_INLINE void log_message_subgroup([[maybe_unused]] Ts... messages) {
+#ifdef PORTFFT_LOG_TRANSFERS
+    if (sg.leader()) {
+      s << "sg_id " << sg.get_group_linear_id(0) << " "
+        << "wg_id " << it.get_group(0) << " ";
+      log_message_impl(messages...);
+    }
+#endif
+  }
+
+  /**
    * Logs a message from a workgroup - there will be only one output from each workgroup. Can log multiple
    * objects/strings. They will be separated by spaces. Also outputs the id of the workgroup it is called from.
    *
@@ -197,6 +219,29 @@ struct global_data_struct {
       log_message_impl(messages...);
     }
 #endif
+  }
+
+  /**
+   * Logs a message with a single message from the selected level. Can log multiple objects/strings. They will be
+   * separated by spaces. Also outputs info on the calling level.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Level The level of granularity with which to output logging data
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <level Level, typename... Ts>
+  PORTFFT_INLINE void log_message_scoped([[maybe_unused]] Ts... messages) {
+    if constexpr (Level == level::WORKITEM) {
+      log_message(messages...);
+    } else if constexpr (Level == level::SUBGROUP) {
+      log_message_subgroup(messages...);
+    } else if constexpr (Level == level::WORKGROUP) {
+      log_message_local(messages...);
+    } else if constexpr (Level == level::DEVICE) {
+      log_message_global(messages...);
+    }
   }
 };
 
