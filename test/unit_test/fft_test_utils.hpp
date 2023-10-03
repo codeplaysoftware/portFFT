@@ -120,11 +120,10 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  
   auto [forward_data, backward_data] = gen_fourier_data(desc);
 
   if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input = forward_data; 
+    host_input = forward_data;
     host_reference_output = backward_data;
   } else {
     host_input = backward_data;
@@ -217,7 +216,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   auto [forward_data, backward_data] = gen_fourier_data(desc);
   if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input_raw = forward_data; 
+    host_input_raw = forward_data;
     host_reference_output = backward_data;
   } else {
     host_input_raw = backward_data;
