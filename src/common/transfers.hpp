@@ -26,6 +26,7 @@
 #include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
+#include <traits.hpp>
 
 #ifndef PORTFFT_N_LOCAL_BANKS
 #define PORTFFT_N_LOCAL_BANKS 32
@@ -347,38 +348,6 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const 
 }
 
 /**
- * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
- *
- * @param global_data global data for the kernel
- * @param local Pointer to local memory
- * @param priv Pointer to private memory
- * @param thread_id ID of the working thread in FFT
- * @param col_num Column number which is to be loaded
- * @param stride Inner most dimension of the reinterpreted matrix
- */
-template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, const T* local, T* priv,
-                                             Idx thread_id, Idx col_num, Idx stride) {
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "NumElementsPerWI", NumElementsPerWI, "thread_id", thread_id, "col_num",
-                                col_num, "stride", stride);
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const Idx i) PORTFFT_INLINE {
-    Idx local_idx =
-        detail::pad_local<Pad>(2 * stride * (thread_id * NumElementsPerWI + i) + 2 * col_num, BankLinesPerPad);
-    global_data.log_message(func_name, "from", local_idx, "to", 2 * i, "value", local[local_idx]);
-    global_data.log_message(func_name, "from", local_idx + 1, "to", 2 * i + 1, "value", local[local_idx + 1]);
-    priv[2 * i] = local[local_idx];
-    priv[2 * i + 1] = local[local_idx + 1];
-  });
-}
-
-/**
  * Stores data from the local memory to the global memory, in a transposed manner.
  * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
  * avoid bank conflicts.
@@ -448,73 +417,6 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
     global_data.log_message(func_name, "from", global_index, "to", local_index, "value", global_base_ptr[global_index]);
     local_ptr[local_index] = global_base_ptr[global_index];
   }
-}
-
-/**
- * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
- *
- * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param local Pointer to local memory
- * @param thread_id Id of the working thread for the FFT
- * @param num_workers Number of threads working for that FFt
- * @param col_num Column number in which the data will be stored
- * @param stride Inner most dimension of the reinterpreted matrix
- */
-template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const T* priv, T* local,
-                                             Idx thread_id, Idx num_workers, Idx col_num, Idx stride) {
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "thread_id", thread_id, "num_workers", num_workers, "col_num", col_num,
-                                "stride", stride);
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const Idx i) PORTFFT_INLINE {
-    Idx loc_base_offset =
-        detail::pad_local<Pad>(2 * stride * (i * num_workers + thread_id) + 2 * col_num, BankLinesPerPad);
-    global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
-    local[loc_base_offset] = priv[2 * i];
-    local[loc_base_offset + 1] = priv[2 * i + 1];
-  });
-}
-
-/**
- * Copies data from private to local memory, allowing separate strides for thread id and id of element in workitem,
- * allowing for up to two transposes of the data.
- *
- * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
- *
- * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param local Pointer to local memory
- * @param thread_id Id of the working thread for the FFT
- * @param stride_num_workers stride in local memory between consecutive elements in a workitem
- * @param destination_offset Offset to local memory destination
- * @param stride Stride in local memory between consecutive workitems
- */
-template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local_2strides(detail::global_data_struct global_data, const T* priv, T* local,
-                                           Idx thread_id, Idx stride_num_workers, Idx destination_offset, Idx stride) {
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "thread_id", thread_id, "stride_num_workers", stride_num_workers,
-                                "destination_offset", destination_offset, "stride", stride);
-  detail::unrolled_loop<0, NumElementsPerWI, 1>([&](const Idx i) PORTFFT_INLINE {
-    Idx loc_base_offset =
-        detail::pad_local<Pad>(2 * (stride_num_workers * i + stride * thread_id + destination_offset), BankLinesPerPad);
-    global_data.log_message(func_name, "from", 2 * i, "to", loc_base_offset, "value", priv[2 * i]);
-    global_data.log_message(func_name, "from", 2 * i + 1, "to", loc_base_offset + 1, "value", priv[2 * i + 1]);
-    local[loc_base_offset] = priv[2 * i];
-    local[loc_base_offset + 1] = priv[2 * i + 1];
-  });
 }
 
 /**
@@ -597,18 +499,24 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
 }
 
 /**
- * Function meant to transfer data between local and private memory, and is able to handle 3 levels
- * of transpositions / strides and combine them into a single load / store.
+ * Transfer data between local and private memory, with 3 levels of transpositions / strides.
+ * local_or_global_idx = s1 * (s2 * (s3 * i + o3) + o2) + o1
+ * private_idx = 2 * i
+ * output[out_idx] = input[in_idx]
+ * output[out_idx + 1] = input[in_idx + 1]
+ * where out_idx and in_idx are chosen according to TransferDirection
+ * for i in [0, NumComplexElements) where loc is indexed repecting padding.
  *
- * @tparam T Scalar Type
- * @tparam TDstIdx type of destination index
+ * @tparam TransferDirection Direction of Transfer
  * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
- * @tparam TransferDirection Direction of Transfer
+ * @tparam TDstIdx type of destination index
+ * @tparam InputT The type of the input memory view
+ * @tparam DestT The type of the dest memory view
  *
  * @param global_data global data for the kernel
- * @param input Input Pointer
- * @param output Output Pointer
+ * @param input Input view
+ * @param output Output view
  * @param stride_1 Innermost stride
  * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
@@ -617,11 +525,13 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
-template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename T,
-          typename TDstIdx>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, TDstIdx stride_1,
-                                     TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, Idx stride_3, Idx offset_3,
+template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename TDstIdx, typename InputT,
+          typename DestT>
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, InputT input, DestT output, TDstIdx stride_1,
+                                     TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, TDstIdx stride_3, TDstIdx offset_3,
                                      Idx bank_lines_per_pad) {
+  static_assert(std::is_same_v<detail::get_element_t_remove_cv<InputT>, detail::get_element_t<DestT>>,
+                "Type mismatch between input and output views");
   static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
                 ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
@@ -650,6 +560,59 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
       output[base_offset + 1] = input[2 * j + 1];
     }
   });
+}
+
+/**
+ * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column:
+ * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num] := priv[i]
+ * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num + 1] := priv[i + 1]
+ * for i in [0, NumElementsPerWI) where loc is indexed repecting padding.
+ *
+ * @tparam NumElementsPerWI Elements per workitem
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @tparam T type of the scalar used for computations
+ *
+ * @param global_data global data for the kernel
+ * @param priv Pointer to private memory
+ * @param local Pointer to local memory
+ * @param thread_id Id of the working thread for the FFT
+ * @param num_workers Number of threads working for that FFt
+ * @param col_num Column number in which the data will be stored
+ * @param stride Inner most dimension of the reinterpreted matrix
+ */
+template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const T* priv, T* local,
+                                             Idx thread_id, Idx num_workers, Idx col_num, Idx stride) {
+  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, Pad, NumElementsPerWI>(
+      global_data, priv, local, 1, 0, 2 * stride, 2 * col_num, num_workers, thread_id, BankLinesPerPad);
+}
+
+/**
+ * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
+ * priv[2 * i] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num]
+ * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num + 1]
+ * for i in [0, NumElementsPerWI) where loc is indexed repecting padding.
+ *
+ * @tparam NumElementsPerWI Elements per workitem
+ * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
+ * avoid bank conflicts.
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
+ * @tparam T type of the scalar used for computations
+ *
+ * @param global_data global data for the kernel
+ * @param local Pointer to local memory
+ * @param priv Pointer to private memory
+ * @param thread_id ID of the working thread in FFT
+ * @param col_num Column number which is to be loaded
+ * @param stride Inner most dimension of the reinterpreted matrix
+ */
+template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, const T* local, T* priv,
+                                             Idx thread_id, Idx col_num, Idx stride) {
+  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, Pad, NumElementsPerWI>(
+      global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI, BankLinesPerPad);
 }
 
 /**

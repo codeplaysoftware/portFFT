@@ -356,8 +356,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(
               __func__, "Storing data from private to Global with LayoutOut == detail::level::BATCH_INTERLEAVED");
-          transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, detail::pad::DONT_PAD, FactorWI, T,
-                           IdxGlobal>(global_data, priv, output, 2 * n_transforms, 2 * i, static_cast<IdxGlobal>(1),
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, detail::pad::DONT_PAD, FactorWI, IdxGlobal>(global_data, priv, output, 2 * n_transforms, 2 * i, static_cast<IdxGlobal>(1),
                                       static_cast<IdxGlobal>(0), FactorSG, id_of_wi_in_fft, BankLinesPerPad);
         }
       } else {
