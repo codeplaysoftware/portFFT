@@ -117,8 +117,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
       // multiply cur and multi
       T tmp_real;
       T tmp_imag;
-      multiply_complex(static_cast<const T>(cur_real), static_cast<const T>(cur_imag), static_cast<const T>(multi_re),
-                       static_cast<const T>(multi_im), tmp_real, tmp_imag);
+      detail::multiply_complex(cur_real, cur_imag, multi_re, multi_im, tmp_real, tmp_imag);
       res_real += tmp_real;
       res_imag += tmp_imag;
     });
@@ -190,7 +189,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
     return -twiddle<T>::Im[N * M][k * n];
   }
   ();
-  multiply_complex(static_cast<const T>(real), static_cast<const T>(imag), multi_re, multi_im, real, imag);
+  detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
   cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
 }
@@ -287,8 +286,7 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
-        detail::multiply_complex(static_cast<const T>(real), static_cast<const T>(imag),
-                                 static_cast<const T>(twiddle_real), static_cast<const T>(twiddle_imag), real, imag);
+        detail::multiply_complex(real, imag, twiddle_real, twiddle_imag, real, imag);
       }
     }
   });

@@ -166,9 +166,10 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::transpose TransposeIn, int SubgroupSize, typename TIn, typename TOut>
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
+          typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
@@ -186,7 +187,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     };
 
     std::vector<sycl::event> dependency_copy(dependencies);
-    num_scalars_in_local_mem_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(desc);
+    num_scalars_in_local_mem_struct::template inner<detail::level::GLOBAL, LayoutIn, Dummy>::execute(desc);
     std::size_t local_mem_twiddle_offset = 0;
     const Scalar* scratch_input = static_cast<const Scalar*>(desc.scratch_1.get());
     Scalar* scratch_output = static_cast<Scalar*>(desc.scratch_2.get());
@@ -196,8 +197,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
     for (std::size_t batch = 0; batch < desc.params.number_of_transforms; batch += desc.num_batches_in_l2) {
       std::size_t twiddle_between_factors_offset = 0;
       std::size_t impl_twiddles_offset = local_mem_twiddle_offset;
-      detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::transpose::TRANSPOSED,
-                                       detail::transpose::TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+      detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::BATCH_INTERLEAVED,
+                                       detail::layout::BATCH_INTERLEAVED, detail::apply_load_modifier::NOT_APPLIED,
                                        detail::apply_store_modifier::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
                                        SubgroupSize>(desc, in, scale_factor, 0, impl_twiddles_offset,
                                                      twiddle_between_factors_offset, batch, dependency_copy);
@@ -205,15 +206,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
       increment_twiddle_offset(0, impl_twiddles_offset);
       for (std::size_t level_num = 1; level_num < desc.factors.size(); level_num++) {
         if (level_num == desc.factors.size() - 1) {
-          detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::transpose::NOT_TRANSPOSED,
-                                           detail::transpose::NOT_TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+          detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::PACKED, detail::layout::PACKED,
+                                           detail::apply_load_modifier::NOT_APPLIED,
                                            detail::apply_store_modifier::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize>(
               desc, scratch_input, scale_factor, level_num, impl_twiddles_offset, twiddle_between_factors_offset, batch,
               dependency_copy);
         } else {
-          detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::transpose::TRANSPOSED,
-                                           detail::transpose::TRANSPOSED, detail::apply_load_modifier::NOT_APPLIED,
+          detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::BATCH_INTERLEAVED,
+                                           detail::layout::BATCH_INTERLEAVED, detail::apply_load_modifier::NOT_APPLIED,
                                            detail::apply_store_modifier::APPLIED,
                                            detail::apply_scale_factor::NOT_APPLIED, SubgroupSize>(
               desc, scratch_input, scale_factor, level_num, impl_twiddles_offset, twiddle_between_factors_offset, batch,
@@ -236,41 +237,38 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, TransposeIn,
 };
 
 template <typename Scalar, domain Domain>
-template <detail::transpose TransposeIn, typename Dummy>
+template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::GLOBAL,
-                                                                                         TransposeIn, Dummy> {
+                                                                                         LayoutIn, Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
     auto get_local_mem_usage_per_level = [](committed_descriptor<Scalar, Domain> committed_descriptor,
                                             std::size_t factor, detail::level level_id,
                                             bool transposed) -> std::size_t {
       if (level_id == detail::level::WORKITEM) {
         if (transposed) {
-          return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, detail::transpose::TRANSPOSED,
-                                                                 Dummy, std::size_t>::execute(committed_descriptor,
-                                                                                              factor);
+          return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM,
+                                                                 detail::layout::BATCH_INTERLEAVED, Dummy,
+                                                                 std::size_t>::execute(committed_descriptor, factor);
         }
-        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM,
-                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, detail::layout::PACKED, Dummy,
                                                                std::size_t>::execute(committed_descriptor, factor);
       }
       if (level_id == detail::level::SUBGROUP) {
         if (transposed) {
-          return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, detail::transpose::TRANSPOSED,
-                                                                 Dummy, std::size_t>::execute(committed_descriptor,
-                                                                                              factor);
+          return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP,
+                                                                 detail::layout::BATCH_INTERLEAVED, Dummy,
+                                                                 std::size_t>::execute(committed_descriptor, factor);
         }
-        return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP,
-                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+        return num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, detail::layout::PACKED, Dummy,
                                                                std::size_t>::execute(committed_descriptor, factor);
       }
       if (level_id == detail::level::WORKGROUP) {
         if (transposed) {
           return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP,
-                                                                 detail::transpose::TRANSPOSED, Dummy,
+                                                                 detail::layout::BATCH_INTERLEAVED, Dummy,
                                                                  std::size_t>::execute(committed_descriptor, factor);
         }
-        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP,
-                                                               detail::transpose::NOT_TRANSPOSED, Dummy,
+        return num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, detail::layout::PACKED, Dummy,
                                                                std::size_t>::execute(committed_descriptor, factor);
       }
       return 0;
@@ -305,11 +303,11 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struc
 };
 
 template <typename Scalar, domain Domain>
-template <detail::transpose TransposeIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, TransposeIn,
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, LayoutIn,
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
-    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::GLOBAL, TransposeIn, Dummy>::execute(
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::GLOBAL, LayoutIn, Dummy>::execute(
         desc, desc.params.lengths[0]);
   }
 };

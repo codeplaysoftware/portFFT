@@ -61,8 +61,52 @@ std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_
   }
 }
 
+template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
+std::pair<std::optional<sycl::event>, std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input,
+                                                               T& output, sycl::event& copy_event) {
+  try {
+    if constexpr (Place == placement::OUT_OF_PLACE) {
+      if constexpr (Dir == direction::FORWARD) {
+        return std::make_pair(desc.compute_forward(input, output, {copy_event}), "");
+      } else {
+        return std::make_pair(desc.compute_backward(input, output, {copy_event}), "");
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        return std::make_pair(desc.compute_forward(input, {copy_event}), "");
+      } else {
+        return std::make_pair(desc.compute_backward(input, {copy_event}), "");
+      }
+    }
+  } catch (portfft::inadequate_local_memory_error& error) {
+    return std::make_pair(std::nullopt, error.what());
+  }
+}
+
+template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
+std::optional<std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input, T& output) {
+  try {
+    if constexpr (Place == placement::OUT_OF_PLACE) {
+      if constexpr (Dir == direction::FORWARD) {
+        desc.compute_forward(input, output);
+      } else {
+        desc.compute_backward(input, output);
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        desc.compute_forward(input);
+      } else {
+        desc.compute_backward(input);
+      }
+    }
+    return std::nullopt;
+  } catch (portfft::inadequate_local_memory_error& error) {
+    return error.what();
+  }
+}
+
 // test for out-of-place and in-place ffts.
-template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
+template <typename FType, placement Place, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
@@ -71,6 +115,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
       GTEST_SKIP() << "Test skipped as test size not present in optimized size list";
     }
   }
+  constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_input_transposed;
@@ -85,13 +130,24 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   descriptor<FType, domain::COMPLEX> desc{{params.length}};
   desc.number_of_transforms = params.batch;
-  if constexpr (TransposeIn) {
-    if constexpr (Dir == direction::FORWARD) {
+  if constexpr (Dir == direction::FORWARD) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};
       desc.forward_distance = 1;
-    } else {
-      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
       desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+  }
+  if constexpr (Dir == direction::BACKWARD) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+      desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
+      desc.forward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.forward_distance = 1;
     }
   }
 
@@ -107,34 +163,23 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   } else {
     host_input = verifSpec.template load_data_fourier(desc);
   }
-  if constexpr (TransposeIn) {
+  if constexpr (IsBatchInterleaved) {
     host_input_transposed = std::vector<std::complex<FType>>(num_elements);
     transpose(host_input, host_input_transposed, params.batch, params.length);
   }
 
   auto copy_event =
-      queue.copy(TransposeIn ? host_input_transposed.data() : host_input.data(), device_input, num_elements);
+      queue.copy(IsBatchInterleaved ? host_input_transposed.data() : host_input.data(), device_input, num_elements);
 
-  auto fft_event = [&]() {
-    if constexpr (Place == placement::OUT_OF_PLACE) {
-      if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
-      } else {
-        return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
-      }
-    } else {
-      if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, {copy_event});
-      } else {
-        return committed_descriptor.compute_backward(device_input, {copy_event});
-      }
-    }
-  }();
-
-  queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements,
-             {fft_event});
+  auto potential_fft_event =
+      run_compute<FType, domain::COMPLEX, Dir, Place>(committed_descriptor, device_input, device_output, copy_event);
+  if (!potential_fft_event.first.has_value()) {
+    GTEST_SKIP() << potential_fft_event.second;
+  }
+  sycl::event fft_event = potential_fft_event.first.value();
+  queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verifSpec.verify_dft(desc, buffer, Dir, 1e-3);
+  verifSpec.verify_dft(desc, buffer, Dir, LayoutOut, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -142,7 +187,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
 }
 
-template <typename FType, placement Place, direction Dir, bool TransposeIn = false>
+template <typename FType, placement Place, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
   {
@@ -151,6 +196,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       GTEST_SKIP() << "Test skipped as test size not present in optimized size list";
     }
   }
+  constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_input_transposed;
@@ -159,13 +205,25 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   descriptor<FType, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
   desc.number_of_transforms = params.batch;
-  if constexpr (TransposeIn) {
-    if constexpr (Dir == direction::FORWARD) {
+
+  if constexpr (Dir == direction::FORWARD) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};
       desc.forward_distance = 1;
-    } else {
-      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
       desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+  }
+  if constexpr (Dir == direction::BACKWARD) {
+    if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+      desc.backward_distance = 1;
+      desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+    }
+    if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
+      desc.forward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.forward_distance = 1;
     }
   }
 
@@ -181,35 +239,27 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   } else {
     host_input = verifSpec.template load_data_fourier(desc);
   }
-  if constexpr (TransposeIn) {
+  if constexpr (IsBatchInterleaved) {
     host_input_transposed = std::vector<std::complex<FType>>(num_elements);
     transpose(host_input, host_input_transposed, params.batch, params.length);
   }
 
   {
     sycl::buffer<std::complex<FType>, 1> output_buffer(nullptr, 0);
-    sycl::buffer<std::complex<FType>, 1> input_buffer(TransposeIn ? host_input_transposed.data() : host_input.data(),
-                                                      num_elements);
+    sycl::buffer<std::complex<FType>, 1> input_buffer(
+        IsBatchInterleaved ? host_input_transposed.data() : host_input.data(), num_elements);
     if (Place == placement::OUT_OF_PLACE) {
       output_buffer = sycl::buffer<std::complex<FType>, 1>(buffer.data(), num_elements);
     }
 
-    if constexpr (Place == placement::OUT_OF_PLACE) {
-      if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer, output_buffer);
-      } else {
-        committed_descriptor.compute_backward(input_buffer, output_buffer);
-      }
-    } else {
-      if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer);
-      } else {
-        committed_descriptor.compute_backward(input_buffer);
-      }
-    }
+    auto possible_error =
+        run_compute<FType, portfft::domain::COMPLEX, Dir, Place>(committed_descriptor, input_buffer, output_buffer);
     queue.wait_and_throw();
+    if (possible_error.has_value()) {
+      GTEST_SKIP() << possible_error.value();
+    }
   }
-  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, 1e-3);
+  verifSpec.verify_dft(desc, Place == placement::IN_PLACE ? host_input : buffer, Dir, LayoutOut, 1e-3);
 }
 
 #endif

@@ -77,11 +77,11 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out) {
 
       // multiply in and multi
       T tmp_real;
-      T tmp_imag;
+      T tmp_complex;
       detail::multiply_complex(in[2 * idx_in * StrideIn], in[2 * idx_in * StrideIn + 1], re_multiplier, im_multiplier,
-                               tmp_real, tmp_imag);
+                               tmp_real, tmp_complex);
       tmp[2 * idx_out + 0] += tmp_real;
-      tmp[2 * idx_out + 1] += tmp_imag;
+      tmp[2 * idx_out + 1] += tmp_complex;
     });
   });
   unrolled_loop<0, 2 * N, 2>([&](int idx_out) {
@@ -118,9 +118,8 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out)
         }
         return -twiddle<T>::Im[N * M][i * j];
       }();
-      detail::multiply_complex(static_cast<const T>(tmp_buffer[2 * i * N + 2 * j]),
-                               static_cast<const T>(tmp_buffer[2 * i * N + 2 * j + 1]), re_multiplier, im_multiplier,
-                               tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
+      detail::multiply_complex(tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1], re_multiplier,
+                               im_multiplier, tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
     });
   });
   unrolled_loop<0, N, 1>([&](int i) __attribute__((always_inline)) {

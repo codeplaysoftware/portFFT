@@ -27,21 +27,21 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          detail::transpose TransposeOut, apply_load_modifier ApplyLoadModifier,
-          apply_store_modifier ApplyStoreModifier, apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
+          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          detail::transpose TransposeOut, apply_load_modifier ApplyLoadModifier,
-          apply_store_modifier ApplyStoreModifier, apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
+          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          detail::transpose TransposeOut, apply_load_modifier ApplyLoadModifier,
-          apply_store_modifier ApplyStoreModifier, apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
+          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 class workgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::transpose TransposeIn,
-          detail::transpose TransposeOut, apply_load_modifier ApplyLoadModifier,
-          apply_store_modifier ApplyStoreModifier, apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
+          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 class global_kernel;
 
 template <typename Scalar, domain Domain, detail::memory Mem, int SubgroupSize>

@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
 #include <common/helpers.hpp>
+#include <common/logging.hpp>
 #include <common/subgroup.hpp>
 #include <enums.hpp>
 
@@ -52,7 +53,10 @@ namespace detail {
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Whether or not the input is transposed
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam DFTSize Size of each DFT to calculate
  * @tparam StrideWithinDFT Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @tparam NDFTsInOuterDimension Number of DFTs in outer dimension
@@ -65,15 +69,22 @@ namespace detail {
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param current_batch Absosulte batch being currently processed.
  */
-template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+template <direction Dir, detail::layout LayoutIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int DFTSize,
           int StrideWithinDFT, int NDFTsInOuterDimension, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
 __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
                                                          T scaling_factor, std::size_t max_num_batches_in_local_mem,
-                                                         std::size_t sub_batch_num, sycl::nd_item<1> it,
-                                                         const T* load_modifier_data, const T* store_modifier_data) {
+                                                         std::size_t sub_batch_num, global_data_struct global_data,
+                                                         const T* load_modifier_data, const T* store_modifier_data,
+                                                         std::size_t current_batch) {
+  global_data.log_message_global(__func__, "entered", "DFTSize", DFTSize, "StrideWithinDFT", StrideWithinDFT,
+                                 "NDFTsInOuterDimension", NDFTsInOuterDimension, "max_num_batches_in_local_mem",
+                                 max_num_batches_in_local_mem, "sub_batch_num", sub_batch_num);
   constexpr int OuterStride = DFTSize * StrideWithinDFT;
   // the number of work-items involved in every subgroup fft
   constexpr int FactSg = detail::factorize_sg(DFTSize, SubgroupSize);
@@ -86,15 +97,14 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
   // only needed when there are excess work-items
   constexpr std::size_t MaxWorkingTidInSg = FFTsPerSG * FactSg;
 
-  const int num_sgs = static_cast<int>(it.get_local_range(0)) / SubgroupSize;
-  sycl::sub_group sg = it.get_sub_group();
-  const int fft_in_subgroup = static_cast<int>(sg.get_local_linear_id()) / FactSg;
+  const int num_sgs = static_cast<int>(global_data.it.get_local_range(0)) / SubgroupSize;
+  const int fft_in_subgroup = static_cast<int>(global_data.sg.get_local_linear_id()) / FactSg;
   // id of the work-item in the fft
-  const int wi_id_in_fft = static_cast<int>(sg.get_local_linear_id()) % FactSg;
+  const int wi_id_in_fft = static_cast<int>(global_data.sg.get_local_linear_id()) % FactSg;
 
   T priv[2 * FactWi];
 
-  const int begin = static_cast<int>(sg.get_group_id()) * FFTsPerSG + fft_in_subgroup;
+  const int begin = static_cast<int>(global_data.sg.get_group_id()) * FFTsPerSG + fft_in_subgroup;
   const int step = num_sgs * FFTsPerSG;
   int end;
   constexpr int TotalDFTs = StrideWithinDFT * NDFTsInOuterDimension;
@@ -119,22 +129,25 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       working = j < TotalDFTs;
     }
     if constexpr (ExcessWIs) {
-      working = working && sg.get_local_linear_id() < MaxWorkingTidInSg;
+      working = working && global_data.sg.get_local_linear_id() < MaxWorkingTidInSg;
     }
     if (working) {
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+        global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
-            priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(StrideWithinDFT),
-            static_cast<std::size_t>(j_inner + j_outer * OuterStride), 1L,
+            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+            static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 1L,
             static_cast<std::size_t>(wi_id_in_fft * FactWi), BankLinesPerPad);
       } else {
+        global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
-        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(loc_start, priv, wi_id_in_fft, j_inner,
-                                                                               StrideWithinDFT);
+        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(global_data, loc_start, priv,
+                                                                               wi_id_in_fft, j_inner, StrideWithinDFT);
       }
+      global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
       if (wg_twiddles) {
-        detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_INLINE {
           // Unintuitive indexing to ensure coalesced access
           int twiddle_i = i * FactSg + wi_id_in_fft;
           int twiddle_j = j_outer;
@@ -145,15 +158,25 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
           if constexpr (Dir == direction::BACKWARD) {
             twiddle_imag = -twiddle_imag;
           }
-          multiply_complex(static_cast<const T>(priv[2 * i]), static_cast<const T>(priv[2 * i + 1]),
-                           static_cast<const T>(twiddle_real), static_cast<const T>(twiddle_imag), priv[2 * i],
-                           priv[2 * i + 1]);
+          multiply_complex(priv[2 * i], priv[2 * i + 1], twiddle_real, twiddle_imag, priv[2 * i], priv[2 * i + 1]);
         });
+        global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * FactWi);
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
+        detail::unrolled_loop<0, FactWi, 1>([&](const int i) PORTFFT_INLINE {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
+        });
+        global_data.log_dump_private("data in registers after scaling:", priv, 2 * FactWi);
+      }
+      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+        detail::unrolled_loop<0, FactWi, 1>([&](const std::size_t idx) PORTFFT_INLINE {
+          // load modifier needs to be tensor shape : n_transforms x M x FacWi x FactSG
+          std::size_t base_offset =
+              2 * (current_batch + sub_batch_num) * DFTSize + 2 * FactWi * FactSg + 2 * idx * FactSg + 2 * wi_id_in_fft;
+          sycl::vec<T, 2> priv_modifier = *reinterpret_cast<sycl::vec<T, 2>*>(&load_modifier_data[base_offset]);
+          multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
+                           priv[2 * idx + 1]);
         });
       }
 
@@ -170,45 +193,47 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
         });
       }
     }
-    sg_dft<Dir, FactWi, FactSg>(priv, sg, loc_twiddles);
+    sg_dft<Dir, FactWi, FactSg>(priv, global_data.sg, loc_twiddles);
+
     if (working) {
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
-        detail::unrolled_loop<0, FactWi, 1>([&](const int i) __attribute__((always_inline)) {
-          const sycl::vec<T, 2> modifier_priv;
-          modifier_priv = *reinterpret_cast<const sycl::vec<T, 2>*>(
-              &store_modifier_data[static_cast<std::size_t>(2 * DFTSize * StrideWithinDFT * NDFTsInOuterDimension) *
-                                       sub_batch_num +
-                                   static_cast<std::size_t>(2 * j * DFTSize) +
-                                   static_cast<std::size_t>(2 * wi_id_in_fft + i * FactSg)]);
-          T modifier_complex = modifier_priv[1];
-          if constexpr (Dir == direction::BACKWARD) {
-            modifier_complex = -modifier_complex;
-          }
-          multiply_complex(static_cast<const T>(priv[2 * i]), static_cast<const T>(priv[2 * i + 1]), modifier_priv[0],
-                           modifier_complex, priv[2 * i], priv[2 * i + 1]);
+        // Store modifier data layout in global memory - n_transforms x N x FactorSG x FactorWI
+        detail::unrolled_loop<0, FactWi, 1>([&](const std::size_t idx) PORTFFT_INLINE {
+          std::size_t base_offset = 2 * (current_batch + sub_batch_num) * DFTSize + 2 * j * FactWi * FactSg +
+                                    2 * idx * FactSg + 2 * wi_id_in_fft;
+          sycl::vec<T, 2> priv_modifier = *reinterpret_cast<sycl::vec<T, 2>*>(&store_modifier_data[base_offset]);
+          multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
+                           priv[2 * idx + 1]);
         });
       }
-      if constexpr (TransposeIn == detail::transpose::TRANSPOSED) {
+      global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
+      if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+        global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
-            priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num, static_cast<std::size_t>(StrideWithinDFT),
-            static_cast<std::size_t>(j_inner + j_outer * OuterStride), static_cast<std::size_t>(FactSg),
-            static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
+            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+            static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride),
+            static_cast<std::size_t>(FactSg), static_cast<std::size_t>(wi_id_in_fft), BankLinesPerPad);
       } else {
+        global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
         private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
-            priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride, StrideWithinDFT);
+            global_data, priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride,
+            StrideWithinDFT);
       }
     }
   }
+  global_data.log_message_global(__func__, "exited");
 }
-
 };  // namespace detail
 
 /**
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
- * @tparam TransposeIn Whether or not the input is transposed
+ * @tparam LayoutIn Whether or not the input is transposed
+ * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
+ * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam FFTSize Problem Size
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
@@ -219,29 +244,35 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @param loc local accessor containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
- * @param it sycl::nd_item<1> for the kernel launch
+ * @param global_data global data for the kernel
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param sub_batch_num Id of the local memory batch to work on
+ * @param current_batch Absosulte batch being currently processed.
+ * @param load_modifier_data Pointer to the load modifier data in global Memory
+ * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, detail::transpose TransposeIn, detail::apply_load_modifier ApplyLoadModifier,
+template <direction Dir, detail::layout LayoutIn, detail::apply_load_modifier ApplyLoadModifier,
           detail::apply_store_modifier ApplyStoreModifier, detail::apply_scale_factor ApplyScaleFactor, int FFTSize,
           int N, int M, int SubgroupSize, std::size_t BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, sycl::nd_item<1> it,
-                                                  T scaling_factor, std::size_t max_num_batches_in_local_mem,
-                                                  std::size_t sub_batch_num, const T* load_modifier_data,
-                                                  const T* store_modifier_data) {
+PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, detail::global_data_struct global_data,
+                           T scaling_factor, std::size_t max_num_batches_in_local_mem, std::size_t sub_batch_num,
+                           std::size_t current_batch, const T* load_modifier_data, const T* store_modifier_data) {
+  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M,
+                                 "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "sub_batch_num",
+                                 sub_batch_num);
   // column-wise DFTs
-  detail::dimension_dft<Dir, TransposeIn, ApplyLoadModifier, detail::apply_store_modifier::NOT_APPLIED,
+  detail::dimension_dft<Dir, LayoutIn, ApplyLoadModifier, detail::apply_store_modifier::NOT_APPLIED,
                         detail::apply_scale_factor::NOT_APPLIED, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
-      loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, it, load_modifier_data,
-      store_modifier_data);
-  sycl::group_barrier(it.get_group());
+      loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, sub_batch_num, global_data,
+      load_modifier_data, store_modifier_data, current_batch);
+  sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  detail::dimension_dft<Dir, TransposeIn, detail::apply_load_modifier::NOT_APPLIED, ApplyStoreModifier,
-                        ApplyScaleFactor, M, 1, N, SubgroupSize, BankLinesPerPad, T>(
-      loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, it,
-      load_modifier_data, store_modifier_data);
+  detail::dimension_dft<Dir, LayoutIn, detail::apply_load_modifier::NOT_APPLIED, ApplyStoreModifier, ApplyScaleFactor,
+                        M, 1, N, SubgroupSize, BankLinesPerPad, T>(
+      loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch_num, global_data,
+      load_modifier_data, store_modifier_data, current_batch);
+  global_data.log_message_global(__func__, "exited");
 }
 
 }  // namespace portfft
