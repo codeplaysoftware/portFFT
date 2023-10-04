@@ -70,9 +70,10 @@ template <int N, typename T>
 PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_wi_in_wg,
                                    std::size_t num_batches_in_local_mem, std::size_t bank_lines_per_pad) {
   detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
-    std::size_t base_offset = 2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg;
-    multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[detail::pad_local(base_offset, bank_lines_per_pad)],
-                     loc_modifier[detail::pad_local(base_offset, bank_lines_per_pad)], priv[2 * j], priv[2 * j + 1]);
+    std::size_t base_offset =
+        detail::pad_local(2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg, bank_lines_per_pad);
+    multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[base_offset], loc_modifier[base_offset + 1],
+                     priv[2 * j], priv[2 * j + 1]);
   });
 }
 
