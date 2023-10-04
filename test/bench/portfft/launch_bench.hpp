@@ -51,7 +51,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
                                       std::size_t runs) {
   using complex_type = std::complex<FType>;
   using forward_t = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, FType>;
-  std::size_t N = desc.get_total_length();
+  std::size_t N = desc.get_flattened_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
@@ -151,7 +151,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
     throw std::runtime_error("Queue does not have the profiling property");
   }
 
-  std::size_t N = desc.get_total_length();
+  std::size_t N = desc.get_flattened_length();
   std::size_t N_transforms = desc.number_of_transforms;
   std::size_t num_elements = N * N_transforms;
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
