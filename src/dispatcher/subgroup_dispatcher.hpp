@@ -62,8 +62,8 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam LayoutIn Whether or not the input is transposed
- * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -200,10 +200,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "applying load modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) PORTFFT_INLINE {
-              std::size_t base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-              multiply_complex(
-                  priv[2 * j], priv[2 * j + 1], loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)],
-                  loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j], priv[2 * j + 1]);
+              std::size_t base_offset = detail::pad_local(
+                  sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft, BankLinesPerPad);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier[base_offset],
+                               loc_load_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -217,11 +217,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "applying store modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) PORTFFT_INLINE {
-              std::size_t base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1],
-                               loc_store_modifier[detail::pad_local(base_offset, BankLinesPerPad)],
-                               loc_store_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j],
-                               priv[2 * j + 1]);
+              std::size_t base_offset = detail::pad_local(
+                  sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft, BankLinesPerPad);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
+                               loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -244,8 +243,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         } else {
           if (working_inner) {
-            global_data.log_message_global(
-                __func__, "storing transposed data from private to local memory (SubgroupSize != FactorSG)");
+            global_data.log_message_global(__func__,
+                                           "storing transposed data from private to local memory (SubgroupSize != "
+                                           "FactorSG or LayoutOut == detail::layout::BATCH_INTERLEAVED)");
             // Store back to local memory only
             private2local_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
                 global_data, priv, loc, static_cast<int>(id_of_wi_in_fft), FactorSG, static_cast<int>(sub_batch),
@@ -256,14 +256,18 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.it.get_group());
       if constexpr (SubgroupSize != FactorSG || LayoutOut == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
-        global_data.log_message_global(
-            __func__, "storing transposed data from local to global memory (SubgroupSize != FactorSG)");
         // store back all loaded batches at once.
         if constexpr (LayoutOut == detail::layout::PACKED) {
+          global_data.log_message_global(__func__,
+                                         "storing transposed data from local to global memory (SubgroupSize != "
+                                         "FactorSG) with LayoutOut = detail::layout::PACKED");
           local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
               global_data, FactorWI * FactorSG, num_batches_in_local_mem, max_num_batches_local_mem, loc, output,
               i * n_reals_per_fft);
         } else {
+          global_data.log_message_global(__func__,
+                                         "storing transposed data from local memory to global memory with LayoutOut == "
+                                         "detail::layout::BATCH_INTERLEAVED");
           if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
             local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
                 global_data.it, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem,
@@ -317,11 +321,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         if (working) {
           detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) {
-            std::size_t base_offset = global_data.it.get_sub_group().get_group_id() * n_ffts_per_sg +
-                                      id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-            multiply_complex(
-                priv[2 * j], priv[2 * j + 1], loc_store_modifier[detail::pad_local(base_offset, BankLinesPerPad)],
-                loc_store_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j], priv[2 * j + 1]);
+            std::size_t base_offset =
+                detail::pad_local(global_data.it.get_sub_group().get_group_id() * n_ffts_per_sg +
+                                      id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
+                                  BankLinesPerPad);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
+                             loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
@@ -338,14 +343,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         // in this case we get fully coalesced memory access even without going through local memory
         // TODO we may want to tune maximal `FactorSG` for which we use direct stores.
         if (working) {
-          global_data.log_message_global(
-              __func__, "storing transposed data from private to global memory (FactorSG == SubgroupSize)");
+          global_data.log_message_global(__func__,
+                                         "storing transposed data from private to global memory (FactorSG == "
+                                         "SubgroupSize) and LayoutOut == detail::level::PACKED");
           store_transposed<NRealsPerWI, pad::DONT_PAD, BankLinesPerPad>(
               global_data, priv, output, id_of_wi_in_fft, FactorSG,
               i * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
       } else if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
         if (working) {
+          global_data.log_message_global(
+              __func__, "Storing data from private to Global with LayoutOut == detail::level::BATCH_INTERLEAVED");
           transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, detail::pad::DONT_PAD, FactorWI>(
               global_data, priv, output, 2 * n_transforms, 2 * i, static_cast<std::size_t>(1),
               static_cast<std::size_t>(0), static_cast<std::size_t>(FactorSG), id_of_wi_in_fft, BankLinesPerPad);
@@ -377,9 +385,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize size of the subgroup
- * @tparam LayoutIn Whether or not the input is transposed
- * @tparam LayoutIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied

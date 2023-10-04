@@ -135,7 +135,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
-            global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
+            global_data, loc, priv, 2 * max_num_batches_in_local_mem, 2 * sub_batch_num,
             static_cast<std::size_t>(StrideWithinDFT), static_cast<std::size_t>(j_inner + j_outer * OuterStride), 1L,
             static_cast<std::size_t>(wi_id_in_fft * FactWi), BankLinesPerPad);
       } else {

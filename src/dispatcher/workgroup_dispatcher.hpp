@@ -57,9 +57,8 @@ std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subg
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
  * @tparam Dir Direction of the FFT
- * @tparam LayoutIn Whether or not the input is transposed
- * @tparam LayoutIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
@@ -147,13 +146,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
               loc, output, offset, 2 * max_num_batches_in_local_mem, N, M, FFTSize, BankLinesPerPad, global_data);
         } else {
           std::size_t current_batch = offset / (2 * FFTSize);
-          for (std::size_t j = 0; j < FFTSize; j++) {
-            std::size_t local_stride = (j % N) * M + (j / M);
-            output[2 * j * n_transforms + 2 * current_batch + global_data.it.get_local_linear_id()] =
-                loc[detail::pad_local(
-                    2 * local_stride * max_num_batches_in_local_mem + global_data.it.get_local_linear_id(),
-                    BankLinesPerPad)];
-          }
+          local2strides_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(
+              output, loc, 2 * n_transforms, 2 * current_batch, max_num_batches_in_local_mem, FFTSize, N, M,
+              global_data);
         }
       }
       sycl::group_barrier(global_data.it.get_group());
@@ -172,15 +167,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, N, M, M, loc, output, offset);
       } else {
         std::size_t current_batch = offset / (2 * FFTSize);
-        for (std::size_t idx = global_data.it.get_local_linear_id(); idx < FFTSize;
-             idx += global_data.it.get_local_range(0)) {
-          std::size_t source_row = idx / N;
-          std::size_t source_col = idx % N;
-          std::size_t base_offset = 2 * source_col * M + 2 * source_row;
-          output[2 * n_transforms * idx + 2 * current_batch] = loc[detail::pad_local(base_offset, BankLinesPerPad)];
-          output[2 * n_transforms * idx + 2 * current_batch + 1] =
-              loc[detail::pad_local(base_offset + 1, BankLinesPerPad)];
-        }
+        localstrided_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(
+            output, loc, 2 * n_transforms, 2 * current_batch, FFTSize, N, M, global_data);
       }
       sycl::group_barrier(global_data.it.get_group());
     }
@@ -192,8 +180,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
  * Launch specialized subgroup DFT size matching fft_size if one is available.
  *
  * @tparam Dir Direction of the FFT
- * @tparam LayoutIn whether input is transposed (interpreting it as a matrix of batch size times FFT size)
- * @tparam LayoutOut whether output is transposed (interpreting it as a matrix of batch size times FFT size)
+ * @tparam LayoutIn Input Layout
+ * @tparam LayoutOut Output Layout
  * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
  * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied

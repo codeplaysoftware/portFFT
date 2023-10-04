@@ -719,6 +719,73 @@ PORTFFT_INLINE void local_transposed2_global_transposed(sycl::nd_item<1> it, T* 
   }
 }
 
+/**
+ * Transfers data from local memory (which is in contiguous layout) to global memory (which is in strided layout),
+ * by interpreting the local memory as if strided. To be used specifically for workgroup FFTs, where input in PACKED but
+ * output is BATCHED_INTERLEAVED
+ *
+ * @tparam Pad Whether or not Padding is to be applied
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam T Pointer type to local and global
+ * @param global_ptr Pointer to global memory
+ * @param local_ptr Pointer to local memory
+ * @param global_stride Stride applicable to global memory
+ * @param global_offset  Offset applicable to global memory
+ * @param num_elements Total number of elements to be transferred
+ * @param N Viewing num_elements as product of two factors, N being the first factor
+ * @param M Viewing num_elements as product of two factors, M being the second factor
+ * @param global_data global data for the kernel
+ */
+template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, std::size_t global_stride,
+                                                 std::size_t global_offset, std::size_t num_elements, std::size_t N,
+                                                 std::size_t M, detail::global_data_struct global_data) {
+  global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
+                                 " global offset = ", global_offset);
+  std::size_t start_index = global_data.it.get_local_linear_id();
+  std::size_t index_stride = global_data.it.get_local_range(0);
+  for (std::size_t idx = start_index; idx < num_elements; idx += index_stride) {
+    std::size_t source_row = idx / N;
+    std::size_t source_col = idx % N;
+    std::size_t base_offset = detail::pad_local<Pad>(2 * source_col * M + 2 * source_row, BankLinesPerPad);
+    global_ptr[idx * global_stride + global_offset] = local_ptr[base_offset];
+    global_ptr[idx * global_stride + global_offset + 1] = local_ptr[base_offset + 1];
+  }
+}
+
+/**
+ * Transfers data from local memory (which is in strided layout) to global memory (which is in strided layout),
+ * by adding another stride to local memory. To be used specifically for workgroup FFTs, where input is
+ * BATCHED_INTERLEAVED and output is BATCHED_INTERLEAVED as well.
+ *
+ * @tparam Pad Whether or not Padding is to be applied
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam T Pointer type to local and global
+ * @param global_ptr Pointer to global memory
+ * @param local_ptr Pointer to local memory
+ * @param global_stride Stride applicable to global memory
+ * @param global_offset Offset applicable to global memory
+ * @param local_stride Stride applicable to local memory
+ * @param num_elements Total number of elements to be transferred per workitem
+ * @param N Viewing num_elements as product of two factors, N being the first factor
+ * @param M Viewing num_elements as product of two factors, M being the second factor
+ * @param global_data global data for the kernel
+ */
+template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
+PORTFFT_INLINE void local2strides_2global_strided(T* global_ptr, T* local_ptr, std::size_t global_stride,
+                                                  std::size_t global_offset, std::size_t local_stride,
+                                                  std::size_t num_elements, std::size_t N, std::size_t M,
+                                                  detail::global_data_struct global_data) {
+  global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
+                                 " global offset = ", global_offset, " local stride = ", local_stride);
+  for (std::size_t idx = 0; idx < num_elements; idx++) {
+    std::size_t local_stride_2 = (idx % N) * M + (idx / N);
+    std::size_t base_offset =
+        detail::pad_local<Pad>(local_stride_2 * local_stride + global_data.it.get_local_id(0), BankLinesPerPad);
+    global_ptr[idx * global_stride + global_offset + global_data.it.get_local_id(0)] = local_ptr[base_offset];
+  }
+}
+
 };  // namespace portfft
 
 #endif
