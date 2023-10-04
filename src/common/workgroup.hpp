@@ -211,7 +211,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
   }
   global_data.log_message_global(__func__, "exited");
 }
-};  // namespace detail
+}  // namespace detail
 
 /**
  * Calculates FFT using Bailey 4 step algorithm.

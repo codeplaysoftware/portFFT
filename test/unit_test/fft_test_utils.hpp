@@ -42,6 +42,16 @@ void operator<<(std::ostream& stream, const test_params& params) {
   stream << "Batch = " << params.batch << ", Length = " << params.length;
 }
 
+/**
+ * Runs Out of place transpose
+ *
+ * @tparam TypeIn Input Type
+ * @tparam TypeOut Output Type
+ * @param in input pointer
+ * @param out output pointer
+ * @param FFT_size leading dimension of the input
+ * @param batch_size leading dimension of the output
+ */
 template <typename TypeIn, typename TypeOut>
 void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_size) {
   for (std::size_t j = 0; j < batch_size; j++) {
@@ -51,6 +61,15 @@ void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_
   }
 }
 
+/**
+ * Get the committed descriptor object
+ *
+ * @tparam Scalar Scalar typename template associated with committed descriptor. Return committed_descriptor associated
+ * with it if the call if successful with an empty error string, otherwise return std::nullopt with the error message
+ * @tparam Domain Type of FFT being Run
+ * @param desc Descriptor to commit
+ * @param queue Associated queue
+ */
 template <typename Scalar, portfft::domain Domain>
 std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_committed_descriptor(
     descriptor<Scalar, Domain>& desc, sycl::queue& queue) {
@@ -61,6 +80,21 @@ std::pair<std::optional<committed_descriptor<Scalar, Domain>>, std::string> get_
   }
 }
 
+/**
+ * Utility function to call compute forward of the descriptor class. Return SYCL event associated with it
+ * if the call if successful with an empty error string, otherwise return std::nullopt
+ * with the error message
+ *
+ * @tparam Scalar typename template associated with committed descriptor
+ * @tparam Type of input and output
+ * @tparam Domain Type of FFT being Run
+ * @tparam Dir Direction of FFT
+ * @tparam Place In place / out of place
+ * @param desc committed descriptor
+ * @param input Input data
+ * @param output Output Data
+ * @param copy_event host to device copy event associated before calling compute forward if any
+ */
 template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
 std::pair<std::optional<sycl::event>, std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input,
                                                                T& output, sycl::event& copy_event) {
@@ -78,11 +112,25 @@ std::pair<std::optional<sycl::event>, std::string> run_compute(committed_descrip
         return std::make_pair(desc.compute_backward(input, {copy_event}), "");
       }
     }
-  } catch (portfft::inadequate_local_memory_error& error) {
+  } catch (portfft::out_of_local_memory_error& error) {
     return std::make_pair(std::nullopt, error.what());
   }
 }
 
+/**
+ * Utility function to call compute forward of the descriptor class. Returns nullopt if call is successful,
+ * else returns string containing the error message.
+ *
+ * @tparam Scalar Scalar typename template associated with committed descriptor
+ * @tparam T Type of input and output
+ * @tparam Domain Domain Type of FFT being Run
+ * @tparam Dir Dir Direction of FFT
+ * @tparam Place  In place / out of place
+ * @param desc committed descriptor
+ * @param input Input data
+ * @param output Output Data
+ * @return
+ */
 template <typename Scalar, portfft::domain Domain, portfft::direction Dir, portfft::placement Place, typename T>
 std::optional<std::string> run_compute(committed_descriptor<Scalar, Domain>& desc, T& input, T& output) {
   try {
@@ -100,12 +148,22 @@ std::optional<std::string> run_compute(committed_descriptor<Scalar, Domain>& des
       }
     }
     return std::nullopt;
-  } catch (portfft::inadequate_local_memory_error& error) {
+  } catch (portfft::out_of_local_memory_error& error) {
     return error.what();
   }
 }
 
-// test for out-of-place and in-place ffts.
+/**
+ * Runs USM FFT Test for the given length, batch
+ *
+ * @tparam FType Scalar type Float / Double
+ * @tparam Place In place or Out of place
+ * @tparam Dir Direction of the transform
+ * @tparam LayoutIn Input Layout to the FFT
+ * @tparam LayoutOut Output Layout of the obtained FFT
+ * @param params Param struct containing length, batch
+ * @param queue Associated queue
+ */
 template <typename FType, placement Place, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut>
 void check_fft_usm(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);
@@ -187,6 +245,17 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
 }
 
+/**
+ * Runs USM FFT Test for the given length, batch
+ *
+ * @tparam FType Scalar type Float / Double
+ * @tparam Place In place or Out of place
+ * @tparam Dir Direction of the transform
+ * @tparam LayoutIn Input Layout to the FFT
+ * @tparam LayoutOut Output Layout of the obtained FFT
+ * @param params Param struct containing length, batch
+ * @param queue Associated queue
+ */
 template <typename FType, placement Place, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut>
 void check_fft_buffer(test_params& params, sycl::queue& queue) {
   ASSERT_TRUE(params.length > 0);

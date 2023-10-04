@@ -96,10 +96,10 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
- * @param load_modifier_data Pointer to the load modifier data in global Memory
- * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param load_modifier_data Pointer to the load modifier data in global memory
+ * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
@@ -144,7 +144,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
     }
 
     if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
-      global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
+      global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
           global_data, store_modifier_data, loc_store_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
           local_offset);
@@ -238,10 +238,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
- * @param load_modifier_data Pointer to the load modifier data in global Memory
- * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param load_modifier_data Pointer to the load modifier data in global memory
+ * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,

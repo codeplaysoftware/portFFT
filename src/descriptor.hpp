@@ -40,14 +40,14 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename, domain, direction, detail::memory, detail::layout, detail::layout, detail::apply_load_modifier,
-          detail::apply_store_modifier, detail::apply_scale_factor, int>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
 class workitem_kernel;
-template <typename, domain, direction, detail::memory, detail::layout, detail::layout, detail::apply_load_modifier,
-          detail::apply_store_modifier, detail::apply_scale_factor, int>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
 class subgroup_kernel;
-template <typename, domain, direction, detail::memory, detail::layout, detail::layout, detail::apply_load_modifier,
-          detail::apply_store_modifier, detail::apply_scale_factor, int>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail

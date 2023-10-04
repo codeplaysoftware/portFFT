@@ -84,7 +84,7 @@ std::size_t get_global_size_subgroup(std::size_t n_transforms, std::size_t facto
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
@@ -160,13 +160,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       }();
       std::size_t rounded_up_sub_batches = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
       if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
-        global_data.log_message_global(__func__, "loading load modifier data");
+        global_data.log_message_global(__func__, "loading load multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, load_modifier_data, loc_load_modifier, n_reals_per_fft * num_batches_in_local_mem,
             i * n_reals_per_fft);
       }
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
-        global_data.log_message_global(__func__, "loading store modifier data");
+        global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, store_modifier_data, loc_store_modifier, n_reals_per_fft * num_batches_in_local_mem,
             i * n_reals_per_fft);
@@ -192,7 +192,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
         if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
-          // Note: if using load modifier, twiddles need to be stored in the transposed fashion per batch to ensure
+          // Note: if using load modifier, this data need to be stored in the transposed fashion per batch to ensure
           // low latency reads from shared memory, as this will result in much lesser bank conflicts.
           // Tensor shape for load modifier in local memory = num_batches_in_local_mem x  FactorWI x FactorSG
           // TODO: change the above mentioned layout to the following tenshor shape: num_batches_in_local_mem x
@@ -404,10 +404,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @param global_data global data for the kernel
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
- * @param load_modifier_data Pointer to the load modifier data in global Memory
- * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param load_modifier_data Pointer to the load modifier data in global memory
+ * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,

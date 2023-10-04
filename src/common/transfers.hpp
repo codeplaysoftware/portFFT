@@ -682,6 +682,7 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
 /**
  * Stores data to global memory where consecutive elements of a problem are separated by stride.
  * Stores half of workgroup size equivalent number of consecutive batches to global memory.
+ * Call site is resposible for managing OOB accesses
  *
  * @tparam pad Whether or not to consider padding in local memory
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
@@ -697,24 +698,25 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
  * @param global_data  global data for the kernel
  */
 template <detail::pad Pad, detail::level Level, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local_transposed2_global_transposed(sycl::nd_item<1> it, T* global_base_ptr, T* local_ptr,
-                                                        std::size_t offset, std::size_t num_complex,
-                                                        std::size_t stride_global, std::size_t stride_local,
+PORTFFT_INLINE void local_transposed2_global_transposed(T* global_base_ptr, T* local_ptr, std::size_t offset,
+                                                        std::size_t num_complex, std::size_t stride_global,
+                                                        std::size_t stride_local,
                                                         detail::global_data_struct global_data) {
   global_data.log_message_local(__func__,
-                                "Tranferring data from local to global memory with global_stride:", stride_global,
+                                "Tranferring data from local to global memory with stride_global:", stride_global,
                                 " and local stride:", stride_local);
-  sycl::sub_group sg = it.get_sub_group();
+  sycl::sub_group sg = global_data.it.get_sub_group();
   std::size_t local_id;
-
   if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = sg.get_local_linear_id();
+    local_id = global_data.sg.get_local_linear_id();
   } else {
-    local_id = it.get_local_id(0);
+    local_id = global_data.it.get_local_id(0);
   }
+
   for (std::size_t i = 0; i < num_complex; i++) {
     std::size_t local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
     std::size_t global_index = offset + local_id + 2 * i * stride_global;
+    global_data.log_message(__func__, "from", local_index, "to", global_index, "value", local_ptr[local_index]);
     global_base_ptr[global_index] = local_ptr[local_index];
   }
 }
@@ -748,8 +750,11 @@ PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, st
     std::size_t source_row = idx / N;
     std::size_t source_col = idx % N;
     std::size_t base_offset = detail::pad_local<Pad>(2 * source_col * M + 2 * source_row, BankLinesPerPad);
-    global_ptr[idx * global_stride + global_offset] = local_ptr[base_offset];
-    global_ptr[idx * global_stride + global_offset + 1] = local_ptr[base_offset + 1];
+    std::size_t base_global_idx = idx * global_stride + global_offset;
+    global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", global_idx, global_idx + 1,
+                            "values = (", local_ptr[base_offset], ",", local_ptr[base_offset + 1], ")");
+    global_ptr[base_global_idx] = local_ptr[base_offset];
+    global_ptr[base_global_idx + 1] = local_ptr[base_offset + 1];
   }
 }
 
@@ -757,6 +762,7 @@ PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, st
  * Transfers data from local memory (which is in strided layout) to global memory (which is in strided layout),
  * by adding another stride to local memory. To be used specifically for workgroup FFTs, where input is
  * BATCHED_INTERLEAVED and output is BATCHED_INTERLEAVED as well.
+ * Call site is resposible for managing OOB accesses
  *
  * @tparam Pad Whether or not Padding is to be applied
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
@@ -782,7 +788,9 @@ PORTFFT_INLINE void local2strides_2global_strided(T* global_ptr, T* local_ptr, s
     std::size_t local_stride_2 = (idx % N) * M + (idx / N);
     std::size_t base_offset =
         detail::pad_local<Pad>(local_stride_2 * local_stride + global_data.it.get_local_id(0), BankLinesPerPad);
-    global_ptr[idx * global_stride + global_offset + global_data.it.get_local_id(0)] = local_ptr[base_offset];
+    std::size_t global_idx = idx * global_stride + global_offset + global_data.it.get_local_id(0);
+    global_data.log_message(__func__, "from", base_offset, "to", global_idx, "value", local_ptr[base_offset]);
+    global_ptr[global_idx] = local_ptr[base_offset];
   }
 }
 
