@@ -72,7 +72,7 @@ using get_element_t = typename get_element<T>::type;
 
 /// get_element::type with any topmost const and/or volatile qualifiers removed.
 template <typename T>
-using get_element_t_remove_cv = std::remove_cv_t<get_element_t<T>>;
+using get_element_remove_cv_t = std::remove_cv_t<get_element_t<T>>;
 
 }  // namespace detail
 

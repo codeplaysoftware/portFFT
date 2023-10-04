@@ -530,8 +530,8 @@ template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx Num
 PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, InputT input, DestT output, TDstIdx stride_1,
                                      TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, TDstIdx stride_3, TDstIdx offset_3,
                                      Idx bank_lines_per_pad) {
-  static_assert(std::is_same_v<detail::get_element_t_remove_cv<InputT>, detail::get_element_t<DestT>>,
-                "Type mismatch between input and output views");
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<InputT>, detail::get_element_t<DestT>>,
+                "Type mismatch between local and private views");
   static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
                 ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
