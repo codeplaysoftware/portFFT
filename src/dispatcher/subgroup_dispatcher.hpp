@@ -26,6 +26,7 @@
 #include <common/logging.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
 

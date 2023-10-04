@@ -25,6 +25,7 @@
 #include <common/twiddle.hpp>
 #include <common/twiddle_calc.hpp>
 #include <common/workitem.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 

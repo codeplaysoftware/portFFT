@@ -23,6 +23,7 @@
 
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
 

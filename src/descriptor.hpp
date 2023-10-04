@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 
 #include <sycl/sycl.hpp>

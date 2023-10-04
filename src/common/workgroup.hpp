@@ -24,6 +24,7 @@
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
 #include <common/subgroup.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 
 namespace portfft {

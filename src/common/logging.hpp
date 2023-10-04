@@ -21,7 +21,7 @@
 #ifndef PORTFFT_COMMON_LOGGING_HPP
 #define PORTFFT_COMMON_LOGGING_HPP
 
-#include <common/helpers.hpp>
+#include <defines.hpp>
 #include <sycl/sycl.hpp>
 
 namespace portfft::detail {

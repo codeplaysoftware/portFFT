@@ -21,21 +21,11 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
+#include <defines.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
-#ifdef PORTFFT_LOG
-#define PORTFFT_INLINE __attribute__((noinline))
-#else
-#define PORTFFT_INLINE __attribute__((always_inline))
-#endif
-
-namespace portfft {
-
-using Idx = int;
-using IdxGlobal = long long;
-
-namespace detail {
+namespace portfft::detail {
 
 /**
  * Implements a loop that will be fully unrolled.
@@ -137,7 +127,6 @@ PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, con
   output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
-};  // namespace detail
-};  // namespace portfft
+};  // namespace portfft::detail
 
 #endif
