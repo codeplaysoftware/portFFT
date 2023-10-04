@@ -84,9 +84,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }
   constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
-  std::vector<std::complex<FType>> host_input(num_elements);
   std::vector<std::complex<FType>> host_input_transposed;
-  std::vector<std::complex<FType>> host_reference_output(num_elements);
   std::vector<std::complex<FType>> buffer(num_elements);
 
   auto device_input = sycl::malloc_device<std::complex<FType>>(num_elements, queue);
@@ -120,22 +118,13 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto [forward_data, backward_data] = gen_fourier_data(desc);
-
-  if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input = forward_data;
-    host_reference_output = backward_data;
-  } else {
-    host_input = backward_data;
-    host_reference_output = forward_data;
-  }
+  auto [host_input_raw, host_reference_output] = gen_fourier_data<Dir>(desc);
+  auto host_input = host_input_raw;
   if constexpr (IsBatchInterleaved) {
-    host_input_transposed = std::vector<std::complex<FType>>(num_elements);
-    transpose(host_input, host_input_transposed, params.batch, params.length);
+    transpose(host_input_raw, host_input, params.batch, params.length);
   }
 
-  auto copy_event =
-      queue.copy(IsBatchInterleaved ? host_input_transposed.data() : host_input.data(), device_input, num_elements);
+  auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
 
   sycl::event fft_event = [&]() {
     if constexpr (Place == placement::OUT_OF_PLACE) {
@@ -154,7 +143,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }();
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verify_dft(desc, host_reference_output, buffer, Dir, LayoutOut, 1e-3);
+  verify_dft<Dir>(desc, host_reference_output, buffer, LayoutOut, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -184,8 +173,6 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
   }
   constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
-  std::vector<std::complex<FType>> host_input_raw(num_elements);
-  std::vector<std::complex<FType>> host_reference_output(num_elements);
   std::vector<std::complex<FType>> buffer(num_elements);
 
   descriptor<FType, domain::COMPLEX> desc{{static_cast<unsigned long>(params.length)}};
@@ -214,14 +201,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto [forward_data, backward_data] = gen_fourier_data(desc);
-  if constexpr (Dir == portfft::direction::FORWARD) {
-    host_input_raw = forward_data;
-    host_reference_output = backward_data;
-  } else {
-    host_input_raw = backward_data;
-    host_reference_output = forward_data;
-  }
+  auto [host_input_raw, host_reference_output] = gen_fourier_data<Dir>(desc);
   std::vector<std::complex<FType>> host_input(host_input_raw);
   if constexpr (IsBatchInterleaved) {
     transpose(host_input_raw, host_input, params.batch, params.length);
@@ -248,7 +228,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       }
     }
   }
-  verify_dft(desc, host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, Dir, LayoutOut, 1e-3);
+  verify_dft<Dir>(desc, host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, LayoutOut, 1e-3);
 }
 
 #endif
