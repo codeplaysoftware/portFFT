@@ -40,6 +40,7 @@ namespace portfft {
 namespace detail {
 
 // kernel names
+// TODO: Remove all templates except Scalar, Domain and Memory
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
           detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
 class workitem_kernel;
@@ -523,7 +524,7 @@ class committed_descriptor {
         minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>() * sizeof(Scalar);
       }
       if (minimum_local_mem_required > local_memory_size) {
-        throw inadequate_local_memory_error(
+        throw out_of_local_memory_error(
             "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
             "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
       }

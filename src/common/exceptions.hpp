@@ -73,7 +73,7 @@ struct unsupported_configuration : public base_error {
  */
 struct out_of_local_memory_error : public unsupported_configuration {
   template <typename... Ts>
-  explicit out_of_local_memory_error(const Ts&... args) : base_error(args...) {}
+  explicit out_of_local_memory_error(const Ts&... args) : unsupported_configuration(args...) {}
 };
 
 };  // namespace portfft

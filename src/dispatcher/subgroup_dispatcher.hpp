@@ -270,8 +270,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                          "detail::layout::BATCH_INTERLEAVED");
           if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
             local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
-                global_data.it, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem,
-                global_data);
+                output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem, global_data);
           }
         }
       }

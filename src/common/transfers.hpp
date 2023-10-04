@@ -705,7 +705,6 @@ PORTFFT_INLINE void local_transposed2_global_transposed(T* global_base_ptr, T* l
   global_data.log_message_local(__func__,
                                 "Tranferring data from local to global memory with stride_global:", stride_global,
                                 " and local stride:", stride_local);
-  sycl::sub_group sg = global_data.it.get_sub_group();
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
     local_id = global_data.sg.get_local_linear_id();
@@ -751,8 +750,9 @@ PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, st
     std::size_t source_col = idx % N;
     std::size_t base_offset = detail::pad_local<Pad>(2 * source_col * M + 2 * source_row, BankLinesPerPad);
     std::size_t base_global_idx = idx * global_stride + global_offset;
-    global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", global_idx, global_idx + 1,
-                            "values = (", local_ptr[base_offset], ",", local_ptr[base_offset + 1], ")");
+    global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", base_global_idx,
+                            base_global_idx + 1, "values = (", local_ptr[base_offset], ",", local_ptr[base_offset + 1],
+                            ")");
     global_ptr[base_global_idx] = local_ptr[base_offset];
     global_ptr[base_global_idx + 1] = local_ptr[base_offset + 1];
   }
