@@ -612,11 +612,21 @@ class committed_descriptor {
 /**
  * A descriptor containing FFT problem parameters.
  *
- * @tparam Scalar type of the scalar used for computations
- * @tparam Domain domain of the FFT
+ * @tparam DescScalar type of the scalar used for computations
+ * @tparam DescDomain domain of the FFT
  */
-template <typename Scalar, domain Domain>
+template <typename DescScalar, domain DescDomain>
 struct descriptor {
+  /// Scalar type to determine the FFT precision.
+  using Scalar = DescScalar;
+  static_assert(std::is_floating_point_v<Scalar>, "Precision must be a scalar type");
+
+  /**
+   * FFT domain.
+   * Determines whether the input (resp. output) is real or complex in the forward (resp. backward) direction.
+   */
+  static constexpr domain Domain = DescDomain;
+
   /**
    * The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
    */
@@ -654,11 +664,13 @@ struct descriptor {
   /**
    * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
    * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> forward_strides;
   /**
    * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
    * forward_strides.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> backward_strides;
   /**
@@ -698,8 +710,75 @@ struct descriptor {
    */
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
 
-  std::size_t get_total_length() const noexcept {
+  /**
+   * Get the flattened length of an FFT for a single batch, ignoring strides and distance.
+   */
+  std::size_t get_flattened_length() const noexcept {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
+  }
+
+  /**
+   * Get the size of the input buffer for a given direction in terms of the number of elements.
+   * The number of elements is the same irrespective of the FFT domain.
+   * Takes into account the lengths, number of transforms, strides and direction.
+   *
+   * @param dir direction
+   */
+  std::size_t get_input_count(direction dir) const noexcept {
+    return get_buffer_count(get_strides(dir), get_distance(dir));
+  }
+
+  /**
+   * Get the size of the output buffer for a given direction in terms of the number of elements.
+   * The number of elements is the same irrespective of the FFT domain.
+   * Takes into account the lengths, number of transforms, strides and direction.
+   *
+   * @param dir direction
+   */
+  std::size_t get_output_count(direction dir) const noexcept { return get_input_count(inv(dir)); }
+
+  /**
+   * Return the strides for a given direction
+   *
+   * @param dir direction
+   */
+  const std::vector<std::size_t>& get_strides(direction dir) const noexcept {
+    return dir == direction::FORWARD ? forward_strides : backward_strides;
+  }
+
+  /**
+   * Return the distance for a given direction
+   *
+   * @param dir direction
+   */
+  std::size_t get_distance(direction dir) const noexcept {
+    return dir == direction::FORWARD ? forward_distance : backward_distance;
+  }
+
+  /**
+   * Return the scale for a given direction
+   *
+   * @param dir direction
+   */
+  Scalar get_scale(direction dir) const noexcept { return dir == direction::FORWARD ? forward_scale : backward_scale; }
+
+ private:
+  /**
+   * Compute the number of elements required for a buffer with the descriptor's length, number of transforms and the
+   * given strides and distance.
+   * The number of elements is the same irrespective of the FFT domain.
+   *
+   * @param strides buffer's strides
+   * @param distance buffer's distance
+   */
+  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance) const noexcept {
+    // Compute the last element that can be accessed
+    // TODO: Take into account offset
+    std::size_t last_elt_idx = (number_of_transforms - 1) * distance;
+    for (std::size_t i = 0; i < lengths.size(); ++i) {
+      last_elt_idx += (lengths[i] - 1) * strides[i];
+    }
+    return last_elt_idx + 1;
   }
 };
 
