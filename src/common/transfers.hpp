@@ -89,7 +89,9 @@ class global_local_copy_helper {
   static_assert(std::is_same_v<std::remove_cv_t<RealT>, RealT>, "RealT should not be const or volatile qualified");
 
   /// Pad local with baked-in arguments.
-  static PORTFFT_INLINE std::size_t padder(Idx local_idx) { return pad_local<Pad>(local_idx, BankLinesPerPad); }
+  static PORTFFT_INLINE std::size_t apply_padding(Idx local_idx) {
+    return pad_local<Pad>(local_idx, BankLinesPerPad);
+  }
 
  public:
   using real_type = RealT;
@@ -126,14 +128,14 @@ class global_local_copy_helper {
                                      global_offset, "local_offset", local_offset, "IsSgContiguous", IsSgContiguous);
     Idx local_id = global_data.sg.get_local_linear_id();
     // A helper function to generate indexes in local memory.
-    auto indexer = [=](Idx i) __attribute__((always_inline)) {
-      return padder(local_offset + i * SubgroupSize + local_id);
+    auto indexer = [=](Idx i) PORTFFT_INLINE {
+      return apply_padding(local_offset + i * SubgroupSize + local_id);
     };
     if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
       vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
-      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
         if constexpr (IsSgContiguous) {
-          global_data.sg.store(detail::get_local_multi_ptr(&local[padder(local_offset + j * SubgroupSize)]),
+          global_data.sg.store(detail::get_local_multi_ptr(&local[apply_padding(local_offset + j * SubgroupSize)]),
                                vec[static_cast<int>(j)]);
         } else {
           local[indexer(j)] = vec[static_cast<int>(j)];
@@ -141,10 +143,10 @@ class global_local_copy_helper {
       });
     } else {
       vec_t vec;
-      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) __attribute__((always_inline)) {
+      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
         if constexpr (IsSgContiguous) {
           vec[static_cast<int>(j)] =
-              global_data.sg.load(detail::get_local_multi_ptr(&local[padder(local_offset + j * SubgroupSize)]));
+              global_data.sg.load(detail::get_local_multi_ptr(&local[apply_padding(local_offset + j * SubgroupSize)]));
         } else {
           vec[static_cast<int>(j)] = local[indexer(j)];
         }
@@ -225,18 +227,16 @@ class global_local_copy_helper {
                                           "copy_block_size", ChunkSize * group.get_local_range()[0]);
     Idx local_id = group.get_local_id()[0];
     Idx wi_offset = local_id * ChunkSize;
-    auto indexer = [=](Idx i) PORTFFT_INLINE { return padder(local_offset + wi_offset + i); };
+    auto indexer = [=](Idx i) PORTFFT_INLINE { return apply_padding(local_offset + wi_offset + i); };
     if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
       vec_t loaded;
       loaded = *reinterpret_cast<const vec_t*>(&global[global_offset + wi_offset]);
-      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) __attribute__((always_inline)) {
-        local[indexer(j)] = loaded[static_cast<int>(j)];
-      });
+      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j)
+                                                 PORTFFT_INLINE { local[indexer(j)] = loaded[static_cast<int>(j)]; });
     } else {
       vec_t to_store;
-      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) __attribute__((always_inline)) {
-        to_store[static_cast<int>(j)] = local[indexer(j)];
-      });
+      detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j)
+                                                 PORTFFT_INLINE { to_store[static_cast<int>(j)] = local[indexer(j)]; });
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset]) = to_store;
     }
     return ChunkSize * group.get_local_range()[0];
@@ -266,9 +266,9 @@ class global_local_copy_helper {
     Idx local_id = group.get_local_id()[0];
     if (local_id < n) {
       if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-        local[padder(local_offset + local_id)] = global[global_offset + local_id];
+        local[apply_padding(local_offset + local_id)] = global[global_offset + local_id];
       } else {
-        global[global_offset + local_id] = local[padder(local_offset + local_id)];
+        global[global_offset + local_id] = local[apply_padding(local_offset + local_id)];
       }
     }
     return n;
@@ -300,9 +300,11 @@ class global_local_copy_helper {
                                           n);
     for (Idx j = 0; j < loop_iters; j++) {
       if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-        local[padder(local_offset + local_id + j * local_size)] = global[global_offset + local_id + j * local_size];
+        local[apply_padding(local_offset + local_id + j * local_size)] =
+            global[global_offset + local_id + j * local_size];
       } else {
-        global[global_offset + local_id + j * local_size] = local[padder(local_offset + local_id + j * local_size)];
+        global[global_offset + local_id + j * local_size] =
+            local[apply_padding(local_offset + local_id + j * local_size)];
       }
     }
     Idx loop_copies = loop_iters * local_size;
