@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
+#include <defines.hpp>
 #include <enums.hpp>
 #include <utils.hpp>
 
@@ -42,13 +43,13 @@ namespace detail {
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
 class workitem_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
 class subgroup_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int SubgroupSize>
+          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail
@@ -101,15 +102,15 @@ class committed_descriptor {
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
-  std::size_t n_compute_units;
+  Idx n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
-  int used_sg_size;
+  Idx used_sg_size;
   std::shared_ptr<Scalar> twiddles_forward;
   detail::level level;
-  std::vector<int> factors;
+  std::vector<Idx> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
-  std::size_t num_sgs_per_wg;
-  std::size_t local_memory_size;
+  Idx num_sgs_per_wg;
+  Idx local_memory_size;
 
   template <typename Impl, typename... Args>
   auto dispatch(Args&&... args) {
@@ -147,7 +148,7 @@ class committed_descriptor {
    * @param[out] ids list of kernel ids that need to be JIT compiled
    * @return detail::level
    */
-  template <int SubgroupSize>
+  template <Idx SubgroupSize>
   detail::level prepare_implementation(std::vector<sycl::kernel_id>& ids) {
     factors.clear();
 
@@ -158,7 +159,7 @@ class committed_descriptor {
     if (params.lengths.size() != 1) {
       throw unsupported_configuration("portFFT only supports 1D FFT for now");
     }
-    std::size_t fft_size = params.lengths[0];
+    IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[0]);
     if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
       throw unsupported_configuration("FFT size ", fft_size, " is not compiled in!");
     }
@@ -167,9 +168,9 @@ class committed_descriptor {
       detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKITEM;
     }
-    int factor_sg = detail::factorize_sg(static_cast<int>(fft_size), SubgroupSize);
-    int factor_wi = static_cast<int>(fft_size) / factor_sg;
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+      Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
+      Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
@@ -177,12 +178,13 @@ class committed_descriptor {
       detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
-    std::size_t n = detail::factorize(fft_size);
-    std::size_t m = fft_size / n;
-    int factor_sg_n = detail::factorize_sg(static_cast<int>(n), SubgroupSize);
-    int factor_wi_n = static_cast<int>(n) / factor_sg_n;
-    int factor_sg_m = detail::factorize_sg(static_cast<int>(m), SubgroupSize);
-    int factor_wi_m = static_cast<int>(m) / factor_sg_m;
+    IdxGlobal n_idx_global = detail::factorize(fft_size);
+    Idx n = static_cast<Idx>(n_idx_global);
+    Idx m = static_cast<Idx>(fft_size / n_idx_global);
+    Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
+    Idx factor_wi_n = n / factor_sg_n;
+    Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
+    Idx factor_wi_m = m / factor_sg_m;
     if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
       factors.push_back(factor_wi_n);
       factors.push_back(factor_sg_n);
@@ -232,7 +234,7 @@ class committed_descriptor {
    * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg`
    * to make the problem fit in the local memory.
    *
-   * @return std::size_t the number of scalars
+   * @return the number of scalars
    */
   template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem() {
@@ -264,7 +266,7 @@ class committed_descriptor {
    * @tparam OtherSGSizes other subgroup sizes
    * @return sycl::kernel_bundle<sycl::bundle_state::executable>
    */
-  template <int SubgroupSize, int... OtherSGSizes>
+  template <Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::kernel_bundle<sycl::bundle_state::executable> build_w_spec_const() {
     // This function is called from constructor initializer list and it accesses other data members of the class. These
     // are already initialized by the time this is called only if they are declared in the class definition before the
@@ -303,14 +305,14 @@ class committed_descriptor {
         dev(queue.get_device()),
         ctx(queue.get_context()),
         // get some properties we will use for tunning
-        n_compute_units(dev.get_info<sycl::info::device::max_compute_units>()),
+        n_compute_units(static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>())),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         // compile the kernels
         exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
     // get some properties we will use for tuning
-    n_compute_units = dev.get_info<sycl::info::device::max_compute_units>();
-    local_memory_size = queue.get_device().get_info<sycl::info::device::local_mem_size>();
+    n_compute_units = static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>());
+    local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);
@@ -501,7 +503,7 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, typename TIn, typename TOut, int SubgroupSize, int... OtherSGSizes>
+  template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
     if (SubgroupSize == used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
@@ -523,7 +525,7 @@ class committed_descriptor {
       } else {
         minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>() * sizeof(Scalar);
       }
-      if (minimum_local_mem_required > local_memory_size) {
+      if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
         throw out_of_local_memory_error(
             "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
             "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
@@ -563,7 +565,7 @@ class committed_descriptor {
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
+  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
             typename TOut>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
@@ -589,7 +591,7 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
+  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
             typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
     return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn, TOut>>(in, out, scale_factor,
@@ -602,11 +604,21 @@ class committed_descriptor {
 /**
  * A descriptor containing FFT problem parameters.
  *
- * @tparam Scalar type of the scalar used for computations
- * @tparam Domain domain of the FFT
+ * @tparam DescScalar type of the scalar used for computations
+ * @tparam DescDomain domain of the FFT
  */
-template <typename Scalar, domain Domain>
+template <typename DescScalar, domain DescDomain>
 struct descriptor {
+  /// Scalar type to determine the FFT precision.
+  using Scalar = DescScalar;
+  static_assert(std::is_floating_point_v<Scalar>, "Precision must be a scalar type");
+
+  /**
+   * FFT domain.
+   * Determines whether the input (resp. output) is real or complex in the forward (resp. backward) direction.
+   */
+  static constexpr domain Domain = DescDomain;
+
   /**
    * The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
    */
@@ -644,11 +656,13 @@ struct descriptor {
   /**
    * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
    * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> forward_strides;
   /**
    * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
    * forward_strides.
+   * Strides do not include the offset.
    */
   std::vector<std::size_t> backward_strides;
   /**
@@ -688,8 +702,75 @@ struct descriptor {
    */
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
 
-  std::size_t get_total_length() const noexcept {
+  /**
+   * Get the flattened length of an FFT for a single batch, ignoring strides and distance.
+   */
+  std::size_t get_flattened_length() const noexcept {
     return std::accumulate(lengths.begin(), lengths.end(), 1LU, std::multiplies<std::size_t>());
+  }
+
+  /**
+   * Get the size of the input buffer for a given direction in terms of the number of elements.
+   * The number of elements is the same irrespective of the FFT domain.
+   * Takes into account the lengths, number of transforms, strides and direction.
+   *
+   * @param dir direction
+   */
+  std::size_t get_input_count(direction dir) const noexcept {
+    return get_buffer_count(get_strides(dir), get_distance(dir));
+  }
+
+  /**
+   * Get the size of the output buffer for a given direction in terms of the number of elements.
+   * The number of elements is the same irrespective of the FFT domain.
+   * Takes into account the lengths, number of transforms, strides and direction.
+   *
+   * @param dir direction
+   */
+  std::size_t get_output_count(direction dir) const noexcept { return get_input_count(inv(dir)); }
+
+  /**
+   * Return the strides for a given direction
+   *
+   * @param dir direction
+   */
+  const std::vector<std::size_t>& get_strides(direction dir) const noexcept {
+    return dir == direction::FORWARD ? forward_strides : backward_strides;
+  }
+
+  /**
+   * Return the distance for a given direction
+   *
+   * @param dir direction
+   */
+  std::size_t get_distance(direction dir) const noexcept {
+    return dir == direction::FORWARD ? forward_distance : backward_distance;
+  }
+
+  /**
+   * Return the scale for a given direction
+   *
+   * @param dir direction
+   */
+  Scalar get_scale(direction dir) const noexcept { return dir == direction::FORWARD ? forward_scale : backward_scale; }
+
+ private:
+  /**
+   * Compute the number of elements required for a buffer with the descriptor's length, number of transforms and the
+   * given strides and distance.
+   * The number of elements is the same irrespective of the FFT domain.
+   *
+   * @param strides buffer's strides
+   * @param distance buffer's distance
+   */
+  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance) const noexcept {
+    // Compute the last element that can be accessed
+    // TODO: Take into account offset
+    std::size_t last_elt_idx = (number_of_transforms - 1) * distance;
+    for (std::size_t i = 0; i < lengths.size(); ++i) {
+      last_elt_idx += (lengths[i] - 1) * strides[i];
+    }
+    return last_elt_idx + 1;
   }
 };
 
