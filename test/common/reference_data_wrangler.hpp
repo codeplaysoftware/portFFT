@@ -27,7 +27,9 @@
 #include <complex>
 #include <cstdio>
 #include <exception>
+#include <iostream>
 #include <numeric>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -55,36 +57,38 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
   const auto batches = desc.number_of_transforms;
   const auto& dims = desc.lengths;
 
-  std::string command =
+  const char* header =
       "python3 -c \""
       "import numpy as np;"
-      "from sys import stdout;";
-  command.append("batch = ").append(std::to_string(batches)).append(";");
-  command.append("dims = [");
+      "from sys import stdout;"
+      "\ndef gen_data(batch,dims,is_complex):\n"
+      "  dataGenDims = [batch] + dims;"
+      "  inData = np.random.uniform(-1, 1, dataGenDims).astype(np.double);"
+      "\n  if (is_complex):\n"
+      "    inData = inData + 1j * np.random.uniform(-1, 1, dataGenDims).astype(np.double);\n"
+      "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1));"
+      "  inData.reshape(-1, 1);"
+      "  outData.reshape(-1, 1);"
+      "  stdout.buffer.write(inData.tobytes());"
+      "  stdout.buffer.write(outData.tobytes());\n"
+      "gen_data(";
+
+  std::stringstream command;
+  command << header;
+
+  command << batches << ',';
+
   assert(dims.size() > 0);
-  command.append(std::to_string(dims[0]));
+  command << "[" << dims[0];
   for (auto itr = dims.cbegin() + 1; itr < dims.cend(); itr += 1) {
-    command.append(",").append(std::to_string(*itr));
+    command << "," << *itr;
   }
-  command.append("];");
+  command << "],";
 
-  command.append(
-      "dataGenDims = [batch] + dims;"
-      "inData = np.random.uniform(-1, 1, dataGenDims).astype(np.double);");
+  command << (IsRealDomain ? "False" : "True");
+  command << ");\"";
 
-  if (!IsRealDomain) {
-    command.append("inData = inData + 1j * np.random.uniform(-1, 1, dataGenDims).astype(np.double);");
-  }
-
-  command.append(
-      "outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1));"
-      "inData.reshape(-1, 1);"
-      "outData.reshape(-1, 1);"
-      "stdout.buffer.write(inData.tobytes());"
-      "stdout.buffer.write(outData.tobytes());"
-      "\"");
-
-  FILE* f = popen(command.c_str(), "r");
+  FILE* f = popen(command.str().c_str(), "r");
   if (f == nullptr) {
     throw std::runtime_error("Command to create reference data failed\n");
   }
