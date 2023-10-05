@@ -236,7 +236,7 @@ struct global_data_struct {
 
   /**
    * Logs a message with a single message from the selected level. Can log multiple objects/strings. They will be
-   * separated by spaces. Also outputs info on the calling level.
+   * separated by spaces. Also outputs info on the calling level. Does not support DEVICE level.
    *
    * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
    *
@@ -246,15 +246,16 @@ struct global_data_struct {
    */
   template <level Level, typename... Ts>
   PORTFFT_INLINE void log_message_scoped([[maybe_unused]] Ts... messages) {
+    static_assert(Level == level::WORKITEM || Level == level::SUBGROUP || Level == level::WORKGROUP,
+                  "Only WORKITEM, SUBGROUP and WORKGROUP levels are supported");
     if constexpr (Level == level::WORKITEM) {
       log_message(messages...);
     } else if constexpr (Level == level::SUBGROUP) {
       log_message_subgroup(messages...);
     } else if constexpr (Level == level::WORKGROUP) {
       log_message_local(messages...);
-    } else if constexpr (Level == level::DEVICE) {
-      log_message_global(messages...);
     }
+    // DEVICE is not supported because log_message_global uses PORTFFT_LOG_TRACE instead of PORTFFT_LOG_TRANSFERS.
   }
 };
 
