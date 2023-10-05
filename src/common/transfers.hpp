@@ -102,7 +102,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
                                    global_offset, "local_offset", local_offset, "IsSgContiguous", IsSgContiguous);
   Idx local_id = global_data.sg.get_local_linear_id();
   // A helper function to generate indexes in local memory.
-  auto indexer = [=](Idx i) PORTFFT_INLINE {
+  auto index_transform = [=](Idx i) PORTFFT_INLINE {
     return pad_local<Pad>(local_offset + i * SubgroupSize + local_id, BankLinesPerPad);
   };
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
@@ -113,7 +113,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
             detail::get_local_multi_ptr(&local[pad_local<Pad>(local_offset + j * SubgroupSize, BankLinesPerPad)]),
             vec[static_cast<int>(j)]);
       } else {
-        local[indexer(j)] = vec[static_cast<int>(j)];
+        local[index_transform(j)] = vec[static_cast<int>(j)];
       }
     });
   } else {
@@ -123,7 +123,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
         vec[static_cast<int>(j)] = global_data.sg.load(
             detail::get_local_multi_ptr(&local[pad_local<Pad>(local_offset + j * SubgroupSize, BankLinesPerPad)]));
       } else {
-        vec[static_cast<int>(j)] = local[indexer(j)];
+        vec[static_cast<int>(j)] = local[index_transform(j)];
       }
     });
     global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
@@ -226,7 +226,7 @@ static PORTFFT_INLINE IdxGlobal vec_aligned_group_block_copy(detail::global_data
   Idx block_count = n / block_size;
   Idx local_id = group.get_local_id()[0];
   Idx wi_offset = local_id * ChunkSize;
-  auto indexer = [=](Idx inner, Idx outer) PORTFFT_INLINE {
+  auto index_transform = [=](Idx inner, Idx outer) PORTFFT_INLINE {
     return pad_local<Pad>(local_offset + wi_offset + inner + outer * block_size, BankLinesPerPad);
   };
   for (Idx loop_idx{0}; loop_idx < block_count; ++loop_idx) {
@@ -234,11 +234,11 @@ static PORTFFT_INLINE IdxGlobal vec_aligned_group_block_copy(detail::global_data
       vec_t loaded;
       loaded = *reinterpret_cast<const vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]);
       detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { local[indexer(j, loop_idx)] = loaded[static_cast<int>(j)]; });
+          [&](Idx j) PORTFFT_INLINE { local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)]; });
     } else {  // LOCAL_TO_GLOBAL
       vec_t to_store;
       detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { to_store[static_cast<int>(j)] = local[indexer(j, loop_idx)]; });
+          [&](Idx j) PORTFFT_INLINE { to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)]; });
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]) = to_store;
     }
   }
