@@ -56,6 +56,19 @@ struct global_data_struct {
         sg(it.get_sub_group()) {
   }
 
+  /** Get the group for this work-item associated with a level.
+   */
+  template <level Level>
+  __attribute__((always_inline)) inline auto get_group() {
+    static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP,
+                  "No group associated with WORKITEM or DEVICE levels");
+    if constexpr (Level == level::SUBGROUP) {
+      return sg;
+    } else {
+      return it.get_group();
+    }
+  }
+
 #ifdef PORTFFT_LOG
   /**
    * Logs ids of workitem, subgroup and workgroup.
