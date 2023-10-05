@@ -65,8 +65,8 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
- * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
+ * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
  * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
@@ -87,9 +87,9 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
-          detail::apply_scale_factor ApplyScaleFactor, Idx FactorWI, Idx FactorSG, Idx SubgroupSize, typename T>
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, detail::elementwise_multiply MultiplyOnLoad,
+          detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx FactorWI,
+          Idx FactorSG, Idx SubgroupSize, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
                                   global_data_struct global_data, const T* twiddles, T scaling_factor,
                                   const T* load_modifier_data, const T* store_modifier_data, T* loc_load_modifier,
@@ -161,13 +161,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         return static_cast<Idx>(n_transforms - i);
       }();
       Idx rounded_up_sub_batches = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
-      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+      if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading load multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, load_modifier_data, loc_load_modifier, n_reals_per_fft * num_batches_in_local_mem,
             i * n_reals_per_fft);
       }
-      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
+      if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, store_modifier_data, loc_store_modifier, n_reals_per_fft * num_batches_in_local_mem,
@@ -192,7 +192,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               global_data, loc, priv, id_of_wi_in_fft, sub_batch, max_num_batches_local_mem);
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
-        if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+        if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
           // Note: if using load modifier, this data need to be stored in the transposed fashion per batch to ensure
           // low latency reads from shared memory, as this will result in much lesser bank conflicts.
           // Tensor shape for load modifier in local memory = num_batches_in_local_mem x  FactorWI x FactorSG
@@ -212,7 +212,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
         }
-        if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
+        if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
           // No need to store the store modifier data in a transposed fashion as data after sg_dft is already transposed
           // Tensor Shape for store modifier is num_batches_in_local_memory x FactorSG x FactorWI
           global_data.log_message_global(__func__, "multiplying store modifier data");
@@ -284,13 +284,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
           static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
           subgroup_id * n_reals_per_sg);
-      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+      if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading load modifier data");
         global2local<detail::level::SUBGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, load_modifier_data, loc_load_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
             n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
-      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
+      if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store modifier data");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
             global_data, store_modifier_data, loc_store_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
@@ -304,7 +304,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
       }
       sycl::group_barrier(global_data.sg);
-      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+      if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         if (working) {
           global_data.log_message_global(__func__, "Multiplying load modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
@@ -320,7 +320,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, NRealsPerWI);
       }
-      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
+      if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         if (working) {
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) {
@@ -390,8 +390,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @tparam SubgroupSize size of the subgroup
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
- * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
+ * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam T type of the scalar used for computations
  * @tparam SizeList The list of sizes that will be specialized.
@@ -412,9 +412,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
-          detail::apply_scale_factor ApplyScaleFactor, Idx SubgroupSize, typename T, typename SizeList>
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, detail::elementwise_multiply MultiplyOnLoad,
+          detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx SubgroupSize,
+          typename T, typename SizeList>
 PORTFFT_INLINE void subgroup_dispatch_impl(Idx factor_wi, Idx factor_sg, const T* input, T* output, T* loc,
                                            T* loc_twiddles, IdxGlobal n_transforms, global_data_struct global_data,
                                            const T* twiddles, T scaling_factor, const T* load_modifier_data = nullptr,
@@ -428,14 +428,14 @@ PORTFFT_INLINE void subgroup_dispatch_impl(Idx factor_wi, Idx factor_sg, const T
     constexpr Idx CtFactorWi = ThisSize / CtFactorSg;
     if (factor_sg * factor_wi == ThisSize) {
       if constexpr (!fits_in_wi<T>(ThisSize) && fits_in_wi<T>(CtFactorWi) && (CtFactorSg <= SubgroupSize)) {
-        detail::subgroup_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
-                              CtFactorWi, CtFactorSg, SubgroupSize>(
-            input, output, loc, loc_twiddles, n_transforms, global_data, twiddles, scaling_factor, load_modifier_data,
-            store_modifier_data, loc_load_modifier, loc_store_modifier);
+        detail::subgroup_impl<Dir, LayoutIn, LayoutOut, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, CtFactorWi,
+                              CtFactorSg, SubgroupSize>(input, output, loc, loc_twiddles, n_transforms, global_data,
+                                                        twiddles, scaling_factor, load_modifier_data,
+                                                        store_modifier_data, loc_load_modifier, loc_store_modifier);
       }
     } else {
-      subgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
-                             SubgroupSize, T, typename SizeList::child_t>(
+      subgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, SubgroupSize,
+                             T, typename SizeList::child_t>(
           factor_wi, factor_sg, input, output, loc, loc_twiddles, n_transforms, global_data, twiddles, scaling_factor,
           load_modifier_data, store_modifier_data, loc_load_modifier, loc_store_modifier);
     }
@@ -494,8 +494,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::subgroup_kernel<
-          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
-          detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
+          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
+          detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx factor_wi = kh.get_specialization_constant<detail::FactorWISpecConst>();
@@ -506,8 +506,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running subgroup kernel");
-            detail::subgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
-                                           detail::apply_store_modifier::NOT_APPLIED,
+            detail::subgroup_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
+                                           detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                            detail::cooley_tukey_size_list_t>(
                 factor_wi, factor_sg, &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc_twiddles[0], n_transforms,

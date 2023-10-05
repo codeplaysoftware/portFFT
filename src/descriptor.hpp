@@ -43,13 +43,13 @@ namespace detail {
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workitem_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class subgroup_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, Idx SubgroupSize>
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail
