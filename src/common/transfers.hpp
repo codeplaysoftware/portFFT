@@ -720,7 +720,7 @@ PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_stru
 
   for (Idx i = 0; i < num_complex; i++) {
     Idx local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
-    IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id + 2 * i) * stride_global;
+    IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + static_cast<IdxGlobal>(2 * i) * stride_global;
     global_data.log_message(__func__, "from", local_index, "to", global_index, "value", local_ptr[local_index]);
     global_base_ptr[global_index] = local_ptr[local_index];
   }

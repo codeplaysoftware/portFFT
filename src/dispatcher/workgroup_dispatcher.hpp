@@ -147,8 +147,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         } else {
           IdxGlobal current_batch = offset / (2 * FFTSize);
           local2strides_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(
-              global_data, output, loc, 2 * n_transforms, 2 * current_batch, max_num_batches_in_local_mem, FFTSize, N,
-              M);
+              global_data, output, loc, 2 * n_transforms, 2 * current_batch, 2 * max_num_batches_in_local_mem, FFTSize,
+              N, M);
         }
       }
       sycl::group_barrier(global_data.it.get_group());
