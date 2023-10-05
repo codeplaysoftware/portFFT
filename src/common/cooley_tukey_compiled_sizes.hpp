@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
 #define PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
 #include <cstdint>
+#include <defines.hpp>
 
 namespace portfft::detail {
 
