@@ -151,7 +151,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
-      global_data.log_dump_local("Load Modifier data in local Memory:", loc_store_modifier, NReals * n_working);
+      global_data.log_dump_local("Store Modifier data in local Memory:", loc_store_modifier, NReals * n_working);
     }
 
     sycl::group_barrier(global_data.sg);

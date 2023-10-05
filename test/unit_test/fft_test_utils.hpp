@@ -194,14 +194,14 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
       desc.forward_distance = 1;
     }
     if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
-      desc.backward_distance = 1;
       desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.backward_distance = 1;
     }
   }
   if constexpr (Dir == direction::BACKWARD) {
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
-      desc.backward_distance = 1;
       desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.backward_distance = 1;
     }
     if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};

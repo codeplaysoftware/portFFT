@@ -143,12 +143,12 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
           // local2global_transposed cannot be used over here. This is because the data in the local memory is also
           // stored in a strided fashion.
           local_strided_2_global_strided_transposed<detail::pad::DO_PAD>(
-              loc, output, offset, 2 * max_num_batches_in_local_mem, N, M, FFTSize, BankLinesPerPad, global_data);
+              global_data, loc, output, offset, 2 * max_num_batches_in_local_mem, N, M, FFTSize, BankLinesPerPad);
         } else {
           std::size_t current_batch = offset / (2 * FFTSize);
           local2strides_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(
-              output, loc, 2 * n_transforms, 2 * current_batch, max_num_batches_in_local_mem, FFTSize, N, M,
-              global_data);
+              global_data, output, loc, 2 * n_transforms, 2 * current_batch, max_num_batches_in_local_mem, FFTSize, N,
+              M);
         }
       }
       sycl::group_barrier(global_data.it.get_group());
@@ -167,8 +167,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(global_data, N, M, M, loc, output, offset);
       } else {
         std::size_t current_batch = offset / (2 * FFTSize);
-        localstrided_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(
-            output, loc, 2 * n_transforms, 2 * current_batch, FFTSize, N, M, global_data);
+        localstrided_2global_strided<detail::pad::DO_PAD, BankLinesPerPad>(global_data, output, loc, 2 * n_transforms,
+                                                                           2 * current_batch, FFTSize, N, M);
       }
       sycl::group_barrier(global_data.it.get_group());
     }

@@ -599,8 +599,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @tparam TransferDirection Direction of Transfer
  *
  * @param global_data global data for the kernel
- * @param input Pointer to private memory
- * @param output Pointer to local memory
+ * @param input Input Pointer
+ * @param output Output Pointer
  * @param stride_1 Innermost stride
  * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
@@ -648,6 +648,7 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
  * @tparam Pad Whether or not to pad local memory
  * @tparam T Scalar type
  *
+ * @param global_data global data for the kernel
  * @param loc Pointer to local memory
  * @param global Pointer to global memory
  * @param global_offset Offset to global memory
@@ -656,13 +657,12 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
  * @param M Number of Columns
  * @param fft_size Size of the problem
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
- * @param global_data global data for the kernel
  */
 template <detail::pad Pad, typename T>
-PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global, std::size_t global_offset,
-                                                              std::size_t local_stride, std::size_t N, std::size_t M,
-                                                              std::size_t fft_size, std::size_t bank_lines_per_pad,
-                                                              detail::global_data_struct global_data) {
+PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, T* loc, T* global,
+                                                              std::size_t global_offset, std::size_t local_stride,
+                                                              std::size_t N, std::size_t M, std::size_t fft_size,
+                                                              std::size_t bank_lines_per_pad) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "global_offset", global_offset, "local_stride", local_stride, "N", N, "M", M,
                                 "fft_size", fft_size);
@@ -688,22 +688,21 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam T Scalar Type
  *
- * @param it Associated nd_item
+ * @param global_data  global data for the kernel
  * @param global_base_ptr Global Pointer
  * @param local_ptr Local Pointer
  * @param offset Offset from which the strided loads would begin
  * @param num_complex Number of complex numbers per workitem
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
- * @param global_data  global data for the kernel
  */
 template <detail::pad Pad, detail::level Level, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local_transposed2_global_transposed(T* global_base_ptr, T* local_ptr, std::size_t offset,
-                                                        std::size_t num_complex, std::size_t stride_global,
-                                                        std::size_t stride_local,
-                                                        detail::global_data_struct global_data) {
+PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_struct global_data, T* global_base_ptr,
+                                                        T* local_ptr, std::size_t offset, std::size_t num_complex,
+                                                        std::size_t stride_global, std::size_t stride_local) {
   global_data.log_message_local(__func__,
                                 "Tranferring data from local to global memory with stride_global:", stride_global,
+                                " global offset = ", offset, "number of elements per workitem = ", num_complex,
                                 " and local stride:", stride_local);
   std::size_t local_id;
   if constexpr (Level == detail::level::SUBGROUP) {
@@ -728,6 +727,8 @@ PORTFFT_INLINE void local_transposed2_global_transposed(T* global_base_ptr, T* l
  * @tparam Pad Whether or not Padding is to be applied
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  * @tparam T Pointer type to local and global
+ *
+ * @param global_data global data for the kernel
  * @param global_ptr Pointer to global memory
  * @param local_ptr Pointer to local memory
  * @param global_stride Stride applicable to global memory
@@ -735,12 +736,11 @@ PORTFFT_INLINE void local_transposed2_global_transposed(T* global_base_ptr, T* l
  * @param num_elements Total number of elements to be transferred
  * @param N Viewing num_elements as product of two factors, N being the first factor
  * @param M Viewing num_elements as product of two factors, M being the second factor
- * @param global_data global data for the kernel
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, std::size_t global_stride,
-                                                 std::size_t global_offset, std::size_t num_elements, std::size_t N,
-                                                 std::size_t M, detail::global_data_struct global_data) {
+PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+                                                 std::size_t global_stride, std::size_t global_offset,
+                                                 std::size_t num_elements, std::size_t N, std::size_t M) {
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset);
   std::size_t start_index = global_data.it.get_local_linear_id();
@@ -767,6 +767,8 @@ PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, st
  * @tparam Pad Whether or not Padding is to be applied
  * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  * @tparam T Pointer type to local and global
+ *
+ * @param global_data global data for the kernel
  * @param global_ptr Pointer to global memory
  * @param local_ptr Pointer to local memory
  * @param global_stride Stride applicable to global memory
@@ -775,13 +777,12 @@ PORTFFT_INLINE void localstrided_2global_strided(T* global_ptr, T* local_ptr, st
  * @param num_elements Total number of elements to be transferred per workitem
  * @param N Viewing num_elements as product of two factors, N being the first factor
  * @param M Viewing num_elements as product of two factors, M being the second factor
- * @param global_data global data for the kernel
  */
 template <detail::pad Pad, std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2strides_2global_strided(T* global_ptr, T* local_ptr, std::size_t global_stride,
-                                                  std::size_t global_offset, std::size_t local_stride,
-                                                  std::size_t num_elements, std::size_t N, std::size_t M,
-                                                  detail::global_data_struct global_data) {
+PORTFFT_INLINE void local2strides_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+                                                  std::size_t global_stride, std::size_t global_offset,
+                                                  std::size_t local_stride, std::size_t num_elements, std::size_t N,
+                                                  std::size_t M) {
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset, " local stride = ", local_stride);
   for (std::size_t idx = 0; idx < num_elements; idx++) {

@@ -197,7 +197,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           // Tensor shape for load modifier in local memory = num_batches_in_local_mem x  FactorWI x FactorSG
           // TODO: change the above mentioned layout to the following tenshor shape: num_batches_in_local_mem x
           // n_ffts_in_sg x FactorWI x FactorSG
-          global_data.log_message_global(__func__, "applying load modifier data");
+          global_data.log_message_global(__func__, "multiplying load modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) PORTFFT_INLINE {
               std::size_t base_offset = detail::pad_local(
@@ -214,7 +214,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
           // No need to store the store modifier data in a transposed fashion as data after sg_dft is already transposed
           // Tensor Shape for store modifier is num_batches_in_local_memory x FactorSG x FactorWI
-          global_data.log_message_global(__func__, "applying store modifier data");
+          global_data.log_message_global(__func__, "multiplying store modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) PORTFFT_INLINE {
               std::size_t base_offset = detail::pad_local(
@@ -270,7 +270,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                          "detail::layout::BATCH_INTERLEAVED");
           if (global_data.it.get_local_linear_id() / 2 < num_batches_in_local_mem) {
             local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
-                output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem, global_data);
+                global_data, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
           }
         }
       }
@@ -304,6 +304,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.sg);
       if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
         if (working) {
+          global_data.log_message_global(__func__, "Multiplying load modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) {
             std::size_t base_offset = global_data.sg.get_group_id() * n_ffts_per_sg +
                                       id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
@@ -319,6 +320,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       }
       if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
         if (working) {
+          global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) {
             std::size_t base_offset =
                 detail::pad_local(global_data.it.get_sub_group().get_group_id() * n_ffts_per_sg +
