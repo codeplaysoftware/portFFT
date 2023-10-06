@@ -28,45 +28,12 @@
 #include <sycl/sycl.hpp>
 #include <traits.hpp>
 
-#ifndef PORTFFT_N_LOCAL_BANKS
-#define PORTFFT_N_LOCAL_BANKS 32
-#endif
-
-static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
-              "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
-
-/*
-To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the chunk
-of contiguous memory that exactly fits all of the banks in local memory once. e.g. The NVIDIA Ampere architecture has 32
-banks in local memory (shared memory in CUDA terms), each 32 bits. In this case we define a "bank line" as 128 8-bit
-bytes.
-*/
+// TODO: Delete this - only needed whilst there are still pad_locals about.
+#include <common/memory_views.hpp>
 
 namespace portfft {
 
 namespace detail {
-
-/**
- * If Pad is true transforms an index into local memory to skip one element for every
- * PORTFFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
- * elements with a stride that is multiple of (or has any common divisor greater than 1 with)
- * the number of local banks. Does nothing if Pad is false.
- *
- * Can also be used to transform size of a local allocation to account for padding indices in it this way.
- *
- * @tparam Pad whether to do padding
- * @param local_idx index to transform
- * @param bank_lines_per_pad A padding space will be added after every `bank_lines_per_pad` groups of
- * `PORTFFT_N_LOCAL_BANKS` banks.
- * @return transformed local_idx
- */
-template <detail::pad Pad = detail::pad::DO_PAD>
-PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
-  if constexpr (Pad == detail::pad::DO_PAD) {
-    local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad);
-  }
-  return local_idx;
-}
 
 namespace impl {
 /** Copy between index-contiguous global and local memory using sub-group loads/stores for real data.
@@ -446,27 +413,26 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T
  * of consecutive values from local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam PrivT The type of view of private memory
+ * @tparam LocalT The type of view of local memory
  * @param global_data global data for the kernel
- * @param local pointer to local memory
- * @param priv pointer to private memory
+ * @param local View of local memory
+ * @param priv View of private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <Idx NumElemsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, const T* local, T* priv, Idx local_id,
+template <Idx NumElemsPerWI, typename LocalT, typename PrivT>
+PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT local, PrivT priv, Idx local_id,
                                   Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
-    Idx local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
-    global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
+    Idx local_idx = local_offset + local_id * stride + i;
+    global_data.log_message(func_name, "from", local_offset + local_id * stride + i, "to", i, "value",
+                            local[local_idx]);
     priv[i] = local[local_idx];
   });
 }
@@ -548,27 +514,24 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
  * chunk of consecutive values to local memory.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam PrivT The type of view of private memory
+ * @tparam LocalT The type of view of local memorys
  * @param global_data global data for the kernel
- * @param priv pointer to private memory
- * @param local pointer to local memory
+ * @param priv A view of private memory
+ * @param local A view of local memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
  * Should be >= NumElemsPerWI
- * @param local_offset offset to the local pointer
+ * @param local_offset offset to the local base index
  */
-template <Idx NumElemsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const T* priv, T* local, Idx local_id,
+template <Idx NumElemsPerWI, typename PrivT, typename LocalT>
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT priv, LocalT local, Idx local_id,
                                   Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
-    Idx local_idx = detail::pad_local<Pad>(local_offset + local_id * stride + i, BankLinesPerPad);
-    global_data.log_message(func_name, "from", i, "to", local_idx, "value", priv[i]);
-    local[local_idx] = priv[i];
+    global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
+    local[local_offset + local_id * stride + i] = priv[i];
   });
 }
 
@@ -577,43 +540,42 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, const 
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam PrivT The type of the private memory view
+ * @tparam DestT The type of the destination memory view
  * @tparam TDstIdx type of destination index
  * @param global_data global data for the kernel
- * @param priv pointer to private memory
- * @param destination pointer to destination - local or global memory
+ * @param priv View of private memory
+ * @param destination View of destination - local or global memory
  * @param local_id local id of work item
  * @param workers_in_group how many workitems are working in each group (can be
  * less than the group size)
  * @param destination_offset offset to the destination pointer
  */
-template <Idx NumElemsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T, typename TDstIdx>
-PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, const T* priv, T* destination,
+template <Idx NumElemsPerWI, typename PrivT, typename DestT, typename TDstIdx>
+PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, PrivT priv, DestT destination,
                                      Idx local_id, Idx workers_in_group, TDstIdx destination_offset = 0) {
-  static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
-                ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
+  using real_t = detail::get_element_remove_cv_t<PrivT>;
+  static_assert(std::is_same_v<real_t, detail::get_element_t<DestT>>,
+                "Type mismatch between private and destination views");
+  // TODO: Can we improve this? Saying that data is global because it is contiguous is a hack.
+  static_assert((!detail::IsContiguousViewV<DestT> && std::is_same_v<TDstIdx, Idx>) ||
+                (detail::IsContiguousViewV<DestT> && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "workers_in_group", workers_in_group,
                                 "destination_offset", destination_offset);
   constexpr Idx VecSize = 2;  // each workitem stores 2 consecutive values (= one complex value)
-  using T_vec = sycl::vec<T, VecSize>;
+  using T_vec = sycl::vec<real_t, VecSize>;
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
   T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
 
   detail::unrolled_loop<0, NumElemsPerWI, 2>([&](Idx i) PORTFFT_INLINE {
-    TDstIdx destination_idx_unpadded = destination_offset + static_cast<TDstIdx>(local_id * 2 + i * workers_in_group);
-    TDstIdx destination_idx;
-    if constexpr (Pad == detail::pad::DO_PAD) {
-      destination_idx = detail::pad_local<Pad>(destination_idx_unpadded, BankLinesPerPad);
-    } else {
-      destination_idx = destination_idx_unpadded;
-    }
+    TDstIdx destination_idx = destination_offset + static_cast<TDstIdx>(local_id * 2 + i * workers_in_group);
     global_data.log_message(func_name, "from", i, "to", destination_idx, "value", priv[i]);
     global_data.log_message(func_name, "from", i + 1, "to", destination_idx + 1, "value", priv[i + 1]);
-    if (destination_idx % 2 == 0) {  // if the destination address is aligned, we can use vector store
+    auto dest_ptr_real = reinterpret_cast<std::uintptr_t>(&destination[destination_idx]);
+    auto dest_ptr_imag = reinterpret_cast<std::uintptr_t>(&destination[destination_idx + 1]);
+    if (dest_ptr_real % alignof(T_vec) == 0 && (dest_ptr_imag + sizeof(real_t) == dest_ptr_real)) {
+      // If the destination address is aligned and contiguous, we can use vector store
       destination_vec[destination_idx / 2] = priv_vec[i / 2];
     } else {
       destination[destination_idx] = priv[i];
@@ -632,7 +594,6 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * for i in [0, NumComplexElements) where loc is indexed repecting padding.
  *
  * @tparam TransferDirection Direction of Transfer
- * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TDstIdx type of destination index
  * @tparam InputT The type of the input memory view
@@ -649,35 +610,34 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
-template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename TDstIdx, typename InputT,
+template <detail::transfer_direction TransferDirection, Idx NumComplexElements, typename TDstIdx, typename InputT,
           typename DestT>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, InputT input, DestT output, TDstIdx stride_1,
-                                     TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, TDstIdx stride_3, TDstIdx offset_3,
-                                     Idx bank_lines_per_pad) {
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, InputT input, DestT output,
+                                     TDstIdx stride_1, TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2,
+                                     TDstIdx stride_3, TDstIdx offset_3) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<InputT>, detail::get_element_t<DestT>>,
                 "Type mismatch between local and private views");
-  static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
-                ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
+  constexpr bool IsContiguous = TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE
+                                    ? detail::IsContiguousViewV<InputT>
+                                    : detail::IsContiguousViewV<DestT>;
+  static_assert((!IsContiguous && std::is_same_v<TDstIdx, Idx>) ||
+                (IsContiguous && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
   detail::unrolled_loop<0, NumComplexElements, 1>([&](const Idx j) PORTFFT_INLINE {
     TDstIdx base_offset = stride_1 * (stride_2 * static_cast<TDstIdx>((j * stride_3 + offset_3)) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
-      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j,
-                              "value", input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
-      global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to",
-                              2 * j + 1, "value", input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
-      output[2 * j] = input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
-      output[2 * j + 1] = input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+      global_data.log_message(func_name, "from", base_offset, "to", 2 * j, "value", input[base_offset]);
+      global_data.log_message(func_name, "from", base_offset + 1, "to", 2 * j + 1, "value", input[base_offset + 1]);
+      output[2 * j] = input[base_offset];
+      output[2 * j + 1] = input[base_offset + 1];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
-      global_data.log_message(func_name, "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad),
-                              "value", input[2 * j]);
-      global_data.log_message(func_name, "from", 2 * j + 1, "to",
-                              detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", input[2 * j + 1]);
-      output[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = input[2 * j];
-      output[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = input[2 * j + 1];
+      global_data.log_message(func_name, "from", 2 * j, "to", base_offset, "value", input[2 * j]);
+      global_data.log_message(func_name, "from", 2 * j + 1, "to", base_offset + 1, "value", input[2 * j + 1]);
+      output[base_offset] = input[2 * j];
+      output[base_offset + 1] = input[2 * j + 1];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
       output[base_offset] = input[2 * j];
@@ -690,53 +650,49 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Inp
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column:
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num] := priv[i]
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num + 1] := priv[i + 1]
- * for i in [0, NumElementsPerWI) where loc is indexed repecting padding.
+ * for i in [0, NumElementsPerWI).
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam PrivT The type of view of private memory
+ * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param local Pointer to local memory
+ * @param priv View of private memory
+ * @param local View of local memory
  * @param thread_id Id of the working thread for the FFT
  * @param num_workers Number of threads working for that FFt
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, const T* priv, T* local,
+template <Idx NumElementsPerWI, typename PrivT, typename LocalT>
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, PrivT priv, LocalT local,
                                              Idx thread_id, Idx num_workers, Idx col_num, Idx stride) {
-  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, Pad, NumElementsPerWI>(
-      global_data, priv, local, 1, 0, 2 * stride, 2 * col_num, num_workers, thread_id, BankLinesPerPad);
+  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, NumElementsPerWI>(
+      global_data, priv, local, 1, 0, 2 * stride, 2 * col_num, num_workers, thread_id);
 }
 
 /**
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
  * priv[2 * i] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num]
  * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num + 1]
- * for i in [0, NumElementsPerWI) where loc is indexed repecting padding.
+ * for i in [0, NumElementsPerWI)
  *
  * @tparam NumElementsPerWI Elements per workitem
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam PrivT The type of view of private memory
+ * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
- * @param local Pointer to local memory
- * @param priv Pointer to private memory
+ * @param local View of local memory
+ * @param priv View of private memory
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <Idx NumElementsPerWI, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, const T* local, T* priv,
+template <Idx NumElementsPerWI, typename LocalT, typename PrivT>
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, LocalT local, PrivT priv,
                                              Idx thread_id, Idx col_num, Idx stride) {
-  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, Pad, NumElementsPerWI>(
-      global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI, BankLinesPerPad);
+  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, NumElementsPerWI>(
+      global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI);
 }
 
 /**

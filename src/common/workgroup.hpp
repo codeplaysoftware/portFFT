@@ -26,6 +26,7 @@
 #include <common/subgroup.hpp>
 #include <defines.hpp>
 #include <enums.hpp>
+#include <traits.hpp>
 
 namespace portfft {
 
@@ -62,7 +63,7 @@ namespace detail {
  * @tparam StrideWithinDFT Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @tparam NDFTsInOuterDimension Number of DFTs in outer dimension
  * @tparam SubgroupSize Size of the subgroup
- * @tparam BankLinesPerPad The number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam LocalT The type of the local view
  * @tparam T Scalar type
  * @param loc local accessor containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
@@ -77,12 +78,13 @@ namespace detail {
  */
 template <direction Dir, detail::layout LayoutIn, detail::elementwise_multiply MultiplyOnLoad,
           detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx DFTSize,
-          Idx StrideWithinDFT, Idx NDFTsInOuterDimension, Idx SubgroupSize, Idx BankLinesPerPad, typename T>
-__attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles, const T* wg_twiddles,
+          Idx StrideWithinDFT, Idx NDFTsInOuterDimension, Idx SubgroupSize, typename LocalT, typename T>
+__attribute__((always_inline)) inline void dimension_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles,
                                                          T scaling_factor, Idx max_num_batches_in_local_mem,
                                                          Idx batch_num_in_local, const T* load_modifier_data,
                                                          const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
                                                          global_data_struct global_data) {
+  static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", DFTSize, "StrideWithinDFT", StrideWithinDFT,
                                  "NDFTsInOuterDimension", NDFTsInOuterDimension, "max_num_batches_in_local_mem",
                                  max_num_batches_in_local_mem, "batch_num_in_local", batch_num_in_local);
@@ -124,7 +126,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
   for (Idx j = begin; j < end; j += step) {
     Idx j_inner = j % StrideWithinDFT;
     Idx j_outer = j / StrideWithinDFT;
-    T* loc_start = loc + detail::pad_local(2 * j_outer * OuterStride, BankLinesPerPad);
+    auto loc_start_view = offset_view(loc, 2 * j_outer * OuterStride);
     bool working = true;
     if constexpr (ExcessSGs) {
       working = j < TotalDFTs;
@@ -135,14 +137,13 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
     if (working) {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
-        transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, detail::pad::DO_PAD, FactWi>(
+        transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, FactWi>(
             global_data, loc, priv, 2 * max_num_batches_in_local_mem, 2 * batch_num_in_local, StrideWithinDFT,
-            j_inner + j_outer * OuterStride, 1, wi_id_in_fft * FactWi, BankLinesPerPad);
+            j_inner + j_outer * OuterStride, 1, wi_id_in_fft * FactWi);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
-        local2private_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(global_data, loc_start, priv,
-                                                                               wi_id_in_fft, j_inner, StrideWithinDFT);
+        local2private_transposed<FactWi>(global_data, loc_start_view, priv, wi_id_in_fft, j_inner, StrideWithinDFT);
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * FactWi);
 
@@ -200,14 +201,14 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       global_data.log_dump_private("data in registers after computation:", priv, 2 * FactWi);
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
-        transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, detail::pad::DO_PAD, FactWi>(
+        transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, FactWi, Idx>(
             global_data, priv, loc, 2 * max_num_batches_in_local_mem, 2 * batch_num_in_local, StrideWithinDFT,
-            j_inner + j_outer * OuterStride, FactSg, wi_id_in_fft, BankLinesPerPad);
+            j_inner + j_outer * OuterStride, FactSg, wi_id_in_fft);
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        private2local_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, priv, loc, wi_id_in_fft, FactSg, j_inner + j_outer * OuterStride, StrideWithinDFT);
+        private2local_transposed<FactWi>(global_data, priv, loc, wi_id_in_fft, FactSg, j_inner + j_outer * OuterStride,
+                                         StrideWithinDFT);
       }
     }
   }
@@ -227,7 +228,7 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
  * @tparam SubgroupSize Size of the subgroup
- * @tparam BankLinesPerPad The number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam XXXXXXXXXXXXX
  * @tparam T Scalar type
  *
  * @param loc local accessor containing the input
@@ -243,8 +244,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
  */
 template <direction Dir, detail::layout LayoutIn, detail::elementwise_multiply MultiplyOnLoad,
           detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx FFTSize, Idx N,
-          Idx M, Idx SubgroupSize, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
+          Idx M, Idx SubgroupSize, typename LocalT, typename T>
+PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                            Idx max_num_batches_in_local_mem, Idx batch_num_in_local, IdxGlobal batch_num_in_kernel,
                            const T* load_modifier_data, const T* store_modifier_data,
                            detail::global_data_struct global_data) {
@@ -253,13 +254,13 @@ PORTFFT_INLINE void wg_dft(T* loc, T* loc_twiddles, const T* wg_twiddles, T scal
                                  batch_num_in_local);
   // column-wise DFTs
   detail::dimension_dft<Dir, LayoutIn, MultiplyOnLoad, detail::elementwise_multiply::NOT_APPLIED,
-                        detail::apply_scale_factor::NOT_APPLIED, N, M, 1, SubgroupSize, BankLinesPerPad, T>(
+                        detail::apply_scale_factor::NOT_APPLIED, N, M, 1, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<Dir, LayoutIn, detail::elementwise_multiply::NOT_APPLIED, MultiplyOnStore, ApplyScaleFactor, M,
-                        1, N, SubgroupSize, BankLinesPerPad, T>(
+                        1, N, SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
       load_modifier_data, store_modifier_data, batch_num_in_kernel, global_data);
   global_data.log_message_global(__func__, "exited");

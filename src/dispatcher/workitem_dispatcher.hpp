@@ -116,6 +116,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx local_offset = NReals * SubgroupSize * subgroup_id;
   constexpr Idx BankLinesPerPad = 1;
+  auto loc_view = detail::make_padded_view<BankLinesPerPad>(loc);
 
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
@@ -167,8 +168,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals,
-                                                            local_offset);
+        local2private<NReals>(global_data, loc_view, priv, subgroup_local_id, NReals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
@@ -196,8 +196,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if constexpr (LayoutOut == detail::layout::PACKED) {
-        private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
-                                                            local_offset);
+        private2local<NReals>(global_data, priv, loc_view, subgroup_local_id, NReals, local_offset);
       } else {
         detail::unrolled_loop<0, N, 1>([&](IdxGlobal j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;

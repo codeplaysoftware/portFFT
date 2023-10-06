@@ -92,6 +92,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   constexpr Idx M = FFTSize / N;
   const T* wg_twiddles = twiddles + 2 * (M + N);
   constexpr Idx BankLinesPerPad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * M);
+  auto loc_view = make_padded_view<BankLinesPerPad>(loc);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
@@ -129,9 +130,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
                                  FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
-               BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch,
-                                offset / (2 * FFTSize), load_modifier_data, store_modifier_data, global_data);
+        wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize>(
+            loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch,
+            offset / (2 * FFTSize), load_modifier_data, store_modifier_data, global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
       global_data.log_dump_local("computed data in local memory:", loc,
@@ -157,10 +158,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
                                                                                  offset);
       sycl::group_barrier(global_data.it.get_group());
-      wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
-             BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
-                              offset / static_cast<IdxGlobal>(2 * FFTSize), load_modifier_data, store_modifier_data,
-                              global_data);
+      wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize>(
+          loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
+          offset / static_cast<IdxGlobal>(2 * FFTSize), load_modifier_data, store_modifier_data, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
