@@ -130,7 +130,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   constexpr Idx BankLinesPerPad = 1;
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  // TODO: Change twiddles layout shape to FactWI x FactSG
   global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles,
                                                                  NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
