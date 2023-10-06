@@ -25,6 +25,7 @@
 #include <type_traits>
 
 #include "fft_test_utils.hpp"
+#include <common/exceptions.hpp>
 
 class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
@@ -56,35 +57,49 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                          ::testing::ConvertGenerator<param_tuple>(
                              ::testing::Combine(::testing::Values(1, 3), ::testing::Values(8, 9, 16, 32, 64, 4096))));
 
-#define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, DIRECTION, DIRECTION_NAME, \
-                         DIRECTION_TEST_SUITE, MEM, MEM_NAME)                                                        \
-  TEST_P(DIRECTION_TEST_SUITE, MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##LAYOUT_NAME) {      \
-    auto param = GetParam();                                                                                         \
-    sycl::queue queue;                                                                                               \
-    if constexpr (std::is_same<TYPE, double>::value) {                                                               \
-      auto queue_pair = get_queue(fp64_selector);                                                                    \
-      CHECK_QUEUE(queue_pair);                                                                                       \
-      queue = queue_pair.first.value();                                                                              \
-    }                                                                                                                \
-    check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, LAYOUT>(param, queue);                         \
+#define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT,    \
+                         LAYOUTOUT_NAME, DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)    \
+  TEST_P(DIRECTION_TEST_SUITE,                                                                              \
+         MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##LAYOUTIN_NAME##LAYOUTOUT_NAME) { \
+    auto param = GetParam();                                                                                \
+    sycl::queue queue;                                                                                      \
+    if constexpr (std::is_same<TYPE, double>::value) {                                                      \
+      auto queue_pair = get_queue(fp64_selector);                                                           \
+      CHECK_QUEUE(queue_pair);                                                                              \
+      queue = queue_pair.first.value();                                                                     \
+    }                                                                                                       \
+    try {                                                                                                   \
+      check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, LAYOUTIN, LAYOUTOUT>(param, queue); \
+    } catch (portfft::out_of_local_memory_error & e) {                                                      \
+      GTEST_SKIP() << e.what();                                                                             \
+    }                                                                                                       \
   }
 
-#define INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, DIRECTION,       \
-                             DIRECTION_NAME, DIRECTION_TEST_SUITE)                                             \
-  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, DIRECTION, DIRECTION_NAME, \
-                   DIRECTION_TEST_SUITE, usm, USM)                                                             \
-  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, DIRECTION, DIRECTION_NAME, \
-                   DIRECTION_TEST_SUITE, buffer, BUFFER)
+#define INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT,       \
+                             LAYOUTOUT_NAME, DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE)                      \
+  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
+                   DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, usm, USM)                                      \
+  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
+                   DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, buffer, BUFFER)
 
-#define INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME)        \
-  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, FORWARD, Fwd, FFTTest) \
-  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUT, LAYOUT_NAME, BACKWARD, Bwd, BwdTest)
+#define INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, \
+                                       LAYOUTOUT_NAME)                                                                 \
+  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
+                       FORWARD, Fwd, FFTTest)                                                                          \
+  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
+                       BACKWARD, Bwd, BwdTest)
 
-#define INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_LAYOUT(TYPE, TYPE_NAME)                                \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::PACKED, )               \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, )          \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED, \
-                                 _in_batch_interleaved)
-// BATCH_INTERLEAVED inplace is not supported (yet?)
+#define INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_LAYOUT(TYPE, TYPE_NAME)                                           \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::PACKED, _in_packed,                \
+                                 detail::layout::PACKED, _out_packed)                                              \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
+                                 detail::layout::PACKED, _out_packed)                                              \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
+                                 _in_batch_interleaved, detail::layout::PACKED, _out_packed)                       \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::BATCH_INTERLEAVED,                 \
+                                 _in_batch_interleaved, detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved) \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
+                                 detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved)
+// In place different input-output configurations are not supported
 
 #endif

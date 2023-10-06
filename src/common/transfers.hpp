@@ -186,8 +186,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
   Idx my_last_idx = rounded_down_num_elems + last_chunk_size * local_size + local_id;
   if (my_last_idx < total_num_elems) {
     Idx local_idx = detail::pad_local<Pad>(local_offset + my_last_idx, BankLinesPerPad);
-    IdxGlobal global_idx =
-        global_offset + static_cast<IdxGlobal>(my_last_idx);
+    IdxGlobal global_idx = global_offset + static_cast<IdxGlobal>(my_last_idx);
     global_data.log_message(func_name, "last element from", global_idx, "to", local_idx, "value", global[global_idx]);
     local[local_idx] = global[global_idx];
   }
@@ -602,13 +601,14 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * of transpositions / strides and combine them into a single load / store.
  *
  * @tparam T Scalar Type
+ * @tparam TDstIdx type of destination index
  * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TransferDirection Direction of Transfer
  *
  * @param global_data global data for the kernel
- * @param priv Pointer to private memory
- * @param loc Pointer to local memory
+ * @param input Input Pointer
+ * @param output Output Pointer
  * @param stride_1 Innermost stride
  * @param offset_1 Innermost offset
  * @param stride_2 2nd level of stride
@@ -617,30 +617,37 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
-template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename T>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* priv, T* loc, Idx stride_1,
-                                     Idx offset_1, Idx stride_2, Idx offset_2, Idx stride_3, Idx offset_3,
+template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename T,
+          typename TDstIdx>
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, TDstIdx stride_1,
+                                     TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, Idx stride_3, Idx offset_3,
                                      Idx bank_lines_per_pad) {
+  static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
+                ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
   detail::unrolled_loop<0, NumComplexElements, 1>([&](const Idx j) PORTFFT_INLINE {
-    Idx base_offset = stride_1 * (stride_2 * (j * stride_3 + offset_3) + offset_2) + offset_1;
+    TDstIdx base_offset = stride_1 * (stride_2 * static_cast<TDstIdx>((j * stride_3 + offset_3)) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
       global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j,
-                              "value", loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
+                              "value", input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
       global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "to",
-                              2 * j + 1, "value", loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
-      priv[2 * j] = loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
-      priv[2 * j + 1] = loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
+                              2 * j + 1, "value", input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)]);
+      output[2 * j] = input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)];
+      output[2 * j + 1] = input[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)];
     }
     if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_LOCAL) {
       global_data.log_message(func_name, "from", 2 * j, "to", detail::pad_local<Pad>(base_offset, bank_lines_per_pad),
-                              "value", priv[2 * j]);
+                              "value", input[2 * j]);
       global_data.log_message(func_name, "from", 2 * j + 1, "to",
-                              detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", priv[2 * j + 1]);
-      loc[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = priv[2 * j];
-      loc[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = priv[2 * j + 1];
+                              detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad), "value", input[2 * j + 1]);
+      output[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)] = input[2 * j];
+      output[detail::pad_local<Pad>(base_offset + 1, bank_lines_per_pad)] = input[2 * j + 1];
+    }
+    if constexpr (TransferDirection == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+      output[base_offset] = input[2 * j];
+      output[base_offset + 1] = input[2 * j + 1];
     }
   });
 }
@@ -651,6 +658,7 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
  * @tparam Pad Whether or not to pad local memory
  * @tparam T Scalar type
  *
+ * @param global_data global data for the kernel
  * @param loc Pointer to local memory
  * @param global Pointer to global memory
  * @param global_offset Offset to global memory
@@ -659,13 +667,11 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* 
  * @param M Number of Columns
  * @param fft_size Size of the problem
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
- * @param global_data global data for the kernel
  */
 template <detail::pad Pad, typename T>
-PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global, IdxGlobal global_offset,
-                                                              Idx local_stride, Idx N, Idx M, Idx fft_size,
-                                                              Idx bank_lines_per_pad,
-                                                              detail::global_data_struct global_data) {
+PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, T* loc, T* global,
+                                                              IdxGlobal global_offset, Idx local_stride, Idx N, Idx M,
+                                                              Idx fft_size, Idx bank_lines_per_pad) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "global_offset", global_offset, "local_stride", local_stride, "N", N, "M", M,
                                 "fft_size", fft_size);
@@ -681,6 +687,125 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(T* loc, T* global,
                                                static_cast<Idx>(global_data.it.get_local_linear_id()) % 2);
     global_data.log_message(func_name, "from", local_idx, "to", global_idx, "value", loc[local_idx]);
     global[global_idx] = loc[local_idx];
+  }
+}
+
+/**
+ * Stores data to global memory where consecutive elements of a problem are separated by stride.
+ * Data layout in local memory is same as global memory. Each workitem is responsible for
+ * transferring all of either real or imaginary components of the computed FFT of a batch
+ * Stores half of workgroup size equivalent number of consecutive batches to global memory.
+ * Call site is resposible for managing OOB accesses.
+ *  assumption: `nd_item.get_local_linear_id() / 2 < number_of_batches_in_local_mem
+ *
+ * @tparam pad Whether or not to consider padding in local memory
+ * @tparam Level Which level (subgroup or workgroup) does the transfer.
+ * @tparam T Scalar Type
+ *
+ * @param global_data  global data for the kernel
+ * @param global_base_ptr Global Pointer
+ * @param local_ptr Local Pointer
+ * @param offset Offset from which the strided loads would begin
+ * @param num_complex Number of complex numbers per workitem
+ * @param stride_global Stride Value for global memory
+ * @param stride_local Stride Value for Local Memory
+ */
+template <detail::pad Pad, detail::level Level, Idx BankLinesPerPad, typename T>
+PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_struct global_data, T* global_base_ptr,
+                                                        T* local_ptr, IdxGlobal offset, Idx num_complex,
+                                                        IdxGlobal stride_global, Idx stride_local) {
+  global_data.log_message_local(__func__,
+                                "Tranferring data from local to global memory with stride_global:", stride_global,
+                                " global offset = ", offset, "number of elements per workitem = ", num_complex,
+                                " and local stride:", stride_local);
+  Idx local_id;
+  if constexpr (Level == detail::level::SUBGROUP) {
+    local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
+  } else {
+    local_id = static_cast<Idx>(global_data.it.get_local_id(0));
+  }
+
+  for (Idx i = 0; i < num_complex; i++) {
+    Idx local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
+    IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + static_cast<IdxGlobal>(2 * i) * stride_global;
+    global_data.log_message(__func__, "from", local_index, "to", global_index, "value", local_ptr[local_index]);
+    global_base_ptr[global_index] = local_ptr[local_index];
+  }
+}
+
+/**
+ * Transfers data from local memory (which is in contiguous layout) to global memory (which is in strided layout),
+ * by interpreting the local memory as if strided. To be used specifically for workgroup FFTs, where input in PACKED but
+ * output is BATCHED_INTERLEAVED
+ *
+ * @tparam Pad Whether or not Padding is to be applied
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam T Pointer type to local and global
+ *
+ * @param global_data global data for the kernel
+ * @param global_ptr Pointer to global memory
+ * @param local_ptr Pointer to local memory
+ * @param global_stride Stride applicable to global memory
+ * @param global_offset  Offset applicable to global memory
+ * @param num_elements Total number of elements to be transferred
+ * @param N Viewing num_elements as product of two factors, N being the first factor
+ * @param M Viewing num_elements as product of two factors, M being the second factor
+ */
+template <detail::pad Pad, Idx BankLinesPerPad, typename T>
+PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+                                                 IdxGlobal global_stride, IdxGlobal global_offset, Idx num_elements,
+                                                 Idx N, Idx M) {
+  global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
+                                 " global offset = ", global_offset);
+  Idx start_index = static_cast<Idx>(global_data.it.get_local_linear_id());
+  Idx index_stride = static_cast<Idx>(global_data.it.get_local_range(0));
+  for (Idx idx = start_index; idx < num_elements; idx += index_stride) {
+    Idx source_row = idx / N;
+    Idx source_col = idx % N;
+    Idx base_offset = detail::pad_local<Pad>(2 * source_col * M + 2 * source_row, BankLinesPerPad);
+    IdxGlobal base_global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset;
+    global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", base_global_idx,
+                            base_global_idx + 1, "values = (", local_ptr[base_offset], ",", local_ptr[base_offset + 1],
+                            ")");
+    global_ptr[base_global_idx] = local_ptr[base_offset];
+    global_ptr[base_global_idx + 1] = local_ptr[base_offset + 1];
+  }
+}
+
+/**
+ * Transfers data from local memory (which is in strided layout) to global memory (which is in strided layout),
+ * by adding another stride to local memory. To be used specifically for workgroup FFTs, where input is
+ * BATCHED_INTERLEAVED and output is BATCHED_INTERLEAVED as well.
+ * Call site is resposible for managing OOB accesses
+ *
+ * @tparam Pad Whether or not Padding is to be applied
+ * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
+ * @tparam T Pointer type to local and global
+ *
+ * @param global_data global data for the kernel
+ * @param global_ptr Pointer to global memory
+ * @param local_ptr Pointer to local memory
+ * @param global_stride Stride applicable to global memory
+ * @param global_offset Offset applicable to global memory
+ * @param local_stride Stride applicable to local memory
+ * @param num_elements Total number of elements to be transferred per workitem
+ * @param N Viewing num_elements as product of two factors, N being the first factor
+ * @param M Viewing num_elements as product of two factors, M being the second factor
+ */
+template <detail::pad Pad, Idx BankLinesPerPad, typename T>
+PORTFFT_INLINE void local2strides_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+                                                  IdxGlobal global_stride, IdxGlobal global_offset, Idx local_stride,
+                                                  Idx num_elements, Idx N, Idx M) {
+  global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
+                                 " global offset = ", global_offset, " local stride = ", local_stride);
+  for (Idx idx = 0; idx < num_elements; idx++) {
+    Idx local_stride_2 = (idx % N) * M + (idx / N);
+    Idx base_offset = detail::pad_local<Pad>(
+        local_stride_2 * local_stride + static_cast<Idx>(global_data.it.get_local_id(0)), BankLinesPerPad);
+    IdxGlobal global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset +
+                           static_cast<IdxGlobal>(global_data.it.get_local_id(0));
+    global_data.log_message(__func__, "from", base_offset, "to", global_idx, "value", local_ptr[base_offset]);
+    global_ptr[global_idx] = local_ptr[base_offset];
   }
 }
 

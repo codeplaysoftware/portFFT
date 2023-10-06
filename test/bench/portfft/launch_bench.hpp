@@ -80,7 +80,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
   q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
-  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
+  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, portfft::detail::layout::PACKED, 1e-2);
 #endif  // PORTFFT_VERIFY_BENCHMARKS
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
@@ -182,7 +182,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
          host_output.data(), num_elements)
       .wait();
-  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, 1e-2);
+  verifSpec.verify_dft(desc, host_output, portfft::direction::FORWARD, portfft::detail::layout::PACKED, 1e-2);
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
   for (auto _ : state) {

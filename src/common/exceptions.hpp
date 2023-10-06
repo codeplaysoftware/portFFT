@@ -68,6 +68,14 @@ struct unsupported_configuration : public base_error {
   explicit unsupported_configuration(const Ts&... args) : base_error(args...) {}
 };
 
+/**
+ * Exception class to be thrown when more than available local memory is required
+ */
+struct out_of_local_memory_error : public unsupported_configuration {
+  template <typename... Ts>
+  explicit out_of_local_memory_error(const Ts&... args) : unsupported_configuration(args...) {}
+};
+
 };  // namespace portfft
 
 #endif

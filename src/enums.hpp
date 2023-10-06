@@ -59,7 +59,11 @@ enum class layout {
 
 enum class memory { BUFFER, USM };
 
-enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL };
+enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL, PRIVATE_TO_GLOBAL };
+
+enum class elementwise_multiply { APPLIED, NOT_APPLIED };
+
+enum class apply_scale_factor { APPLIED, NOT_APPLIED };
 }  // namespace detail
 
 }  // namespace portfft

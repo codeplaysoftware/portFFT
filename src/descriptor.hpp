@@ -26,6 +26,7 @@
 #include <common/subgroup.hpp>
 #include <defines.hpp>
 #include <enums.hpp>
+#include <utils.hpp>
 
 #include <sycl/sycl.hpp>
 
@@ -40,13 +41,15 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-// TODO: Remove LayoutIn once strides and distance are spec constants
-// TODO: Change direction to a spec constant parameter
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
+// TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail
@@ -138,34 +141,6 @@ class committed_descriptor {
   }
 
   /**
-   * Get kernel ids for the implementation used.
-   *
-   * @tparam kernel which base template for kernel to use
-   * @tparam SubgroupSize size of the subgroup
-   * @param ids vector of kernel ids
-   */
-  template <template <typename, domain, direction, detail::memory, detail::layout, Idx> class Kernel, Idx SubgroupSize>
-  void get_ids(std::vector<sycl::kernel_id>& ids) {
-// if not used, some kernels might be optimized away in AOT compilation and not available here
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, TRANSPOSE)                                                          \
-  try {                                                                                                       \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, TRANSPOSE, SubgroupSize>>()); \
-  } catch (...) {                                                                                             \
-  }
-
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::PACKED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::PACKED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::PACKED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::PACKED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::BUFFER, detail::layout::BATCH_INTERLEAVED)
-    PORTFFT_GET_ID(direction::FORWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
-    PORTFFT_GET_ID(direction::BACKWARD, detail::memory::USM, detail::layout::BATCH_INTERLEAVED)
-
-#undef PORTFFT_GET_ID
-  }
-
-  /**
    * Prepares the implementation for the particular problem size. That includes factorizing it and getting ids for the
    * set of kernels that need to be JIT compiled.
    *
@@ -190,7 +165,7 @@ class committed_descriptor {
     }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
-      get_ids<detail::workitem_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKITEM;
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
@@ -200,7 +175,7 @@ class committed_descriptor {
       // The CT and spec constant factors should match.
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
-      get_ids<detail::subgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
@@ -217,7 +192,7 @@ class committed_descriptor {
       factors.push_back(factor_sg_m);
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
-      get_ids<detail::workgroup_kernel, SubgroupSize>(ids);
+      detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::WORKGROUP;
     }
     // TODO global
@@ -336,17 +311,8 @@ class committed_descriptor {
         exec_bundle(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>()),
         num_sgs_per_wg(PORTFFT_SGS_IN_WG) {
     // get some properties we will use for tuning
+    n_compute_units = static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>());
     local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
-    std::size_t minimum_local_mem_required;
-    if (params.forward_distance == 1 || params.backward_distance == 1) {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>() * sizeof(Scalar);
-    } else {
-      minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>() * sizeof(Scalar);
-    }
-    if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
-      throw unsupported_configuration("Insufficient amount of local memory available: ", local_memory_size,
-                                      "B. Required: ", minimum_local_mem_required, "B.");
-    }
     twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(), [queue](Scalar* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, queue);
@@ -553,11 +519,32 @@ class committed_descriptor {
         output_distance = params.forward_distance;
         scale_factor = params.backward_scale;
       }
+      std::size_t minimum_local_mem_required;
+      if (input_distance == 1) {
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>() * sizeof(Scalar);
+      } else {
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>() * sizeof(Scalar);
+      }
+      if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
+        throw out_of_local_memory_error(
+            "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+            "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<Dir, detail::layout::PACKED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(in, out, scale_factor,
+                                                                                             dependencies);
       }
       if (input_distance == 1 && output_distance == fft_size && in != out) {
-        return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(in, out, scale_factor, dependencies);
+        return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
+      }
+      if (input_distance == fft_size && output_distance == 1 && in != out) {
+        return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
+      }
+      if (input_distance == 1 && output_distance == 1) {
+        return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+            in, out, scale_factor, dependencies);
       }
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
@@ -572,12 +559,14 @@ class committed_descriptor {
    * Struct for dispatching `run_kernel()` call.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam LayoutIn Input layout
+   * @tparam LayoutIn Input Layout
+   * @tparam LayoutOut Output Layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
+            typename TOut>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
@@ -591,7 +580,8 @@ class committed_descriptor {
    * Common interface to run the kernel called by compute_forward and compute_backward
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam LayoutIn Input layout
+   * @tparam LayoutIn Input Layout
+   * @tparam LayoutOut Output Layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
@@ -601,9 +591,11 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, detail::layout LayoutIn, Idx SubgroupSize, typename TIn, typename TOut>
+  template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
+            typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies) {
-    return dispatch<run_kernel_struct<Dir, LayoutIn, SubgroupSize, TIn, TOut>>(in, out, scale_factor, dependencies);
+    return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn, TOut>>(in, out, scale_factor,
+                                                                                          dependencies);
   }
 };
 
