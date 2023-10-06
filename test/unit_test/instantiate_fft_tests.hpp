@@ -100,6 +100,6 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                                  _in_batch_interleaved, detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved) \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
                                  detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved)
-// transpose in place is not supported (yet?)
+// In place different input-output configurations are not supported
 
 #endif

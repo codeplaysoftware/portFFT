@@ -54,7 +54,7 @@ namespace detail {
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
  * @tparam Dir Direction of the FFT
- * @tparam LayoutIn Whether or not the input is transposed
+ * @tparam LayoutIn Input Layout
  * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
  * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied

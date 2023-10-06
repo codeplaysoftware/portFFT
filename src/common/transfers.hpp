@@ -692,8 +692,11 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_dat
 
 /**
  * Stores data to global memory where consecutive elements of a problem are separated by stride.
+ * Data layout in local memory is same as global memory. Each workitem is responsible for
+ * transferring all of either real or imaginary components of the computed FFT of a batch
  * Stores half of workgroup size equivalent number of consecutive batches to global memory.
- * Call site is resposible for managing OOB accesses
+ * Call site is resposible for managing OOB accesses.
+ * To be called only is nd_item.get_local_linear_id() / 2 < number_of_batches_in_local_mem
  *
  * @tparam pad Whether or not to consider padding in local memory
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
