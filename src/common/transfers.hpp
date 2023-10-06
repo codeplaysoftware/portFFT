@@ -439,6 +439,10 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
+ * global[offset + 2 * i] = local[2 * (stride * (i % N) + (i / N))]
+ * global[offset + 2 * i + 1] = local[2 * (stride * (i % N) + (i / N)) + 1]
+ * for i in [0, N * M)
+ *
  * @tparam LocalT The view type of local memory
  * @tparam GlobalT The view type of global memory
  *
@@ -514,6 +518,7 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
 /**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
+ * local[local_offset + local_id * stride + i] = priv[i] for i in [0, NumElemsPerWI)
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of view of private memory
@@ -540,6 +545,9 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT 
 /**
  * Copies data from private memory to local or global memory. Consecutive workitems write
  * consecutive elements. The copy is done jointly by a group of threads defined by `local_id` and `workers_in_group`.
+ * destination[destination_offset + local_id * 2 + i * workers_in_group    ] := priv[i]
+ * destination[destination_offset + local_id * 2 + i * workers_in_group + 1] := priv[i + 1]
+ * for i in [0, NumElemsPerWI)
  *
  * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of the private memory view
@@ -610,7 +618,6 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
  * @param offset_2 2nd level of offset
  * @param stride_3 Outermost stride
  * @param offset_3 Outermost offset
- * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <detail::transfer_direction TransferDirection, Idx NumComplexElements, typename TDstIdx, typename InputT,
           typename DestT>
@@ -699,19 +706,20 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
 
 /**
  * Transfers data from local memory which is strided to global memory, which too is strided in a transposed fashion
+ * global[global_offset + 2 * batch_num * fft_size + 2 * i + local_id % 2] =
+ *        loc[local_stride * ((i % N) * M + i / N) + local_id] for i in [0, fft_size)
  *
  * @tparam LocalT The type of view of local memory
  * @tparam GlobalT The type of view of global memory
  *
  * @param global_data global data for the kernel
- * @param loc Pointer to local memory
- * @param global Pointer to global memory
+ * @param loc View of local memory
+ * @param global View of global memory
  * @param global_offset Offset to global memory
  * @param local_stride stride value in local memory
  * @param N Number of rows
  * @param M Number of Columns
  * @param fft_size Size of the problem
- * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
 template <typename LocalT, typename GlobalT>
 PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, LocalT loc,
