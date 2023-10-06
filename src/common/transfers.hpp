@@ -439,33 +439,33 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT
 
 /**
  * Stores data from the local memory to the global memory, in a transposed manner.
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
- * @tparam T type of the scalar used for computations
+ * @tparam LocalT The view type of local memory
+ * @tparam GlobalT The view type of global memory
  *
  * @param global_data global data for the kernel
  * @param N Number of rows
  * @param M Number of Cols
  * @param stride Stride between two contiguous elements in global memory in local memory.
- * @param local pointer to the local memory
- * @param global pointer to the global memory
+ * @param local View of local memory
+ * @param global View of global memory
  * @param offset offset to the global memory pointer
  */
-template <detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, Idx N, Idx M, Idx stride, T* local,
-                                            T* global, IdxGlobal offset) {
+template <typename LocalT, typename GlobalT>
+PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, Idx N, Idx M, Idx stride,
+                                            LocalT local, GlobalT global, IdxGlobal offset) {
+  using real_t = detail::get_element_remove_cv_t<LocalT>;
+  static_assert(std::is_same_v<real_t, detail::get_element_t<GlobalT>>, "Type mismatch between local and global views");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "N", N, "M", M, "stride", stride, "offset", offset);
   Idx num_threads = static_cast<Idx>(global_data.it.get_local_range(0));
   for (Idx i = static_cast<Idx>(global_data.it.get_local_linear_id()); i < N * M; i += num_threads) {
     Idx source_row = i / N;
     Idx source_col = i % N;
-    Idx source_index = detail::pad_local<Pad>(2 * (stride * source_col + source_row), BankLinesPerPad);
-    sycl::vec<T, 2> v{local[source_index], local[source_index + 1]};
+    Idx source_index = 2 * (stride * source_col + source_row);
+    sycl::vec<real_t, 2> v{local[source_index], local[source_index + 1]};
     IdxGlobal global_idx = offset + static_cast<IdxGlobal>(2 * i);
     global_data.log_message(func_name, "from", source_index, "to", global_idx, "value", v);
-    *reinterpret_cast<sycl::vec<T, 2>*>(&global[global_idx]) = v;
+    *reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
   }
 }
 
@@ -473,27 +473,29 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
  * Loads data from global memory where consecutive elements of a problem are separated by stride.
  * Loads half of workgroup size equivalent number of consecutive batches from global memory.
  *
- * @tparam Pad Whether to add a pad after each `PORTFFT_N_LOCAL_BANKS * BankLinesPerPad` elements in local memory to
- * avoid bank conflicts.
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad.
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam T Scalar Type
+ * @tparam GlobalT The global memory view type
+ * @tparam LocalT The local memory view type
  *
  * @param global_data global data for the kernel
- * @param global_base_ptr Global Pointer
- * @param local_ptr Local Pointer
+ * @param global A view of global memory
+ * @param local A view of local
  * @param offset Offset from which the strided loads would begin
  * @param num_complex Number of complex numbers per workitem
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
  */
-template <detail::level Level, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_data, const T* global_base_ptr,
-                                            T* local_ptr, IdxGlobal offset, Idx num_complex, IdxGlobal stride_global,
+template <detail::level Level, typename GlobalT, typename LocalT>
+PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_data, GlobalT global, LocalT local,
+                                            IdxGlobal offset, Idx num_complex, IdxGlobal stride_global,
                                             Idx stride_local) {
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<GlobalT>, detail::get_element_t<LocalT>>,
+                "Type mismatch between global and local views");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "offset", offset, "num_complex", num_complex, "stride_global", stride_global,
                                 "stride_local", stride_local);
+  // TODO: When rebased on local2global PR, this can be changed to Idx local_id =
+  // global_data.get_group<Level>.get_local_id()[0]
   Idx local_id;
 
   if constexpr (Level == detail::level::SUBGROUP) {
@@ -502,10 +504,10 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
     local_id = static_cast<Idx>(global_data.it.get_local_id(0));
   }
   for (Idx i = 0; i < num_complex; i++) {
-    Idx local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
+    Idx local_index = 2 * i * stride_local + local_id;
     IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + 2 * static_cast<IdxGlobal>(i) * stride_global;
-    global_data.log_message(func_name, "from", global_index, "to", local_index, "value", global_base_ptr[global_index]);
-    local_ptr[local_index] = global_base_ptr[global_index];
+    global_data.log_message(func_name, "from", global_index, "to", local_index, "value", global[global_index]);
+    local[local_index] = global[global_index];
   }
 }
 
@@ -698,8 +700,8 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
 /**
  * Transfers data from local memory which is strided to global memory, which too is strided in a transposed fashion
  *
- * @tparam Pad Whether or not to pad local memory
- * @tparam T Scalar type
+ * @tparam LocalT The type of view of local memory
+ * @tparam GlobalT The type of view of global memory
  *
  * @param global_data global data for the kernel
  * @param loc Pointer to local memory
@@ -711,10 +713,12 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
  * @param fft_size Size of the problem
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
-template <detail::pad Pad, typename T>
-PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, T* loc, T* global,
-                                                              IdxGlobal global_offset, Idx local_stride, Idx N, Idx M,
-                                                              Idx fft_size, Idx bank_lines_per_pad) {
+template <typename LocalT, typename GlobalT>
+PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, LocalT loc,
+                                                              GlobalT global, IdxGlobal global_offset, Idx local_stride,
+                                                              Idx N, Idx M, Idx fft_size) {
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
+                "Type mismatch between local and global views");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "global_offset", global_offset, "local_stride", local_stride, "N", N, "M", M,
                                 "fft_size", fft_size);
@@ -722,9 +726,7 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_dat
   for (Idx i = 0; i < fft_size; i++) {
     Idx source_row = i / N;
     Idx source_col = i % N;
-    Idx local_idx = detail::pad_local<Pad>(
-        local_stride * (source_col * M + source_row) + static_cast<Idx>(global_data.it.get_local_id(0)),
-        bank_lines_per_pad);
+    Idx local_idx = local_stride * (source_col * M + source_row) + static_cast<Idx>(global_data.it.get_local_id(0));
     IdxGlobal global_idx =
         global_offset + static_cast<IdxGlobal>(2 * batch_num * fft_size + 2 * i +
                                                static_cast<Idx>(global_data.it.get_local_linear_id()) % 2);
@@ -741,22 +743,23 @@ PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_dat
  * Call site is resposible for managing OOB accesses.
  *  assumption: `nd_item.get_local_linear_id() / 2 < number_of_batches_in_local_mem
  *
- * @tparam pad Whether or not to consider padding in local memory
- * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam T Scalar Type
+ * @tparam GlobalT The type of view of global memory
+ * @tparam LocalT The type of view of local memory
  *
  * @param global_data  global data for the kernel
- * @param global_base_ptr Global Pointer
- * @param local_ptr Local Pointer
+ * @param global View of global memory
+ * @param local View of local memory
  * @param offset Offset from which the strided loads would begin
  * @param num_complex Number of complex numbers per workitem
  * @param stride_global Stride Value for global memory
  * @param stride_local Stride Value for Local Memory
  */
-template <detail::pad Pad, detail::level Level, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_struct global_data, T* global_base_ptr,
-                                                        T* local_ptr, IdxGlobal offset, Idx num_complex,
+template <detail::level Level, typename GlobalT, typename LocalT>
+PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_struct global_data, GlobalT global,
+                                                        LocalT local, IdxGlobal offset, Idx num_complex,
                                                         IdxGlobal stride_global, Idx stride_local) {
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
+                "Type mismatch between local and global views");
   global_data.log_message_local(__func__,
                                 "Tranferring data from local to global memory with stride_global:", stride_global,
                                 " global offset = ", offset, "number of elements per workitem = ", num_complex,
@@ -769,10 +772,10 @@ PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_stru
   }
 
   for (Idx i = 0; i < num_complex; i++) {
-    Idx local_index = detail::pad_local<Pad>(2 * i * stride_local + local_id, BankLinesPerPad);
+    Idx local_index = 2 * i * stride_local + local_id;
     IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + static_cast<IdxGlobal>(2 * i) * stride_global;
-    global_data.log_message(__func__, "from", local_index, "to", global_index, "value", local_ptr[local_index]);
-    global_base_ptr[global_index] = local_ptr[local_index];
+    global_data.log_message(__func__, "from", local_index, "to", global_index, "value", local[local_index]);
+    global[global_index] = local[local_index];
   }
 }
 
@@ -781,23 +784,24 @@ PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_stru
  * by interpreting the local memory as if strided. To be used specifically for workgroup FFTs, where input in PACKED but
  * output is BATCHED_INTERLEAVED
  *
- * @tparam Pad Whether or not Padding is to be applied
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
- * @tparam T Pointer type to local and global
+ * @tparam GlobalT The type of view of global memory
+ * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
- * @param global_ptr Pointer to global memory
- * @param local_ptr Pointer to local memory
+ * @param global View of global memory
+ * @param local View of local memory
  * @param global_stride Stride applicable to global memory
  * @param global_offset  Offset applicable to global memory
  * @param num_elements Total number of elements to be transferred
  * @param N Viewing num_elements as product of two factors, N being the first factor
  * @param M Viewing num_elements as product of two factors, M being the second factor
  */
-template <detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+template <typename GlobalT, typename LocalT>
+PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct global_data, GlobalT global, LocalT local,
                                                  IdxGlobal global_stride, IdxGlobal global_offset, Idx num_elements,
                                                  Idx N, Idx M) {
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
+                "Type mismatch between local and global views");
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset);
   Idx start_index = static_cast<Idx>(global_data.it.get_local_linear_id());
@@ -805,13 +809,12 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
   for (Idx idx = start_index; idx < num_elements; idx += index_stride) {
     Idx source_row = idx / N;
     Idx source_col = idx % N;
-    Idx base_offset = detail::pad_local<Pad>(2 * source_col * M + 2 * source_row, BankLinesPerPad);
+    Idx base_offset = 2 * source_col * M + 2 * source_row;
     IdxGlobal base_global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset;
     global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", base_global_idx,
-                            base_global_idx + 1, "values = (", local_ptr[base_offset], ",", local_ptr[base_offset + 1],
-                            ")");
-    global_ptr[base_global_idx] = local_ptr[base_offset];
-    global_ptr[base_global_idx + 1] = local_ptr[base_offset + 1];
+                            base_global_idx + 1, "values = (", local[base_offset], ",", local[base_offset + 1], ")");
+    global[base_global_idx] = local[base_offset];
+    global[base_global_idx + 1] = local[base_offset + 1];
   }
 }
 
@@ -821,13 +824,12 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * BATCHED_INTERLEAVED and output is BATCHED_INTERLEAVED as well.
  * Call site is resposible for managing OOB accesses
  *
- * @tparam Pad Whether or not Padding is to be applied
- * @tparam BankLinesPerPad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
- * @tparam T Pointer type to local and global
+ * @tparam GlobalT The type of view of global memory
+ * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
- * @param global_ptr Pointer to global memory
- * @param local_ptr Pointer to local memory
+ * @param global View of global memory
+ * @param local View of local memory
  * @param global_stride Stride applicable to global memory
  * @param global_offset Offset applicable to global memory
  * @param local_stride Stride applicable to local memory
@@ -835,20 +837,21 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * @param N Viewing num_elements as product of two factors, N being the first factor
  * @param M Viewing num_elements as product of two factors, M being the second factor
  */
-template <detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2strides_2global_strided(detail::global_data_struct global_data, T* global_ptr, T* local_ptr,
+template <typename GlobalT, typename LocalT>
+PORTFFT_INLINE void local2strides_2global_strided(detail::global_data_struct global_data, GlobalT global, LocalT local,
                                                   IdxGlobal global_stride, IdxGlobal global_offset, Idx local_stride,
                                                   Idx num_elements, Idx N, Idx M) {
+  static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
+                "Type mismatch between local and global views");
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset, " local stride = ", local_stride);
   for (Idx idx = 0; idx < num_elements; idx++) {
     Idx local_stride_2 = (idx % N) * M + (idx / N);
-    Idx base_offset = detail::pad_local<Pad>(
-        local_stride_2 * local_stride + static_cast<Idx>(global_data.it.get_local_id(0)), BankLinesPerPad);
+    Idx base_offset = local_stride_2 * local_stride + static_cast<Idx>(global_data.it.get_local_id(0));
     IdxGlobal global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset +
                            static_cast<IdxGlobal>(global_data.it.get_local_id(0));
-    global_data.log_message(__func__, "from", base_offset, "to", global_idx, "value", local_ptr[base_offset]);
-    global_ptr[global_idx] = local_ptr[base_offset];
+    global_data.log_message(__func__, "from", base_offset, "to", global_idx, "value", local[base_offset]);
+    global[global_idx] = local[base_offset];
   }
 }
 

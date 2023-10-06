@@ -177,8 +177,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
         global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // load / store in a transposed manner
-        global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, BankLinesPerPad, T>(
-            global_data, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+        global2local_transposed<detail::level::WORKGROUP>(global_data, input, loc_view, 2 * i, FactorWI * FactorSG,
+                                                          n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, NRealsPerWI * FactorSG);
@@ -256,22 +256,21 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       }
       sycl::group_barrier(global_data.it.get_group());
       if constexpr (SubgroupSize != FactorSG || LayoutOut == detail::layout::BATCH_INTERLEAVED) {
-        global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
+        global_data.log_dump_local("computed data in local memory:", loc_view, NRealsPerWI * FactorSG);
         // store back all loaded batches at once.
         if constexpr (LayoutOut == detail::layout::PACKED) {
           global_data.log_message_global(__func__,
                                          "storing transposed data from local to global memory (SubgroupSize != "
                                          "FactorSG) with LayoutOut = detail::layout::PACKED");
-          local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
-              global_data, FactorWI * FactorSG, num_batches_in_local_mem, max_num_batches_local_mem, loc, output,
-              i * n_reals_per_fft);
+          local2global_transposed(global_data, FactorWI * FactorSG, num_batches_in_local_mem, max_num_batches_local_mem,
+                                  loc_view, output, i * n_reals_per_fft);
         } else {
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
                                          "detail::layout::BATCH_INTERLEAVED");
           if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-            local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
-                global_data, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+            local_transposed2_global_transposed<detail::level::WORKGROUP>(
+                global_data, output, loc_view, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
           }
         }
       }

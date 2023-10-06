@@ -92,6 +92,7 @@ PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
  */
 template <Idx BankLinesPerPad, typename ParentT>
 struct padded_view {
+  static_assert(BankLinesPerPad >= 0, "Negative padding is not possible");
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
   static constexpr bool IsContiguous = IsContiguousViewV<ParentT> && !(BankLinesPerPad > 0);
@@ -113,7 +114,7 @@ struct padded_view {
 };
 
 /**
- * Make a padded view from a pointer.
+ * Make a padded view from a pointer or another view.
  *
  * @tparam BankLinesPerPad The padding space to be added after every `bank_lines_per_pad` groups of
  * `PORTFFT_N_LOCAL_BANKS` banks. 0 indicates no padding.
