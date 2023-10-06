@@ -622,11 +622,13 @@ template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx Num
 PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, TDstIdx stride_1,
                                      TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, Idx stride_3, Idx offset_3,
                                      Idx bank_lines_per_pad) {
+  static_assert(((Pad == detail::pad::DO_PAD) && std::is_same_v<TDstIdx, Idx>) ||
+                ((Pad == detail::pad::DONT_PAD) && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
   detail::unrolled_loop<0, NumComplexElements, 1>([&](const Idx j) PORTFFT_INLINE {
-    Idx base_offset = stride_1 * (stride_2 * (j * stride_3 + offset_3) + offset_2) + offset_1;
+    TDstIdx base_offset = stride_1 * (stride_2 * static_cast<TDstIdx>((j * stride_3 + offset_3)) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
       global_data.log_message(func_name, "from", detail::pad_local<Pad>(base_offset, bank_lines_per_pad), "to", 2 * j,
                               "value", input[detail::pad_local<Pad>(base_offset, bank_lines_per_pad)]);
