@@ -60,18 +60,18 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
 
   const char* header =
       "python3 -c \""
-      "import numpy as np;"
-      "from sys import stdout;"
-      "\ndef gen_data(batch,dims,is_complex):\n"
-      "  dataGenDims = [batch] + dims;"
-      "  inData = np.random.uniform(-1, 1, dataGenDims).astype(np.double);"
-      "\n  if (is_complex):\n"
-      "    inData = inData + 1j * np.random.uniform(-1, 1, dataGenDims).astype(np.double);\n"
-      "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1));"
-      "  inData.reshape(-1, 1);"
-      "  outData.reshape(-1, 1);"
-      "  stdout.buffer.write(inData.tobytes());"
-      "  stdout.buffer.write(outData.tobytes());\n"
+      "import numpy as np\n"
+      "from sys import stdout\n"
+      "def gen_data(batch,dims,is_complex):\n"
+      "  dataGenDims = [batch] + dims\n"
+      "  inData = np.random.uniform(-1, 1, dataGenDims).astype(np.double)\n"
+      "  if (is_complex):\n"
+      "    inData = inData + 1j * np.random.uniform(-1, 1, dataGenDims).astype(np.double)\n"
+      "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
+      "  inData.reshape(-1, 1)\n"
+      "  outData.reshape(-1, 1)\n"
+      "  stdout.buffer.write(inData.tobytes())\n"
+      "  stdout.buffer.write(outData.tobytes())\n"
       "gen_data(";
 
   std::stringstream command;
@@ -87,7 +87,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
   command << "],";
 
   command << (IsRealDomain ? "False" : "True");
-  command << ");\"";
+  command << ")\"";
 
   FILE* f = popen(command.str().c_str(), "r");
   if (f == nullptr) {
