@@ -228,10 +228,10 @@ __attribute__((always_inline)) inline void dimension_dft(LocalT loc, T* loc_twid
  * @tparam N Smaller factor of the Problem size
  * @tparam M Larger factor of the problem size
  * @tparam SubgroupSize Size of the subgroup
- * @tparam XXXXXXXXXXXXX
+ * @tparam LocalT Local memory view type
  * @tparam T Scalar type
  *
- * @param loc local accessor containing the input
+ * @param loc A view of a local accessor containing input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param global_data global data for the kernel

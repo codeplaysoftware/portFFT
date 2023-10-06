@@ -35,8 +35,7 @@ bytes.
 
 namespace portfft::detail {
 
-/** A view of memory with built-in offset from zero. eg.
- * this[i] is equivalent to parent[i + offset]
+/** A view of memory with built-in offset from zero. eg. this[i] is equivalent to parent[i + offset]
  *
  * @tparam ParentT The underlying view or pointer type.
  * @tparam OffsetT Type for the offset. Defaults to Idx type.
@@ -58,7 +57,7 @@ struct offset_view {
 
   // Index into the view.
   template <typename IndexerT>
-  PORTFFT_INLINE inline constexpr reference operator[](IndexerT i) const {
+  PORTFFT_INLINE constexpr reference operator[](IndexerT i) const {
     return data[static_cast<IndexerT>(offset) + i];
   }
 };
@@ -99,12 +98,12 @@ struct padded_view {
 
   ParentT data;
 
-  // Constructor: Create a view of a pointer.
-  constexpr padded_view(ParentT ptr) noexcept : data(ptr){};
+  // Constructor: Create a view of a pointer or another view.
+  constexpr padded_view(ParentT parent) noexcept : data(parent){};
 
   // Index into the view.
   template <typename IdxT>
-  PORTFFT_INLINE inline constexpr reference operator[](IdxT i) const {
+  PORTFFT_INLINE constexpr reference operator[](IdxT i) const {
     if constexpr (BankLinesPerPad == 0) {
       return data[i];
     } else {

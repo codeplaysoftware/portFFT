@@ -431,8 +431,7 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT
                                 "local_offset", local_offset);
   detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
     Idx local_idx = local_offset + local_id * stride + i;
-    global_data.log_message(func_name, "from", local_offset + local_id * stride + i, "to", i, "value",
-                            local[local_idx]);
+    global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
   });
 }
