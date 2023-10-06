@@ -188,7 +188,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
                                   BankLinesPerPad);
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_INLINE {
+        unrolled_loop<0, NReals, 2>([&](Idx i) PORTFFT_INLINE {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
         });

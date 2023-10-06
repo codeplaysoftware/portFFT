@@ -174,7 +174,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             i * n_reals_per_fft);
       }
       sycl::group_barrier(global_data.it.get_group());
-      if (static_cast<Idx>(global_data.it.get_local_linear_id() / 2) < num_batches_in_local_mem) {
+      if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
         global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // load / store in a transposed manner
         global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, BankLinesPerPad, T>(
@@ -269,7 +269,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
                                          "detail::layout::BATCH_INTERLEAVED");
-          if (static_cast<Idx>(global_data.it.get_local_linear_id() / 2) < num_batches_in_local_mem) {
+          if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
             local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
                 global_data, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
           }
@@ -334,7 +334,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         }
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        unrolled_loop<0, NRealsPerWI, 2>([&](int i) PORTFFT_INLINE {
+        unrolled_loop<0, NRealsPerWI, 2>([&](Idx i) PORTFFT_INLINE {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
         });

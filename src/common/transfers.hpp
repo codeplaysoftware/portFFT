@@ -601,6 +601,7 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * of transpositions / strides and combine them into a single load / store.
  *
  * @tparam T Scalar Type
+ * @tparam TDstIdx type of destination index
  * @tparam Pad Whether or not to pad
  * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TransferDirection Direction of Transfer
@@ -616,9 +617,10 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, con
  * @param offset_3 Outermost offset
  * @param bank_lines_per_pad the number of groups of PORTFFT_N_LOCAL_BANKS to have between each local pad
  */
-template <detail::transfer_direction TransferDirection, detail::pad Pad, int NumComplexElements, typename T>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, Idx stride_1,
-                                     Idx offset_1, Idx stride_2, Idx offset_2, Idx stride_3, Idx offset_3,
+template <detail::transfer_direction TransferDirection, detail::pad Pad, Idx NumComplexElements, typename T,
+          typename TDstIdx>
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, T* input, T* output, TDstIdx stride_1,
+                                     TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2, Idx stride_3, Idx offset_3,
                                      Idx bank_lines_per_pad) {
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
