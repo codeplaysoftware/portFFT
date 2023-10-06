@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -93,11 +94,17 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
     throw std::runtime_error("Command to create reference data failed\n");
   }
 
+  auto process_close_func = [](FILE* f) {
+    if (pclose(f) != 0) {
+      throw std::runtime_error("failed to close validation sub-process");
+    }
+  };
+  std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
+
   auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
-  auto backward_elements = elements;
-  if (IsRealDomain) {
-    backward_elements = std::accumulate(dims.cbegin(), dims.cend() - 1, dims.back() / 2 + 1, std::multiplies<>());
-  }
+  auto backward_elements =
+      IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, dims.back() / 2 + 1, std::multiplies<>())
+                   : elements;
 
   using FwdDoubleType = typename std::conditional_t<IsRealDomain, double, std::complex<double>>;
   using BwdDoubleType = std::complex<double>;
@@ -112,10 +119,6 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
   auto bwd_read = std::fread(backward.data(), sizeof(BwdDoubleType), backward_elements, f);
   if (bwd_read != backward_elements) {
     throw std::runtime_error("Reference data was not transferred correctly");
-  }
-
-  if (pclose(f) != 0) {
-    throw std::runtime_error("Failed to close command pipe");
   }
 
   // cast to the correct type if necessary
