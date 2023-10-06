@@ -127,7 +127,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0) / 2));
+                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize,
                BankLinesPerPad>(loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch,
@@ -135,9 +135,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         sycl::group_barrier(global_data.it.get_group());
       }
       global_data.log_dump_local("computed data in local memory:", loc,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0) / 2));
+                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
 
-      if (static_cast<Idx>(global_data.it.get_local_linear_id() / 2) < num_batches_in_local_mem) {
+      if (static_cast<Idx>(global_data.it.get_local_linear_id() /) 2 < num_batches_in_local_mem) {
         if constexpr (LayoutOut == detail::layout::PACKED) {
           global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
           // local2global_transposed cannot be used over here. This is because the data in the local memory is also

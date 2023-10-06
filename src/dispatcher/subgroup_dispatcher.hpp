@@ -226,7 +226,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
         if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-          unrolled_loop<0, NRealsPerWI, 2>([&](int idx) PORTFFT_INLINE {
+          unrolled_loop<0, NRealsPerWI, 2>([&](Idx idx) PORTFFT_INLINE {
             priv[idx] *= scaling_factor;
             priv[idx + 1] *= scaling_factor;
           });
@@ -323,7 +323,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         if (working) {
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
-          detail::unrolled_loop<0, FactorWI, 1>([&](const std::size_t j) {
+          detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
             Idx base_offset =
                 detail::pad_local(static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
                                       id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,

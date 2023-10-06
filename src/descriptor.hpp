@@ -41,7 +41,7 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-// TODO: Remove all templates except Scalar, Domain and Memory
+// TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
           detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workitem_kernel;
