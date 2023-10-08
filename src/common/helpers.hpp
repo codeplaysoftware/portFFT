@@ -21,7 +21,7 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
-#include <common/logging.hpp>
+#include <defines.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -36,7 +36,7 @@ namespace portfft::detail {
  * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
  * __attribute__((always_inline)).
  */
-template <auto Start, auto Stop, auto Step, typename Functor>
+template <Idx Start, Idx Stop, Idx Step, typename Functor>
 PORTFFT_INLINE void unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);

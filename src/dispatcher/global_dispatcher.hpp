@@ -198,8 +198,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       std::size_t twiddle_between_factors_offset = 0;
       std::size_t impl_twiddles_offset = local_mem_twiddle_offset;
       detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::BATCH_INTERLEAVED,
-                                       detail::layout::BATCH_INTERLEAVED, detail::apply_load_modifier::NOT_APPLIED,
-                                       detail::apply_store_modifier::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
+                                       detail::layout::BATCH_INTERLEAVED, detail::elementwise_multiply::NOT_APPLIED,
+                                       detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
                                        SubgroupSize>(desc, in, scale_factor, 0, impl_twiddles_offset,
                                                      twiddle_between_factors_offset, batch, dependency_copy);
       twiddle_between_factors_offset += 2 * desc.factors[0] * desc.sub_batches[0];
@@ -207,15 +207,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       for (std::size_t level_num = 1; level_num < desc.factors.size(); level_num++) {
         if (level_num == desc.factors.size() - 1) {
           detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::PACKED, detail::layout::PACKED,
-                                           detail::apply_load_modifier::NOT_APPLIED,
-                                           detail::apply_store_modifier::NOT_APPLIED,
+                                           detail::elementwise_multiply::NOT_APPLIED,
+                                           detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize>(
               desc, scratch_input, scale_factor, level_num, impl_twiddles_offset, twiddle_between_factors_offset, batch,
               dependency_copy);
         } else {
           detail::dispatch_compute_kernels<Scalar, Dir, Domain, detail::layout::BATCH_INTERLEAVED,
-                                           detail::layout::BATCH_INTERLEAVED, detail::apply_load_modifier::NOT_APPLIED,
-                                           detail::apply_store_modifier::APPLIED,
+                                           detail::layout::BATCH_INTERLEAVED, detail::elementwise_multiply::NOT_APPLIED,
+                                           detail::elementwise_multiply::APPLIED,
                                            detail::apply_scale_factor::NOT_APPLIED, SubgroupSize>(
               desc, scratch_input, scale_factor, level_num, impl_twiddles_offset, twiddle_between_factors_offset, batch,
               dependency_copy);

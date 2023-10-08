@@ -91,7 +91,7 @@ __attribute__((always_inline)) inline std::size_t get_outer_batch_offset(const s
 }
 
 template <direction Dir, typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut,
-          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          detail::elementwise_multiply ApplyLoadModifier, detail::elementwise_multiply ApplyStoreModifier,
           apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 __attribute__((always_inline)) inline void dispatch_level(
     const Scalar* input, Scalar* output, const Scalar* implementation_twiddles, const Scalar* load_modifier_data,
@@ -124,7 +124,7 @@ __attribute__((always_inline)) inline void dispatch_level(
 }
 
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
-          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          detail::elementwise_multiply ApplyLoadModifier, detail::elementwise_multiply ApplyStoreModifier,
           apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 void dispatch_compute_kernel_impl(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& input, Scalar* output,
                                   const Scalar* implementation_twiddles, Scalar* local_memory,
@@ -146,7 +146,7 @@ void dispatch_compute_kernel_impl(sycl::accessor<const Scalar, 1, sycl::access::
 }
 
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
-          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          detail::elementwise_multiply ApplyLoadModifier, detail::elementwise_multiply ApplyStoreModifier,
           apply_scale_factor ApplyScaleFactor, int SubgroupSize>
 void dispatch_compute_kernel_impl(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
                                   Scalar* local_memory, Scalar* implementation_local_memory_twiddles,
@@ -168,7 +168,7 @@ void dispatch_compute_kernel_impl(const Scalar* input, Scalar* output, const Sca
 }
 
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
-          apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
+          detail::elementwise_multiply ApplyLoadModifier, detail::elementwise_multiply ApplyStoreModifier,
           apply_scale_factor ApplyScaleFactor, int SubgroupSize, typename TIn>
 void dispatch_compute_kernels(committed_descriptor<Scalar, Domain>& desc, const TIn& input, Scalar scale_factor,
                               std::size_t level_num, std::size_t implementation_twiddle_offset,

@@ -21,6 +21,7 @@
 #ifndef PORTFFT_UTILS_HPP
 #define PORTFFT_UTILS_HPP
 
+#include <defines.hpp>
 #include <enums.hpp>
 #include <kernels.hpp>
 
@@ -30,7 +31,6 @@
 
 namespace portfft {
 namespace detail {
-
 /**
  * Get kernel ids for the implementation used.
  *
@@ -39,9 +39,9 @@ namespace detail {
  * @param ids vector of kernel ids
  */
 template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout,
-                    detail::apply_load_modifier, detail::apply_store_modifier, detail::apply_scale_factor, int>
+                    detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx>
           class Kernel,
-          typename Scalar, domain Domain, int SubgroupSize>
+          typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR)         \
@@ -55,13 +55,13 @@ std::vector<sycl::kernel_id> get_ids() {
   PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::APPLIED) \
   PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::NOT_APPLIED)
 
-#define INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER)      \
-  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, apply_store_modifier::APPLIED) \
-  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, apply_store_modifier::NOT_APPLIED)
+#define INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER)       \
+  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, elementwise_multiply::APPLIED) \
+  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, elementwise_multiply::NOT_APPLIED)
 
 #define INSTANTIATE_LAYOUTOUT_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT)                              \
-  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, apply_load_modifier::APPLIED) \
-  INSTANTITATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, apply_load_modifier::NOT_APPLIED)
+  INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, elementwise_multiply::APPLIED) \
+  INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, elementwise_multiply::NOT_APPLIED)
 
 #define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, LAYOUT_IN)                \
   INSTANTIATE_LAYOUTOUT_MODIFIERS(DIR, MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED) \
@@ -79,7 +79,8 @@ std::vector<sycl::kernel_id> get_ids() {
   INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS(direction::BACKWARD)
 #undef PORTFFT_GET_ID
 #undef GENERATE_KERNELS
-#undef INSTANTITATE_LOAD_MODIFIER_MODIFIERS
+#undef INSTANTIATE_LOAD_MODIFIER_MODIFIERS
+#undef INSTANTIATE_LAYOUTOUT_MODIFIERS
 #undef INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
 #undef INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS

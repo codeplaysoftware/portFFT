@@ -27,21 +27,18 @@ namespace portfft {
 namespace detail {
 
 // kernel names
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
-          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+// TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
-          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
-          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class workgroup_kernel;
-template <typename Scalar, domain Domain, direction Dir, detail::memory, detail::layout LayoutIn,
-          detail::layout LayoutOut, apply_load_modifier ApplyLoadModifier, apply_store_modifier ApplyStoreModifier,
-          apply_scale_factor ApplyScaleFactor, int SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
+          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
 class global_kernel;
 
 template <typename Scalar, domain Domain, detail::memory Mem, int SubgroupSize>

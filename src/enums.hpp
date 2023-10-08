@@ -31,6 +31,13 @@ enum class placement { IN_PLACE, OUT_OF_PLACE };
 
 enum class direction { FORWARD, BACKWARD };
 
+/**
+ * Return the opposite direction.
+ * Useful to get the output of descriptor::get_strides, descriptor::get_distance, or similar functions.
+ * @param dir Direction
+ */
+constexpr direction inv(direction dir) { return dir == direction::FORWARD ? direction::BACKWARD : direction::FORWARD; }
+
 namespace detail {
 enum class pad { DO_PAD, DONT_PAD };
 
@@ -54,9 +61,7 @@ enum class memory { BUFFER, USM };
 
 enum class transfer_direction { LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL, PRIVATE_TO_GLOBAL };
 
-enum class apply_load_modifier { APPLIED, NOT_APPLIED };
-
-enum class apply_store_modifier { APPLIED, NOT_APPLIED };
+enum class elementwise_multiply { APPLIED, NOT_APPLIED };
 
 enum class apply_scale_factor { APPLIED, NOT_APPLIED };
 }  // namespace detail

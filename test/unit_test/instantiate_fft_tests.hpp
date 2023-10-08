@@ -25,6 +25,7 @@
 #include <type_traits>
 
 #include "fft_test_utils.hpp"
+#include <common/exceptions.hpp>
 
 class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
 class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
@@ -71,7 +72,13 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
       CHECK_QUEUE(queue_pair);                                                                              \
       queue = queue_pair.first.value();                                                                     \
     }                                                                                                       \
-    check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, LAYOUTIN, LAYOUTOUT>(param, queue);   \
+    try {                                                                                                   \
+      check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, LAYOUTIN, LAYOUTOUT>(param, queue); \
+    } catch (portfft::out_of_local_memory_error & e) {                                                      \
+      GTEST_SKIP() << e.what();                                                                             \
+    } catch (portfft::unsupported_configuration & e) {                                                      \
+      GTEST_SKIP() << e.what();                                                                             \
+    }                                                                                                       \
   }
 
 #define INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT,       \
@@ -95,10 +102,10 @@ INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
                                  detail::layout::PACKED, _out_packed)                                              \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
                                  _in_batch_interleaved, detail::layout::PACKED, _out_packed)                       \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
+  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::BATCH_INTERLEAVED,                 \
                                  _in_batch_interleaved, detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved) \
   INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
                                  detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved)
-// transpose in place is not supported (yet?)
+// In place different input-output configurations are not supported
 
 #endif

@@ -26,8 +26,10 @@
 #include <common/logging.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
+#include <defines.hpp>
 #include <descriptor.hpp>
 #include <enums.hpp>
+#include <specialization_constants.hpp>
 
 namespace portfft {
 namespace detail {
@@ -43,14 +45,13 @@ namespace detail {
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T>
-std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgroup_size, std::size_t num_sgs_per_wg,
-                                     std::size_t n_compute_units) {
-  std::size_t maximum_n_sgs = 8 * n_compute_units * 64;
-  std::size_t maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
-  std::size_t wg_size = subgroup_size * num_sgs_per_wg;
+IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Idx num_sgs_per_wg, Idx n_compute_units) {
+  Idx maximum_n_sgs = 8 * n_compute_units * 64;
+  Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
+  Idx wg_size = subgroup_size * num_sgs_per_wg;
 
-  std::size_t n_wgs_we_can_utilize = divide_ceil(n_transforms, wg_size);
-  return wg_size * sycl::min(maximum_n_wgs, n_wgs_we_can_utilize);
+  IdxGlobal n_wgs_we_can_utilize = divide_ceil(n_transforms, static_cast<IdxGlobal>(wg_size));
+  return static_cast<IdxGlobal>(wg_size) * sycl::min(static_cast<IdxGlobal>(maximum_n_wgs), n_wgs_we_can_utilize);
 }
 /**
  * Utility function for applying load/store modifiers for workitem impl
@@ -65,12 +66,12 @@ std::size_t get_global_size_workitem(std::size_t n_transforms, std::size_t subgr
  * @return void
  */
 template <int N, typename T>
-PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_wi_in_wg,
-                                   std::size_t num_batches_in_local_mem, std::size_t bank_lines_per_pad) {
-  detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
-    std::size_t base_offset = 2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg;
-    multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[detail::pad_local(base_offset, bank_lines_per_pad)],
-                     loc_modifier[detail::pad_local(base_offset, bank_lines_per_pad)], priv[2 * j], priv[2 * j + 1]);
+PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, Idx id_of_wi_in_wg, Idx num_batches_in_local_mem,
+                                   Idx bank_lines_per_pad) {
+  detail::unrolled_loop<0, N, 1>([&](const Idx j) PORTFFT_INLINE {
+    Idx base_offset = detail::pad_local(2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg, bank_lines_per_pad);
+    multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[base_offset], loc_modifier[base_offset + 1],
+                     priv[2 * j], priv[2 * j + 1]);
   });
 }
 
@@ -80,8 +81,8 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
- * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
+ * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam N size of each transform
  * @tparam SubgroupSize size of the subgroup
@@ -93,62 +94,62 @@ PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, std::size_t id_of_w
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
- * @param load_modifier_data Pointer to the load modifier data in global Memory
- * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param load_modifier_data Pointer to the load modifier data in global memory
+ * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
-          detail::apply_scale_factor ApplyScaleFactor, int N, std::size_t SubgroupSize, typename T>
-PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                  global_data_struct global_data, T scaling_factor, const T* load_modifier_data,
-                                  const T* store_modifier_data, T* loc_load_modifier, T* loc_store_modifier) {
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, detail::elementwise_multiply MultiplyOnLoad,
+          detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx N,
+          Idx SubgroupSize, typename T>
+PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n_transforms, T scaling_factor,
+                                  const T* load_modifier_data, const T* store_modifier_data, T* loc_load_modifier,
+                                  T* loc_store_modifier, global_data_struct global_data) {
   global_data.log_message_global(__func__, "entered", "N", N, "n_transforms", n_transforms);
-  constexpr std::size_t NReals = 2 * N;
+  constexpr Idx NReals = 2 * N;
 
   T priv[NReals];
-  std::size_t subgroup_local_id = global_data.sg.get_local_linear_id();
-  std::size_t global_id = global_data.it.get_global_id(0);
-  std::size_t global_size = global_data.it.get_global_range(0);
-  std::size_t subgroup_id = global_data.sg.get_group_id();
-  std::size_t local_offset = NReals * SubgroupSize * subgroup_id;
-  constexpr std::size_t BankLinesPerPad = 1;
+  Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
+  IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
+  IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
+  Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
+  Idx local_offset = NReals * SubgroupSize * subgroup_id;
+  constexpr Idx BankLinesPerPad = 1;
 
-  for (std::size_t i = global_id; i < round_up_to_multiple(n_transforms, SubgroupSize); i += global_size) {
+  for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
+       i += global_size) {
     bool working = i < n_transforms;
-    std::size_t n_working = sycl::min(SubgroupSize, n_transforms - i + subgroup_local_id);
+    Idx n_working = sycl::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
 
+    IdxGlobal global_offset = static_cast<IdxGlobal>(NReals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, NReals * n_working, NReals * (i - subgroup_local_id), local_offset);
+          global_data, input, loc, NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
       global_data.log_dump_local("input data loaded in local memory:", loc, NReals * n_working);
     }
 
-    if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+    if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, load_modifier_data, loc_load_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
-          local_offset);
+          global_data, load_modifier_data, loc_load_modifier, NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
       global_data.log_dump_local("Load Modifier data in local Memory:", loc_load_modifier, NReals * n_working);
     }
 
-    if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
-      global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
+    if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
+      global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, store_modifier_data, loc_store_modifier, NReals * n_working, NReals * (i - subgroup_local_id),
-          local_offset);
+          global_data, store_modifier_data, loc_store_modifier, NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
-      global_data.log_dump_local("Load Modifier data in local Memory:", loc_store_modifier, NReals * n_working);
+      global_data.log_dump_local("Store Modifier data in local Memory:", loc_store_modifier, NReals * n_working);
     }
 
     sycl::group_barrier(global_data.sg);
@@ -158,7 +159,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
+        unrolled_loop<0, N, 1>([&](IdxGlobal j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[2 * j])
               ->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
@@ -169,26 +170,16 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
                                                             local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
-      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
+      if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         // Assumes load modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
         detail::apply_modifier<N>(priv, loc_load_modifier, global_data.it.get_local_linear_id(), local_offset,
                                   BankLinesPerPad);
       }
-      if constexpr (ApplyLoadModifier == detail::apply_load_modifier::APPLIED) {
-        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) __attribute__((always_inline)) {
-          std::size_t base_offset = local_offset + subgroup_local_id * NReals + 2 * j;
-          T modifier_real = loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)];
-          T modifier_complex = loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)];
-          detail::multiply_complex(static_cast<const T>(priv[2 * j]), static_cast<const T>(priv[2 * j + 1]),
-                                   static_cast<const T>(modifier_real), static_cast<const T>(modifier_complex),
-                                   priv[2 * j], priv[2 * j + 1]);
-        });
-      }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       global_data.log_dump_private("data in registers after computation:", priv, NReals);
-      if constexpr (ApplyStoreModifier == detail::apply_store_modifier::APPLIED) {
+      if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
@@ -196,7 +187,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
                                   BankLinesPerPad);
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
-        unrolled_loop<0, NReals, 2>([&](int i) PORTFFT_INLINE {
+        unrolled_loop<0, NReals, 2>([&](Idx i) PORTFFT_INLINE {
           priv[i] *= scaling_factor;
           priv[i + 1] *= scaling_factor;
         });
@@ -207,7 +198,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
         private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
                                                             local_offset);
       } else {
-        detail::unrolled_loop<0, N, 1>([&](const std::size_t j) PORTFFT_INLINE {
+        detail::unrolled_loop<0, N, 1>([&](IdxGlobal j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
           reinterpret_cast<T_vec*>(&priv[2 * j])
               ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
@@ -232,8 +223,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam ApplyLoadModifier Whether the input data is multiplied with some data array before fft computation.
- * @tparam ApplyStoreModifier Whether the input data is multiplied with some data array after fft computation.
+ * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
+ * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @tparam ApplyScaleFactor Whether or not the scale factor is applied
  * @tparam SubgroupSize size of the subgroup
  * @tparam SizeList The list of sizes that will be specialized.
@@ -245,32 +236,32 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, std::size_t
  * @param global_data global data for the kernel
  * @param scaling_factor Scaling factor applied to the result
  * @param fft_size The size of the FFT.
- * @param load_modifier_data Pointer to the load modifier data in global Memory
- * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @param load_modifier_data Pointer to the load modifier data in global memory
+ * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to load modifier data in local memory
+ * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-          detail::apply_load_modifier ApplyLoadModifier, detail::apply_store_modifier ApplyStoreModifier,
-          detail::apply_scale_factor ApplyScaleFactor, std::size_t SubgroupSize, typename SizeList, typename T>
-PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, std::size_t n_transforms,
-                                           global_data_struct global_data, T scaling_factor, std::size_t fft_size,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, detail::elementwise_multiply MultiplyOnLoad,
+          detail::elementwise_multiply MultiplyOnStore, detail::apply_scale_factor ApplyScaleFactor, Idx SubgroupSize,
+          typename SizeList, typename T>
+PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, IdxGlobal n_transforms,
+                                           global_data_struct global_data, T scaling_factor, Idx fft_size,
                                            const T* load_modifier_data = nullptr,
                                            const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
                                            T* loc_store_modifier = nullptr) {
   if constexpr (!SizeList::ListEnd) {
-    constexpr int ThisSize = SizeList::Size;
+    constexpr Idx ThisSize = SizeList::Size;
     if (fft_size == ThisSize) {
       if constexpr (detail::fits_in_wi<T>(ThisSize)) {
-        workitem_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor, ThisSize,
-                      SubgroupSize>(input, output, loc, n_transforms, global_data, scaling_factor, load_modifier_data,
-                                    store_modifier_data, loc_load_modifier, loc_store_modifier);
+        workitem_impl<Dir, LayoutIn, LayoutOut, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, ThisSize,
+                      SubgroupSize>(input, output, loc, n_transforms, scaling_factor, load_modifier_data,
+                                    store_modifier_data, loc_load_modifier, loc_store_modifier, global_data);
       }
     } else {
-      workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, ApplyLoadModifier, ApplyStoreModifier, ApplyScaleFactor,
-                             SubgroupSize, typename SizeList::child_t, T>(
-          input, output, loc, n_transforms, global_data, scaling_factor, fft_size, load_modifier_data,
-          store_modifier_data, loc_load_modifier, loc_store_modifier);
+      workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, SubgroupSize,
+                             typename SizeList::child_t, T>(input, output, loc, n_transforms, global_data,
+                                                            scaling_factor, fft_size, load_modifier_data,
+                                                            store_modifier_data, loc_load_modifier, loc_store_modifier);
     }
   }
 }
@@ -278,7 +269,7 @@ PORTFFT_INLINE void workitem_dispatch_impl(const T* input, T* output, T* loc, st
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize, typename TIn,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
           typename TOut>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
@@ -286,9 +277,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
                              const std::vector<sycl::event>& dependencies) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    std::size_t n_transforms = desc.params.number_of_transforms;
-    std::size_t global_size =
-        detail::get_global_size_workitem<Scalar>(n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units);
+    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
+    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
+        n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc);
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -296,24 +287,24 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.use_kernel_bundle(desc.exec_bundle[0]);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-      sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
+      sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workitem_kernel<
-          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
-          detail::apply_store_modifier::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {SubgroupSize * desc.num_sgs_per_wg}},
+          Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
+          detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-            std::size_t fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
+            Idx fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
                 s,
 #endif
                 it};
             global_data.log_message_global("Running workitem kernel");
-            detail::workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::apply_load_modifier::NOT_APPLIED,
-                                           detail::apply_store_modifier::NOT_APPLIED,
+            detail::workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
+                                           detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
