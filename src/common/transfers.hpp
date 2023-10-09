@@ -28,9 +28,6 @@
 #include <sycl/sycl.hpp>
 #include <traits.hpp>
 
-// TODO: Delete this - only needed whilst there are still pad_locals about.
-#include <common/memory_views.hpp>
-
 namespace portfft {
 
 namespace detail {
@@ -473,15 +470,7 @@ PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_da
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "offset", offset, "num_complex", num_complex, "stride_global", stride_global,
                                 "stride_local", stride_local);
-  // TODO: When rebased on local2global PR, this can be changed to Idx local_id =
-  // global_data.get_group<Level>.get_local_id()[0]
-  Idx local_id;
-
-  if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
-  } else {
-    local_id = static_cast<Idx>(global_data.it.get_local_id(0));
-  }
+  Idx local_id = static_cast<Idx>(global_data.get_group<Level>().get_local_id()[0]);
   for (Idx i = 0; i < num_complex; i++) {
     Idx local_index = 2 * i * stride_local + local_id;
     IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + 2 * static_cast<IdxGlobal>(i) * stride_global;
@@ -747,13 +736,7 @@ PORTFFT_INLINE void local_transposed2_global_transposed(detail::global_data_stru
                                 "Tranferring data from local to global memory with stride_global:", stride_global,
                                 " global offset = ", offset, "number of elements per workitem = ", num_complex,
                                 " and local stride:", stride_local);
-  Idx local_id;
-  if constexpr (Level == detail::level::SUBGROUP) {
-    local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
-  } else {
-    local_id = static_cast<Idx>(global_data.it.get_local_id(0));
-  }
-
+  Idx local_id = static_cast<Idx>(global_data.get_group<Level>().get_local_id()[0]);
   for (Idx i = 0; i < num_complex; i++) {
     Idx local_index = 2 * i * stride_local + local_id;
     IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + static_cast<IdxGlobal>(2 * i) * stride_global;

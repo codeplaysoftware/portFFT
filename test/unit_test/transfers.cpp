@@ -19,6 +19,7 @@
  **************************************************************************/
 
 #include "common/transfers.hpp"
+#include "common/memory_views.hpp"
 #include "number_generators.hpp"
 #include "utils.hpp"
 
