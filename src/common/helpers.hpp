@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
+#include <defines.hpp>
 #include <sycl/sycl.hpp>
 #include <type_traits>
 
@@ -35,8 +36,8 @@ namespace portfft::detail {
  * @param funct functor containing body of the loop. Should accept one value - the loop counter. Should have
  * __attribute__((always_inline)).
  */
-template <auto Start, auto Stop, auto Step, typename Functor>
-void __attribute__((always_inline)) unrolled_loop(Functor&& funct) {
+template <Idx Start, Idx Stop, Idx Step, typename Functor>
+PORTFFT_INLINE void unrolled_loop(Functor&& funct) {
   if constexpr (Start < Stop) {
     funct(Start);
     unrolled_loop<Start + Step, Stop, Step>(funct);
@@ -106,6 +107,24 @@ auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
 template <typename T, typename TSrc, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
 auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
   return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
+}
+
+/**
+ * Multiplies 2 complex numbers
+ *
+ * @tparam T Scalar Type
+ * @param input_real Input real part
+ * @param input_imag Input imag part
+ * @param multiplier_real Multiplier real part
+ * @param multiplier_imag Multiplier imag part
+ * @param output_real output real part
+ * @param output_imag output imag part
+ */
+template <typename T>
+PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, const T multiplier_real,
+                                     const T multiplier_imag, T& output_real, T& output_imag) {
+  output_real = input_real * multiplier_real - input_imag * multiplier_imag;
+  output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
 };  // namespace portfft::detail

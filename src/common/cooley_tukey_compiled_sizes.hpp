@@ -21,29 +21,29 @@
 #ifndef PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
 #define PORTFFT_COOLEY_TUKEY_COMPILED_SIZES_HPP
 #include <cstdint>
-
+#include <defines.hpp>
 namespace portfft::detail {
 
 /** A list of supported FFT sizes.
  * @tparam Sizes The supported FFT sizes.
  */
-template <std::size_t... Sizes>
+template <IdxGlobal... Sizes>
 struct size_list {
   // Specialization only used for zero size Sizes parameter pack.
   static constexpr bool ListEnd = true;
 };
 
-template <std::size_t ThisSize, std::size_t... OtherSizes>
+template <IdxGlobal ThisSize, IdxGlobal... OtherSizes>
 struct size_list<ThisSize, OtherSizes...> {
   using child_t = size_list<OtherSizes...>;
   static constexpr bool ListEnd = false;
-  static constexpr std::size_t Size = ThisSize;
+  static constexpr IdxGlobal Size = ThisSize;
 
   /**
    *  Returns true if a size list contains a particular value.
    *  @param x The value to look for
    **/
-  static constexpr bool has_size(std::size_t x) {
+  static constexpr bool has_size(IdxGlobal x) {
     bool has_size = x == Size;
     if constexpr (!child_t::ListEnd) {
       has_size |= child_t::has_size(x);

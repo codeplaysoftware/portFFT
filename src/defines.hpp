@@ -18,6 +18,22 @@
  *
  **************************************************************************/
 
-#include "instantiate_fft_tests.hpp"
+#ifndef PORTFFT_DEFINES_HPP
+#define PORTFFT_DEFINES_HPP
 
-INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_LAYOUT(double, Double)
+#include <cstdint>
+
+#ifdef PORTFFT_LOG
+#define PORTFFT_INLINE __attribute__((noinline))
+#else
+#define PORTFFT_INLINE __attribute__((always_inline))
+#endif
+
+namespace portfft {
+
+using Idx = std::int32_t;
+using IdxGlobal = std::int64_t;
+
+}  // namespace portfft
+
+#endif

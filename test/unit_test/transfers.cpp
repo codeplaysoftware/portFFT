@@ -62,14 +62,23 @@ void test() {
   q.fill(b_dev, sentinel_b, N * wg_size + 2 * N_sentinel_values);
   q.wait();
 
-  std::size_t padded_local_size = portfft::detail::pad_local<Pad>(N * wg_size, BankGroupsPerPad);
+  std::size_t padded_local_size =
+      static_cast<std::size_t>(portfft::detail::pad_local<Pad>(N * wg_size, BankGroupsPerPad));
 
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
     sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2 * N_sentinel_values, h);
+#ifdef PORTFFT_LOG
+    sycl::stream s{1024 * 8, 1024, h};
+#endif
     h.parallel_for<test_transfers_kernel<Pad, BankGroupsPerPad>>(
         sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
-          std::size_t local_id = it.get_group().get_local_linear_id();
+          detail::global_data_struct global_data{
+#ifdef PORTFFT_LOG
+              s,
+#endif
+              it};
+          portfft::Idx local_id = static_cast<portfft::Idx>(it.get_group().get_local_linear_id());
 
           ftype priv[N];
           ftype* loc1_work = &loc1[N_sentinel_values];
@@ -81,14 +90,14 @@ void test() {
             }
           }
           group_barrier(it.get_group());
-          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, a_dev_work, loc1_work,
-                                                                                          N * wg_size);
+          portfft::global2local<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(global_data, a_dev_work,
+                                                                                          loc1_work, N * wg_size);
           group_barrier(it.get_group());
-          portfft::local2private<N, Pad, BankGroupsPerPad>(loc1_work, priv, local_id, N);
-          portfft::private2local<N, Pad, BankGroupsPerPad>(priv, loc2_work, local_id, N);
+          portfft::local2private<N, Pad, BankGroupsPerPad>(global_data, loc1_work, priv, local_id, N);
+          portfft::private2local<N, Pad, BankGroupsPerPad>(global_data, priv, loc2_work, local_id, N);
           group_barrier(it.get_group());
-          portfft::local2global<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(it, loc2_work, b_dev_work,
-                                                                                          N * wg_size);
+          portfft::local2global<detail::level::WORKGROUP, sg_size, Pad, BankGroupsPerPad>(global_data, loc2_work,
+                                                                                          b_dev_work, N * wg_size);
           group_barrier(it.get_group());
           if (local_id == 0) {
             for (std::size_t i = 0; i < N_sentinel_values; i++) {
