@@ -22,7 +22,7 @@
 
 #include "descriptor.hpp"
 
-#include "utils.hpp"
+#include "fft_test_utils.hpp"
 
 using Scalar = float;
 static constexpr portfft::domain Domain = portfft::domain::COMPLEX;

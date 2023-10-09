@@ -739,6 +739,15 @@ struct descriptor {
   }
 
   /**
+   * Return a mutable reference to the strides for a given direction
+   *
+   * @param dir direction
+   */
+  std::vector<std::size_t>& get_strides(direction dir) noexcept {
+    return dir == direction::FORWARD ? forward_strides : backward_strides;
+  }
+
+  /**
    * Return the distance for a given direction
    *
    * @param dir direction
@@ -748,11 +757,27 @@ struct descriptor {
   }
 
   /**
+   * Return a mutable reference to the distance for a given direction
+   *
+   * @param dir direction
+   */
+  std::size_t& get_distance(direction dir) noexcept {
+    return dir == direction::FORWARD ? forward_distance : backward_distance;
+  }
+
+  /**
    * Return the scale for a given direction
    *
    * @param dir direction
    */
   Scalar get_scale(direction dir) const noexcept { return dir == direction::FORWARD ? forward_scale : backward_scale; }
+
+  /**
+   * Return a mutable reference to the scale for a given direction
+   *
+   * @param dir direction
+   */
+  Scalar& get_scale(direction dir) noexcept { return dir == direction::FORWARD ? forward_scale : backward_scale; }
 
  private:
   /**
