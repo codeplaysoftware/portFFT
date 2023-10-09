@@ -95,7 +95,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   auto loc_view = make_padded_view<BankLinesPerPad>(loc);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles, 2 * (M + N));
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, 2 * (M + N));
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
 
   Idx max_num_batches_in_local_mem = [=]() {
@@ -154,8 +154,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       sycl::group_barrier(global_data.it.get_group());
     } else {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::WORKGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(global_data, input, loc, 2 * FFTSize,
-                                                                                 offset);
+      global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * FFTSize, offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize>(
           loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,

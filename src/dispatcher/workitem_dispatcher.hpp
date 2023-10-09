@@ -58,19 +58,18 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  * Utility function for applying load/store modifiers for workitem impl
  *
  * @tparam N FFTSize, the number of elements each workitem holds
- * @tparam T Type of Scalar
+ * @tparam PrivT Private view type
+ * @tparam LocalT Local view type
  * @param priv pointer to private memory
  * @param loc_modifier Pointer to local memory in which modifier data is stored
  * @param id_of_wi_in_wg workitem id in workgroup
  * @param num_batches_in_local_mem number of batches in local memory
- * @param bank_lines_per_pad Number of 32 bit banks after which padding is applied
  * @return void
  */
-template <int N, typename T>
-PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, Idx id_of_wi_in_wg, Idx num_batches_in_local_mem,
-                                   Idx bank_lines_per_pad) {
+template <int N, typename PrivT, typename LocalT>
+PORTFFT_INLINE void apply_modifier(PrivT priv, LocalT loc_modifier, Idx id_of_wi_in_wg, Idx num_batches_in_local_mem) {
   detail::unrolled_loop<0, N, 1>([&](const Idx j) PORTFFT_INLINE {
-    Idx base_offset = detail::pad_local(2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg, bank_lines_per_pad);
+    Idx base_offset = 2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg;
     multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[base_offset], loc_modifier[base_offset + 1],
                      priv[2 * j], priv[2 * j + 1]);
   });
@@ -117,6 +116,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   Idx local_offset = NReals * SubgroupSize * subgroup_id;
   constexpr Idx BankLinesPerPad = 1;
   auto loc_view = detail::make_padded_view<BankLinesPerPad>(loc);
+  auto loc_load_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_load_modifier);
+  auto loc_store_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_store_modifier);
 
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
@@ -126,8 +127,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
     IdxGlobal global_offset = static_cast<IdxGlobal>(NReals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, NReals * n_working, global_offset,
+                                                  local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -136,8 +137,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
 
     if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, load_modifier_data, loc_load_modifier, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
+                                                  NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -146,8 +147,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
 
     if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, store_modifier_data, loc_store_modifier, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
+                                                  NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -209,8 +210,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
       global_data.log_message_global(__func__, "storing data from local to global memory");
-      local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
+      local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, NReals * n_working, local_offset,
+                                                  NReals * (i - subgroup_local_id));
       sycl::group_barrier(global_data.sg);
     }
   }
