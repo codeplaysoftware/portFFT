@@ -68,9 +68,10 @@ PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
   return local_idx;
 }
 
+namespace impl {
 /** Copy between index-contiguous global and local memory using sub-group loads/stores for real data.
  *  Works on a fixed size block. Arguments are expected to be the same for all values in the sub-group.
- *  This function is expected to be called from `subgroup_block_copy_driver`.
+ *  This function is expected to be called from `subgroup_block_copy`.
  *  global[global_offset + i] <-> local[local_offset + i] for i in [0, SgBlockCopyBlockSize)
  *
  *  @tparam TransferDirection Direction of memory transfer
@@ -89,8 +90,8 @@ PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
  */
 template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize, pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct global_data, GlobalViewT global,
-                                                   IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
+static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
@@ -130,6 +131,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
   }
   return SgBlockCopyBlockSize;
 }
+}  // namespace impl
 
 /** Copy between index-contiguous global and local memory using sub-groups loads/stores for real data.
  *  Data does not need to be aligned to alignof(vec_t). Arguments are expected to be the same for all values in the
@@ -154,9 +156,8 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, pad Pad,
           Idx BankLinesPerPad, typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx subgroup_block_copy_driver(detail::global_data_struct global_data, GlobalViewT global,
-                                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset,
-                                                     Idx n) {
+static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Mismatch between global and local types");
@@ -170,7 +171,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_driver(detail::global_data_struct 
   if constexpr (Level == level::SUBGROUP) {
     for (Idx block_idx{0}; block_idx < block_count; ++block_idx) {
       Idx offset = block_idx * BlockSize;
-      subgroup_block_copy_impl<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
+      impl::subgroup_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
   } else {  // Level == level::WORKGROUP
@@ -180,11 +181,11 @@ static PORTFFT_INLINE Idx subgroup_block_copy_driver(detail::global_data_struct 
     // NB: For work-groups this may lead to divergence between sub-groups on the final loop iteration.
     for (Idx block_idx{subgroup_id}; block_idx < block_count; block_idx += subgroup_count) {
       Idx offset = block_idx * BlockSize;
-      subgroup_block_copy_impl<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
+      impl::subgroup_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
   }
-  // global_data.log_message_scoped<Level>(func_name, "copied_value_count", block_count * BlockSize);
+  global_data.log_message_scoped<Level>(func_name, "copied_value_count", block_count * BlockSize);
   return block_count * BlockSize;
 }
 
@@ -242,7 +243,7 @@ static PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struc
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]) = to_store;
     }
   }
-  // global_data.log_message_scoped<Level>(func_name, "copied_value_count", block_count * block_size);
+  global_data.log_message_scoped<Level>(func_name, "copied_value_count", block_count * block_size);
   return block_count * block_size;
 }
 
@@ -358,9 +359,8 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
-  Idx copied_by_sg =
-      subgroup_block_copy_driver<TransferDirection, Level, ChunkSize, SubgroupSize, Pad, BankLinesPerPad>(
-          global_data, global, global_offset, local, local_offset, total_num_elems);
+  Idx copied_by_sg = subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize, Pad, BankLinesPerPad>(
+      global_data, global, global_offset, local, local_offset, total_num_elems);
   local_offset += copied_by_sg;
   global_offset += copied_by_sg;
   total_num_elems -= copied_by_sg;
