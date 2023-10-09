@@ -49,6 +49,33 @@ struct get_domain<std::complex<T>> {
   static constexpr domain value = domain::COMPLEX;
 };
 
+namespace detail {
+
+/** Get the element type of type T
+ *  Examples:
+ *  * type is T for a pointer T*
+ *
+ *  @tparam T The type to get the element of
+ **/
+template <typename T>
+struct get_element;
+
+/// Specialization of get_elem for pointer
+template <typename T>
+struct get_element<T*> {
+  using type = T;
+};
+
+/// get_element::type shortcut
+template <typename T>
+using get_element_t = typename get_element<T>::type;
+
+/// get_element::type with any topmost const and/or volatile qualifiers removed.
+template <typename T>
+using get_element_remove_cv_t = std::remove_cv_t<get_element_t<T>>;
+
+}  // namespace detail
+
 }  // namespace portfft
 
 #endif

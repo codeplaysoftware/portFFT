@@ -206,9 +206,8 @@ __attribute__((always_inline)) inline void dimension_dft(T* loc, T* loc_twiddles
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        private2local_2strides<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, priv, loc, wi_id_in_fft, FactSg * StrideWithinDFT, j_inner + j_outer * OuterStride,
-            StrideWithinDFT);
+        private2local_transposed<FactWi, detail::pad::DO_PAD, BankLinesPerPad>(
+            global_data, priv, loc, wi_id_in_fft, FactSg, j_inner + j_outer * OuterStride, StrideWithinDFT);
       }
     }
   }
