@@ -100,7 +100,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
   const char* func_name = __func__;
   global_data.log_message_subgroup(func_name, "SgBlockCopyBlockSize", SgBlockCopyBlockSize, "global_offset",
                                    global_offset, "local_offset", local_offset, "IsSgContiguous", IsSgContiguous);
-  Idx local_id = global_data.sg.get_local_linear_id();
+  Idx local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   // A helper function to generate indexes in local memory.
   auto index_transform = [=](Idx i) PORTFFT_INLINE {
     return pad_local<Pad>(local_offset + i * SubgroupSize + local_id, BankLinesPerPad);
@@ -152,12 +152,12 @@ static PORTFFT_INLINE Idx subgroup_block_copy_impl(detail::global_data_struct gl
  *  @param n The count of reals to copy
  *  @returns The number of reals copied. May be less than n.
  */
-template <transfer_direction TransferDirection, level Level, std::size_t ChunkSize, std::size_t SubgroupSize, pad Pad,
-          std::size_t BankLinesPerPad, typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE std::size_t subgroup_block_copy_driver(detail::global_data_struct global_data, GlobalViewT global,
-                                                             std::size_t global_offset, LocalViewT local,
-                                                             std::size_t local_offset, std::size_t n) {
-  static constexpr int BlockSize = ChunkSize * SubgroupSize;
+template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, pad Pad,
+          Idx BankLinesPerPad, typename GlobalViewT, typename LocalViewT>
+static PORTFFT_INLINE Idx subgroup_block_copy_driver(detail::global_data_struct global_data, GlobalViewT global,
+                                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset,
+                                                     Idx n) {
+  static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Mismatch between global and local types");
   static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, "Only subgroup and workgroup level supported");
@@ -166,20 +166,20 @@ static PORTFFT_INLINE std::size_t subgroup_block_copy_driver(detail::global_data
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset, "n",
                                         n);
 
-  std::size_t block_count = n / BlockSize;
+  Idx block_count = n / BlockSize;
   if constexpr (Level == level::SUBGROUP) {
-    for (std::size_t block_idx{0}; block_idx < block_count; ++block_idx) {
-      std::size_t offset = block_idx * BlockSize;
+    for (Idx block_idx{0}; block_idx < block_count; ++block_idx) {
+      Idx offset = block_idx * BlockSize;
       subgroup_block_copy_impl<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
   } else {  // Level == level::WORKGROUP
     auto sg = global_data.sg;
-    std::size_t subgroup_id = sg.get_group_id();
-    std::size_t subgroup_count = sg.get_group_linear_range();
+    Idx subgroup_id = static_cast<Idx>(sg.get_group_id());
+    Idx subgroup_count = static_cast<Idx>(sg.get_group_linear_range());
     // NB: For work-groups this may lead to divergence between sub-groups on the final loop iteration.
-    for (std::size_t block_idx{subgroup_id}; block_idx < block_count; block_idx += subgroup_count) {
-      std::size_t offset = block_idx * BlockSize;
+    for (Idx block_idx{subgroup_id}; block_idx < block_count; block_idx += subgroup_count) {
+      Idx offset = block_idx * BlockSize;
       subgroup_block_copy_impl<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
@@ -210,9 +210,9 @@ static PORTFFT_INLINE std::size_t subgroup_block_copy_driver(detail::global_data
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE IdxGlobal vec_aligned_group_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                                             IdxGlobal global_offset, LocalViewT local,
-                                                             Idx local_offset, IdxGlobal n) {
+static PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                                       IdxGlobal global_offset, LocalViewT local, Idx local_offset,
+                                                       Idx n) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   using vec_t = sycl::vec<real_t, ChunkSize>;
   auto group = global_data.get_group<Level>();
@@ -222,9 +222,9 @@ static PORTFFT_INLINE IdxGlobal vec_aligned_group_block_copy(detail::global_data
                                         "local_offset", local_offset, "copy_block_size",
                                         ChunkSize * group.get_local_range()[0], "n", n);
 
-  Idx block_size = ChunkSize * group.get_local_range()[0];
+  Idx block_size = ChunkSize * static_cast<Idx>(group.get_local_range()[0]);
   Idx block_count = n / block_size;
-  Idx local_id = group.get_local_id()[0];
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   Idx wi_offset = local_id * ChunkSize;
   auto index_transform = [=](Idx inner, Idx outer) PORTFFT_INLINE {
     return pad_local<Pad>(local_offset + wi_offset + inner + outer * block_size, BankLinesPerPad);
@@ -265,20 +265,19 @@ static PORTFFT_INLINE IdxGlobal vec_aligned_group_block_copy(detail::global_data
  */
 template <transfer_direction TransferDirection, level Level, pad Pad, Idx BankLinesPerPad, typename GlobalViewT,
           typename LocalViewT>
-static PORTFFT_INLINE IdxGlobal subrange_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset,
-                                              IdxGlobal n) {
+static PORTFFT_INLINE Idx subrange_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                        IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   auto group = global_data.get_group<Level>();
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset,
                                         "group_size", group.get_local_range()[0], "n", n);
-  Idx local_id = group.get_local_id()[0];
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   if (local_id < n) {
     Idx local_idx = pad_local<Pad>(local_offset + local_id, BankLinesPerPad);
     if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-      local[local_idx] = global[global_offset + local_id];
+      local[local_idx] = global[global_offset + static_cast<IdxGlobal>(local_id)];
     } else {  // LOCAL_TO_GLOBAL
-      global[global_offset + local_id] = local[local_idx];
+      global[global_offset + static_cast<IdxGlobal>(local_id)] = local[local_idx];
     }
   }
   return n;
@@ -304,11 +303,11 @@ static PORTFFT_INLINE IdxGlobal subrange_copy(detail::global_data_struct global_
  */
 template <transfer_direction TransferDirection, level Level, pad Pad, Idx BankLinesPerPad, typename GlobalViewT,
           typename LocalViewT>
-static PORTFFT_INLINE IdxGlobal naive_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                           IdxGlobal global_offset, LocalViewT local, Idx local_offset, IdxGlobal n) {
+static PORTFFT_INLINE Idx naive_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   auto group = global_data.get_group<Level>();
-  Idx local_id = group.get_local_id()[0];
-  Idx local_size = group.get_local_range()[0];
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
+  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
   Idx loop_iters = n / local_size;
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset, "n",
@@ -321,7 +320,7 @@ static PORTFFT_INLINE IdxGlobal naive_copy(detail::global_data_struct global_dat
       global[global_offset + local_id + j * local_size] = local[local_idx];
     }
   }
-  IdxGlobal loop_copies = loop_iters * local_size;
+  Idx loop_copies = loop_iters * local_size;
   subrange_copy<TransferDirection, Level, Pad, BankLinesPerPad>(global_data, global, global_offset + loop_copies, local,
                                                                 local_offset + loop_copies, n - loop_copies);
   return n;
@@ -348,18 +347,18 @@ static PORTFFT_INLINE IdxGlobal naive_copy(detail::global_data_struct global_dat
 template <transfer_direction TransferDirection, level Level, Idx SubgroupSize, detail::pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
 PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                                 LocalViewT local, IdxGlobal total_num_elems,
-                                                 IdxGlobal global_offset = 0, Idx local_offset = 0) {
+                                                 LocalViewT local, Idx total_num_elems, IdxGlobal global_offset = 0,
+                                                 Idx local_offset = 0) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_floating_point_v<real_t>, "Expecting floating-point data type");
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Type mismatch between global and local");
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset);
-  static constexpr std::size_t ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
+  static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
-  std::size_t copied_by_sg =
+  Idx copied_by_sg =
       subgroup_block_copy_driver<TransferDirection, Level, ChunkSize, SubgroupSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset, local, local_offset, total_num_elems);
   local_offset += copied_by_sg;
@@ -380,9 +379,8 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   total_num_elems -= unaligned_elements;
 
   // Each workitem loads a chunk of consecutive elements. Chunks loaded by a group are consecutive.
-  IdxGlobal block_copied_elements =
-      vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize, Pad, BankLinesPerPad>(
-          global_data, global, global_offset, local, local_offset, total_num_elems);
+  Idx block_copied_elements = vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize, Pad, BankLinesPerPad>(
+      global_data, global, global_offset, local, local_offset, total_num_elems);
   local_offset += block_copied_elements;
   global_offset += block_copied_elements;
   total_num_elems -= block_copied_elements;
@@ -411,8 +409,8 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
  * @param local_offset offset to the local pointer
  */
 template <detail::level Level, Idx SubgroupSize, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global, T* local,
-                                 IdxGlobal total_num_elems, IdxGlobal global_offset = 0, Idx local_offset = 0) {
+PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T* global, T* local, Idx total_num_elems,
+                                 IdxGlobal global_offset = 0, Idx local_offset = 0) {
   detail::global_local_contiguous_copy<detail::transfer_direction::GLOBAL_TO_LOCAL, Level, SubgroupSize, Pad,
                                        BankLinesPerPad>(global_data, global, local, total_num_elems, global_offset,
                                                         local_offset);
@@ -435,8 +433,8 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, const T
  * @param global_offset offset to the global pointer
  */
 template <detail::level Level, Idx SubgroupSize, detail::pad Pad, Idx BankLinesPerPad, typename T>
-PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T* local, T* global,
-                                 IdxGlobal total_num_elems, Idx local_offset = 0, IdxGlobal global_offset = 0) {
+PORTFFT_INLINE void local2global(detail::global_data_struct global_data, const T* local, T* global, Idx total_num_elems,
+                                 Idx local_offset = 0, IdxGlobal global_offset = 0) {
   detail::global_local_contiguous_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, Level, SubgroupSize, Pad,
                                        BankLinesPerPad>(global_data, global, local, total_num_elems, global_offset,
                                                         local_offset);
