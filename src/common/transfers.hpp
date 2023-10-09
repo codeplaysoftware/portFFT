@@ -90,10 +90,10 @@ namespace impl {
  */
 template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize, pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
+PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
-  static constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
+  constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
 
   // Is the local memory suitable for using Intel's subgroup copy extensions with?
@@ -155,8 +155,8 @@ static PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct 
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, pad Pad,
           Idx BankLinesPerPad, typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
+PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                       IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Mismatch between global and local types");
@@ -210,9 +210,8 @@ static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                                       IdxGlobal global_offset, LocalViewT local, Idx local_offset,
-                                                       Idx n) {
+PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                                IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   using vec_t = sycl::vec<real_t, ChunkSize>;
   auto group = global_data.get_group<Level>();
@@ -265,8 +264,8 @@ static PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struc
  */
 template <transfer_direction TransferDirection, level Level, pad Pad, Idx BankLinesPerPad, typename GlobalViewT,
           typename LocalViewT>
-static PORTFFT_INLINE Idx subrange_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                        IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
+PORTFFT_INLINE Idx subrange_copy(detail::global_data_struct global_data, GlobalViewT global, IdxGlobal global_offset,
+                                 LocalViewT local, Idx local_offset, Idx n) {
   auto group = global_data.get_group<Level>();
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset,
@@ -303,8 +302,8 @@ static PORTFFT_INLINE Idx subrange_copy(detail::global_data_struct global_data, 
  */
 template <transfer_direction TransferDirection, level Level, pad Pad, Idx BankLinesPerPad, typename GlobalViewT,
           typename LocalViewT>
-static PORTFFT_INLINE Idx naive_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
+PORTFFT_INLINE Idx naive_copy(detail::global_data_struct global_data, GlobalViewT global, IdxGlobal global_offset,
+                              LocalViewT local, Idx local_offset, Idx n) {
   auto group = global_data.get_group<Level>();
   Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
