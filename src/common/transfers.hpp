@@ -90,8 +90,8 @@ namespace impl {
  */
 template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize, pad Pad, Idx BankLinesPerPad,
           typename GlobalViewT, typename LocalViewT>
-static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                              IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
+static PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+                                                     IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
@@ -131,7 +131,6 @@ static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_
   }
   return SgBlockCopyBlockSize;
 }
-}  // namespace impl
 
 /** Copy between index-contiguous global and local memory using sub-groups loads/stores for real data.
  *  Data does not need to be aligned to alignof(vec_t). Arguments are expected to be the same for all values in the
@@ -171,7 +170,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_
   if constexpr (Level == level::SUBGROUP) {
     for (Idx block_idx{0}; block_idx < block_count; ++block_idx) {
       Idx offset = block_idx * BlockSize;
-      impl::subgroup_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
+      subgroup_single_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
   } else {  // Level == level::WORKGROUP
@@ -181,7 +180,7 @@ static PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_
     // NB: For work-groups this may lead to divergence between sub-groups on the final loop iteration.
     for (Idx block_idx{subgroup_id}; block_idx < block_count; block_idx += subgroup_count) {
       Idx offset = block_idx * BlockSize;
-      impl::subgroup_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
+      subgroup_single_block_copy<TransferDirection, SubgroupSize, ChunkSize, Pad, BankLinesPerPad>(
           global_data, global, global_offset + offset, local, local_offset + offset);
     }
   }
@@ -327,6 +326,8 @@ static PORTFFT_INLINE Idx naive_copy(detail::global_data_struct global_data, Glo
   return n;
 }
 
+}  // namespace impl
+
 /**
  * Copies data from global memory to local memory. Expects the value of most input arguments to be the
  * same for work-items in the group described by template parameter "Level".
@@ -359,7 +360,7 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
 #ifdef PORTFFT_USE_SG_TRANSFERS
-  Idx copied_by_sg = subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize, Pad, BankLinesPerPad>(
+  Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize, Pad, BankLinesPerPad>(
       global_data, global, global_offset, local, local_offset, total_num_elems);
   local_offset += copied_by_sg;
   global_offset += copied_by_sg;
@@ -372,22 +373,23 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   Idx unaligned_elements = static_cast<Idx>(global_aligned_ptr - global_ptr);
 
   // Load the first few unaligned elements. Assumes group size > alignof(vec_t) / sizeof(vec_t).
-  subrange_copy<TransferDirection, Level, Pad, BankLinesPerPad>(global_data, global, global_offset, local, local_offset,
-                                                                unaligned_elements);
+  impl::subrange_copy<TransferDirection, Level, Pad, BankLinesPerPad>(global_data, global, global_offset, local,
+                                                                      local_offset, unaligned_elements);
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
   total_num_elems -= unaligned_elements;
 
   // Each workitem loads a chunk of consecutive elements. Chunks loaded by a group are consecutive.
-  Idx block_copied_elements = vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize, Pad, BankLinesPerPad>(
-      global_data, global, global_offset, local, local_offset, total_num_elems);
+  Idx block_copied_elements =
+      impl::vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize, Pad, BankLinesPerPad>(
+          global_data, global, global_offset, local, local_offset, total_num_elems);
   local_offset += block_copied_elements;
   global_offset += block_copied_elements;
   total_num_elems -= block_copied_elements;
 #endif
   // We cannot load fixed-size blocks of data anymore, so we use naive copies.
-  naive_copy<TransferDirection, Level, Pad, BankLinesPerPad>(global_data, global, global_offset, local, local_offset,
-                                                             total_num_elems);
+  impl::naive_copy<TransferDirection, Level, Pad, BankLinesPerPad>(global_data, global, global_offset, local,
+                                                                   local_offset, total_num_elems);
 }
 
 }  // namespace detail
