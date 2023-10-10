@@ -34,14 +34,23 @@
 #include <string>
 #include <vector>
 
-
+/**
+ * Runs Out of place transpose
+ *
+ * @tparam T Input Type
+ * @param in input pointer
+ * @param dft_len innermost dimension of the input
+ * @param batches innermost dimension of the output
+ */
 template <typename T>
-void transpose(const T* input, T* output, std::size_t N, std::size_t M) {
-  for (std::size_t i = 0; i < N * M; i++) {
-    std::size_t j = i / N;
-    std::size_t k = i % N;
-    output[i] = input[k * M + j];
+std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::size_t batches) {
+  std::vector<T> out(in.size());
+  for (std::size_t j = 0; j < dft_len; j++) {
+    for (std::size_t i = 0; i < batches; i++) {
+      out[i + j * batches] = in[j + i * dft_len];
+    }
   }
+  return out;
 }
 
 /** Generate input and output reference data to test an FFT against
@@ -52,7 +61,8 @@ void transpose(const T* input, T* output, std::size_t N, std::size_t M) {
  * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
  **/
 template <portfft::direction Dir, typename Scalar, portfft::domain Domain>
-auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
+auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
+                      portfft::detail::layout layout_out) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
 
   const auto batches = desc.number_of_transforms;
@@ -103,7 +113,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
 
   auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
   auto backward_elements =
-      IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, dims.back() / 2 + 1, std::multiplies<>())
+      IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
                    : elements;
 
   using FwdDoubleType = typename std::conditional_t<IsRealDomain, double, std::complex<double>>;
@@ -119,6 +129,22 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
   auto bwd_read = std::fread(backward.data(), sizeof(BwdDoubleType), backward_elements, f);
   if (bwd_read != backward_elements) {
     throw std::runtime_error("Reference data was not transferred correctly");
+  }
+
+  // modify layout
+  if (layout_in == portfft::detail::layout::BATCH_INTERLEAVED) {
+    if constexpr (Dir == portfft::direction::FORWARD) {
+      forward = transpose(forward, elements / batches, desc.number_of_transforms);
+    } else {
+      backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
+    }
+  }
+  if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
+    if constexpr (Dir == portfft::direction::FORWARD) {
+      backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
+    } else {
+      forward = transpose(forward, elements / batches, desc.number_of_transforms);
+    }
   }
 
   // cast to the correct type if necessary
@@ -150,13 +176,13 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc) {
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
  * @param desc The description of the FFT.
- * @param ref_output_raw The reference data to compare the result with before any transpose is applied
+ * @param ref_output The reference data to compare the result with before any transpose is applied
  * @param actual_output The actual result of the computation
  * @param comparison_tolerance An absolute and relative allowed error in the calculation
  **/
 template <portfft::direction Dir, typename ElemT, typename Scalar, portfft::domain Domain>
-void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vector<ElemT>& ref_output_raw,
-                const std::vector<ElemT>& actual_output, portfft::detail::layout layout_out, const double comparison_tolerance) {
+void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT> ref_output,
+                const std::vector<ElemT>& actual_output, const double comparison_tolerance) {
   constexpr bool IsComplex = Domain == portfft::domain::COMPLEX;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
   using BwdType = std::complex<Scalar>;
@@ -180,11 +206,6 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
   // scale factor 1, so inverting with also scale factor 1 would be out by a
   // multiple of dft_len. This scaling is applied to the reference data.
   auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
-
-  std::vector<ElemT> ref_output = ref_output_raw;
-  if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
-    transpose(ref_output_raw.data(), ref_output.data(), desc.number_of_transforms, dft_len);
-  } 
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t;

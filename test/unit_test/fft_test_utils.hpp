@@ -43,24 +43,6 @@ void operator<<(std::ostream& stream, const test_params& params) {
   stream << "Batch = " << params.batch << ", Length = " << params.length;
 }
 
-/**
- * Runs Out of place transpose
- *
- * @tparam TypeIn Input Type
- * @tparam TypeOut Output Type
- * @param in input pointer
- * @param out output pointer
- * @param FFT_size innermost dimension of the input
- * @param batch_size innermost dimension of the output
- */
-template <typename TypeIn, typename TypeOut>
-void transpose(TypeIn in, TypeOut& out, std::size_t FFT_size, std::size_t batch_size) {
-  for (std::size_t j = 0; j < batch_size; j++) {
-    for (std::size_t i = 0; i < FFT_size; i++) {
-      out[i + j * FFT_size] = in[j + i * batch_size];
-    }
-  }
-}
 
 /**
  * Runs USM FFT Test for the given length, batch
@@ -82,7 +64,6 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
       GTEST_SKIP() << "Test skipped as test size not present in optimized size list";
     }
   }
-  constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> host_input_transposed;
   std::vector<std::complex<FType>> buffer(num_elements);
@@ -118,11 +99,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto [host_input_raw, host_reference_output] = gen_fourier_data<Dir>(desc);
-  auto host_input = host_input_raw;
-  if constexpr (IsBatchInterleaved) {
-    transpose(host_input_raw, host_input, params.batch, params.length);
-  }
+  auto [host_input, host_reference_output] = gen_fourier_data<Dir>(desc, LayoutIn, LayoutOut);
 
   auto copy_event = queue.copy(host_input.data(), device_input, num_elements);
 
@@ -143,7 +120,7 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
   }();
   queue.copy(Place == placement::OUT_OF_PLACE ? device_output : device_input, buffer.data(), num_elements, {fft_event});
   queue.wait();
-  verify_dft<Dir>(desc, host_reference_output, buffer, LayoutOut, 1e-3);
+  verify_dft<Dir>(desc, host_reference_output, buffer, 1e-3);
 
   sycl::free(device_input, queue);
   if (Place == placement::OUT_OF_PLACE) {
@@ -171,7 +148,6 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       GTEST_SKIP() << "Test skipped as test size not present in optimized size list";
     }
   }
-  constexpr bool IsBatchInterleaved = LayoutIn == detail::layout::BATCH_INTERLEAVED;
   auto num_elements = params.batch * params.length;
   std::vector<std::complex<FType>> buffer(num_elements);
 
@@ -184,14 +160,14 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       desc.forward_distance = 1;
     }
     if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
-      desc.backward_distance = 1;
       desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.backward_distance = 1;
     }
   }
   if constexpr (Dir == direction::BACKWARD) {
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
-      desc.backward_distance = 1;
       desc.backward_strides = {static_cast<std::size_t>(params.batch)};
+      desc.backward_distance = 1;
     }
     if constexpr (LayoutOut == detail::layout::BATCH_INTERLEAVED) {
       desc.forward_strides = {static_cast<std::size_t>(params.batch)};
@@ -201,11 +177,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
 
   auto committed_descriptor = desc.commit(queue);
 
-  auto [host_input_raw, host_reference_output] = gen_fourier_data<Dir>(desc);
-  std::vector<std::complex<FType>> host_input(host_input_raw);
-  if constexpr (IsBatchInterleaved) {
-    transpose(host_input_raw, host_input, params.batch, params.length);
-  }
+  auto [host_input, host_reference_output] = gen_fourier_data<Dir>(desc, LayoutIn, LayoutOut);
 
   {
     sycl::buffer<std::complex<FType>, 1> output_buffer(nullptr, 0);
@@ -228,7 +200,7 @@ void check_fft_buffer(test_params& params, sycl::queue& queue) {
       }
     }
   }
-  verify_dft<Dir>(desc, host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, LayoutOut, 1e-3);
+  verify_dft<Dir>(desc, host_reference_output, Place == placement::IN_PLACE ? host_input : buffer, 1e-3);
 }
 
 #endif
