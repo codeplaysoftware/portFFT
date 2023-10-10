@@ -65,7 +65,6 @@ void check_fft_usm(test_params& params, sycl::queue& queue) {
     }
   }
   auto num_elements = params.batch * params.length;
-  std::vector<std::complex<FType>> host_input_transposed;
   std::vector<std::complex<FType>> buffer(num_elements);
 
   auto device_input = sycl::malloc_device<std::complex<FType>>(num_elements, queue);
