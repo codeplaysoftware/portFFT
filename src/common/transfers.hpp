@@ -531,9 +531,6 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
   using real_t = detail::get_element_remove_cv_t<PrivT>;
   static_assert(std::is_same_v<real_t, detail::get_element_t<DestT>>,
                 "Type mismatch between private and destination views");
-  // TODO: Can we improve this? Saying that data is global because it is contiguous is a hack.
-  static_assert((!detail::IsContiguousViewV<DestT> && std::is_same_v<TDstIdx, Idx>) ||
-                (detail::IsContiguousViewV<DestT> && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "workers_in_group", workers_in_group,
                                 "destination_offset", destination_offset);
