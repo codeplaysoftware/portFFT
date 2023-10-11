@@ -99,12 +99,11 @@ struct padded_view {
   constexpr padded_view(ParentT parent) noexcept : data(parent){};
 
   // Index into the view.
-  template <typename IdxT>
-  PORTFFT_INLINE constexpr reference operator[](IdxT i) const {
+  PORTFFT_INLINE constexpr reference operator[](Idx i) const {
     if constexpr (BankLinesPerPad == 0) {
       return data[i];
     } else {
-      return data[pad_local<pad::DO_PAD>(static_cast<Idx>(i), BankLinesPerPad)];
+      return data[pad_local<pad::DO_PAD>(i, BankLinesPerPad)];
     }
   }
 };
