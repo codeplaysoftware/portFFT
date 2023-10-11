@@ -30,13 +30,6 @@
 
 namespace portfft {
 
-/*
-To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the chunk
-of contiguous memory that exactly fits all of the banks in local memory once. e.g. The NVIDIA Ampere architecture has 32
-banks in local memory (shared memory in CUDA terms), each 32 bits. In this case we define a "bank line" as 128 8-bit
-bytes.
-*/
-
 /**
  * Calculate the number of groups or bank lines of PORTFFT_N_LOCAL_BANKS between each padding in local memory,
  * specifically for reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are

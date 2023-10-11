@@ -26,6 +26,13 @@
 #include <defines.hpp>
 #include <enums.hpp>
 
+/*
+To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the chunk
+of contiguous memory that exactly fits all of the banks in local memory once. e.g. The NVIDIA Ampere architecture has 32
+banks in local memory (shared memory in CUDA terms), each 32 bits. In this case we define a "bank line" as 128 8-bit
+bytes.
+*/
+
 namespace portfft::detail {
 
 /** A view of memory with built-in offset from zero. eg. this[i] is equivalent to parent[i + offset]
