@@ -56,10 +56,7 @@ struct offset_view {
   constexpr offset_view(ParentT parent, OffsetT offset) noexcept : data(parent), offset(offset){};
 
   // Index into the view.
-  template <typename IndexerT>
-  PORTFFT_INLINE constexpr reference operator[](IndexerT i) const {
-    return data[static_cast<IndexerT>(offset) + i];
-  }
+  PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return data[offset + i]; }
 };
 
 /**
