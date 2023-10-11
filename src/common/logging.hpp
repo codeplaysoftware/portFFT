@@ -111,23 +111,23 @@ struct global_data_struct {
    *
    * Does nothing if logging of dumps is not enabled (PORTFFT_LOG_DUMPS is not defined).
    *
-   * @tparam T type of the data to log
+   * @tparam ViewT View type of data to log
    * @param message message to log before the data
-   * @param ptr pointer to data to log
+   * @param data View of data to log
    * @param num number of elements to log
    */
-  template <typename T>
-  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
+  template <typename ViewT>
+  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] ViewT data,
                                      [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
     if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
       s << " " << message << " ";
       if (num) {
-        s << ptr[0];
+        s << data[0];
       }
       for (Idx i = 1; i < num; i++) {
-        s << ", " << ptr[i];
+        s << ", " << data[i];
       }
       s << "\n" << sycl::stream_manipulator::flush;
     }
