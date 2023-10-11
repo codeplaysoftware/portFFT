@@ -60,10 +60,9 @@ struct offset_view {
 };
 
 /**
- * If Pad is true transforms an index into local memory to skip one element for every
- * PORTFFT_N_LOCAL_BANKS elements. Padding in this way avoids bank conflicts when accessing
- * elements with a stride that is multiple of (or has any common divisor greater than 1 with)
- * the number of local banks. Does nothing if Pad is false.
+ * If Pad is true, transforms an index into local memory to skip one element for every PORTFFT_N_LOCAL_BANKS *
+ * bank_lines_per_pad elements. Padding in this way avoids bank conflicts when accessing elements with a stride that is
+ * multiple of (or has any common divisor greater than 1 with) the number of local banks. Does nothing if Pad is false.
  *
  * Can also be used to transform size of a local allocation to account for padding indices in it this way.
  *
