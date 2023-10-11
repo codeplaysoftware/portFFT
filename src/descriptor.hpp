@@ -490,7 +490,7 @@ class committed_descriptor {
 
   
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_direction(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
+  sycl::event dispatch_direction(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies = {}) {
     if constexpr(Dir == direction::FORWARD){
       return dispatch_dimensions<Dir>(in, out, dependencies, params.forward_strides, params.backward_strides, 
                               params.forward_distance, params.backward_distance, 
@@ -514,13 +514,14 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_dimensions(const TIn in, TOut out, const std::vector<sycl::event>& dependencies,
+  sycl::event dispatch_dimensions(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies,
                                        std::vector<std::size_t> input_strides, std::vector<std::size_t> output_strides,
                                        std::size_t input_distance, std::size_t output_distance,
                                        std::size_t input_offset, std::size_t output_offset,
                                        Scalar scale_factor) {
     (void) input_strides;
     (void) output_strides;
+    using TOutConst = std::conditional_t<std::is_pointer_v<TOut>,const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = std::accumulate(&params.lengths[0], &params.lengths[n_dimensions-1], 1ul, std::multiplies<std::size_t>());
     // curretly multi-dimensional transforms are implemented just for default data layout
@@ -545,12 +546,12 @@ class committed_descriptor {
           outer_size /= params.lengths[i];
           //TODO do everything from the next loop in a single kernel once we support more than one distnace in the kernels.
           for(std::size_t j = 0; j < params.number_of_transforms * outer_size; j++){
-            sycl::event e = dispatch_kernel_1d<Dir, TOut, TOut>(out, out, previous_events, 
+            sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events, 
                                                              params.lengths[i], inner_size,
                                                              inner_size, inner_size,
                                                              1, 1,
                                                              input_offset + j * outer_size, 
-                                                             output_offset + j * outer_size, 1.0, kernels[i]);
+                                                             output_offset + j * outer_size, static_cast<Scalar>(1.0), kernels[i]);
             next_events.push_back(e);
           }
           inner_size *= params.lengths[i];
@@ -558,12 +559,12 @@ class committed_descriptor {
           next_events.clear();
         }
         outer_size /= params.lengths[0]; //outer size == 1 at this point
-        return dispatch_kernel_1d<Dir, TOut, TOut>(out, out, previous_events, 
+        return dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events, 
                                                 params.lengths[0], params.number_of_transforms * inner_size,
                                                 inner_size, inner_size,
                                                 1,1,
                                                 input_offset, 
-                                                output_offset, 1.0, kernels[0]);
+                                                output_offset, static_cast<Scalar>(1.0), kernels[0]);
       }
     } else{
       throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
@@ -582,7 +583,7 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_kernel_1d(const TIn in, TOut out, const std::vector<sycl::event>& dependencies, 
+  sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies, 
                               std::size_t length, std::size_t n_transforms, 
                               std::size_t forward_stride, std::size_t backward_stride, 
                               std::size_t forward_distance, std::size_t backward_distance, 
@@ -609,7 +610,7 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
-  sycl::event dispatch_kernel_1d_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies, 
+  sycl::event dispatch_kernel_1d_helper(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies, 
                               std::size_t length, std::size_t n_transforms, 
                               std::size_t input_stride, std::size_t output_stride, 
                               std::size_t input_distance, std::size_t output_distance, 
@@ -709,6 +710,12 @@ class committed_descriptor {
                               std::size_t length, std::size_t n_transforms, 
                               std::size_t input_offset, std::size_t output_offset,
                               Scalar scale_factor, kernel_data_struct& kernel_data) {
+    // mixing const and non-const inputs leads to hard-to-debug linking errors, as both use the same kernel name, but are called from different template instantiations.
+    static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>, 
+        "We do not differentiate kernel names between kernels with const and non-const USM inputs, so all should be const!");
+    // kernel names currently assume both are the same. Mixing them without adding TOut to kernel names would lead to hard-to-debug linking errors
+    static_assert(std::is_pointer_v<TIn> == std::is_pointer_v<TOut>, 
+        "Both input and output to the kernels should be the same - either buffers or USM");
     return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn, TOut>>(kernel_data.level, in, out,
                                                                                           dependencies, 
                                                                                           static_cast<IdxGlobal>(n_transforms), 
