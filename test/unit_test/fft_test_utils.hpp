@@ -22,11 +22,11 @@
 #define PORTFFT_UNIT_TEST_FFT_TEST_UTILS
 
 #include "instantiate_fft_tests.hpp"
+#include "reference_data_wrangler.hpp"
 #include "utils.hpp"
-#include <portfft.hpp>
-#include <reference_data_wrangler.hpp>
 
 #include <gtest/gtest.h>
+#include <portfft.hpp>
 #include <sycl/sycl.hpp>
 
 using namespace portfft;
@@ -42,7 +42,6 @@ struct test_params {
 void operator<<(std::ostream& stream, const test_params& params) {
   stream << "Batch = " << params.batch << ", Length = " << params.length;
 }
-
 
 /**
  * Runs USM FFT Test for the given length, batch

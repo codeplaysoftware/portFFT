@@ -47,7 +47,7 @@ std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::siz
   std::vector<T> out(in.size());
   for (std::size_t j = 0; j < dft_len; j++) {
     for (std::size_t i = 0; i < batches; i++) {
-      out[i + j * batches] = in[j + i * dft_len];
+      out.at(i + j * batches) = in.at(j + i * dft_len);
     }
   }
   return out;
