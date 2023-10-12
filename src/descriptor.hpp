@@ -159,7 +159,7 @@ class committed_descriptor {
    * @return detail::level
    */
   template <Idx SubgroupSize>
-  detail::level prepare_implementation(std::size_t kernel_num, std::vector<sycl::kernel_id>& ids, std::vector<Idx> factors) {
+  detail::level prepare_implementation(std::size_t kernel_num, std::vector<sycl::kernel_id>& ids, std::vector<Idx>& factors) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
