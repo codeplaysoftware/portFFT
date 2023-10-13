@@ -72,7 +72,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "python3 -c \""
       "import numpy as np\n"
       "from sys import stdout\n"
-      "def gen_data(batch,dims,is_complex):\n"
+      "def gen_data(batch, dims, is_complex, is_double):\n"
       "  dataGenDims = [batch] + dims\n"
       "  rng = np.random.Generator(np.random.SFC64(0))\n"
       "  inData = rng.uniform(-1, 1, dataGenDims).astype(np.double)\n"
@@ -81,6 +81,8 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
       "  inData.reshape(-1, 1)\n"
       "  outData.reshape(-1, 1)\n"
+      "  inData = inData.astype(np.complex128 if is_double else np.complex64)\n"
+      "  outData = outData.astype(np.complex128 if is_double else np.complex64)\n"
       "  stdout.buffer.write(inData.tobytes())\n"
       "  stdout.buffer.write(outData.tobytes())\n"
       "gen_data(";
@@ -98,6 +100,9 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   command << "],";
 
   command << (IsRealDomain ? "False" : "True");
+
+  command << "," << (std::is_same_v<Scalar, float> ? "False" : "True");
+
   command << ")\"";
 
   FILE* f = popen(command.str().c_str(), "r");
@@ -117,17 +122,17 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
                    : elements;
 
-  using FwdDoubleType = typename std::conditional_t<IsRealDomain, double, std::complex<double>>;
-  using BwdDoubleType = std::complex<double>;
+  using FwdType = typename std::conditional_t<IsRealDomain, Scalar, std::complex<Scalar>>;
+  using BwdType = std::complex<Scalar>;
 
-  std::vector<FwdDoubleType> forward(elements);
-  std::vector<BwdDoubleType> backward(backward_elements);
+  std::vector<FwdType> forward(elements);
+  std::vector<BwdType> backward(backward_elements);
 
-  auto fwd_read = std::fread(forward.data(), sizeof(FwdDoubleType), elements, f);
+  auto fwd_read = std::fread(forward.data(), sizeof(FwdType), elements, f);
   if (fwd_read != elements) {
     throw std::runtime_error("Reference data was not transferred correctly");
   }
-  auto bwd_read = std::fread(backward.data(), sizeof(BwdDoubleType), backward_elements, f);
+  auto bwd_read = std::fread(backward.data(), sizeof(BwdType), backward_elements, f);
   if (bwd_read != backward_elements) {
     throw std::runtime_error("Reference data was not transferred correctly");
   }
@@ -148,27 +153,11 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     }
   }
 
-  // cast to the correct type if necessary
-  if constexpr (std::is_same_v<Scalar, double>) {
-    if constexpr (Dir == portfft::direction::FORWARD) {
-      return std::make_pair(forward, backward);
-    } else {
-      return std::make_pair(backward, forward);
-    }
+  // return in the expected order
+  if constexpr (Dir == portfft::direction::FORWARD) {
+    return std::make_pair(forward, backward);
   } else {
-    using FwdSingleType = typename std::conditional_t<IsRealDomain, float, std::complex<float>>;
-    using BwdSingleType = std::complex<float>;
-    std::vector<FwdSingleType> forward_single(elements);
-    std::vector<BwdSingleType> backward_single(backward_elements);
-
-    std::copy(forward.cbegin(), forward.cend(), forward_single.begin());
-    std::copy(backward.cbegin(), backward.cend(), backward_single.begin());
-
-    if constexpr (Dir == portfft::direction::FORWARD) {
-      return std::make_pair(forward_single, backward_single);
-    } else {
-      return std::make_pair(backward_single, forward_single);
-    }
+    return std::make_pair(backward, forward);
   }
 }
 
