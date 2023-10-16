@@ -307,7 +307,7 @@ class committed_descriptor {
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return build_w_spec_const<OtherSGSizes...>();
+      return build_w_spec_const<OtherSGSizes...>(kernel_num);
     }
   }
 
@@ -329,7 +329,7 @@ class committed_descriptor {
     // get some properties we will use for tuning
     n_compute_units = static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>());
     local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
-    
+
     // compile the kernels and precalculate twiddles
     kernels.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(0));
     kernels.back().twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(params.lengths[0], kernels.back()), [queue](Scalar* ptr) {
