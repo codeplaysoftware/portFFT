@@ -38,7 +38,6 @@ list(APPEND CMAKE_MODULE_PATH
 option(PORTFFT_BUILD_TESTS "Whether to enable building tests" OFF)
 option(PORTFFT_BUILD_BENCHMARKS "Whether to enable building benchmarks" OFF)
 option(PORTFFT_VERIFY_BENCHMARKS "Whether to verify FFT results during benchmarking. Verifies in the first iteration only" OFF)
-option(PORTFFT_GENERATE_BENCH_REFERENCE_AT_BUILD_TIME "Generate benchmark verification data at build-time" ON)
 option(PORTFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(PORTFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 option(PORTFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
