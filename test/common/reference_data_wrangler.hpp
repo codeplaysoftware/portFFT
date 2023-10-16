@@ -25,259 +25,195 @@
 #include <enums.hpp>
 
 #include <complex>
+#include <cstdio>
 #include <exception>
-#include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
+#include <sstream>
 #include <string>
 #include <vector>
 
+/**
+ * Runs Out of place transpose
+ *
+ * @tparam T Input Type
+ * @param in input pointer
+ * @param dft_len innermost dimension of the input
+ * @param batches innermost dimension of the output
+ */
 template <typename T>
-void transpose(T* input, T* output, std::size_t N, std::size_t M) {
-  for (std::size_t i = 0; i < N * M; i++) {
-    std::size_t j = i / N;
-    std::size_t k = i % N;
-    output[i] = input[k * M + j];
+std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::size_t batches) {
+  std::vector<T> out(in.size());
+  for (std::size_t j = 0; j < dft_len; j++) {
+    for (std::size_t i = 0; i < batches; i++) {
+      out.at(i + j * batches) = in.at(j + i * dft_len);
+    }
+  }
+  return out;
+}
+
+/** Generate input and output reference data to test an FFT against
+ * @tparam Dir The direction of the transform
+ * @tparam Scalar type of the scalar used for computations
+ * @tparam Domain domain of the FFT
+ * @param desc The description of the FFT
+ * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
+ **/
+template <portfft::direction Dir, typename Scalar, portfft::domain Domain>
+auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
+                      portfft::detail::layout layout_out) {
+  constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
+
+  const auto batches = desc.number_of_transforms;
+  const auto& dims = desc.lengths;
+
+  const char* header =
+      "python3 -c \""
+      "import numpy as np\n"
+      "from sys import stdout\n"
+      "def gen_data(batch, dims, is_complex, is_double):\n"
+      "  scalar_type = np.double if is_double else np.single\n"
+      "  complex_type = np.complex128 if is_double else np.complex64\n"
+      "  dataGenDims = [batch] + dims\n"
+      "  rng = np.random.Generator(np.random.SFC64(0))\n"
+      "  inData = rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
+      "  if (is_complex):\n"
+      "    inData = inData + 1j * rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
+      "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
+      "  inData.reshape(-1, 1)\n"
+      "  outData.reshape(-1, 1)\n"
+      "  inData = inData.astype(complex_type)\n"
+      "  outData = outData.astype(complex_type)\n"
+      "  stdout.buffer.write(inData.tobytes())\n"
+      "  stdout.buffer.write(outData.tobytes())\n"
+      "gen_data(";
+
+  std::stringstream command;
+  command << header;
+
+  command << batches << ',';
+
+  assert(dims.size() > 0);
+  command << "[" << dims[0];
+  for (auto itr = dims.cbegin() + 1; itr < dims.cend(); itr += 1) {
+    command << "," << *itr;
+  }
+  command << "],";
+
+  command << (IsRealDomain ? "False" : "True");
+
+  command << "," << (std::is_same_v<Scalar, float> ? "False" : "True");
+
+  command << ")\"";
+
+  FILE* f = popen(command.str().c_str(), "r");
+  if (f == nullptr) {
+    throw std::runtime_error("Command to create reference data failed\n");
+  }
+
+  auto process_close_func = [](FILE* f) {
+    if (pclose(f) != 0) {
+      throw std::runtime_error("failed to close validation sub-process");
+    }
+  };
+  std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
+
+  auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
+  auto backward_elements =
+      IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
+                   : elements;
+
+  using FwdType = typename std::conditional_t<IsRealDomain, Scalar, std::complex<Scalar>>;
+  using BwdType = std::complex<Scalar>;
+
+  std::vector<FwdType> forward(elements);
+  std::vector<BwdType> backward(backward_elements);
+
+  auto fwd_read = std::fread(forward.data(), sizeof(FwdType), elements, f);
+  if (fwd_read != elements) {
+    throw std::runtime_error("Reference data was not transferred correctly");
+  }
+  auto bwd_read = std::fread(backward.data(), sizeof(BwdType), backward_elements, f);
+  if (bwd_read != backward_elements) {
+    throw std::runtime_error("Reference data was not transferred correctly");
+  }
+
+  // modify layout
+  if (layout_in == portfft::detail::layout::BATCH_INTERLEAVED) {
+    if constexpr (Dir == portfft::direction::FORWARD) {
+      forward = transpose(forward, elements / batches, desc.number_of_transforms);
+    } else {
+      backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
+    }
+  }
+  if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
+    if constexpr (Dir == portfft::direction::FORWARD) {
+      backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
+    } else {
+      forward = transpose(forward, elements / batches, desc.number_of_transforms);
+    }
+  }
+
+  // return in the expected order
+  if constexpr (Dir == portfft::direction::FORWARD) {
+    return std::make_pair(forward, backward);
+  } else {
+    return std::make_pair(backward, forward);
   }
 }
 
-/**
- * Represents a verification data file, with information on the DFT represented, and the path at which to find the file.
- * Also routines for loading the data and using it as a reference.
- */
-class verif_data_spec {
- public:
-  /**
-   * Constructor. Should only be needed by the python scripts that generate the reference data.
-   */
-  verif_data_spec(std::vector<std::size_t> dftSize, std::size_t batch, std::string filePath, portfft::domain domain)
-      : dftSize(dftSize), batch(batch), filePath(filePath), domain(domain){};
+/** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.
+ * @tparam Dir The direction of the DFT being verified
+ * @tparam Scalar type of the scalar used for computations
+ * @tparam Domain domain of the FFT
+ * @param desc The description of the FFT.
+ * @param ref_output The reference data to compare the result with before any transpose is applied
+ * @param actual_output The actual result of the computation
+ * @param comparison_tolerance An absolute and relative allowed error in the calculation
+ **/
+template <portfft::direction Dir, typename ElemT, typename Scalar, portfft::domain Domain>
+void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT> ref_output,
+                const std::vector<ElemT>& actual_output, const double comparison_tolerance) {
+  constexpr bool IsComplex = Domain == portfft::domain::COMPLEX;
+  constexpr bool IsForward = Dir == portfft::direction::FORWARD;
+  using BwdType = std::complex<Scalar>;
 
-  // The DFT real size - aka. portfft::descriptor::lengths
-  std::vector<std::size_t> dftSize;
-  // The number of transforms per compute call.
-  std::size_t batch;
-  // The path where the reference data is to be found.
-  std::string filePath;
-  // FFT domain
-  portfft::domain domain;
-
-  /** Load time-domain data from the reference file.
-   *
-   * @tparam The Scalar type of the DFT
-   * @tparam The Domain of the DFT
-   * @param desc The descriptor that this data will be used for with.
-   * @return Linearised time-domain data with batches equal to the descriptor.
-   **/
-  template <typename Scalar, portfft::domain Domain>
-  auto load_data_time(portfft::descriptor<Scalar, Domain>& desc) {
-    using elem_t = std::conditional_t<Domain == portfft::domain::COMPLEX, std::complex<Scalar>, Scalar>;
-    if (Domain != domain) {
-      std::string errorStr = "Tried to read data as incorrect type. ";
-      errorStr = errorStr + "Ref data is for " + (domain == portfft::domain::COMPLEX ? "COMPLEX" : "REAL") + " domain.";
-      throw std::runtime_error(errorStr);
-    }
-    auto rawInputData = load_input_data(desc.number_of_transforms);
-    auto data = cast_data<elem_t>(rawInputData);
-    return data;
+  // check type of reference is correct
+  if constexpr (IsForward || IsComplex) {
+    static_assert(std::is_same_v<ElemT, BwdType>, "Expected complex data dft verification.");
+  } else {
+    static_assert(std::is_same_v<ElemT, Scalar>, "Expected real data type for real backward dft verification.");
   }
 
-  /** Load fourier-domain data from the reference file (computed from time-domain data with scale=1).
-   *
-   * @tparam The Scalar type of the DFT
-   * @tparam The Domain of the DFT
-   * @param desc The descriptor that this data will be used for with.
-   * @return Linearised fourier-domain data with batches equal to the descriptor.
-   **/
-  template <typename Scalar, portfft::domain Domain>
-  std::vector<std::complex<Scalar>> load_data_fourier(portfft::descriptor<Scalar, Domain>& desc) {
-    auto rawInputData = load_output_data(desc.number_of_transforms);
-    auto data = cast_data<std::complex<Scalar>>(rawInputData);
-    return data;
+  auto data_shape = desc.lengths;
+
+  if constexpr (IsForward && Domain == portfft::domain::REAL) {
+    data_shape.back() = data_shape.back() / 2 + 1;
   }
 
-  /** The Fourier-domain data shape expected from this data.
-   **/
-  inline std::vector<std::size_t> fourier_domain_dims() {
-    auto res = dftSize;
-    if (domain == portfft::domain::REAL) {
-      res.back() = (res.back() / 2 + 1) * 2;
-    }
-    return res;
-  }
+  std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
 
-  /** Verify the output of a DFT that was fed with data from this file.
-   * @tparam ElemT The element type input for verification.
-   * @tparam Scalar The scalar type of the DFT being checked.
-   * @tparam Domain The domain of the DFT being checked.
-   * @param desc The descriptor of the DFT being checked.
-   * @param hostOutput The data to be checked. Expects that distance between
-   * batches == the length of the DFT.
-   * @param dir The DFT direction.
-   * @param layout_out Output data layout
-   * @param comparisonTolerance The tolerance for error.
-   **/
-  template <typename ElemT, typename Scalar, portfft::domain Domain>
-  void verify_dft(portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT>& hostOutput, portfft::direction dir,
-                  portfft::detail::layout layout_out, const double comparisonTolerance) {
-    if ((desc.lengths != dftSize) || (desc.number_of_transforms > batch) || (Domain != domain)) {
-      throw std::runtime_error("Can't use this verification data to verify this DFT!");
-    }
-    using complex_type = std::complex<Scalar>;
-    using forward_type = std::conditional_t<Domain == portfft::domain::COMPLEX, complex_type, Scalar>;
-    const bool isForward = dir == portfft::direction::FORWARD;
-    std::size_t descBatches = desc.number_of_transforms;
-    auto dataShape = isForward ? dftSize : fourier_domain_dims();
-    std::size_t dftLen = std::accumulate(dataShape.cbegin(), dataShape.cend(), std::size_t(1), std::multiplies<>());
-    // Division by DFT len is required since the reference forward transform has
-    // scale factor 1, so inverting with also scale factor 1 would be out by a
-    // multiple of dftLen. This scaling is applied to the reference data.
-    auto scaling = isForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dftLen);
-    if (isForward) {
-      auto referenceDataRaw = load_data_fourier(desc);
-      auto referenceData = referenceDataRaw;
-      if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
-        transpose(referenceDataRaw.data(), referenceData.data(), descBatches, dftLen);
-      }
-      if constexpr (std::is_same_v<complex_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
-      } else {
-        throw std::runtime_error("Expected real input data type for forward dft verification.");
-      }
-    } else {
-      auto referenceDataRaw = load_data_time(desc);
-      auto referenceData = referenceDataRaw;
-      if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
-        transpose(referenceDataRaw.data(), referenceData.data(), descBatches, dftLen);
-      }
-      if constexpr (std::is_same_v<forward_type, ElemT>) {
-        compare_arrays(referenceData.data(), hostOutput.data(), dftLen, descBatches, scaling, comparisonTolerance);
-      } else {
-        throw std::runtime_error("Expected complex input data type for backward dft verification.");
+  // Division by DFT len is required since the reference forward transform has
+  // scale factor 1, so inverting with also scale factor 1 would be out by a
+  // multiple of dft_len. This scaling is applied to the reference data.
+  auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
+
+  for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
+    const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
+    const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
+
+    for (std::size_t e = 0; e != dft_len; ++e) {
+      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e] * scaling);
+      if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
+        // std::endl is used intentionally to flush the error message before google test exits the test.
+        std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dft_len + e
+                  << ", does not match\nref " << this_batch_ref[e] * scaling << " vs " << this_batch_computed[e]
+                  << "\ndiff " << diff << ", tolerance " << comparison_tolerance << std::endl;
+        throw std::runtime_error("Verification Failed");
       }
     }
   }
-
- private:
-  // The number of doubles in the input data.
-  inline std::size_t input_double_count() {
-    return batch * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-           (domain == portfft::domain::COMPLEX ? 2 : 1);
-  }
-
-  // Cast double data read from file to [float, complex<float>, double, complex<double>]
-  template <typename ElemT>
-  inline std::vector<ElemT> cast_data(std::vector<double>& in) {
-    bool constexpr isSinglePrec = std::is_same_v<ElemT, float> || std::is_same_v<ElemT, std::complex<float>>;
-    bool constexpr isComplexT = !(std::is_same_v<ElemT, float> || std::is_same_v<ElemT, double>);
-    if (isComplexT && in.size() % 2) {
-      throw std::runtime_error("Trying to cast an odd length array to complex!");
-    }
-    std::size_t outSize = isComplexT ? in.size() / 2 : in.size();
-    std::vector<ElemT> outData(outSize);
-    using scalar_type = std::conditional_t<isSinglePrec, float, double>;
-    for (std::size_t i{0}; i < outSize; ++i) {
-      if constexpr (isComplexT) {
-        outData[i] = ElemT(static_cast<scalar_type>(in[2 * i]), static_cast<scalar_type>(in[2 * i + 1]));
-      } else {
-        outData[i] = static_cast<scalar_type>(in[i]);
-      }
-    }
-    return outData;
-  }
-
-  /** Load data from the input file.
-   * @param start The index of the double to start loading from.
-   * @param end The index of the double to end loading from.
-   * @return A std::vector<double> of data read for the file.
-   */
-  inline std::vector<double> load_file_data(std::size_t start, std::size_t end) {
-    std::ifstream dataFile(filePath, std::ios_base::in | std::ios_base::binary);
-    if (!dataFile.good()) {
-      throw std::runtime_error("Could not open reference data file at: " + filePath);
-    }
-    std::vector<double> data(end - start);
-    dataFile.seekg(std::ios_base::beg);
-    dataFile.seekg(static_cast<std::streamoff>(start * sizeof(double)));
-    dataFile.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>((end - start) * sizeof(double)));
-    if (!dataFile.good()) {
-      throw std::runtime_error("Failed to read reference data from: " + filePath);
-    }
-    return data;
-  }
-
-  /** Load time-domain data from the input file to a double vector.
-   * @param batchCount The number of batches to read in.
-   */
-  inline std::vector<double> load_input_data(std::size_t batchCount) {
-    if (batchCount > batch) {
-      throw std::runtime_error("Requested more batches than promised by specification.");
-    }
-    return load_file_data(
-        0, batchCount * std::accumulate(dftSize.cbegin(), dftSize.cend(), std::size_t(1), std::multiplies<>()) *
-               (domain == portfft::domain::COMPLEX ? 2 : 1));
-  }
-
-  /** Load fourier-domain data from the input file to a double vector.
-   * @param batchCount The number of batches to read in.
-   */
-  inline std::vector<double> load_output_data(std::size_t batchCount) {
-    if (batchCount > batch) {
-      throw std::runtime_error("Requested more batches than promised by specification.");
-    }
-    auto inCount = input_double_count();
-    auto fourierSize = fourier_domain_dims();
-    std::size_t outputDoubleCount =
-        batchCount * std::accumulate(fourierSize.cbegin(), fourierSize.cend(), std::size_t(1), std::multiplies<>()) * 2;
-    return load_file_data(inCount, inCount + outputDoubleCount);
-  }
-
-  /** Compare data, throwing std::runime_error and printing a message if out of spec.
-   * @tparam ElemT The element type of the data to compare
-   * @tparam ScaleT The type of the reference data scale value.
-   * @param referenceData The source of truth
-   * @param generatedData The data to test
-   * @param dftLen The dimensions of the data per batch
-   * @param batchComparisons The number of batches
-   * @param scaling What should the reference data be scaled by?
-   * @param comparisonTolerance The allowable difference before throwing.
-   */
-  template <typename ElemT, typename ScaleT>
-  void compare_arrays(ElemT* referenceData, ElemT* generatedData, std::size_t dftLen, std::size_t batchComparisons,
-                      ScaleT scaling, double comparisonTolerance) {
-    for (std::size_t t = 0; t < batchComparisons; ++t) {
-      const ElemT* thisBatchRef = referenceData + dftLen * t;
-      const ElemT* thisBatchComputed = generatedData + dftLen * t;
-
-      for (std::size_t e = 0; e != dftLen; ++e) {
-        const auto diff = std::abs(thisBatchComputed[e] - thisBatchRef[e] * scaling);
-        if (diff > comparisonTolerance && diff / std::abs(thisBatchComputed[e]) > comparisonTolerance) {
-          // std::endl is used intentionally to flush the error message before google test exits the test.
-          std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dftLen
-                    << ", does not match\nref " << thisBatchRef[e] * scaling << " vs " << thisBatchComputed[e]
-                    << "\ndiff " << diff << ", tolerance " << comparisonTolerance << std::endl;
-          throw std::runtime_error("Verification Failed");
-        }
-      }
-    }
-  }
-};
-
-/** Find a verif_data_spec that can be used to check an DFT described by a portfft::descriptor.
- * @tparam Scalar The descriptor scalar type.
- * @tparam Domain The descriptor domain.
- * @param verifData The generated verification data array - usually named "verification_data"
- * @param desc The descriptor we want data relevant for.
- */
-template <typename Scalar, portfft::domain Domain>
-verif_data_spec get_matching_spec(const std::vector<verif_data_spec>& verifData,
-                                  portfft::descriptor<Scalar, Domain>& desc) {
-  for (auto& spec : verifData) {
-    if ((desc.lengths == spec.dftSize) && (desc.number_of_transforms <= spec.batch) && (Domain == spec.domain)) {
-      return spec;
-    }
-  }
-  throw std::runtime_error("Couldn't find matching specification.");
 }
 
 #endif  // PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
