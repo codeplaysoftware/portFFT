@@ -246,7 +246,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t global_size = static_cast<std::size_t>(
         detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, Dummy>::execute(desc, Dir);
     const Idx bank_lines_per_pad =
         bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * desc.factors[2] * desc.factors[3]);
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -294,15 +294,16 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <typename detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
+  static std::size_t execute(committed_descriptor& desc, direction dir) {
     Idx fft_size = static_cast<Idx>(desc.params.lengths[0]);
     Idx n = desc.factors[0] * desc.factors[1];
     Idx m = desc.factors[2] * desc.factors[3];
+    auto layout_in = detail::get_layout(desc.params, dir);
     // working memory + twiddles for subgroup impl for the two sizes
-    if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+    if (layout_in == detail::layout::BATCH_INTERLEAVED) {
       Idx num_batches_in_local_mem = desc.used_sg_size * PORTFFT_SGS_IN_WG / 2;
       return static_cast<std::size_t>(
           detail::pad_local(2 * fft_size * num_batches_in_local_mem,

@@ -21,6 +21,8 @@
 #ifndef PORTFFT_ENUMS_HPP
 #define PORTFFT_ENUMS_HPP
 
+#include <ostream>
+
 namespace portfft {
 
 enum class domain { REAL, COMPLEX };
@@ -49,8 +51,7 @@ enum class layout {
   /// dftInput[Idx, BatchId] = ptr[Idx + InputSize * BatchId]
   PACKED,
   /// Unpacked layout represents arbitrary strides or distance.
-  // TODO: Add UNPACKED once stride and distance are supported
-  // UNPACKED,
+  UNPACKED,
   /// Batch interleaved is a special case of unpacked with distance=1 stride=[0, batch_size] which can be better
   /// optimized than the general case.
   /// dftInput[Idx, BatchId] = ptr[Idx * BatchCount + BatchId]
@@ -73,5 +74,25 @@ enum class apply_scale_factor { APPLIED, NOT_APPLIED };
 }  // namespace detail
 
 }  // namespace portfft
+
+//TODO(Romain): Remove?
+/*
+inline void operator<<(std::ostream& os, portfft::detail::layout layout) {
+  switch (layout)
+  {
+  case portfft::detail::PACKED:
+    os << "PACKED";
+    break;
+  case portfft::detail::UNPACKED:
+    os << "UNPACKED";
+    break;
+  case portfft::detail::BATCH_INTERLEAVED:
+    os << "BATCH_INTERLEAVED";
+    break;
+  default:
+    break;
+  }
+}
+*/
 
 #endif

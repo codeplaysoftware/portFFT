@@ -283,7 +283,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
         n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(desc, Dir);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -326,10 +326,10 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
+template <typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
+  static std::size_t execute(committed_descriptor& desc, direction /*dir*/) {
     Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(desc.params.lengths[0]) * desc.used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
     desc.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
