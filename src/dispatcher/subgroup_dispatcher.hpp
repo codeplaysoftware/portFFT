@@ -204,8 +204,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](Idx j) PORTFFT_INLINE {
               Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier[base_offset],
-                               loc_load_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
+                               loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -220,8 +220,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](Idx j) PORTFFT_INLINE {
               Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
-                               loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
+                               loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -286,13 +286,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading load modifier data");
         global2local<detail::level::SUBGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, load_modifier_data, loc_load_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
+            global_data, load_modifier_data, loc_load_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
             n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
       if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store modifier data");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, store_modifier_data, loc_store_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
+            global_data, store_modifier_data, loc_store_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
             n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(global_data.sg);
@@ -309,9 +309,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
             Idx base_offset = static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-            multiply_complex(
-                priv[2 * j], priv[2 * j + 1], loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)],
-                loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j], priv[2 * j + 1]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1],
+                             loc_load_modifier_view[detail::pad_local(base_offset, BankLinesPerPad)],
+                             loc_load_modifier_view[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j],
+                             priv[2 * j + 1]);
           });
         }
       }
@@ -327,8 +328,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                 detail::pad_local(static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
                                       id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
                                   BankLinesPerPad);
-            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
-                             loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
+                             loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
