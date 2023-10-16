@@ -27,6 +27,8 @@
 #include <portfft.hpp>
 #include <sycl/sycl.hpp>
 
+#include <type_traits>
+
 using namespace portfft;
 
 /// Whether to run the test using USM or buffers
@@ -140,18 +142,120 @@ auto get_descriptor(const test_params& params) {
 }
 
 /**
- * Helper struct to specialize the test for USM and buffer
+ * Runs USM FFT test with the given test parameters
  *
- * @tparam TestMemory Whether to run the test using USM or buffer
+ * @tparam TestMemory Whether to run the test using USM or buffers
+ * @tparam Dir FFT direction
+ * @tparam DescType Descriptor type
+ * @tparam InputFType FFT input type, domain and precision
+ * @tparam OutputFType FFT output type, domain and precision
+ * @param queue Associated queue
+ * @param desc Descriptor matching the test parameters
+ * @param host_input FFT input
+ * @param host_output Future portFFT output, already allocated of the right size. This is the output for both in-place
+ * and out-of-place FFTs.
+ * @param host_reference_output Reference output
+ * @param tolerance Test tolerance
  */
-template <test_memory TestMemory>
-struct check_fft {};
+template <test_memory TestMemory, direction Dir, typename DescType, typename InputFType, typename OutputFType>
+std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, DescType desc,
+                                                           const std::vector<InputFType>& host_input,
+                                                           std::vector<OutputFType>& host_output,
+                                                           const std::vector<OutputFType>& host_reference_output,
+                                                           double tolerance) {
+  auto committed_descriptor = desc.commit(queue);
+
+  const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
+  auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
+  OutputFType* device_output = nullptr;
+  if (is_oop) {
+    device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
+  }
+
+  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
+
+  sycl::event fft_event = [&]() {
+    if (is_oop) {
+      if constexpr (Dir == direction::FORWARD) {
+        return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
+      } else {
+        return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        return committed_descriptor.compute_forward(device_input, {copy_event});
+      } else {
+        return committed_descriptor.compute_backward(device_input, {copy_event});
+      }
+    }
+  }();
+
+  queue.copy(is_oop ? device_output : device_input, host_output.data(), host_output.size(), {fft_event});
+  queue.wait_and_throw();
+  verify_dft<Dir>(desc, host_reference_output, host_output, tolerance);
+
+  sycl::free(device_input, queue);
+  if (is_oop) {
+    sycl::free(device_output, queue);
+  }
+}
+
+/**
+ * Runs buffer FFT test with the given configuration
+ *
+ * @tparam TestMemory Whether to run the test using USM or buffers
+ * @tparam Dir FFT direction
+ * @tparam DescType Descriptor type
+ * @tparam InputFType FFT input type, domain and precision
+ * @tparam OutputFType FFT output type, domain and precision
+ * @param queue Associated queue
+ * @param desc Descriptor matching the test configuration
+ * @param host_input FFT input. Also used as the output for in-place FFTs.
+ * @param host_output Future portFFT output, already allocated of the right size. Unused for in-place FFTs.
+ * @param host_reference_output Reference output
+ * @param tolerance Test tolerance
+ */
+template <test_memory TestMemory, direction Dir, typename DescType, typename InputFType, typename OutputFType>
+std::enable_if_t<TestMemory == test_memory::buffer> check_fft(sycl::queue& queue, DescType desc,
+                                                              std::vector<InputFType>& host_input,
+                                                              std::vector<OutputFType>& host_output,
+                                                              const std::vector<OutputFType>& host_reference_output,
+                                                              double tolerance) {
+  auto committed_descriptor = desc.commit(queue);
+
+  const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
+
+  {
+    sycl::buffer<InputFType, 1> input_buffer(host_input);
+    sycl::buffer<OutputFType, 1> output_buffer(nullptr, 0);
+    if (is_oop) {
+      // Do not copy back the input to the host
+      input_buffer.set_final_data(nullptr);
+      output_buffer = sycl::buffer<OutputFType, 1>(host_output);
+    }
+
+    if (is_oop) {
+      if constexpr (Dir == direction::FORWARD) {
+        committed_descriptor.compute_forward(input_buffer, output_buffer);
+      } else {
+        committed_descriptor.compute_backward(input_buffer, output_buffer);
+      }
+    } else {
+      if constexpr (Dir == direction::FORWARD) {
+        committed_descriptor.compute_forward(input_buffer);
+      } else {
+        committed_descriptor.compute_backward(input_buffer);
+      }
+    }
+  }
+  verify_dft<Dir>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance);
+}
 
 /**
  * Common function to run tests.
  * Initializes tests and run them for USM or buffer.
  *
- * @tparam TestMemory Whether to run the test using USM or buffer
+ * @tparam TestMemory Whether to run the test using USM or buffers
  * @tparam FType Scalar type Float / Double
  * @tparam Dir FFT direction
  * @param params Test parameters
@@ -188,122 +292,11 @@ void run_test(const test_params& params) {
   double tolerance = 1e-3;
 
   try {
-    check_fft<TestMemory> check_fft_runner;
-    check_fft_runner.template run<Dir>(queue, desc, host_input, host_output, host_reference_output, tolerance);
+    check_fft<TestMemory, Dir>(queue, desc, host_input, host_output, host_reference_output, tolerance);
   } catch (out_of_local_memory_error& e) {
     GTEST_SKIP() << e.what();
   }
 }
-
-template <>
-struct check_fft<test_memory::usm> {
-  /**
-   * Runs USM FFT test with the given test parameters
-   *
-   * @tparam Dir FFT direction
-   * @tparam DescType Descriptor type
-   * @tparam InputFType FFT input type, domain and precision
-   * @tparam OutputFType FFT output type, domain and precision
-   * @param queue Associated queue
-   * @param desc Descriptor matching the test parameters
-   * @param host_input FFT input
-   * @param host_output Future portFFT output, already allocated of the right size. This is the output for both in-place
-   * and out-of-place FFTs.
-   * @param host_reference_output Reference output
-   * @param tolerance Test tolerance
-   */
-  template <direction Dir, typename DescType, typename InputFType, typename OutputFType>
-  void run(sycl::queue& queue, DescType desc, const std::vector<InputFType>& host_input,
-           std::vector<OutputFType>& host_output, const std::vector<OutputFType>& host_reference_output,
-           double tolerance) {
-    auto committed_descriptor = desc.commit(queue);
-
-    const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
-    auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
-    OutputFType* device_output = nullptr;
-    if (is_oop) {
-      device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
-    }
-
-    auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
-
-    sycl::event fft_event = [&]() {
-      if (is_oop) {
-        if constexpr (Dir == direction::FORWARD) {
-          return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
-        } else {
-          return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
-        }
-      } else {
-        if constexpr (Dir == direction::FORWARD) {
-          return committed_descriptor.compute_forward(device_input, {copy_event});
-        } else {
-          return committed_descriptor.compute_backward(device_input, {copy_event});
-        }
-      }
-    }();
-
-    queue.copy(is_oop ? device_output : device_input, host_output.data(), host_output.size(), {fft_event});
-    queue.wait_and_throw();
-    verify_dft<Dir>(desc, host_reference_output, host_output, tolerance);
-
-    sycl::free(device_input, queue);
-    if (is_oop) {
-      sycl::free(device_output, queue);
-    }
-  }
-};
-
-template <>
-struct check_fft<test_memory::buffer> {
-  /**
-   * Runs buffer FFT test with the given configuration
-   *
-   * @tparam Dir FFT direction
-   * @tparam DescType Descriptor type
-   * @tparam InputFType FFT input type, domain and precision
-   * @tparam OutputFType FFT output type, domain and precision
-   * @param queue Associated queue
-   * @param desc Descriptor matching the test configuration
-   * @param host_input FFT input. Also used as the output for in-place FFTs.
-   * @param host_output Future portFFT output, already allocated of the right size. Unused for in-place FFTs.
-   * @param host_reference_output Reference output
-   * @param tolerance Test tolerance
-   */
-  template <direction Dir, typename DescType, typename InputFType, typename OutputFType>
-  void run(sycl::queue& queue, DescType desc, std::vector<InputFType>& host_input,
-           std::vector<OutputFType>& host_output, const std::vector<OutputFType>& host_reference_output,
-           double tolerance) {
-    auto committed_descriptor = desc.commit(queue);
-
-    const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
-
-    {
-      sycl::buffer<InputFType, 1> input_buffer(host_input);
-      sycl::buffer<OutputFType, 1> output_buffer(nullptr, 0);
-      if (is_oop) {
-        // Do not copy back the input to the host
-        input_buffer.set_final_data(nullptr);
-        output_buffer = sycl::buffer<OutputFType, 1>(host_output);
-      }
-
-      if (is_oop) {
-        if constexpr (Dir == direction::FORWARD) {
-          committed_descriptor.compute_forward(input_buffer, output_buffer);
-        } else {
-          committed_descriptor.compute_backward(input_buffer, output_buffer);
-        }
-      } else {
-        if constexpr (Dir == direction::FORWARD) {
-          committed_descriptor.compute_forward(input_buffer);
-        } else {
-          committed_descriptor.compute_backward(input_buffer);
-        }
-      }
-    }
-    verify_dft<Dir>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance);
-  }
-};
 
 /** Check if arrays are equal, throwing std::runtime_error and printing a message if mismatch.
  * @tparam T Element type to compare
