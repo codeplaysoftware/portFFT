@@ -29,10 +29,7 @@
 
 using namespace portfft;
 
-/**
- * Whether to run the test using USM or buffers
- *
- */
+/// Whether to run the test using USM or buffers
 enum test_memory { usm, buffer };
 
 /**
