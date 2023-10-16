@@ -35,6 +35,29 @@ bytes.
 
 namespace portfft::detail {
 
+//TODO(Romain): Remove?
+/** A basic view of memory with no modification to the index.
+ *
+ * @tparam ParentT The underlying view or pointer type.
+ */
+template <typename ParentT>
+struct basic_view {
+  using element_type = get_element_t<ParentT>;
+  using reference = element_type&;
+  static constexpr bool IsContiguous = IsContiguousViewV<ParentT>;
+
+  ParentT data;
+
+  /** Constructor.
+   * @param parent The parent view
+   */
+  constexpr basic_view(ParentT parent) noexcept : data(parent){};
+
+  // Index into the view.
+  template <typename IndexT>
+  PORTFFT_INLINE constexpr reference operator[](IndexT i) const { return data[i]; }
+};
+
 /** A view of memory with built-in offset from zero. eg. this[i] is equivalent to parent[i + offset]
  *
  * @tparam ParentT The underlying view or pointer type.
