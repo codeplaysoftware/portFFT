@@ -247,7 +247,7 @@ struct check_fft<test_memory::usm> {
     }();
 
     queue.copy(is_oop ? device_output : device_input, host_output.data(), host_output.size(), {fft_event});
-    queue.wait();
+    queue.wait_and_throw();
     verify_dft<Dir>(desc, host_reference_output, host_output, tolerance);
 
     sycl::free(device_input, queue);
