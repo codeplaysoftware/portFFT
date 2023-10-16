@@ -315,7 +315,7 @@ void expect_arrays_eq(const std::vector<T>& reference_output, const std::vector<
   EXPECT_EQ(reference_output.size(), device_output.size());
   for (std::size_t i = 0; i < reference_output.size(); ++i) {
     if (reference_output[i] != device_output[i]) {
-      T diff = std::abs(reference_output[i] - device_output[i]);
+      auto diff = std::abs(reference_output[i] - device_output[i]);
       // std::endl is used intentionally to flush the error message before google test exits the test.
       std::cerr << "element " << i << " does not match\n"
                 << "ref " << reference_output[i] << " vs " << device_output[i] << "\n"
