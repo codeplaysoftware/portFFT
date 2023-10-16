@@ -247,8 +247,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(desc);
-    const Idx bank_lines_per_pad =
-        bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * desc.factors[2] * desc.factors[3]);
+    const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
+                                                         static_cast<Idx>(desc.factors[2] * desc.factors[3]));
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(desc.exec_bundle);
@@ -274,9 +274,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                             detail::elementwise_multiply::NOT_APPLIED,
                                             detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                             detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
-                &loc[static_cast<std::size_t>(detail::pad_local<detail::pad::DO_PAD>(
-                    2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad))],
+                &in_acc_or_usm[0], &out_acc_or_usm[0], loc.get_pointer(),
+                loc.get_pointer() + static_cast<long>(detail::pad_local<detail::pad::DO_PAD>(
+                                        2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad)),
                 n_transforms, global_data, twiddles, scale_factor, fft_size);
             global_data.log_message_global("Exiting workgroup kernel");
           });
@@ -295,12 +295,12 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <typename detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
-                                                                                    Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    Idx fft_size = static_cast<Idx>(desc.params.lengths[0]);
-    Idx n = desc.factors[0] * desc.factors[1];
-    Idx m = desc.factors[2] * desc.factors[3];
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::WORKGROUP,
+                                                                                         LayoutIn, Dummy> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t dft_size) {
+    Idx fft_size = static_cast<Idx>(dft_size);
+    Idx n = static_cast<Idx>(desc.factors[0] * desc.factors[1]);
+    Idx m = static_cast<Idx>(desc.factors[2] * desc.factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       Idx num_batches_in_local_mem = desc.used_sg_size * PORTFFT_SGS_IN_WG / 2;
@@ -315,13 +315,33 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 };
 
 template <typename Scalar, domain Domain>
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
+                                                                                    Dummy, std::size_t> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(
+        desc, fft_size);
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
+                                                                                    Dummy> {
+  static std::size_t execute(committed_descriptor& desc) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(
+        desc, desc.params.lengths[0]);
+  }
+};
+
+template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc) {
-    Idx factor_wi_n = desc.factors[0];
-    Idx factor_sg_n = desc.factors[1];
-    Idx factor_wi_m = desc.factors[2];
-    Idx factor_sg_m = desc.factors[3];
+    Idx factor_wi_n = static_cast<Idx>(desc.factors[0]);
+    Idx factor_sg_n = static_cast<Idx>(desc.factors[1]);
+    Idx factor_wi_m = static_cast<Idx>(desc.factors[2]);
+    Idx factor_sg_m = static_cast<Idx>(desc.factors[3]);
     Idx fft_size = static_cast<Idx>(desc.params.lengths[0]);
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;

@@ -309,7 +309,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                            detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
+                &in_acc_or_usm[0], &out_acc_or_usm[0], loc.get_pointer(), n_transforms, global_data, scale_factor,
+                fft_size);
             global_data.log_message_global("Exiting workitem kernel");
           });
     });
@@ -327,13 +328,37 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_impl_struct::inner<detail::level::WORKITEM,
+                                                                                         LayoutIn, Dummy> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    if (desc.params.forward_distance == 1 && desc.params.backward_distance == 1 && desc.params.lengths.at(0) != 1) {
+      return static_cast<std::size_t>(0);
+    }
+    Idx num_scalars_per_sg =
+        detail::pad_local(static_cast<Idx>(2 * fft_size * static_cast<std::size_t>(desc.used_sg_size)), 1);
+    Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
+    desc.num_sgs_per_wg = std::min(static_cast<Idx>(PORTFFT_SGS_IN_WG), std::max(1, max_n_sgs));
+    return static_cast<std::size_t>(num_scalars_per_sg * desc.num_sgs_per_wg);
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <detail::layout LayoutIn, typename Dummy>
+struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
+                                                                                    Dummy, std::size_t> {
+  static std::size_t execute(committed_descriptor& desc, std::size_t fft_size) {
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
+        desc, fft_size);
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& desc) {
-    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(desc.params.lengths[0]) * desc.used_sg_size, 1);
-    Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-    desc.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-    return static_cast<std::size_t>(num_scalars_per_sg * desc.num_sgs_per_wg);
+    return num_scalars_in_local_mem_impl_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
+        desc, desc.params.lengths[0]);
   }
 };
 

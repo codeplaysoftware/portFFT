@@ -107,7 +107,7 @@ class committed_descriptor {
   Idx used_sg_size;
   std::shared_ptr<Scalar> twiddles_forward;
   detail::level level;
-  std::vector<Idx> factors;
+  std::vector<IdxGlobal> factors;
   sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
   Idx num_sgs_per_wg;
   Idx local_memory_size;
@@ -173,8 +173,8 @@ class committed_descriptor {
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
-      factors.push_back(factor_wi);
-      factors.push_back(factor_sg);
+      factors.push_back(static_cast<IdxGlobal>(factor_wi));
+      factors.push_back(static_cast<IdxGlobal>(factor_sg));
       detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
       return detail::level::SUBGROUP;
     }
@@ -186,10 +186,10 @@ class committed_descriptor {
     Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
     Idx factor_wi_m = m / factor_sg_m;
     if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
-      factors.push_back(factor_wi_n);
-      factors.push_back(factor_sg_n);
-      factors.push_back(factor_wi_m);
-      factors.push_back(factor_sg_m);
+      factors.push_back(static_cast<IdxGlobal>(factor_wi_n));
+      factors.push_back(static_cast<IdxGlobal>(factor_sg_n));
+      factors.push_back(static_cast<IdxGlobal>(factor_wi_m));
+      factors.push_back(static_cast<IdxGlobal>(factor_sg_m));
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
       detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>(ids);
@@ -224,9 +224,18 @@ class committed_descriptor {
    */
   struct num_scalars_in_local_mem_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template <detail::level Lev, detail::layout LayoutIn, typename Dummy>
+    template <detail::level Lev, detail::layout LayoutIn, typename Dummy, typename... Params>
     struct inner {
-      static std::size_t execute(committed_descriptor& desc);
+      static std::size_t execute(committed_descriptor& desc, Params...);
+    };
+  };
+  /**
+   * Struct implementing the logic for returning scalars in local mem
+   */
+  struct num_scalars_in_local_mem_impl_struct {
+    template <detail::level Level, detail::layout LayoutIn, typename Dummy>
+    struct inner {
+      static std::size_t execute(committed_descriptor& desc, std::size_t fft_size);
     };
   };
 
