@@ -20,7 +20,7 @@
 
 #include "common/transfers.hpp"
 #include "common/memory_views.hpp"
-#include "utils.hpp"
+#include "fft_test_utils.hpp"
 
 #include <gtest/gtest.h>
 
@@ -125,7 +125,7 @@ void test() {
   q.copy(b_dev_work, b.data(), N * wg_size);
   q.wait();
 
-  compare_arrays(a, b, 0.0);
+  expect_arrays_eq(a, b);
   for (std::size_t i = 0; i < N_sentinel_values; i++) {
     EXPECT_EQ(b_sentinels_start[i], sentinel_b);
     EXPECT_EQ(b_sentinels_end[i], sentinel_b);

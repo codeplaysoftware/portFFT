@@ -177,8 +177,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         // Assumes load modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
-        detail::apply_modifier<N>(priv, loc_load_modifier, global_data.it.get_local_linear_id(), local_offset,
-                                  BankLinesPerPad);
+        detail::apply_modifier<N>(priv, loc_load_modifier_view, global_data.it.get_local_linear_id(),
+                                  NReals * n_working / 2);
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       global_data.log_dump_private("data in registers after computation:", priv, NReals);
@@ -186,8 +186,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         // Assumes store modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
-        detail::apply_modifier<N>(priv, loc_store_modifier, global_data.it.get_local_linear_id(), local_offset,
-                                  BankLinesPerPad);
+        detail::apply_modifier<N>(priv, loc_store_modifier_view, global_data.it.get_local_linear_id(),
+                                  NReals * n_working / 2);
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
         unrolled_loop<0, NReals, 2>([&](Idx i) PORTFFT_INLINE {
