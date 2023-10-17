@@ -49,6 +49,58 @@ struct get_domain<std::complex<T>> {
   static constexpr domain value = domain::COMPLEX;
 };
 
+namespace detail {
+
+/** Get the element type of type T
+ *  Examples:
+ *  * type is T for a pointer T*
+ *  * type is T for a padded_view<3, T*>
+ *
+ *  @tparam T The type to get the element of
+ **/
+template <typename T>
+struct get_element {
+  using type = typename T::element_type;
+};
+
+/// Specialization of get_elem for pointer
+template <typename T>
+struct get_element<T*> {
+  using type = T;
+};
+
+/// get_element::type shortcut
+template <typename T>
+using get_element_t = typename get_element<T>::type;
+
+/// get_element::type with any topmost const and/or volatile qualifiers removed.
+template <typename T>
+using get_element_remove_cv_t = std::remove_cv_t<get_element_t<T>>;
+
+/** Trait to test if a view of memory is contiguous
+ *  Examples:
+ *  * false for a pointer
+ *  * true for a padded view where BankLinesPerPad > 0
+ *
+ *  @tparam T The type to test for contiguousness
+ **/
+template <typename T>
+struct is_contiguous_view {
+  static constexpr bool Value = T::IsContiguous;
+};
+
+/// Specialization of is_contiguous_view for pointer
+template <typename T>
+struct is_contiguous_view<T*> {
+  static constexpr bool Value = true;
+};
+
+/// is_contiguous_view::value shortcut
+template <typename T>
+constexpr bool IsContiguousViewV = is_contiguous_view<T>::Value;
+
+}  // namespace detail
+
 }  // namespace portfft
 
 #endif

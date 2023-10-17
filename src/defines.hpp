@@ -29,6 +29,13 @@
 #define PORTFFT_INLINE __attribute__((always_inline))
 #endif
 
+#ifndef PORTFFT_N_LOCAL_BANKS
+#define PORTFFT_N_LOCAL_BANKS 32
+#endif
+
+static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
+              "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
+
 namespace portfft {
 
 using Idx = std::int32_t;

@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <common/memory_views.hpp>
 #include <common/subgroup.hpp>
 #include <common/transfers.hpp>
 #include <defines.hpp>
@@ -128,10 +129,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   }
 
   constexpr Idx BankLinesPerPad = 1;
+  auto loc_view = detail::make_padded_view<BankLinesPerPad>(loc);
+  auto loc_load_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_load_modifier);
+  auto loc_store_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_store_modifier);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize, pad::DONT_PAD, 0>(global_data, twiddles, loc_twiddles,
-                                                                 NRealsPerWI * FactorSG);
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, NRealsPerWI * FactorSG);
   sycl::group_barrier(global_data.it.get_group());
   global_data.log_dump_local("twiddles in local memory:", loc_twiddles, NRealsPerWI * FactorSG);
 
@@ -162,33 +165,33 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       Idx rounded_up_sub_batches = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading load multipliers from global to local memory");
-        global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, load_modifier_data, loc_load_modifier, n_reals_per_fft * num_batches_in_local_mem,
-            i * n_reals_per_fft);
+        global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
+                                                             n_reals_per_fft * num_batches_in_local_mem,
+                                                             i * n_reals_per_fft);
       }
       if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
-        global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, store_modifier_data, loc_store_modifier, n_reals_per_fft * num_batches_in_local_mem,
-            i * n_reals_per_fft);
+        global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
+                                                             n_reals_per_fft * num_batches_in_local_mem,
+                                                             i * n_reals_per_fft);
       }
       sycl::group_barrier(global_data.it.get_group());
       if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
         global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // load / store in a transposed manner
-        global2local_transposed<detail::level::WORKGROUP, detail::pad::DO_PAD, BankLinesPerPad, T>(
-            global_data, input, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+        global2local_transposed<detail::level::WORKGROUP>(global_data, input, loc_view, 2 * i, FactorWI * FactorSG,
+                                                          n_transforms, max_num_batches_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
-      global_data.log_dump_local("data loaded to local memory:", loc, NRealsPerWI * FactorSG);
+      global_data.log_dump_local("data loaded to local memory:", loc_view, NRealsPerWI * FactorSG);
       for (Idx sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
            sub_batch += n_sgs_in_wg * n_ffts_per_sg) {
         bool working_inner = sub_batch < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
         if (working_inner) {
           global_data.log_message_global(__func__, "loading transposed data from local to private memory");
           // load from local memory in a transposed manner
-          local2private_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-              global_data, loc, priv, id_of_wi_in_fft, sub_batch, max_num_batches_local_mem);
+          local2private_transposed<FactorWI>(global_data, loc_view, priv, id_of_wi_in_fft, sub_batch,
+                                             max_num_batches_local_mem);
           global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
         }
         if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
@@ -200,10 +203,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "multiplying load modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](Idx j) PORTFFT_INLINE {
-              Idx base_offset = detail::pad_local(sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
-                                                  BankLinesPerPad);
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier[base_offset],
-                               loc_load_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
+                               loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -217,10 +219,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "multiplying store modifier data");
           if (working_inner) {
             detail::unrolled_loop<0, FactorWI, 1>([&](Idx j) PORTFFT_INLINE {
-              Idx base_offset = detail::pad_local(sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
-                                                  BankLinesPerPad);
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
-                               loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
+              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
+                               loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
             });
           }
         }
@@ -238,7 +239,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to global memory (SubgroupSize == FactorSG)");
             // Store directly from registers for fully coalesced accesses
-            store_transposed<NRealsPerWI, detail::pad::DONT_PAD, 0>(
+            store_transposed<NRealsPerWI>(
                 global_data, priv, output, id_of_wi_in_fft, FactorSG,
                 (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
           }
@@ -248,29 +249,28 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                            "storing transposed data from private to local memory (SubgroupSize != "
                                            "FactorSG or LayoutOut == detail::layout::BATCH_INTERLEAVED)");
             // Store back to local memory only
-            private2local_transposed<FactorWI, detail::pad::DO_PAD, BankLinesPerPad>(
-                global_data, priv, loc, id_of_wi_in_fft, FactorSG, sub_batch, max_num_batches_local_mem);
+            private2local_transposed<FactorWI>(global_data, priv, loc_view, id_of_wi_in_fft, FactorSG, sub_batch,
+                                               max_num_batches_local_mem);
           }
         }
       }
       sycl::group_barrier(global_data.it.get_group());
       if constexpr (SubgroupSize != FactorSG || LayoutOut == detail::layout::BATCH_INTERLEAVED) {
-        global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
+        global_data.log_dump_local("computed data in local memory:", loc_view, NRealsPerWI * FactorSG);
         // store back all loaded batches at once.
         if constexpr (LayoutOut == detail::layout::PACKED) {
           global_data.log_message_global(__func__,
                                          "storing transposed data from local to global memory (SubgroupSize != "
                                          "FactorSG) with LayoutOut = detail::layout::PACKED");
-          local2global_transposed<detail::pad::DO_PAD, BankLinesPerPad>(
-              global_data, FactorWI * FactorSG, num_batches_in_local_mem, max_num_batches_local_mem, loc, output,
-              i * n_reals_per_fft);
+          local2global_transposed(global_data, FactorWI * FactorSG, num_batches_in_local_mem, max_num_batches_local_mem,
+                                  loc_view, output, i * n_reals_per_fft);
         } else {
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
                                          "detail::layout::BATCH_INTERLEAVED");
           if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-            local_transposed2_global_transposed<detail::pad::DO_PAD, detail::level::WORKGROUP, BankLinesPerPad>(
-                global_data, output, loc, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
+            local_transposed2_global_transposed<detail::level::WORKGROUP>(
+                global_data, output, loc_view, 2 * i, FactorWI * FactorSG, n_transforms, max_num_batches_local_mem);
           }
         }
       }
@@ -279,27 +279,27 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       // Codepath taken if input is not transposed
 
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, n_ffts_worked_on_by_sg * n_reals_per_fft,
+      global2local<level::SUBGROUP, SubgroupSize>(
+          global_data, input, loc_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
           static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
           subgroup_id * n_reals_per_sg);
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading load modifier data");
         global2local<detail::level::SUBGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, load_modifier_data, loc_load_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
+            global_data, load_modifier_data, loc_load_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
             n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
       if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store modifier data");
         global2local<detail::level::WORKGROUP, SubgroupSize, detail::pad::DO_PAD, BankLinesPerPad>(
-            global_data, store_modifier_data, loc_store_modifier, n_ffts_worked_on_by_sg * n_reals_per_fft,
+            global_data, store_modifier_data, loc_store_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
             n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
       sycl::group_barrier(global_data.sg);
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NRealsPerWI,
-                                                                 subgroup_id * n_reals_per_sg);
+        local2private<NRealsPerWI>(global_data, loc_view, priv, subgroup_local_id, NRealsPerWI,
+                                   subgroup_id * n_reals_per_sg);
         global_data.log_dump_private("data loaded in registers:", priv, NRealsPerWI);
       }
       sycl::group_barrier(global_data.sg);
@@ -309,9 +309,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
             Idx base_offset = static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-            multiply_complex(
-                priv[2 * j], priv[2 * j + 1], loc_load_modifier[detail::pad_local(base_offset, BankLinesPerPad)],
-                loc_load_modifier[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j], priv[2 * j + 1]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
+                             loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
@@ -323,12 +322,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
-            Idx base_offset =
-                detail::pad_local(static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
-                                      id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
-                                  BankLinesPerPad);
-            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier[base_offset],
-                             loc_store_modifier[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+            Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
+                              id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
+            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
+                             loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
@@ -348,7 +345,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from private to global memory (FactorSG == "
                                          "SubgroupSize) and LayoutOut == detail::level::PACKED");
-          store_transposed<NRealsPerWI, pad::DONT_PAD, BankLinesPerPad>(
+          store_transposed<NRealsPerWI>(
               global_data, priv, output, id_of_wi_in_fft, FactorSG,
               i * static_cast<IdxGlobal>(n_reals_per_sg) + static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft));
         }
@@ -356,24 +353,23 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(
               __func__, "Storing data from private to Global with LayoutOut == detail::level::BATCH_INTERLEAVED");
-          transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, detail::pad::DONT_PAD, FactorWI, T,
-                           IdxGlobal>(global_data, priv, output, 2 * n_transforms, 2 * i, static_cast<IdxGlobal>(1),
-                                      static_cast<IdxGlobal>(0), FactorSG, id_of_wi_in_fft, BankLinesPerPad);
+          transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, FactorWI, IdxGlobal>(
+              global_data, priv, output, 2 * n_transforms, 2 * i, static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(0),
+              FactorSG, id_of_wi_in_fft);
         }
       } else {
         if (working) {
           global_data.log_message_global(
               __func__, "storing transposed data from private to local memory (FactorSG != SubgroupSize)");
-          store_transposed<NRealsPerWI, pad::DO_PAD, BankLinesPerPad>(
-              global_data, priv, loc, id_of_wi_in_fft, FactorSG,
-              subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
+          store_transposed<NRealsPerWI>(global_data, priv, loc_view, id_of_wi_in_fft, FactorSG,
+                                        subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
         }
         sycl::group_barrier(global_data.sg);
         global_data.log_dump_local("computed data in local memory:", loc, NRealsPerWI * FactorSG);
         global_data.log_message_global(
             __func__, "storing transposed data from local to global memory (FactorSG != SubgroupSize)");
-        local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-            global_data, loc, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
+        local2global<level::SUBGROUP, SubgroupSize>(
+            global_data, loc_view, output, n_ffts_worked_on_by_sg * n_reals_per_fft, subgroup_id * n_reals_per_sg,
             static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
         sycl::group_barrier(global_data.sg);
       }
