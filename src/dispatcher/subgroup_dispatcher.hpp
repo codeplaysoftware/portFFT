@@ -309,10 +309,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
             Idx base_offset = static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
-            multiply_complex(priv[2 * j], priv[2 * j + 1],
-                             loc_load_modifier_view[detail::pad_local(base_offset, BankLinesPerPad)],
-                             loc_load_modifier_view[detail::pad_local(base_offset + 1, BankLinesPerPad)], priv[2 * j],
-                             priv[2 * j + 1]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
+                             loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
         }
       }
@@ -324,10 +322,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           detail::unrolled_loop<0, FactorWI, 1>([&](const Idx j) {
-            Idx base_offset =
-                detail::pad_local(static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
-                                      id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft,
-                                  BankLinesPerPad);
+            Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
+                              id_of_fft_in_sg * n_reals_per_fft + 2 * j * FactorSG + 2 * id_of_wi_in_fft;
             multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
                              loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
           });
