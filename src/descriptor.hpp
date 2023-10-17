@@ -114,6 +114,21 @@ class committed_descriptor {
     Idx num_sgs_per_wg;
     std::shared_ptr<Scalar> twiddles_forward;
     detail::level level;
+
+    kernel_data_struct(sycl::kernel_bundle<sycl::bundle_state::executable>&& exec_bundle,
+      const std::vector<Idx>& factors,
+      std::size_t length,
+      Idx used_sg_size,
+      Idx num_sgs_per_wg,
+      std::shared_ptr<Scalar> twiddles_forward,
+      detail::level level) : 
+        exec_bundle(std::move(exec_bundle)),
+        factors(factors),
+        length(length),
+        used_sg_size(used_sg_size),
+        num_sgs_per_wg(num_sgs_per_wg),
+        twiddles_forward(twiddles_forward),
+        level(level) {}
   };
   std::vector<kernel_data_struct> kernels;
 
