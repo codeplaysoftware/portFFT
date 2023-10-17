@@ -171,7 +171,8 @@ class committed_descriptor {
    * @return tuple of: implementation to use, vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>> prepare_implementation(std::size_t /*kernel_num*/) {
+  std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>> prepare_implementation(
+      std::size_t /*kernel_num*/) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
@@ -266,7 +267,7 @@ class committed_descriptor {
    */
   template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem(kernel_data_struct& kernel_data) {
-    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(kernel_data.level,  kernel_data);
+    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(kernel_data.level, kernel_data);
   }
 
   /**
@@ -310,7 +311,8 @@ class committed_descriptor {
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
         set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
         try {
-          return {sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize, PORTFFT_SGS_IN_WG, {}, level};
+          return {
+              sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize, PORTFFT_SGS_IN_WG, {}, level};
         } catch (std::exception& e) {
           std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
         }
@@ -343,12 +345,11 @@ class committed_descriptor {
 
     // compile the kernels and precalculate twiddles
     kernels.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(0));
-    kernels.back().twiddles_forward =
-        std::shared_ptr<Scalar>(calculate_twiddles(kernels.back()), [queue](Scalar* ptr) {
-          if (ptr != nullptr) {
-            sycl::free(ptr, queue);
-          }
-        });
+    kernels.back().twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernels.back()), [queue](Scalar* ptr) {
+      if (ptr != nullptr) {
+        sycl::free(ptr, queue);
+      }
+    });
   }
 
  public:
@@ -555,8 +556,7 @@ class committed_descriptor {
         minimum_local_mem_required =
             num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(kernels[0]) * sizeof(Scalar);
       } else {
-        minimum_local_mem_required =
-            num_scalars_in_local_mem<detail::layout::PACKED>(kernels[0]) * sizeof(Scalar);
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>(kernels[0]) * sizeof(Scalar);
       }
       if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
         throw out_of_local_memory_error(
@@ -564,8 +564,8 @@ class committed_descriptor {
             "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
       }
       if (input_distance == fft_size && output_distance == fft_size) {
-        return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-            in, out, scale_factor, dependencies, kernels[0]);
+        return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(in, out, scale_factor,
+                                                                                             dependencies, kernels[0]);
       }
       if (input_distance == 1 && output_distance == fft_size && in != out) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
@@ -605,8 +605,7 @@ class committed_descriptor {
     template <detail::level Lev, typename Dummy>
     struct inner {
       static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                                 const std::vector<sycl::event>& dependencies,
-                                 kernel_data_struct& kernel_data);
+                                 const std::vector<sycl::event>& dependencies, kernel_data_struct& kernel_data);
     };
   };
 
