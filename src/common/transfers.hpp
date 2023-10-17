@@ -23,6 +23,7 @@
 
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <common/memory_views.hpp>
 #include <defines.hpp>
 #include <enums.hpp>
 #include <sycl/sycl.hpp>
@@ -446,8 +447,9 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
 }
 
 /**
- * Loads data from global memory where consecutive elements of a problem are separated by stride.
- * Loads half of workgroup size equivalent number of consecutive batches from global memory.
+ * Load data from global to local memory keeping transpose data arrangement.
+ * local[i + j * s0] = global[O1 + i + j * s1] for i = [0, i_max), j = [0, j_max)
+ * where i_max < group.get_local_linear_range()
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
  * @tparam GlobalT The global memory view type
@@ -456,26 +458,24 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
  * @param global_data global data for the kernel
  * @param global A view of global memory
  * @param local A view of local
- * @param offset Offset from which the strided loads would begin
- * @param num_complex Number of complex numbers per workitem
- * @param stride_global Stride Value for global memory
- * @param stride_local Stride Value for Local Memory
+ * @param global_offset Offset from which the strided loads would begin
+ * @param i_max Number of contiguous row values to copy
+ * @param j_max Number of columns to copy
+ * @param stride_global Row stride in global view
+ * @param stride_local Row stride in local view
  */
 template <detail::level Level, typename GlobalT, typename LocalT>
 PORTFFT_INLINE void global2local_transposed(detail::global_data_struct global_data, GlobalT global, LocalT local,
-                                            IdxGlobal offset, Idx num_complex, IdxGlobal stride_global,
+                                            IdxGlobal global_offset, Idx i_max, Idx j_max, IdxGlobal stride_global,
                                             Idx stride_local) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<GlobalT>, detail::get_element_t<LocalT>>,
                 "Type mismatch between global and local views");
   const char* func_name = __func__;
-  global_data.log_message_local(func_name, "offset", offset, "num_complex", num_complex, "stride_global", stride_global,
-                                "stride_local", stride_local);
-  Idx local_id = static_cast<Idx>(global_data.get_group<Level>().get_local_id()[0]);
-  for (Idx i = 0; i < num_complex; i++) {
-    Idx local_index = 2 * i * stride_local + local_id;
-    IdxGlobal global_index = offset + static_cast<IdxGlobal>(local_id) + 2 * static_cast<IdxGlobal>(i) * stride_global;
-    global_data.log_message(func_name, "from", global_index, "to", local_index, "value", global[global_index]);
-    local[local_index] = global[global_index];
+  global_data.log_message_local(func_name, "global_offset", global_offset, "i_max", i_max, "j_max", j_max,
+                                "stride_global", stride_global, "stride_local", stride_local);
+  for (Idx j = 0; j < j_max; j++) {
+    detail::impl::subrange_copy<detail::transfer_direction::GLOBAL_TO_LOCAL, Level>(
+        global_data, global, global_offset + static_cast<IdxGlobal>(j) * stride_global, local, j * stride_local, i_max);
   }
 }
 
@@ -676,26 +676,23 @@ PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_d
  * @param N Number of rows
  * @param M Number of Columns
  * @param fft_size Size of the problem
+ * @param batch_count Num batches
  */
 template <typename LocalT, typename GlobalT>
 PORTFFT_INLINE void local_strided_2_global_strided_transposed(detail::global_data_struct global_data, LocalT loc,
                                                               GlobalT global, IdxGlobal global_offset, Idx local_stride,
-                                                              Idx N, Idx M, Idx fft_size) {
+                                                              Idx N, Idx M, Idx fft_size, Idx batch_count) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
                 "Type mismatch between local and global views");
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "global_offset", global_offset, "local_stride", local_stride, "N", N, "M", M,
-                                "fft_size", fft_size);
-  Idx batch_num = static_cast<Idx>(global_data.it.get_local_linear_id()) / 2;
-  for (Idx i = 0; i < fft_size; i++) {
-    Idx source_row = i / N;
-    Idx source_col = i % N;
-    Idx local_idx = local_stride * (source_col * M + source_row) + static_cast<Idx>(global_data.it.get_local_id(0));
-    IdxGlobal global_idx =
-        global_offset + static_cast<IdxGlobal>(2 * batch_num * fft_size + 2 * i +
-                                               static_cast<Idx>(global_data.it.get_local_linear_id()) % 2);
-    global_data.log_message(func_name, "from", local_idx, "to", global_idx, "value", loc[local_idx]);
-    global[global_idx] = loc[local_idx];
+                                "fft_size", fft_size, "batch_count", batch_count);
+  for (Idx batch_idx = 0; batch_idx < batch_count; ++batch_idx) {
+    auto map_fn = [=](Idx i)
+                      PORTFFT_INLINE { return local_stride * ((i / 2 % N) * M + i / 2 / N) + 2 * batch_idx + i % 2; };
+    auto remapped_local_view = detail::generalized_view(loc, std::move(map_fn));
+    detail::impl::naive_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP>(
+        global_data, global, global_offset + 2 * batch_idx * fft_size, remapped_local_view, 0, 2 * fft_size);
   }
 }
 
@@ -780,7 +777,8 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * Transfers data from local memory (which is in strided layout) to global memory (which is in strided layout),
  * by adding another stride to local memory. To be used specifically for workgroup FFTs, where input is
  * BATCHED_INTERLEAVED and output is BATCHED_INTERLEAVED as well.
- * Call site is resposible for managing OOB accesses
+ * global[i + S1 * j + O1] = local[i + ((j%N)M + j/N) * S0] for i in [0, batch_size), j in [0, num_elements)
+ * where the above is for complex-complex data (ie. this function multiplies batch size by 2)
  *
  * @tparam GlobalT The type of view of global memory
  * @tparam LocalT The type of view of local memory
@@ -791,6 +789,7 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * @param global_stride Stride applicable to global memory
  * @param global_offset Offset applicable to global memory
  * @param local_stride Stride applicable to local memory
+ * @param batch_size The size of the batch
  * @param num_elements Total number of elements to be transferred per workitem
  * @param N Viewing num_elements as product of two factors, N being the first factor
  * @param M Viewing num_elements as product of two factors, M being the second factor
@@ -798,18 +797,16 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
 template <typename GlobalT, typename LocalT>
 PORTFFT_INLINE void local2strides_2global_strided(detail::global_data_struct global_data, GlobalT global, LocalT local,
                                                   IdxGlobal global_stride, IdxGlobal global_offset, Idx local_stride,
-                                                  Idx num_elements, Idx N, Idx M) {
+                                                  Idx batch_size, Idx num_elements, Idx N, Idx M) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
                 "Type mismatch between local and global views");
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset, " local stride = ", local_stride);
   for (Idx idx = 0; idx < num_elements; idx++) {
     Idx local_stride_2 = (idx % N) * M + (idx / N);
-    Idx base_offset = local_stride_2 * local_stride + static_cast<Idx>(global_data.it.get_local_id(0));
-    IdxGlobal global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset +
-                           static_cast<IdxGlobal>(global_data.it.get_local_id(0));
-    global_data.log_message(__func__, "from", base_offset, "to", global_idx, "value", local[base_offset]);
-    global[global_idx] = local[base_offset];
+    detail::impl::subrange_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP>(
+        global_data, global, global_offset + static_cast<IdxGlobal>(idx) * global_stride, local,
+        local_stride_2 * local_stride, 2 * batch_size);
   }
 }
 
