@@ -321,7 +321,7 @@ class committed_descriptor {
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return build_w_spec_const<OtherSGSizes...>();
+      return build_w_spec_const<OtherSGSizes...>(kernel_num);
     }
   }
 
