@@ -277,14 +277,14 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies, std::size_t length,
+                             const std::vector<sycl::event>& dependencies, 
                              kernel_data_struct& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
         n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc, length,
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc,
                                                                                                            kernel_data);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -331,8 +331,8 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc, std::size_t length, kernel_data_struct& kernel_data) {
-    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * kernel_data.used_sg_size, 1);
+  static std::size_t execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
+    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * kernel_data.used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
     kernel_data.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
     return static_cast<std::size_t>(num_scalars_per_sg * kernel_data.num_sgs_per_wg);
@@ -342,7 +342,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
-  static Scalar* execute(committed_descriptor& /*desc*/, std::size_t /*length*/, kernel_data_struct& /*kernel_data*/) {
+  static Scalar* execute(committed_descriptor& /*desc*/, kernel_data_struct& /*kernel_data*/) {
     return nullptr;
   }
 };

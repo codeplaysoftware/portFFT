@@ -444,11 +444,11 @@ PORTFFT_INLINE void subgroup_dispatch_impl(Idx factor_wi, Idx factor_sg, const T
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, std::size_t length, kernel_data_struct& kernel_data) {
+  static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
-        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), length * 2, desc.queue);
+        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
@@ -470,7 +470,7 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies, std::size_t length,
+                             const std::vector<sycl::event>& dependencies, 
                              kernel_data_struct& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
@@ -479,9 +479,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
         n_transforms, factor_sg, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(desc, length,
+        num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(desc, 
                                                                                                            kernel_data);
-    std::size_t twiddle_elements = 2 * length;
+    std::size_t twiddle_elements = 2 * kernel_data.length;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data.exec_bundle);
@@ -531,8 +531,8 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::SUBGROUP, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc, std::size_t length, kernel_data_struct& kernel_data) {
-    Idx dft_length = static_cast<Idx>(length);
+  static std::size_t execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
+    Idx dft_length = static_cast<Idx>(kernel_data.length);
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
       Idx padded_fft_bytes = detail::pad_local(2 * dft_length, Idx(1)) * static_cast<Idx>(sizeof(Scalar));
