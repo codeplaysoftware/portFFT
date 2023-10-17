@@ -27,79 +27,73 @@
 #include "fft_test_utils.hpp"
 #include <common/exceptions.hpp>
 
-class FFTTest : public ::testing::TestWithParam<test_params> {};  // batch, length
-class BwdTest : public ::testing::TestWithParam<test_params> {};  // batch, length
+// Parameters: placement, layout, direction, batch, length
+class FFTTest : public ::testing::TestWithParam<test_params> {};
+
+constexpr test_placement_layouts_params valid_placement_layouts[] = {
+    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
+    {placement::IN_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
+    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED},
+    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED},
+    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
+    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED}};
+
+auto all_valid_placement_layouts = ::testing::ValuesIn(valid_placement_layouts);
+auto fwd_only = ::testing::Values(direction::FORWARD);
+auto bwd_only = ::testing::Values(direction::BACKWARD);
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3, 33000), ::testing::Values(1, 2, 3, 4, 8))));
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 3, 33000),
+                                                ::testing::Values(1, 2, 3, 4, 8))),
+                         test_params_print());
 // sizes that might use workitem or subgroup implementation depending on device
 // and configurations
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(16, 32))));
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(all_valid_placement_layouts,
+                                                                                           fwd_only,
+                                                                                           ::testing::Values(1, 3, 555),
+                                                                                           ::testing::Values(16, 32))),
+                         test_params_print());
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(::testing::Combine(::testing::Values(1, 3, 555),
-                                                                                     ::testing::Values(64, 96, 128))));
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 3, 555),
+                                                ::testing::Values(64, 96, 128))),
+                         test_params_print());
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(256, 512, 1024))));
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 3),
+                                                ::testing::Values(256, 512, 1024))),
+                         test_params_print());
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(2048, 3072, 4096))));
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 3),
+                                                ::testing::Values(2048, 3072, 4096))),
+                         test_params_print());
 
 // Backward FFT test suite
-INSTANTIATE_TEST_SUITE_P(BackwardFFT, BwdTest,
-                         ::testing::ConvertGenerator<param_tuple>(
-                             ::testing::Combine(::testing::Values(1, 3), ::testing::Values(8, 9, 16, 32, 64, 4096))));
+INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, bwd_only, ::testing::Values(1, 3),
+                                                ::testing::Values(8, 9, 16, 32, 64, 4096))),
+                         test_params_print());
 
-#define INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT,    \
-                         LAYOUTOUT_NAME, DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, MEM, MEM_NAME)    \
-  TEST_P(DIRECTION_TEST_SUITE,                                                                              \
-         MEM_NAME##_##PLACEMENT_NAME##_C2C_##DIRECTION_NAME##_##TYPE_NAME##LAYOUTIN_NAME##LAYOUTOUT_NAME) { \
-    auto param = GetParam();                                                                                \
-    sycl::queue queue;                                                                                      \
-    if constexpr (std::is_same<TYPE, double>::value) {                                                      \
-      auto queue_pair = get_queue(fp64_selector);                                                           \
-      CHECK_QUEUE(queue_pair);                                                                              \
-      queue = queue_pair.first.value();                                                                     \
-    }                                                                                                       \
-    try {                                                                                                   \
-      check_fft_##MEM<TYPE, placement::PLACEMENT, direction::DIRECTION, LAYOUTIN, LAYOUTOUT>(param, queue); \
-    } catch (portfft::out_of_local_memory_error & e) {                                                      \
-      GTEST_SKIP() << e.what();                                                                             \
-    }                                                                                                       \
+#define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                     \
+  TEST_P(FFTTest, TYPE##_##MEMORY##_C2C) {                                       \
+    auto params = GetParam();                                                    \
+    if (params.dir == portfft::direction::FORWARD) {                             \
+      run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD>(params);  \
+    } else {                                                                     \
+      run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD>(params); \
+    }                                                                            \
   }
 
-#define INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT,       \
-                             LAYOUTOUT_NAME, DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE)                      \
-  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
-                   DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, usm, USM)                                      \
-  INTANTIATE_TESTS(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
-                   DIRECTION, DIRECTION_NAME, DIRECTION_TEST_SUITE, buffer, BUFFER)
-
-#define INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, \
-                                       LAYOUTOUT_NAME)                                                                 \
-  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
-                       FORWARD, Fwd, FFTTest)                                                                          \
-  INTANTIATE_TESTS_MEM(TYPE, TYPE_NAME, PLACEMENT, PLACEMENT_NAME, LAYOUTIN, LAYOUTIN_NAME, LAYOUTOUT, LAYOUTOUT_NAME, \
-                       BACKWARD, Bwd, BwdTest)
-
-#define INTANTIATE_TESTS_MEM_DIRECTION_PLACEMENT_LAYOUT(TYPE, TYPE_NAME)                                           \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::PACKED, _in_packed,                \
-                                 detail::layout::PACKED, _out_packed)                                              \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
-                                 detail::layout::PACKED, _out_packed)                                              \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::BATCH_INTERLEAVED,            \
-                                 _in_batch_interleaved, detail::layout::PACKED, _out_packed)                       \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, IN_PLACE, IP, detail::layout::BATCH_INTERLEAVED,                 \
-                                 _in_batch_interleaved, detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved) \
-  INTANTIATE_TESTS_MEM_DIRECTION(TYPE, TYPE_NAME, OUT_OF_PLACE, OOP, detail::layout::PACKED, _in_packed,           \
-                                 detail::layout::BATCH_INTERLEAVED, _out_batch_interleaved)
-// In place different input-output configurations are not supported
+#define INSTANTIATE_TESTS(TYPE)     \
+  INSTANTIATE_TESTS_FULL(TYPE, usm) \
+  INSTANTIATE_TESTS_FULL(TYPE, buffer)
 
 #endif
