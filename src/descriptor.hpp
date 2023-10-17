@@ -127,6 +127,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       default:
+        // This should be unreachable
         throw unsupported_configuration("Unimplemented!");
     }
   }
@@ -141,6 +142,7 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
       default:
+        // This should be unreachable
         throw unsupported_configuration("Unimplemented!");
     }
   }
@@ -158,6 +160,7 @@ class committed_descriptor {
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, LayoutOut, SubgroupSize, void>::execute(
             *this, args...);
       default:
+        // This should be unreachable
         throw unsupported_configuration("Unimplemented!");
     }
   }
