@@ -235,7 +235,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies,
                              IdxGlobal n_transforms, 
                              IdxGlobal input_offset, IdxGlobal output_offset,
-                             Scalar scale_factor, std::size_t length, kernel_data_struct& kernel_data) {
+                             Scalar scale_factor, kernel_data_struct& kernel_data) {
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return kernel_data.used_sg_size * PORTFFT_SGS_IN_WG / 2;
@@ -248,7 +248,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t global_size = static_cast<std::size_t>(
         detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(desc, length, kernel_data);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(desc, kernel_data);
     const Idx bank_lines_per_pad =
         bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * kernel_data.factors[2] * kernel_data.factors[3]);
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -289,9 +289,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle, std::size_t length, const std::vector<Idx>& /*factors*/) {
-    in_bundle.template set_specialization_constant<detail::WorkgroupSpecConstFftSize>(
-        static_cast<Idx>(length));
+  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+                      std::size_t length, const std::vector<Idx>& /*factors*/) {
+    in_bundle.template set_specialization_constant<detail::WorkgroupSpecConstFftSize>(static_cast<Idx>(length));
   }
 };
 
@@ -299,8 +299,8 @@ template <typename Scalar, domain Domain>
 template <typename detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, kernel_data_struct& kernel_data) {
-    Idx fft_size = static_cast<Idx>(length);
+  static std::size_t execute(committed_descriptor& /*desc*/, kernel_data_struct& kernel_data) {
+    Idx fft_size = static_cast<Idx>(kernel_data.length);
     Idx n = kernel_data.factors[0] * kernel_data.factors[1];
     Idx m = kernel_data.factors[2] * kernel_data.factors[3];
     // working memory + twiddles for subgroup impl for the two sizes
@@ -319,12 +319,12 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, std::size_t length, kernel_data_struct& kernel_data) {
+  static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];
     Idx factor_sg_m = kernel_data.factors[3];
-    Idx fft_size = static_cast<Idx>(length);
+    Idx fft_size = static_cast<Idx>(kernel_data.length);
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;
     Idx res_size = 2 * (m + n + fft_size);

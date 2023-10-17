@@ -280,12 +280,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies,
                              IdxGlobal n_transforms, 
                              IdxGlobal input_offset, IdxGlobal output_offset,
-                             Scalar scale_factor, std::size_t length, kernel_data_struct& kernel_data) {
+                             Scalar scale_factor, kernel_data_struct& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
         n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc, length, kernel_data);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc,
+                                                                                                           kernel_data);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data.exec_bundle);
@@ -321,10 +322,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
-  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle, 
+  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/) {
-    in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(
-        static_cast<Idx>(length));
+    in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(static_cast<Idx>(length));
   }
 };
 
@@ -332,8 +332,8 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc, std::size_t length, kernel_data_struct& kernel_data) {
-    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * kernel_data.used_sg_size, 1);
+  static std::size_t execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
+    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * kernel_data.used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
     kernel_data.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
     return static_cast<std::size_t>(num_scalars_per_sg * kernel_data.num_sgs_per_wg);
@@ -343,7 +343,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
-  static Scalar* execute(committed_descriptor& /*desc*/, std::size_t /*length*/, kernel_data_struct& /*kernel_data*/) { return nullptr; }
+  static Scalar* execute(committed_descriptor& /*desc*/, kernel_data_struct& /*kernel_data*/) { return nullptr; }
 };
 
 }  // namespace portfft
