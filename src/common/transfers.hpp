@@ -587,11 +587,6 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Inp
                                      TDstIdx stride_3, TDstIdx offset_3) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<InputT>, detail::get_element_t<DestT>>,
                 "Type mismatch between local and private views");
-  constexpr bool IsContiguous = TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE
-                                    ? detail::IsContiguousViewV<InputT>
-                                    : detail::IsContiguousViewV<DestT>;
-  static_assert((!IsContiguous && std::is_same_v<TDstIdx, Idx>) ||
-                (IsContiguous && std::is_same_v<TDstIdx, IdxGlobal>));
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
