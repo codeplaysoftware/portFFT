@@ -245,7 +245,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     }();
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
-    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     std::size_t global_size = static_cast<std::size_t>(
         detail::get_global_size_workgroup<Scalar>(n_transforms, SubgroupSize, desc.n_compute_units));
     std::size_t local_elements =

@@ -130,10 +130,12 @@ class committed_descriptor {
   struct dimension_struct {
     std::vector<kernel_data_struct> kernels;
     detail::level level;
+    std::size_t length;
     Idx used_sg_size;
 
-    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level)
-          used_sg_size(used_sg_size), {}
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size) : kernels(kernels), level(level),
+          length(length),
+          used_sg_size(used_sg_size) {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -347,7 +349,7 @@ class committed_descriptor {
           set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
           try {
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
-                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level, SubgroupSize);
+                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
           } catch (std::exception& e) {
             std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
                       << e.what() << std::endl;
@@ -356,7 +358,7 @@ class committed_descriptor {
           }
         }
         if (is_compatible) {
-          return {result, top_level};
+          return {result, top_level, SubgroupSize, params.lengths[kernel_num]};
         }
       }
     }
@@ -679,41 +681,43 @@ class committed_descriptor {
                               Scalar scale_factor, dimension_struct& dimension_data) {
     if (SubgroupSize == dimension_data.used_sg_size) {
       std::size_t minimum_local_mem_required;
-      bool input_packed = input_distance == kernel_data.length && input_stride == 1;
-      bool output_packed = output_distance == kernel_data.length && output_stride == 1;
+      bool input_packed = input_distance == dimension_data.length && input_stride == 1;
+      bool output_packed = output_distance == dimension_data.length && output_stride == 1;
       bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
       bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
-      if (input_batch_interleaved) {
-        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(kernel_data.level, kernel_data.length, SubgroupSize,
-                                         kernel_data.factors, kernel_data.num_sgs_per_wg) * sizeof(Scalar);
-      } else {
-        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>(kernel_data.level, kernel_data.length, SubgroupSize,
-                                         kernel_data.factors, kernel_data.num_sgs_per_wg) * sizeof(Scalar);
-      }
-      if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
-        throw out_of_local_memory_error(
-            "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-            "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+      for(kernel_data_struct kernel_data : dimension_data.kernels){
+        if (input_batch_interleaved) {
+          minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(kernel_data.level, kernel_data.length, SubgroupSize,
+                                          kernel_data.factors, kernel_data.num_sgs_per_wg) * sizeof(Scalar);
+        } else {
+          minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>(kernel_data.level, kernel_data.length, SubgroupSize,
+                                          kernel_data.factors, kernel_data.num_sgs_per_wg) * sizeof(Scalar);
+        }
+        if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
+          throw out_of_local_memory_error(
+              "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+              "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+        }
       }
       if (input_packed && output_packed) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
             in, out, dependencies, 
-             n_transforms, input_offset, output_offset, scale_factor, kernel_data);
+             n_transforms, input_offset, output_offset, scale_factor, dimension_data);
       }
       if (input_batch_interleaved && output_packed && in != out) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
             in, out, dependencies, 
-             n_transforms, input_offset, output_offset, scale_factor, kernel_data);
+             n_transforms, input_offset, output_offset, scale_factor, dimension_data);
       }
       if (input_packed && output_batch_interleaved && in != out) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
             in, out, dependencies, 
-             n_transforms, input_offset, output_offset, scale_factor, kernel_data);
+             n_transforms, input_offset, output_offset, scale_factor, dimension_data);
       }
       if (input_batch_interleaved && output_batch_interleaved) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
             in, out, dependencies, 
-             n_transforms, input_offset, output_offset, scale_factor, kernel_data);
+             n_transforms, input_offset, output_offset, scale_factor, dimension_data);
       }
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
@@ -724,7 +728,7 @@ class committed_descriptor {
                                                       n_transforms, 
                                                       input_stride, output_stride,
                                                       input_distance, output_distance, 
-                                                      input_offset, output_offset, scale_factor, kernel_data);
+                                                      input_offset, output_offset, scale_factor, dimension_data);
     }
   }
 
@@ -748,7 +752,7 @@ class committed_descriptor {
                                  const std::vector<sycl::event>& dependencies,
                                  std::size_t n_transforms, 
                                  std::size_t forward_offset, std::size_t backward_offset,
-                                 Scalar scale_factor, kernel_data_struct& kernel_data);
+                                 Scalar scale_factor, std::vector<kernel_data_struct>& kernels);
     };
   };
 
