@@ -130,8 +130,12 @@ class committed_descriptor {
   struct dimension_struct {
     std::vector<kernel_data_struct> kernels;
     detail::level level;
+    std::size_t length;
+    Idx used_sg_size;
 
-    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level) {}
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level),
+          length(length)
+          used_sg_size(used_sg_size) {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -347,7 +351,7 @@ class committed_descriptor {
           set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
           try {
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
-                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level, SubgroupSize, params.lengths[kernel_num]);
           } catch (std::exception& e) {
             std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
                       << e.what() << std::endl;
@@ -578,7 +582,7 @@ class committed_descriptor {
    */
   template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
-    if (SubgroupSize == dimensions[0].kernels[0].used_sg_size) {
+    if (SubgroupSize == dimensions[0].used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
       std::size_t input_distance;
       std::size_t output_distance;
