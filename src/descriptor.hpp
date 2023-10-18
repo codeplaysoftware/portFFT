@@ -126,7 +126,15 @@ class committed_descriptor {
           twiddles_forward(twiddles_forward),
           level(level) {}
   };
-  std::vector<kernel_data_struct> kernels;
+  
+  struct dimension_struct{
+    std::vector<kernel_data_struct> kernels;
+    detail::level level;
+
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level) {}
+  };
+
+  std::vector<dimension_struct> dimensions;
 
   template <typename Impl, typename... Args>
   auto dispatch(detail::level level, Args&&... args) {
@@ -182,10 +190,19 @@ class committed_descriptor {
    *
    * @tparam SubgroupSize size of the subgroup
    * @param kernel_num the consecutive number of the kernel to prepare
-   * @return tuple of: implementation to use, vector of kernel ids, factors
+   * @return implementation to use for the dimesnion and a vector of tuples of: implementation to use for a kernel, vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>> prepare_implementation(
+  std::tuple<
+    detail::level, 
+    std::vector<
+      std::tuple<
+        detail::level, 
+        std::vector<sycl::kernel_id>, 
+        std::vector<Idx>
+      >
+    >
+  > prepare_implementation(
       std::size_t /*kernel_num*/) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
@@ -203,7 +220,7 @@ class committed_descriptor {
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::WORKITEM, ids, factors};
+      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
@@ -213,7 +230,7 @@ class committed_descriptor {
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
       ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::SUBGROUP, ids, factors};
+      return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     Idx n = static_cast<Idx>(n_idx_global);
@@ -230,7 +247,7 @@ class committed_descriptor {
       // This factorization of N and M is duplicated in the dispatch logic on the device.
       // The CT and spec constant factors should match.
       ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::WORKGROUP, ids, factors};
+      return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
     }
     // TODO global
     throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
@@ -268,20 +285,24 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, detail::layout LayoutIn, typename Dummy>
     struct inner {
-      static std::size_t execute(committed_descriptor& desc, kernel_data_struct& kernel_data);
+      static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size, const std::vector<Idx>& factors, Idx& num_sgs_per_wg);
     };
   };
 
   /**
-   * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_in_wg`
+   * Determine the number of scalars we need to have space for in the local memory. It may also modify `num_sgs_per_wg`
    * to make the problem fit in the local memory.
    *
-   * @param kernel_data data about the kernel the local memory is needed for
+   * @param level the implementation that will be used
+   * @param length length of the FFT the kernel will execute
+   * @param used_sg_size subgroup size the kernel will use
+   * @param factors factorization of the FFT size the kernel will use
+   * @param[out] num_sgs_per_wg number of subgroups in a workgroup
    * @return the number of scalars
    */
   template <detail::layout LayoutIn>
-  std::size_t num_scalars_in_local_mem(kernel_data_struct& kernel_data) {
-    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(kernel_data.level, kernel_data);
+  std::size_t num_scalars_in_local_mem(detail::level level, std::size_t length, Idx used_sg_size, const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
+    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(level, length, used_sg_size, factors, num_sgs_per_wg);
   }
 
   /**
@@ -306,29 +327,40 @@ class committed_descriptor {
   }
 
   /**
-   * Builds the kernel bundle with appropriate values of specialization constants for the first supported subgroup size.
+   * Builds the kernel bundles with appropriate values of specialization constants for the first supported subgroup size.
    *
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
    * @param kernel_num the consecutive number of the kernel to build
-   * @return kernel_data_struct for the newly built kernel
+   * @return `dimension_struct` for the newly built kernels
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
-  kernel_data_struct build_w_spec_const(std::size_t kernel_num) {
-    // This function is called from constructor initializer list and it accesses other data members of the class. These
-    // are already initialized by the time this is called only if they are declared in the class definition before the
-    // member that is initialized by this function.
+  dimension_struct build_w_spec_const(std::size_t kernel_num) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      auto [level, ids, factors] = prepare_implementation<SubgroupSize>(kernel_num);
-
-      if (sycl::is_compatible(ids, dev)) {
-        auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-        set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
-        try {
-          return {
-              sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize, PORTFFT_SGS_IN_WG, {}, level};
-        } catch (std::exception& e) {
-          std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
+      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
+      bool is_compatible = true;
+      for(auto [level, ids, factors] : prepared_vec){
+        is_compatible = is_compatible && sycl::is_compatible(ids, dev);
+        if(!is_compatible){
+          break;
+        }
+      }
+      std::vector<kernel_data_struct> result;
+      if (is_compatible) {
+        for(auto [level, ids, factors] : prepared_vec){
+          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+          set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
+          try {
+            result.emplace_back(
+                sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize, PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+          } catch (std::exception& e) {
+            std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
+            is_compatible = false;
+            break;
+          }
+        }
+        if(is_compatible){
+          return {result, top_level};
         }
       }
     }
@@ -352,18 +384,18 @@ class committed_descriptor {
         ctx(queue.get_context()),
         // get some properties we will use for tunning
         n_compute_units(static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>())),
-        supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()) {
-    // get some properties we will use for tuning
-    n_compute_units = static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>());
-    local_memory_size = static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>());
+        supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
+        local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())) {
 
     // compile the kernels and precalculate twiddles
-    kernels.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(0));
-    kernels.back().twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernels.back()), [queue](Scalar* ptr) {
-      if (ptr != nullptr) {
-        sycl::free(ptr, queue);
-      }
-    });
+    dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(0));
+    for(kernel_data_struct& kernel : dimensions.back().kernels){
+      kernel.twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernel), [queue](Scalar* ptr) {
+        if (ptr != nullptr) {
+          sycl::free(ptr, queue);
+        }
+      });
+    }
   }
 
  public:
@@ -551,7 +583,7 @@ class committed_descriptor {
    */
   template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_helper(const TIn in, TOut out, const std::vector<sycl::event>& dependencies = {}) {
-    if (SubgroupSize == kernels.back().used_sg_size) {
+    if (SubgroupSize == dimensions[0].kernels[0].used_sg_size) {
       std::size_t fft_size = params.lengths[0];  // 1d only for now
       std::size_t input_distance;
       std::size_t output_distance;
@@ -568,9 +600,9 @@ class committed_descriptor {
       std::size_t minimum_local_mem_required;
       if (input_distance == 1) {
         minimum_local_mem_required =
-            num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(kernels[0]) * sizeof(Scalar);
+            num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(dimensions[0].kernels[0].level, dimensions[0].kernels[0].length, SubgroupSize, dimensions[0].kernels[0].factors, dimensions[0].kernels[0].num_sgs_per_wg) * sizeof(Scalar);
       } else {
-        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>(kernels[0]) * sizeof(Scalar);
+        minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::PACKED>(dimensions[0].kernels[0].level, dimensions[0].kernels[0].length, SubgroupSize, dimensions[0].kernels[0].factors, dimensions[0].kernels[0].num_sgs_per_wg) * sizeof(Scalar);
       }
       if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
         throw out_of_local_memory_error(
@@ -579,19 +611,19 @@ class committed_descriptor {
       }
       if (input_distance == fft_size && output_distance == fft_size) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(in, out, scale_factor,
-                                                                                             dependencies, kernels[0]);
+                                                                                             dependencies, dimensions[0]);
       }
       if (input_distance == 1 && output_distance == fft_size && in != out) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
-            in, out, scale_factor, dependencies, kernels[0]);
+            in, out, scale_factor, dependencies, dimensions[0]);
       }
       if (input_distance == fft_size && output_distance == 1 && in != out) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, scale_factor, dependencies, kernels[0]);
+            in, out, scale_factor, dependencies, dimensions[0]);
       }
       if (input_distance == 1 && output_distance == 1) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, scale_factor, dependencies, kernels[0]);
+            in, out, scale_factor, dependencies, dimensions[0]);
       }
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
@@ -619,7 +651,7 @@ class committed_descriptor {
     template <detail::level Lev, typename Dummy>
     struct inner {
       static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                                 const std::vector<sycl::event>& dependencies, kernel_data_struct& kernel_data);
+                                 const std::vector<sycl::event>& dependencies, std::vector<kernel_data_struct>& kernel_data);
     };
   };
 
@@ -641,9 +673,9 @@ class committed_descriptor {
   template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
             typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, Scalar scale_factor, const std::vector<sycl::event>& dependencies,
-                         kernel_data_struct& kernel_data) {
+                         dimension_struct& dimension_data) {
     return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn, TOut>>(
-        kernel_data.level, in, out, scale_factor, dependencies, kernel_data);
+        dimension_data.level, in, out, scale_factor, dependencies, dimension_data.kernels);
   }
 };
 

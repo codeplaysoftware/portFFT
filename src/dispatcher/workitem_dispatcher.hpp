@@ -277,17 +277,20 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies, kernel_data_struct& kernel_data) {
+                             const std::vector<sycl::event>& dependencies, std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
-        n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
+        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc,
-                                                                                                           kernel_data);
+                                                                                                           kernel_data[0].length,
+                                                                                                           kernel_data[0].used_sg_size,
+                                                                                                           kernel_data[0].factors,
+                                                                                                           kernel_data[0].num_sgs_per_wg);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(kernel_data.exec_bundle);
+      cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
@@ -297,7 +300,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.parallel_for<detail::workitem_kernel<
           Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
           detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
             detail::global_data_struct global_data{
@@ -330,11 +333,11 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
-    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * kernel_data.used_sg_size, 1);
+  static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size, const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg) {
+    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-    kernel_data.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-    return static_cast<std::size_t>(num_scalars_per_sg * kernel_data.num_sgs_per_wg);
+    num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
+    return static_cast<std::size_t>(num_scalars_per_sg * num_sgs_per_wg);
   }
 };
 
