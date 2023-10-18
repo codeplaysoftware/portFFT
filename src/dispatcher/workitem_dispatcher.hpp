@@ -337,7 +337,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
     num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-    return static_cast<std::size_t>(num_scalars_per_sg * num_sgs_per_wg);
+    Idx res = num_scalars_per_sg * num_sgs_per_wg;
+    return static_cast<std::size_t>(res);
   }
 };
 
