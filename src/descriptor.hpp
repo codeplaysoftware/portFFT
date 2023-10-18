@@ -130,8 +130,10 @@ class committed_descriptor {
   struct dimension_struct {
     std::vector<kernel_data_struct> kernels;
     detail::level level;
+    Idx used_sg_size;
 
-    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level) {}
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level) : kernels(kernels), level(level)
+          used_sg_size(used_sg_size), {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -345,7 +347,7 @@ class committed_descriptor {
           set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
           try {
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
-                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level, SubgroupSize);
           } catch (std::exception& e) {
             std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
                       << e.what() << std::endl;
@@ -675,7 +677,7 @@ class committed_descriptor {
                               std::size_t input_distance, std::size_t output_distance, 
                               std::size_t input_offset, std::size_t output_offset,
                               Scalar scale_factor, dimension_struct& dimension_data) {
-    if (SubgroupSize == kernel_data.used_sg_size) {
+    if (SubgroupSize == dimension_data.used_sg_size) {
       std::size_t minimum_local_mem_required;
       bool input_packed = input_distance == kernel_data.length && input_stride == 1;
       bool output_packed = output_distance == kernel_data.length && output_stride == 1;
