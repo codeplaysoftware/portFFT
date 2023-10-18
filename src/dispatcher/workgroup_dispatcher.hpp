@@ -314,8 +314,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                             bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) +
           2 * (m + n));
     }
-    return static_cast<std::size_t>(
-        detail::pad_local(2 * fft_size, bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) + 2 * (m + n));
+    Idx res = detail::pad_local(2 * fft_size, bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) + 2 * (m + n);
+    return static_cast<std::size_t>(res);
   }
 };
 

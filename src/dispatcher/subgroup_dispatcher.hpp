@@ -472,8 +472,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              IdxGlobal input_offset, IdxGlobal output_offset,
                              Scalar scale_factor, std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    Scalar* twiddles = kernel_data.twiddles_forward.get();
-    Idx factor_sg = kernel_data.factors[1];
+    Scalar* twiddles = kernel_data[0].twiddles_forward.get();
+    Idx factor_sg = kernel_data[0].factors[1];
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
         n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
@@ -549,7 +549,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       Idx num_scalars_per_sg = detail::pad_local(2 * dft_length * n_ffts_per_sg, 1);
       Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
       num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-      return static_cast<std::size_t>(num_scalars_per_sg * num_sgs_per_wg);
+      Idx res = num_scalars_per_sg * num_sgs_per_wg;
+      return static_cast<std::size_t>(res);
     }
   }
 };

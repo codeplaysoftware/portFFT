@@ -358,7 +358,7 @@ class committed_descriptor {
           }
         }
         if (is_compatible) {
-          return {result, top_level, SubgroupSize, params.lengths[kernel_num]};
+          return {result, top_level, params.lengths[kernel_num], SubgroupSize};
         }
       }
     }
@@ -588,7 +588,7 @@ class committed_descriptor {
     (void) output_strides;
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>,const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
-    std::size_t total_size = std::accumulate(&params.lengths[0], &params.lengths[n_dimensions-1], 1ul, std::multiplies<std::size_t>());
+    std::size_t total_size = std::accumulate(&params.lengths[0], &params.lengths[n_dimensions-1], 1UL, std::multiplies<std::size_t>());
     // curretly multi-dimensional transforms are implemented just for default data layout
     if(n_dimensions == 1 || 
           (total_size == input_distance && total_size == output_distance)){
@@ -651,12 +651,12 @@ class committed_descriptor {
                               std::size_t forward_stride, std::size_t backward_stride, 
                               std::size_t forward_distance, std::size_t backward_distance, 
                               std::size_t forward_offset, std::size_t backward_offset, 
-                              Scalar scale_factor, kernel_data_struct& kernel_data) {
+                              Scalar scale_factor, dimension_struct& dimension_data) {
     return dispatch_kernel_1d_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies, 
                                                       n_transforms, 
                                                       forward_stride, backward_stride,
                                                       forward_distance, backward_distance, 
-                                                      forward_offset, backward_offset, scale_factor, kernel_data);
+                                                      forward_offset, backward_offset, scale_factor, dimension_data);
   }
 
   /**
