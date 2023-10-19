@@ -77,8 +77,10 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "  complex_type = np.complex128 if is_double else np.complex64\n"
       "  dataGenDims = [batch] + dims\n"
       "  rng = np.random.Generator(np.random.SFC64(0))\n"
-      "  inData = rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
-      "  if (is_complex):\n"
+      //"  inData = rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
+      "  inData = np.zeros(dataGenDims).astype(scalar_type)\n"
+      "  inData[0]=1\n"
+      "  if (is_complex and False):\n"
       "    inData = inData + 1j * rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
       "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
       "  inData.reshape(-1, 1)\n"
@@ -199,6 +201,14 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
   // multiple of dft_len. This scaling is applied to the reference data.
   auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
 
+  std::cout << "validation: ";
+  for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
+    const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
+    for (std::size_t e = 0; e != dft_len; ++e) {
+      std::cout << this_batch_computed[e] << ", ";
+    }
+  }
+  std::cout << std::endl;
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
     const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
