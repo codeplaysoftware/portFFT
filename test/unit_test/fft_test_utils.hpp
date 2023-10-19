@@ -295,6 +295,8 @@ void run_test(const test_params& params) {
     check_fft<TestMemory, Dir>(queue, desc, host_input, host_output, host_reference_output, tolerance);
   } catch (out_of_local_memory_error& e) {
     GTEST_SKIP() << e.what();
+  } catch (unsupported_configuration& e) {
+    GTEST_SKIP() << e.what();
   }
 }
 
