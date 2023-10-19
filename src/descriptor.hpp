@@ -237,9 +237,10 @@ class committed_descriptor {
       Idx factor_wi_n = n / factor_sg_n;
       Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
       Idx factor_wi_m = m / factor_sg_m;
+      Idx temp_num_sgs_in_wg;
       std::size_t local_memory_usage = num_scalars_in_local_mem<detail::layout::PACKED>(
                                            detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
-                                           {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, PORTFFT_SGS_IN_WG) *
+                                           {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg) *
                                        sizeof(Scalar);
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
           (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
@@ -307,7 +308,7 @@ class committed_descriptor {
    */
   template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem(detail::level level, std::size_t length, Idx used_sg_size,
-                                       const std::vector<Idx>& factors, Idx num_sgs_per_wg) {
+                                       const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
     return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(level, length, used_sg_size, factors, num_sgs_per_wg);
   }
 
