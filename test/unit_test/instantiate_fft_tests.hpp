@@ -65,7 +65,7 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
 
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 3),
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1, 131),
                                                 ::testing::Values(256, 512, 1024))),
                          test_params_print());
 
