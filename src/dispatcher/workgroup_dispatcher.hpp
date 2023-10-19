@@ -44,7 +44,7 @@ constexpr static sycl::specialization_id<Idx> WorkgroupSpecConstFftSize{};
  * @param workgroup_size The size of the work-group. Must be divisible by 2.
  */
 template <detail::layout LayoutIn>
-PORTFFT_INLINE constexpr Idx get_batches_in_local_mem_workgroup(Idx workgroup_size) noexcept {
+PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(Idx workgroup_size) noexcept {
   if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     return workgroup_size / 2;
   } else {
@@ -67,7 +67,7 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
   Idx maximum_n_sgs = 8 * n_compute_units * 64;
   Idx maximum_n_wgs = maximum_n_sgs / PORTFFT_SGS_IN_WG;
   Idx wg_size = subgroup_size * PORTFFT_SGS_IN_WG;
-  Idx dfts_per_wg = get_batches_in_local_mem_workgroup<LayoutIn>(wg_size);
+  Idx dfts_per_wg = get_num_batches_in_local_mem_workgroup<LayoutIn>(wg_size);
 
   return static_cast<IdxGlobal>(wg_size) * sycl::min(static_cast<IdxGlobal>(maximum_n_wgs),
                                                      divide_ceil(n_transforms, static_cast<IdxGlobal>(dfts_per_wg)));
@@ -119,9 +119,11 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
 
   Idx max_num_batches_in_local_mem =
-      get_batches_in_local_mem_workgroup<LayoutIn>(static_cast<Idx>(global_data.it.get_local_range(0)));
-  IdxGlobal global_offset = static_cast<IdxGlobal>(2 * FFTSize * wg_id * max_num_batches_in_local_mem);
-  IdxGlobal offset_increment = static_cast<IdxGlobal>(2 * FFTSize * num_workgroups * max_num_batches_in_local_mem);
+      get_num_batches_in_local_mem_workgroup<LayoutIn>(static_cast<Idx>(global_data.it.get_local_range(0)));
+  Idx max_reals_in_local_memory = 2 * FFTSize * max_num_batches_in_local_mem;
+  IdxGlobal global_offset = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_reals_in_local_memory);
+  IdxGlobal offset_increment =
+      static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_reals_in_local_memory);
   for (IdxGlobal offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
@@ -315,7 +317,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     Idx m = desc.factors[2] * desc.factors[3];
     // working memory + twiddles for subgroup impl for the two sizes
     Idx num_batches_in_local_mem =
-        detail::get_batches_in_local_mem_workgroup<LayoutIn>(desc.used_sg_size * PORTFFT_SGS_IN_WG);
+        detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(desc.used_sg_size * PORTFFT_SGS_IN_WG);
     return static_cast<std::size_t>(detail::pad_local(2 * fft_size * num_batches_in_local_mem,
                                                       bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) +
                                     2 * (m + n));
