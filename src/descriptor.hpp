@@ -615,7 +615,7 @@ class committed_descriptor {
                                          dimensions[0].kernels[0].factors, dimensions[0].kernels[0].num_sgs_per_wg) *
                                      sizeof(Scalar);
       }
-      if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
+      if (minimum_local_mem_required > static_cast<std::size_t>(local_memory_size)) {
         throw out_of_local_memory_error(
             "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
             "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
