@@ -72,8 +72,8 @@ struct offset_view {
  * `PORTFFT_N_LOCAL_BANKS` banks.
  * @return transformed local_idx
  */
-template <detail::pad Pad = detail::pad::DO_PAD>
-PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
+template <detail::pad Pad = detail::pad::DO_PAD, typename T>
+PORTFFT_INLINE T pad_local(T local_idx, T bank_lines_per_pad) {
   if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad);
   }
