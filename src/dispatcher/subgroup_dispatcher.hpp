@@ -178,9 +178,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
       // load / store in a transposed manner - lots of 2* because reals are being copied.
-      global2local_transposed<detail::level::WORKGROUP>(global_data, input, loc_view, 2 * i,
-                                                        2 * num_batches_in_local_mem, FactorWI * FactorSG,
-                                                        2 * n_transforms, 2 * max_num_batches_local_mem);
+      global_batchinter_2_local_batchinter<detail::level::WORKGROUP>(global_data, input, loc_view, 2 * i,
+                                                                     2 * num_batches_in_local_mem, FactorWI * FactorSG,
+                                                                     2 * n_transforms, 2 * max_num_batches_local_mem);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, NRealsPerWI * FactorSG);
       for (Idx sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;

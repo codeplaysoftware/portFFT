@@ -135,9 +135,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      global2local_transposed<level::WORKGROUP>(global_data, input, loc_view, offset / FFTSize,
-                                                2 * num_batches_in_local_mem, FFTSize, 2 * n_transforms,
-                                                2 * max_num_batches_in_local_mem);
+      global_batchinter_2_local_batchinter<level::WORKGROUP>(global_data, input, loc_view, offset / FFTSize,
+                                                             2 * num_batches_in_local_mem, FFTSize, 2 * n_transforms,
+                                                             2 * max_num_batches_in_local_mem);
       sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize>(
@@ -149,13 +149,12 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
         // local2global_transposed cannot be used over here. This is because the data in the local memory is also
         // stored in a strided fashion.
-        local_strided_2_global_strided_transposed(global_data, loc_view, output, offset,
-                                                  2 * max_num_batches_in_local_mem, N, M, FFTSize,
-                                                  num_batches_in_local_mem);
+        local_batchinter_batchinter_2_global_packed<SubgroupSize>(
+            global_data, loc_view, output, offset, 2 * max_num_batches_in_local_mem, N, M, num_batches_in_local_mem);
       } else {
-        IdxGlobal current_batch = offset / (2 * FFTSize);
-        local2strides_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch,
-                                      2 * max_num_batches_in_local_mem, num_batches_in_local_mem, FFTSize, N, M);
+        local_packed_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
+                                                    2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
+                                                    num_batches_in_local_mem, N, M);
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
