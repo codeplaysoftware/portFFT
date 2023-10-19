@@ -55,6 +55,7 @@ template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize,
           typename LocalViewT>
 PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
                                               IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
+  static_assert(IsContiguousViewV<GlobalViewT>, "Expecting contiguous global view");
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
@@ -318,7 +319,6 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   const real_t* global_aligned_ptr = reinterpret_cast<const real_t*>(
       detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(vec_t)));
   Idx unaligned_elements = static_cast<Idx>(global_aligned_ptr - global_ptr);
-
   // Load the first few unaligned elements. Assumes group size > alignof(vec_t) / sizeof(vec_t).
   impl::subrange_copy<TransferDirection, Level>(global_data, global, global_offset, local, local_offset,
                                                 unaligned_elements);
@@ -704,9 +704,10 @@ PORTFFT_INLINE void local_batchinter_batchinter_2_global_packed(detail::global_d
     return linearize_local_ffts(i % (2 * fft_size), i / (2 * fft_size));
   };
   auto remapped_local_view = detail::generalized_view(loc, std::move(batch_interleaved_to_packed));
-  detail::global_local_contiguous_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP,
-                                       SubgroupSize>(global_data, global, remapped_local_view,
-                                                     2 * fft_size * batch_count, global_offset, 0);
+  // Can't use global_local_contiguous_copy because of the PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 in the sg-copy
+  // impl.
+  detail::impl::naive_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP>(
+      global_data, global, global_offset, remapped_local_view, 0, 2 * fft_size * batch_count);
 }
 
 /**
