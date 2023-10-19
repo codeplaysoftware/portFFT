@@ -238,7 +238,7 @@ class committed_descriptor {
       Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
       Idx factor_wi_m = m / factor_sg_m;
       std::size_t local_memory_usage = num_scalars_in_local_mem<detail::layout::PACKED>(
-                                           detail::level::WORKGROUP, fft_size, SubgroupSize,
+                                           detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
                                            {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, PORTFFT_SGS_IN_WG) *
                                        sizeof(Scalar);
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
