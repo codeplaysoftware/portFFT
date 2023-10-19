@@ -561,7 +561,7 @@ class committed_descriptor {
                               params.forward_distance, params.backward_distance, 
                               params.forward_offset, params.backward_offset, params.forward_scale);
     } else{
-      return dispatch_dimensions<Dir>(in, out, dependencies, params.forward_strides, params.backward_strides, 
+      return dispatch_dimensions<Dir>(in, out, dependencies, params.backward_strides, params.forward_strides, 
                               params.backward_distance, params.forward_distance, 
                               params.backward_offset, params.forward_offset, params.backward_scale);
     }
@@ -588,19 +588,19 @@ class committed_descriptor {
     (void) output_strides;
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>,const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
-    std::size_t total_size = std::accumulate(&params.lengths[0], &params.lengths[n_dimensions-1], 1UL, std::multiplies<std::size_t>());
+    std::size_t total_size = std::accumulate(&params.lengths[0], &params.lengths[n_dimensions], 1UL, std::multiplies<std::size_t>());
     // curretly multi-dimensional transforms are implemented just for default data layout
-    if(n_dimensions == 1 || 
-          (total_size == input_distance && total_size == output_distance)){
+    bool is_default_layout = total_size == input_distance && total_size == output_distance;
+    if(n_dimensions == 1 ||  is_default_layout){
       // product of sizes of all dimension inner relative to the one we are currently working on
       std::size_t inner_size = 1;
       // product of sizes of all dimension outer relative to the one we are currently working on
       std::size_t outer_size = total_size / params.lengths.back();
-      sycl::event previous_event = dispatch_kernel_1d<Dir, TIn, TOut>(in, out, dependencies, 
-                                                                  params.number_of_transforms * outer_size,
-                                                                  inner_size, inner_size,
-                                                                  params.lengths.back(), params.lengths.back(),
-                                                                  input_offset, output_offset, scale_factor, dimensions.back());
+      sycl::event previous_event = dispatch_kernel_1d<Dir>(
+                            in, out, dependencies, params.number_of_transforms * outer_size, 
+                            input_strides[0], output_strides[0],
+                            input_distance, output_distance,
+                            input_offset, output_offset, scale_factor, dimensions.back());
       if(params.lengths.size() == 1){
         return previous_event;
       }
@@ -648,15 +648,16 @@ class committed_descriptor {
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies, 
                               std::size_t n_transforms, 
-                              std::size_t forward_stride, std::size_t backward_stride, 
-                              std::size_t forward_distance, std::size_t backward_distance, 
-                              std::size_t forward_offset, std::size_t backward_offset, 
+                              std::size_t input_stride, std::size_t output_stride, 
+                              std::size_t input_distance, std::size_t output_distance, 
+                              std::size_t input_offset, std::size_t output_offset, 
                               Scalar scale_factor, dimension_struct& dimension_data) {
     return dispatch_kernel_1d_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(in, out, dependencies, 
                                                       n_transforms, 
-                                                      forward_stride, backward_stride,
-                                                      forward_distance, backward_distance, 
-                                                      forward_offset, backward_offset, scale_factor, dimension_data);
+                                                      input_stride, output_stride,
+                                                      input_distance, output_distance, 
+                                                      input_offset, output_offset, 
+                                                      scale_factor, dimension_data);
   }
 
   /**
