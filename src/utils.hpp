@@ -96,14 +96,12 @@ std::vector<sycl::kernel_id> get_ids() {
  */
 template <typename InputType, typename OutputType>
 constexpr bool can_cast_safely(const InputType& x) {
+  static_assert(std::is_signed_v<InputType> && std::is_signed_v<OutputType>);
   if constexpr (sizeof(OutputType) > sizeof(InputType)) {
     return true;
   }
   OutputType x_converted = static_cast<OutputType>(x);
-  if (static_cast<InputType>(x_converted) != x) {
-    return false;
-  }
-  return true;
+  return (static_cast<InputType>(x_converted) == x);
 }
 }  // namespace detail
 }  // namespace portfft

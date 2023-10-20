@@ -229,7 +229,10 @@ class committed_descriptor {
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
-        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global) && n_idx_global != 1) {
+        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
+      if (n_idx_global == 1) {
+        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported!");
+      }
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
       Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
@@ -256,7 +259,7 @@ class committed_descriptor {
       }
     }
     // TODO global
-    throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
+    throw out_of_local_memory_error("FFT size ", fft_size, " is not supported due to insufficient local memory");
   }
 
   /**
