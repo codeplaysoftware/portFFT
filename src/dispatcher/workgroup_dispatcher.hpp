@@ -318,10 +318,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/) {
-    std::vector<std::size_t> factors_size_t(factors.size());
-    std::copy(factors.begin(), factors.end(), factors_size_t.begin());
-    std::size_t n = factors_size_t[0] * factors_size_t[1];
-    std::size_t m = factors_size_t[2] * factors_size_t[3];
+    std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
+    std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     Idx num_batches_in_local_mem =
         detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * PORTFFT_SGS_IN_WG);

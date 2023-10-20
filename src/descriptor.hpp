@@ -242,6 +242,8 @@ class committed_descriptor {
                                            detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
                                            {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg) *
                                        sizeof(Scalar);
+      // Checks for PACKED layout only at the moment, as the other layout will not be supported
+      // by the global implementation. For such sizes, only PACKED layout will be supported
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
           (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
         factors.push_back(factor_wi_n);
