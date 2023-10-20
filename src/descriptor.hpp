@@ -33,7 +33,6 @@
 #include <complex>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -229,8 +228,8 @@ class committed_descriptor {
       return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
-    if (n_idx_global < std::numeric_limits<Idx>::max() && (fft_size / n_idx_global < std::numeric_limits<Idx>::max()) &&
-        n_idx_global != 1) {
+    if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
+        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global) && n_idx_global != 1) {
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
       Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
