@@ -194,7 +194,7 @@ class committed_descriptor {
    *
    * @tparam SubgroupSize size of the subgroup
    * @param kernel_num the consecutive number of the kernel to prepare
-   * @return implementation to use for the dimesnion and a vector of tuples of: implementation to use for a kernel,
+   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel,
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
