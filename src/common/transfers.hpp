@@ -703,7 +703,7 @@ PORTFFT_INLINE void local_batchinter_batchinter_2_global_packed(detail::global_d
   auto batch_interleaved_to_packed = [=](Idx i) PORTFFT_INLINE {
     return linearize_local_ffts(i % (2 * fft_size), i / (2 * fft_size));
   };
-  auto remapped_local_view = detail::generalized_view(loc, std::move(batch_interleaved_to_packed));
+  auto remapped_local_view = detail::remapping_view(loc, std::move(batch_interleaved_to_packed));
   // Can't use global_local_contiguous_copy because of the PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 in the sg-copy
   // impl.
   detail::impl::naive_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP>(
@@ -789,8 +789,8 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
 
 /**
  * Transfer local to global on a workgroup level where:
- * - The FFTs in local data is stored in packed form.
- *   - The data within the index space of a single FFT is decomposed by factors N & M, and is stored in batch
+ * - The FFTs in local data is stored in batch interleaved form.
+ *   - The data within the index space of a single FFT is decomposed by factors N & M, and is also stored in batch
  * interleaved form.
  * - The FFTs in global memory are stored in batch interleaved form without further decomposition.
  *
@@ -811,10 +811,10 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * @param M 2nd factor of FFT in local memory - number of column for a single FFT in matrix form in local memory.
  */
 template <typename GlobalT, typename LocalT>
-PORTFFT_INLINE void local_packed_batchinter_2_global_batchinter(detail::global_data_struct global_data, GlobalT global,
-                                                                LocalT local, IdxGlobal global_stride,
-                                                                IdxGlobal global_offset, Idx local_stride,
-                                                                Idx batch_size, Idx N, Idx M) {
+PORTFFT_INLINE void local_batchinter_batchinter_2_global_batchinter(detail::global_data_struct global_data,
+                                                                    GlobalT global, LocalT local,
+                                                                    IdxGlobal global_stride, IdxGlobal global_offset,
+                                                                    Idx local_stride, Idx batch_size, Idx N, Idx M) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<LocalT>, detail::get_element_remove_cv_t<GlobalT>>,
                 "Type mismatch between local and global views");
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,

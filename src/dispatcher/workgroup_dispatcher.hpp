@@ -152,9 +152,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         local_batchinter_batchinter_2_global_packed<SubgroupSize>(
             global_data, loc_view, output, offset, 2 * max_num_batches_in_local_mem, N, M, num_batches_in_local_mem);
       } else {
-        local_packed_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
-                                                    2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
-                                                    num_batches_in_local_mem, N, M);
+        local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
+                                                        2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
+                                                        num_batches_in_local_mem, N, M);
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {

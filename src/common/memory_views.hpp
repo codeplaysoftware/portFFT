@@ -128,7 +128,7 @@ PORTFFT_INLINE constexpr padded_view<BankLinesPerPad, T> make_padded_view(T pare
  * @tparam ParentT The underlying view or pointer type.
  */
 template <typename RemapFuncT, typename ParentT>
-struct generalized_view {
+struct remapping_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
   static constexpr bool IsContiguous = false;  // There is no way to know if the remapping function is contiguous.
@@ -137,7 +137,7 @@ struct generalized_view {
   RemapFuncT func;
 
   // Constructor: Create a view of a pointer or another view.
-  constexpr generalized_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
+  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }
