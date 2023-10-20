@@ -78,8 +78,6 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "  dataGenDims = [batch] + dims\n"
       "  rng = np.random.Generator(np.random.SFC64(0))\n"
       "  inData = rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
-      //"  inData = np.zeros(dataGenDims).astype(scalar_type)\n"
-      //"  inData[0]=1\n"
       "  if (is_complex):\n"
       "    inData = inData + 1j * rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
       "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
