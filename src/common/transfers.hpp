@@ -451,7 +451,7 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
  * Load from global to local on a workgroup level where:
  * - Global data is in batch interleaved form
  * - Local data is in batch interleaved form
- * local[i + j * s0] = global[O1 + i + j * s1] for i = [0, i_max), j = [0, j_max)
+ * local[i + j * s0] = global[o1 + i + j * s1] for i = [0, i_max), j = [0, j_max)
  * where i_max < group.get_local_linear_range()
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
@@ -794,7 +794,7 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
  * interleaved form.
  * - The FFTs in global memory are stored in batch interleaved form without further decomposition.
  *
- * global[i + S1 * j + O1] = local[i + ((j%N)M + j/N) * S0] for i in [0, batch_size), j in [0, num_elements)
+ * global[i + S1 * j + o1] = local[i + ((j%N)M + j/N) * S0] for i in [0, batch_size), j in [0, num_elements)
  * where the above is for complex-complex data (ie. this function multiplies batch size by 2)
  *
  * @tparam GlobalT The type of view of global memory
