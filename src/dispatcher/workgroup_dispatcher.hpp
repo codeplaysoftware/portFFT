@@ -31,8 +31,6 @@
 #include <descriptor.hpp>
 #include <enums.hpp>
 
-#include <algorithm>
-
 namespace portfft {
 namespace detail {
 // specialization constants

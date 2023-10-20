@@ -67,6 +67,7 @@ struct offset_view {
  * Can also be used to transform size of a local allocation to account for padding indices in it this way.
  *
  * @tparam Pad whether to do padding
+ * @tparam T input type to the function
  * @param local_idx index to transform
  * @param bank_lines_per_pad A padding space will be added after every `bank_lines_per_pad` groups of
  * `PORTFFT_N_LOCAL_BANKS` banks.

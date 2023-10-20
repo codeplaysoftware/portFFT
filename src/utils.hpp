@@ -99,13 +99,12 @@ constexpr bool can_cast_safely(const InputType& x) {
   if constexpr (sizeof(OutputType) > sizeof(InputType)) {
     return true;
   }
-  // check overflow and underflow
-  if ((x <= std::numeric_limits<OutputType>::max()) && (x >= std::numeric_limits<OutputType>::min())) {
-    return true;
+  OutputType x_converted = static_cast<OutputType>(x);
+  if (static_cast<InputType>(x_converted) != x) {
+    return false;
   }
-  return false;
+  return true;
 }
-
 }  // namespace detail
 }  // namespace portfft
 #endif
