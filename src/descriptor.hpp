@@ -596,9 +596,8 @@ class committed_descriptor {
       std::size_t inner_size = 1;
       // product of sizes of all dimension outer relative to the one we are currently working on
       std::size_t outer_size = total_size / params.lengths.back();
-      std::cout << "inner outer sizes " << inner_size << " " << outer_size << std::endl;
-      std::size_t input_stride_0 = input_strides[0];
-      std::size_t output_stride_0 = output_strides[0];
+      std::size_t input_stride_0 = input_strides.back();
+      std::size_t output_stride_0 = output_strides.back();
       if(input_stride_0 < input_distance){ // input_stride_0 == 1
         input_distance = params.lengths.back();
       } else{ // input_distance == 1
@@ -609,15 +608,7 @@ class committed_descriptor {
       } else{ // input_distance == 1
         //output_stride_0 *= outer_size;
       }
-      
-      if constexpr(std::is_pointer_v<TIn>){
-        std::vector<complex_type> tmp(total_size * params.number_of_transforms);
-        queue.copy(out, tmp.data(), total_size * params.number_of_transforms, dependencies).wait_and_throw();
-        for( auto i : tmp){
-          std::cout << i << ", ";
-        }
-        std::cout << std::endl;
-      }
+
       sycl::event previous_event = dispatch_kernel_1d<Dir>(
                             in, out, dependencies, params.number_of_transforms * outer_size, 
                             input_stride_0, output_stride_0,
@@ -626,60 +617,36 @@ class committed_descriptor {
       if(params.lengths.size() == 1){
         return previous_event;
       }
-      if constexpr(std::is_pointer_v<TIn>){
-        std::vector<complex_type> tmp(total_size * params.number_of_transforms);
-        queue.copy(out, tmp.data(), total_size * params.number_of_transforms, {previous_event}).wait_and_throw();
-        for( auto i : tmp){
-          std::cout << i << ", ";
-        }
-        std::cout << std::endl;
-      }
       std::vector<sycl::event> previous_events {previous_event};
       std::vector<sycl::event> next_events;
       inner_size *= params.lengths.back();
-      for(std::size_t i=n_dimensions-2;i>=1;i--){
+      for(int i=static_cast<int>(n_dimensions)-2;i>=0;i--){
         outer_size /= params.lengths[i];
         //TODO do everything from the next loop in a single kernel once we support more than one distnace in the kernels.
-        std::cout << "inner outer sizes " << inner_size << " " << outer_size << std::endl;
+        std::size_t stride_between_kernels = 2 * inner_size * params.lengths[i];
         for(std::size_t j = 0; j < params.number_of_transforms * outer_size; j++){
           sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events, 
                                                             inner_size,
                                                             inner_size, inner_size,
                                                             1, 1,
-                                                            input_offset + j * outer_size, 
-                                                            output_offset + j * outer_size, static_cast<Scalar>(1.0), dimensions[i]);
+                                                            input_offset + j * stride_between_kernels, 
+                                                            output_offset + j * stride_between_kernels, static_cast<Scalar>(1.0), dimensions[i]);
           next_events.push_back(e);
         }
         inner_size *= params.lengths[i];
         std::swap(previous_events, next_events);
         next_events.clear();
-
-        if constexpr(std::is_pointer_v<TIn>){
-          std::vector<complex_type> tmp(total_size * params.number_of_transforms);
-          queue.copy(out, tmp.data(), total_size * params.number_of_transforms, previous_events).wait_and_throw();
-          for( auto i : tmp){
-            std::cout << i << ", ";
-          }
-          std::cout << std::endl;
-        }
       }
+      return previous_events[0];
+      
       outer_size /= params.lengths[0]; //outer size == 1 at this point
-      std::cout << "inner outer sizes " << inner_size << " " << outer_size << std::endl;
-      auto e = dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events, 
+      auto e = dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events,
                                               params.number_of_transforms * inner_size,
                                               inner_size, inner_size,
                                               1,1,
                                               input_offset, 
                                               output_offset, static_cast<Scalar>(1.0), dimensions[0]);
       
-      if constexpr(std::is_pointer_v<TIn>){
-        std::vector<complex_type> tmp(total_size * params.number_of_transforms);
-        queue.copy(out, tmp.data(), total_size * params.number_of_transforms, {e}).wait_and_throw();
-        for( auto i : tmp){
-          std::cout << i << ", ";
-        }
-        std::cout << std::endl;
-      }
       return e;
     }
     throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
@@ -771,9 +738,6 @@ class committed_descriptor {
             in, out, dependencies, 
              n_transforms, input_offset, output_offset, scale_factor, dimension_data);
       }
-      std::cout << input_packed << output_packed << input_batch_interleaved  << output_batch_interleaved << std::endl;
-      std::cout << input_distance << " " << output_distance << " " << input_stride << " " << output_stride << std::endl;
-      std::cout << dimension_data.length << " " << n_transforms << std::endl;
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
@@ -940,13 +904,14 @@ struct descriptor {
    */
   explicit descriptor(const std::vector<std::size_t>& lengths)
       : lengths(lengths),
-        forward_strides{1},
-        backward_strides{1}{
+        forward_strides(lengths.size()),
+        backward_strides(lengths.size()){
     // TODO: properly set default values for distances for real transforms
-    // TODO: properly set default values for strides
     std::size_t total_size = 1;
-    for (auto l : lengths) {
-      total_size *= l;
+    for(int i=static_cast<int>(lengths.size())-1; i>=0; i--){
+      forward_strides[i] = total_size;
+      backward_strides[i] = total_size;
+      total_size *= lengths[i];
     }
     backward_scale = Scalar(1) / static_cast<Scalar>(total_size);
     forward_distance = total_size;
