@@ -466,11 +466,10 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, 
-                             const std::vector<sycl::event>& dependencies,
-                             IdxGlobal n_transforms, 
-                             IdxGlobal input_offset, IdxGlobal output_offset,
-                             Scalar scale_factor, std::vector<kernel_data_struct>& kernel_data) {
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
+                             std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
     Idx factor_sg = kernel_data[0].factors[1];
@@ -508,8 +507,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                            detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                            detail::cooley_tukey_size_list_t>(
-                factor_wi, factor_sg, &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, &loc[0], &loc_twiddles[0], n_transforms,
-                global_data, twiddles, scale_factor);
+                factor_wi, factor_sg, &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, &loc[0],
+                &loc_twiddles[0], n_transforms, global_data, twiddles, scale_factor);
             global_data.log_message_global("Exiting subgroup kernel");
           });
     });

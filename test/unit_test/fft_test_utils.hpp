@@ -45,8 +45,8 @@ struct test_placement_layouts_params {
   detail::layout output_layout;
 };
 
-using basic_param_tuple =
-    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/, std::vector<std::size_t> /*lengths*/>;
+using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+                                     std::vector<std::size_t> /*lengths*/>;
 // More tuples can be added here to easily instantiate tests that will require different parameters
 
 struct test_params {
@@ -98,7 +98,7 @@ struct test_params_print {
     ss << "__Direction_" << (params.dir == direction::FORWARD ? "Fwd" : "Bwd");
     ss << "__Batch_" << params.batch;
     ss << "__Lengths";
-    for(std::size_t length : params.lengths){
+    for (std::size_t length : params.lengths) {
       ss << "_" << length;
     }
     return ss.str();
@@ -280,7 +280,7 @@ void run_test(const test_params& params) {
     return;
   }
 
-  for(std::size_t length : params.lengths){
+  for (std::size_t length : params.lengths) {
     ASSERT_TRUE(length > 0);
     std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
     if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), length)) {
