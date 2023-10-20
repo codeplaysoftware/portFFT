@@ -598,15 +598,11 @@ class committed_descriptor {
       std::size_t outer_size = total_size / params.lengths.back();
       std::size_t input_stride_0 = input_strides.back();
       std::size_t output_stride_0 = output_strides.back();
-      if(input_stride_0 < input_distance){ // input_stride_0 == 1
+      if(input_stride_0 < input_distance){
         input_distance = params.lengths.back();
-      } else{ // input_distance == 1
-        //input_stride_0 *= outer_size;
       }
-      if(output_stride_0 < output_distance){ // input_stride_0 == 1
+      if(output_stride_0 < output_distance){
         output_distance = params.lengths.back();
-      } else{ // input_distance == 1
-        //output_stride_0 *= outer_size;
       }
 
       sycl::event previous_event = dispatch_kernel_1d<Dir>(
@@ -614,13 +610,13 @@ class committed_descriptor {
                             input_stride_0, output_stride_0,
                             input_distance, output_distance,
                             input_offset, output_offset, scale_factor, dimensions.back());
-      if(params.lengths.size() == 1){
+      if(n_dimensions == 1){
         return previous_event;
       }
       std::vector<sycl::event> previous_events {previous_event};
       std::vector<sycl::event> next_events;
       inner_size *= params.lengths.back();
-      for(int i=static_cast<int>(n_dimensions)-2;i>=0;i--){
+      for(std::size_t i=n_dimensions-2;i!=static_cast<std::size_t>(-1);i--){
         outer_size /= params.lengths[i];
         //TODO do everything from the next loop in a single kernel once we support more than one distnace in the kernels.
         std::size_t stride_between_kernels = 2 * inner_size * params.lengths[i];
@@ -637,17 +633,7 @@ class committed_descriptor {
         std::swap(previous_events, next_events);
         next_events.clear();
       }
-      return previous_events[0];
-      
-      outer_size /= params.lengths[0]; //outer size == 1 at this point
-      auto e = dispatch_kernel_1d<Dir, TOutConst, TOut>(out, out, previous_events,
-                                              params.number_of_transforms * inner_size,
-                                              inner_size, inner_size,
-                                              1,1,
-                                              input_offset, 
-                                              output_offset, static_cast<Scalar>(1.0), dimensions[0]);
-      
-      return e;
+      return queue.single_task(previous_events, [](){}); // just to get an event that depends on all previous ones
     }
     throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
   }
@@ -908,7 +894,7 @@ struct descriptor {
         backward_strides(lengths.size()){
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = 1;
-    for(int i=static_cast<int>(lengths.size())-1; i>=0; i--){
+    for(std::size_t i=lengths.size()-1; i!=static_cast<std::size_t>(-1); i--){
       forward_strides[i] = total_size;
       backward_strides[i] = total_size;
       total_size *= lengths[i];

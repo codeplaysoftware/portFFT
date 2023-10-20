@@ -474,12 +474,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
     Idx factor_sg = kernel_data[0].factors[1];
-    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
-        n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(
             desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
             kernel_data[0].num_sgs_per_wg);
+    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
+        n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t twiddle_elements = 2 * kernel_data[0].length;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
