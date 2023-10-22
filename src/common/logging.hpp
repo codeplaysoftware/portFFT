@@ -22,6 +22,7 @@
 #define PORTFFT_COMMON_LOGGING_HPP
 
 #include <defines.hpp>
+#include <enums.hpp>
 #include <sycl/sycl.hpp>
 
 namespace portfft::detail {
@@ -53,6 +54,19 @@ struct global_data_struct {
 #endif
         it(it),
         sg(it.get_sub_group()) {
+  }
+
+  /** Get the group for this work-item associated with a level.
+   */
+  template <level Level>
+  __attribute__((always_inline)) inline auto get_group() {
+    static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP,
+                  "No group associated with WORKITEM or DEVICE levels");
+    if constexpr (Level == level::SUBGROUP) {
+      return sg;
+    } else {
+      return it.get_group();
+    }
   }
 
 #ifdef PORTFFT_LOG
@@ -97,23 +111,23 @@ struct global_data_struct {
    *
    * Does nothing if logging of dumps is not enabled (PORTFFT_LOG_DUMPS is not defined).
    *
-   * @tparam T type of the data to log
+   * @tparam ViewT View type of data to log
    * @param message message to log before the data
-   * @param ptr pointer to data to log
+   * @param data View of data to log
    * @param num number of elements to log
    */
-  template <typename T>
-  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
+  template <typename ViewT>
+  PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] ViewT data,
                                      [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
     if (it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
       s << " " << message << " ";
       if (num) {
-        s << ptr[0];
+        s << data[0];
       }
       for (Idx i = 1; i < num; i++) {
-        s << ", " << ptr[i];
+        s << ", " << data[i];
       }
       s << "\n" << sycl::stream_manipulator::flush;
     }
@@ -163,6 +177,27 @@ struct global_data_struct {
   }
 
   /**
+   * Logs a message from a subgroup - there will be only one output from each subgroup. Can log multiple
+   * objects/strings. They will be separated by spaces. Also outputs the id of the subgroup and workgroup it is called
+   * from.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <typename... Ts>
+  PORTFFT_INLINE void log_message_subgroup([[maybe_unused]] Ts... messages) {
+#ifdef PORTFFT_LOG_TRANSFERS
+    if (sg.leader()) {
+      s << "sg_id " << sg.get_group_linear_id() << " "
+        << "wg_id " << it.get_group(0) << " ";
+      log_message_impl(messages...);
+    }
+#endif
+  }
+
+  /**
    * Logs a message from a workgroup - there will be only one output from each workgroup. Can log multiple
    * objects/strings. They will be separated by spaces. Also outputs the id of the workgroup it is called from.
    *
@@ -197,6 +232,30 @@ struct global_data_struct {
       log_message_impl(messages...);
     }
 #endif
+  }
+
+  /**
+   * Logs a message with a single message from the selected level. Can log multiple objects/strings. They will be
+   * separated by spaces. Also outputs info on the calling level. Does not support DEVICE level.
+   *
+   * Does nothing if logging of transfers is not enabled (PORTFFT_LOG_TRANSFERS is not defined).
+   *
+   * @tparam Level The level of granularity with which to output logging data
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <level Level, typename... Ts>
+  PORTFFT_INLINE void log_message_scoped([[maybe_unused]] Ts... messages) {
+    static_assert(Level == level::WORKITEM || Level == level::SUBGROUP || Level == level::WORKGROUP,
+                  "Only WORKITEM, SUBGROUP and WORKGROUP levels are supported");
+    if constexpr (Level == level::WORKITEM) {
+      log_message(messages...);
+    } else if constexpr (Level == level::SUBGROUP) {
+      log_message_subgroup(messages...);
+    } else if constexpr (Level == level::WORKGROUP) {
+      log_message_local(messages...);
+    }
+    // DEVICE is not supported because log_message_global uses PORTFFT_LOG_TRACE instead of PORTFFT_LOG_TRANSFERS.
   }
 };
 

@@ -24,6 +24,7 @@
 #include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/helpers.hpp>
 #include <common/logging.hpp>
+#include <common/memory_views.hpp>
 #include <common/transfers.hpp>
 #include <common/workitem.hpp>
 #include <defines.hpp>
@@ -58,19 +59,18 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  * Utility function for applying load/store modifiers for workitem impl
  *
  * @tparam N FFTSize, the number of elements each workitem holds
- * @tparam T Type of Scalar
+ * @tparam PrivT Private view type
+ * @tparam LocalT Local view type
  * @param priv pointer to private memory
  * @param loc_modifier Pointer to local memory in which modifier data is stored
  * @param id_of_wi_in_wg workitem id in workgroup
  * @param num_batches_in_local_mem number of batches in local memory
- * @param bank_lines_per_pad Number of 32 bit banks after which padding is applied
  * @return void
  */
-template <int N, typename T>
-PORTFFT_INLINE void apply_modifier(T* priv, T* loc_modifier, Idx id_of_wi_in_wg, Idx num_batches_in_local_mem,
-                                   Idx bank_lines_per_pad) {
+template <int N, typename PrivT, typename LocalT>
+PORTFFT_INLINE void apply_modifier(PrivT priv, LocalT loc_modifier, Idx id_of_wi_in_wg, Idx num_batches_in_local_mem) {
   detail::unrolled_loop<0, N, 1>([&](const Idx j) PORTFFT_INLINE {
-    Idx base_offset = detail::pad_local(2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg, bank_lines_per_pad);
+    Idx base_offset = 2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg;
     multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[base_offset], loc_modifier[base_offset + 1],
                      priv[2 * j], priv[2 * j + 1]);
   });
@@ -116,6 +116,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx local_offset = NReals * SubgroupSize * subgroup_id;
   constexpr Idx BankLinesPerPad = 1;
+  auto loc_view = detail::make_padded_view<BankLinesPerPad>(loc);
+  auto loc_load_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_load_modifier);
+  auto loc_store_modifier_view = detail::make_padded_view<BankLinesPerPad>(loc_store_modifier);
 
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
@@ -125,8 +128,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
     IdxGlobal global_offset = static_cast<IdxGlobal>(NReals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if constexpr (LayoutIn == detail::layout::PACKED) {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, input, loc, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, NReals * n_working, global_offset,
+                                                  local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -135,8 +138,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
 
     if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, load_modifier_data, loc_load_modifier, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
+                                                  NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -145,8 +148,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
 
     if constexpr (MultiplyOnStore == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, store_modifier_data, loc_store_modifier, NReals * n_working, global_offset, local_offset);
+      global2local<level::SUBGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
+                                                  NReals * n_working, global_offset, local_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -167,16 +170,15 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, loc, priv, subgroup_local_id, NReals,
-                                                            local_offset);
+        local2private<NReals>(global_data, loc_view, priv, subgroup_local_id, NReals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
         // Assumes load modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
-        detail::apply_modifier<N>(priv, loc_load_modifier, global_data.it.get_local_linear_id(), local_offset,
-                                  BankLinesPerPad);
+        detail::apply_modifier<N>(priv, loc_load_modifier_view, global_data.it.get_local_linear_id(),
+                                  NReals * n_working / 2);
       }
       wi_dft<Dir, N, 1, 1>(priv, priv);
       global_data.log_dump_private("data in registers after computation:", priv, NReals);
@@ -184,8 +186,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         // Assumes store modifier data is stored in a transposed fashion (N x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
-        detail::apply_modifier<N>(priv, loc_store_modifier, global_data.it.get_local_linear_id(), local_offset,
-                                  BankLinesPerPad);
+        detail::apply_modifier<N>(priv, loc_store_modifier_view, global_data.it.get_local_linear_id(),
+                                  NReals * n_working / 2);
       }
       if constexpr (ApplyScaleFactor == detail::apply_scale_factor::APPLIED) {
         unrolled_loop<0, NReals, 2>([&](Idx i) PORTFFT_INLINE {
@@ -196,8 +198,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if constexpr (LayoutOut == detail::layout::PACKED) {
-        private2local<NReals, pad::DO_PAD, BankLinesPerPad>(global_data, priv, loc, subgroup_local_id, NReals,
-                                                            local_offset);
+        private2local<NReals>(global_data, priv, loc_view, subgroup_local_id, NReals, local_offset);
       } else {
         detail::unrolled_loop<0, N, 1>([&](IdxGlobal j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
@@ -210,8 +211,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, NReals * n_working);
       global_data.log_message_global(__func__, "storing data from local to global memory");
-      local2global<level::SUBGROUP, SubgroupSize, pad::DO_PAD, BankLinesPerPad>(
-          global_data, loc, output, NReals * n_working, local_offset, NReals * (i - subgroup_local_id));
+      local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, NReals * n_working, local_offset,
+                                                  NReals * (i - subgroup_local_id));
       sycl::group_barrier(global_data.sg);
     }
   }
@@ -276,16 +277,19 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies) {
+                             const std::vector<sycl::event>& dependencies,
+                             std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
-        n_transforms, SubgroupSize, desc.num_sgs_per_wg, desc.n_compute_units));
+        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(desc);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
+            desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
+            kernel_data[0].num_sgs_per_wg);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(desc.exec_bundle);
+      cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
@@ -295,7 +299,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.parallel_for<detail::workitem_kernel<
           Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
           detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.num_sgs_per_wg)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
             detail::global_data_struct global_data{
@@ -318,9 +322,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
-  static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle) {
-    in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(
-        static_cast<Idx>(desc.params.lengths[0]));
+  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+                      std::size_t length, const std::vector<Idx>& /*factors*/) {
+    in_bundle.template set_specialization_constant<detail::WorkitemSpecConstFftSize>(static_cast<Idx>(length));
   }
 };
 
@@ -328,18 +332,20 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& desc) {
-    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(desc.params.lengths[0]) * desc.used_sg_size, 1);
+  static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
+                             const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg) {
+    Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-    desc.num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-    return static_cast<std::size_t>(num_scalars_per_sg * desc.num_sgs_per_wg);
+    num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
+    Idx res = num_scalars_per_sg * num_sgs_per_wg;
+    return static_cast<std::size_t>(res);
   }
 };
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
-  static Scalar* execute(committed_descriptor& /*desc*/) { return nullptr; }
+  static Scalar* execute(committed_descriptor& /*desc*/, kernel_data_struct& /*kernel_data*/) { return nullptr; }
 };
 
 }  // namespace portfft

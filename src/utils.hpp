@@ -35,13 +35,14 @@ namespace detail {
  *
  * @tparam kernel which base template for kernel to use
  * @tparam SubgroupSize size of the subgroup
- * @param ids vector of kernel ids
+ * @return vector of kernel ids
  */
 template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout,
                     detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx>
           class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
-void get_ids(std::vector<sycl::kernel_id>& ids) {
+std::vector<sycl::kernel_id> get_ids() {
+  std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR)         \
   try {                                                                                                               \
     ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, \
@@ -82,6 +83,7 @@ void get_ids(std::vector<sycl::kernel_id>& ids) {
 #undef INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
 #undef INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS
+  return ids;
 }
 }  // namespace detail
 }  // namespace portfft
