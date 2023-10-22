@@ -101,33 +101,37 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_imag = 0;
 
     unrolled_loop<0, N, 1>([&](Idx idx_in) __attribute__((always_inline)) {
-#ifndef PORTFFT_USE_FAST_TRIG_APPROX
-      using theta_t = T;
-#else
-      using theta_t = float;
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+         T theta = (static_cast<T>(-2 * M_PI)) * static_cast<T>(idx_in * idx_out % N) / static_cast<T>(N);
 #endif
-      theta_t theta = [&]() __attribute__((always_inline)) {
-        theta_t theta =
-            (static_cast<theta_t>(-2 * M_PI) * static_cast<theta_t>(idx_in * idx_out % N)) / static_cast<theta_t>(N);
-        if constexpr (Dir == direction::FORWARD) {
-          return theta;
-        }
-        return -theta;
-      }
-      ();
-      const T multi_re = static_cast<T>(sycl::cos(theta));
-      const T multi_im = static_cast<T>(sycl::sin(theta));
-      std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
+        T multi_re = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+           return static_cast<T>(sycl::cos(theta));
+#else  
+          return twiddle<T>::Re[N][idx_in * idx_out % N];
+#endif
+         }();
+        T multi_im = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+           return static_cast<T>(sycl::sin(theta));
+#else  
+          return twiddle<T>::Im[N][idx_in * idx_out % N];
+#endif
+         }();
+         if constexpr (Dir == direction::BACKWARD) {
+           multi_im = -multi_im;
+         }
+         std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
 
-      T cur_real = sycl::select_from_group(sg, real, source_wi_id);
-      T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+         T cur_real = sycl::select_from_group(sg, real, source_wi_id);
+         T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
 
-      // multiply cur and multi
-      T tmp_real;
-      T tmp_imag;
-      detail::multiply_complex(cur_real, cur_imag, multi_re, multi_im, tmp_real, tmp_imag);
-      res_real += tmp_real;
-      res_imag += tmp_imag;
+         // multiply cur and multi
+         T tmp_real;
+         T tmp_imag;
+         detail::multiply_complex(cur_real, cur_imag, multi_re, multi_im, tmp_real, tmp_imag);
+         res_real += tmp_real;
+         res_imag += tmp_imag;
     });
 
     real = res_real;
@@ -189,21 +193,26 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   // transpose
   cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
-#ifndef PORTFFT_USE_FAST_TRIG_APPROX
-  using theta_t = T;
-#else
-  using theta_t = float;
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+    T theta = (static_cast<T>(-2 * M_PI) * static_cast<T>(k * n)) / static_cast<T>(N * M);
 #endif
-  theta_t theta = [&]() __attribute__((always_inline)) {
-    theta_t theta = (static_cast<theta_t>(-2 * M_PI) * static_cast<theta_t>(k * n)) / static_cast<theta_t>(N * M);
-    if constexpr (Dir == direction::FORWARD) {
-      return theta;
-    }
-    return -theta;
-  }
-  ();
-  const T multi_re = sycl::cos(theta);
-  const T multi_im = sycl::sin(theta);
+        T multi_re = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+           return static_cast<T>(sycl::cos(theta));
+#else  
+          return twiddle<T>::Re[N * M][k * n];
+#endif
+         }();
+        T multi_im = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+           return static_cast<T>(sycl::sin(theta));
+#else  
+          return twiddle<T>::Im[N * M][k * n];
+#endif
+         }();
+         if constexpr (Dir == direction::BACKWARD) {
+           multi_im = -multi_im;
+         }
   detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
   cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
