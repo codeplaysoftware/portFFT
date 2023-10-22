@@ -133,9 +133,8 @@ class committed_descriptor {
     std::size_t length;
     Idx used_sg_size;
 
-    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size) : kernels(kernels), level(level),
-          length(length),
-          used_sg_size(used_sg_size) {}
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size)
+        : kernels(kernels), level(level), length(length), used_sg_size(used_sg_size) {}
   };
 
   std::vector<dimension_struct> dimensions;
