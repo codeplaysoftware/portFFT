@@ -934,7 +934,8 @@ struct descriptor {
       : lengths(lengths), forward_strides(lengths.size()), backward_strides(lengths.size()) {
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = 1;
-    for (std::size_t i = lengths.size() - 1; i != static_cast<std::size_t>(-1); i--) {
+    for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
+      std::size_t i = i_plus1 -1;
       forward_strides[i] = total_size;
       backward_strides[i] = total_size;
       total_size *= lengths[i];
