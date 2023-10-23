@@ -56,12 +56,6 @@ namespace detail {
  *
  * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
- * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
- * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
- * @tparam ApplyScaleFactor Whether or not the scale factor is applied
- * @tparam DFTSize Size of each DFT to calculate
- * @tparam stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
- * @tparam ndfts_in_outer_dimension Number of DFTs in outer dimension
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT The type of the local view
  * @tparam T Scalar type
@@ -71,10 +65,17 @@ namespace detail {
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param batch_num_in_local Id of the local memory batch to work on
- * @param global_data global data for the kernel
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  * @param batch_num_in_kernel Absosulte batch from which batches loaded in local memory will be computed
+ * @param dft_size Size of each DFT to calculate
+ * @param stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
+ * @param ndfts_in_outer_dimension Number of DFTs in outer dimension
+ * @param layout_in Input Layout
+ * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
+ * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
+ * @param ApplyScaleFactor Whether or not the scale factor is applied
+ * @param global_data global data for the kernel
  */
 template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
 __attribute__((always_inline)) inline void dimension_dft(
@@ -224,13 +225,6 @@ __attribute__((always_inline)) inline void dimension_dft(
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
- * @tparam LayoutIn Whether or not the input is transposed
- * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
- * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
- * @tparam ApplyScaleFactor Whether or not the scale factor is applied
- * @tparam FFTSize Problem Size
- * @tparam N Smaller factor of the Problem size
- * @tparam M Larger factor of the problem size
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT Local memory view type
  * @tparam T Scalar type
@@ -238,13 +232,20 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param loc A view of a local accessor containing input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
- * @param global_data global data for the kernel
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param batch_num_in_local Id of the local memory batch to work on
  * @param batch_num_in_kernel Absosulte batch from which batches loaded in local memory will be computed
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
+ * @tparam fft_size Problem Size
+ * @tparam N Smaller factor of the Problem size
+ * @tparam M Larger factor of the problem size
+ * @tparam layout_in Whether or not the input is transposed
+ * @tparam multiply_on_load Whether the input data is multiplied with some data array before fft computation.
+ * @tparam multiply_on_store Whether the input data is multiplied with some data array after fft computation.
+ * @tparam apply_scale_factor Whether or not the scale factor is applied
+ * @param global_data global data for the kernel
  */
 template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
 PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,

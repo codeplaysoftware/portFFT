@@ -67,14 +67,14 @@ inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_g
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir direction of the FFT
- * @tparam N size of the DFT transform
- * @tparam Stride Stride between workitems working on consecutive values of one
- * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
+ * @param fft_size size of the DFT transform
+ * @param stride Stride between workitems working on consecutive values of one
+ * DFT
  * @param sg subgroup
  */
 template <direction Dir, typename T>
@@ -130,14 +130,14 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * Transposes values held by workitems of a subgroup. Transposes rectangles of
  * size N*M. Each of the rectangles can be strided.
  *
- * @tparam N inner - contiguous size on input, outer size on output
- * @tparam M outer size on input, inner - contiguous size on output
- * @tparam Stride Stride between consecutive values of one rectangle
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
+ * @param factor_n inner - contiguous size on input, outer size on output
+ * @param factor_m outer size on input, inner - contiguous size on output
+ * @param stride Stride between consecutive values of one rectangle
  * @param sg subgroup
  */
 template <typename T>
@@ -158,15 +158,15 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam N the first factor of the problem size
- * @tparam M the second factor of the problem size
- * @tparam Stride Stride between workitems working on consecutive values of one
- * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
+ * @param factor_n the first factor of the problem size
+ * @param factor_m the second factor of the problem size
+ * @param stride Stride between workitems working on consecutive values of one
+ * DFT
  * @param sg subgroup
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
@@ -196,14 +196,14 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
- * @tparam N Size of the DFT
- * @tparam Stride Stride between workitems working on consecutive values of one
- * DFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
+ * @tparam fft_size Size of the DFT
+ * @tparam stride Stride between workitems working on consecutive values of one
+ * DFT
  * @param sg subgroup
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
@@ -264,11 +264,11 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * end result needs to be transposed when storing it to the local memory!
  *
  * @tparam Dir direction of the FFT
- * @tparam M number of elements per workitem
- * @tparam N number of workitems in a subgroup that work on one FFT
  * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
+ * @param M number of elements per workitem
+ * @param N number of workitems in a subgroup that work on one FFT
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  */

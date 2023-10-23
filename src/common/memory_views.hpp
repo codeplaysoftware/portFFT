@@ -82,7 +82,6 @@ PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
 
 /** A view of memory with built-in index transformation for padding in local memory.
  *
- * @tparam BankLinesPerPad Index padding parameter. 0 indicates no padding.
  * @tparam ParentT The underlying view or pointer type.
  */
 template <typename ParentT>
@@ -110,10 +109,10 @@ struct padded_view {
 /**
  * Make a padded view from a pointer or another view.
  *
- * @tparam BankLinesPerPad The padding space to be added after every `bank_lines_per_pad` groups of
- * `PORTFFT_N_LOCAL_BANKS` banks. 0 indicates no padding.
  * @tparam T The element type of the view.
  * @param parent A parent view or pointer to the memory to make a view of
+ * @param BankLinesPerPad The padding space to be added after every `bank_lines_per_pad` groups of
+ * `PORTFFT_N_LOCAL_BANKS` banks. 0 indicates no padding.
  * @return A memory view
  */
 template <typename T>

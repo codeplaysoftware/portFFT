@@ -86,6 +86,7 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @param loc_twiddles pointer to local allocation for subgroup level twiddles
  * @param n_transforms number of fft batches
  * @param global_data global data for the kernel
+ * @param kh kernel handler associated with the kernel launch
  * @param twiddles Pointer to twiddles in the global memory
  * @param scaling_factor scaling factor applied to the result
  * @param load_modifier_data Pointer to the load modifier data in global Memory

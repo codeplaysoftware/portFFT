@@ -53,12 +53,12 @@ strides.
  * Calculates DFT using naive algorithm. Can work in or out of place.
  *
  * @tparam Dir direction of the FFT
- * @tparam N size of the DFT transform
- * @tparam StrideIn stride (in complex values) between complex values in `in`
- * @tparam StrideOut stride (in complex values) between complex values in `out`
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
+ * @param fft_size size of the DFT transform
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_out stride (in complex values) between complex values in `out`
  */
 template <direction Dir, typename T>
 __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
@@ -98,13 +98,13 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
  * Calculates DFT using Cooley-Tukey FFT algorithm. Can work in or out of place. Size of the problem is N*M
  *
  * @tparam Dir direction of the FFT
- * @tparam N the first factor of the problem size
- * @tparam M the second factor of the problem size
- * @tparam StrideIn stride (in complex values) between complex values in `in`
- * @tparam StrideOut stride (in complex values) between complex values in `out`
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
+ * @param N the first factor of the problem size
+ * @param M the second factor of the problem size
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_in stride (in complex values) between complex values in `out`
  */
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
@@ -190,12 +190,12 @@ constexpr bool fits_in_wi(TIdx N) {
  * Calculates DFT using FFT algorithm. Can work in or out of place.
  *
  * @tparam Dir direction of the FFT
- * @tparam N size of the DFT transform
- * @tparam StrideIn stride (in complex values) between complex values in `in`
- * @tparam StrideOut stride (in complex values) between complex values in `out`
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
+ * @tparam fft_size size of the DFT transform
+ * @tparam stride_in stride (in complex values) between complex values in `in`
+ * @tparam stride_out stride (in complex values) between complex values in `out`
  */
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {

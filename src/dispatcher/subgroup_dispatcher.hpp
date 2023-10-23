@@ -63,11 +63,6 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
- * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
- * @tparam ApplyScaleFactor Whether or not the scale factor is applied
- * @tparam FactorWI factor of the FFT size. How many elements per FFT are processed by one workitem
- * @tparam FactorSG factor of the FFT size. How many workitems in a subgroup work on the same FFT
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data
@@ -78,6 +73,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * values
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
+ * @param kh kernel handler associated with the kernel launch
  * @param twiddles pointer containing twiddles
  * @param scaling_factor Scaling factor applied to the result
  * @param load_modifier_data Pointer to the load modifier data in global Memory
