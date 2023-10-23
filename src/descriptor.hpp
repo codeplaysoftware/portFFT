@@ -42,14 +42,11 @@ namespace detail {
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail

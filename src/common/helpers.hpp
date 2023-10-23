@@ -127,6 +127,13 @@ PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, con
   output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
+PORTFFT_INLINE constexpr Idx uint_log2(Idx x) {
+  Idx y = 0;
+  for (; x > 1; x /= 2) {
+    ++y;
+  }
+  return y;
+
 };  // namespace portfft::detail
 
 #endif

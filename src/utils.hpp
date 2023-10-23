@@ -37,52 +37,35 @@ namespace detail {
  * @tparam SubgroupSize size of the subgroup
  * @return vector of kernel ids
  */
-template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout,
-                    detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx>
-          class Kernel,
+template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, SCALE_FACTOR)         \
-  try {                                                                                                               \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, \
-                                             STORE_MODIFIER, SCALE_FACTOR, SubgroupSize>>());                         \
-  } catch (...) {                                                                                                     \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                \
+  try {                                                                                                         \
+    ids.push_back(                                                                                              \
+        sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, SubgroupSize>>()); \
+  } catch (...) {                                                                                               \
   }
 
-#define GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER)                      \
-  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::APPLIED) \
-  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, STORE_MODIFIER, apply_scale_factor::NOT_APPLIED)
-
-#define INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER)       \
-  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, elementwise_multiply::APPLIED) \
-  GENERATE_KERNELS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, LOAD_MODIFIER, elementwise_multiply::NOT_APPLIED)
-
-#define INSTANTIATE_LAYOUTOUT_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT)                              \
-  INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, elementwise_multiply::APPLIED) \
-  INSTANTIATE_LOAD_MODIFIER_MODIFIERS(DIR, MEM, LAYOUT_IN, LAYOUT_OUT, elementwise_multiply::NOT_APPLIED)
-
-#define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, LAYOUT_IN)                \
-  INSTANTIATE_LAYOUTOUT_MODIFIERS(DIR, MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED) \
-  INSTANTIATE_LAYOUTOUT_MODIFIERS(DIR, MEM, LAYOUT_IN, layout::PACKED)
+#define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, LAYOUT_IN) \
+  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED)   \
+  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, layout::PACKED)
 
 #define INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, MEM)                          \
   INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, layout::BATCH_INTERLEAVED) \
   INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, layout::PACKED)
 
-#define INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS(DIR) \
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::USM)    \
+#define INSTANTIATE_DIRECTION_MEM_LAYOUTS(DIR)        \
+  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::USM) \
   INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::BUFFER)
 
-  INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS(direction::FORWARD)
-  INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS(direction::BACKWARD)
+  INSTANTIATE_DIRECTION_MEM_LAYOUTS(direction::FORWARD)
+  INSTANTIATE_DIRECTION_MEM_LAYOUTS(direction::BACKWARD)
 #undef PORTFFT_GET_ID
-#undef GENERATE_KERNELS
-#undef INSTANTIATE_LOAD_MODIFIER_MODIFIERS
-#undef INSTANTIATE_LAYOUTOUT_MODIFIERS
 #undef INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
-#undef INSTANTIATE_DIRECTION_MEM_LAYOUTS_MODIFIERS
+#undef INSTANTIATE_DIRECTION_MEM_LAYOUTS
   return ids;
 }
 }  // namespace detail
