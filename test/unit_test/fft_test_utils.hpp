@@ -278,13 +278,6 @@ void run_test(const test_params& params) {
   }
 
   ASSERT_TRUE(params.length > 0);
-  {
-    std::vector<std::size_t> instantiated_sizes{PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES};
-    if (!std::count(instantiated_sizes.cbegin(), instantiated_sizes.cend(), params.length)) {
-      GTEST_SKIP() << "Test skipped as test size not present in optimized size list";
-      return;
-    }
-  }
   auto desc = get_descriptor<FType>(params);
 
   auto [host_input, host_reference_output] = gen_fourier_data<Dir>(desc, params.input_layout, params.output_layout);

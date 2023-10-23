@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DESCRIPTOR_HPP
 #define PORTFFT_DESCRIPTOR_HPP
 
-#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <defines.hpp>
@@ -207,9 +206,6 @@ class committed_descriptor {
     std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[0]);
-    if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw unsupported_configuration("FFT size ", fft_size, " is not compiled in!");
-    }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
