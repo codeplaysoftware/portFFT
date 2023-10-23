@@ -88,8 +88,8 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_real = real * multi_re;
     T res_imag = imag * multi_re;
 
-    res_real += sycl::permute_group_by_xor(sg, real, static_cast<std::size_t>(stride));
-    res_imag += sycl::permute_group_by_xor(sg, imag, static_cast<std::size_t>(stride));
+    res_real += sycl::permute_group_by_xor(sg, real, static_cast<typename sycl::sub_group::linear_id_type>(stride));
+    res_imag += sycl::permute_group_by_xor(sg, imag, static_cast<typename sycl::sub_group::linear_id_type>(stride));
 
     real = res_real;
     imag = res_imag;
@@ -108,10 +108,10 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
       if constexpr (Dir == direction::BACKWARD) {
         multi_im = -multi_im;
       }
-      std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * stride);
+      Idx source_wi_id = fft_start + idx_in * stride;
 
-      T cur_real = sycl::select_from_group(sg, real, source_wi_id);
-      T cur_imag = sycl::select_from_group(sg, imag, source_wi_id);
+      T cur_real = sycl::select_from_group(sg, real, static_cast<std::size_t>(source_wi_id));
+      T cur_imag = sycl::select_from_group(sg, imag, static_cast<std::size_t>(source_wi_id));
 
       // multiply cur and multi
       T tmp_real;
@@ -207,15 +207,15 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * @param sg subgroup
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx factor_n, Idx stride,
+__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride,
                                                         sycl::sub_group& sg) {
   constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
-    const Idx f0 = detail::factorize(factor_n);
-    if (f0 >= 2 && factor_n / f0 >= 2) {
-      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, factor_n / f0, f0, stride, sg);
+    const Idx f0 = detail::factorize(fft_size);
+    if (f0 >= 2 && fft_size / f0 >= 2) {
+      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
     } else {
-      cross_sg_naive_dft<Dir>(real, imag, factor_n, stride, sg);
+      cross_sg_naive_dft<Dir>(real, imag, fft_size, stride, sg);
     }
   }
 }

@@ -131,7 +131,7 @@ __attribute__((always_inline)) inline void dimension_dft(
       working = j < total_dfts;
     }
     if (excess_wis) {
-      working = working && global_data.sg.get_local_linear_id() < max_working_tid_in_sg;
+      working = working && static_cast<Idx>(global_data.sg.get_local_linear_id()) < max_working_tid_in_sg;
     }
     if (working) {
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {

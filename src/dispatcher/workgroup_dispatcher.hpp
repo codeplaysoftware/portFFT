@@ -219,8 +219,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             kernel_data[0].num_sgs_per_wg);
     const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
                                                          kernel_data[0].factors[2] * kernel_data[0].factors[3]);
-    std::size_t sg_twiddles_offset =
-        detail::pad_local(2 * static_cast<Idx>(kernel_data[0].length) * num_batches_in_local_mem, bank_lines_per_pad);
+    std::size_t sg_twiddles_offset = static_cast<std::size_t>(
+        detail::pad_local(2 * static_cast<Idx>(kernel_data[0].length) * num_batches_in_local_mem, bank_lines_per_pad));
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);

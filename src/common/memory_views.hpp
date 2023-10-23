@@ -102,9 +102,8 @@ struct padded_view {
   PORTFFT_INLINE constexpr reference operator[](Idx i) const {
     if (bank_lines_per_pad == 0) {
       return data[i];
-    } else {
-      return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
     }
+    return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
   }
 };
 
