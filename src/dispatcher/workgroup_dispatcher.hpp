@@ -306,15 +306,14 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/) {
-    Idx fft_size = static_cast<Idx>(length);
-    Idx n = factors[0] * factors[1];
-    Idx m = factors[2] * factors[3];
+    std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
+    std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     Idx num_batches_in_local_mem =
         detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * PORTFFT_SGS_IN_WG);
-    return static_cast<std::size_t>(detail::pad_local(2 * fft_size * num_batches_in_local_mem,
-                                                      bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) +
-                                    2 * (m + n));
+    return detail::pad_local(static_cast<std::size_t>(2 * num_batches_in_local_mem) * length,
+                             bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m)) +
+           2 * (m + n);
   }
 };
 

@@ -133,9 +133,8 @@ class committed_descriptor {
     std::size_t length;
     Idx used_sg_size;
 
-    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size) : kernels(kernels), level(level),
-          length(length),
-          used_sg_size(used_sg_size) {}
+    dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size)
+        : kernels(kernels), level(level), length(length), used_sg_size(used_sg_size) {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -229,24 +228,38 @@ class committed_descriptor {
       return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
-    Idx n = static_cast<Idx>(n_idx_global);
-    Idx m = static_cast<Idx>(fft_size / n_idx_global);
-    Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
-    Idx factor_wi_n = n / factor_sg_n;
-    Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
-    Idx factor_wi_m = m / factor_sg_m;
-    if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m)) {
-      factors.push_back(factor_wi_n);
-      factors.push_back(factor_sg_n);
-      factors.push_back(factor_wi_m);
-      factors.push_back(factor_sg_m);
-      // This factorization of N and M is duplicated in the dispatch logic on the device.
-      // The CT and spec constant factors should match.
-      ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+    if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
+        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
+      if (n_idx_global == 1) {
+        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported!");
+      }
+      Idx n = static_cast<Idx>(n_idx_global);
+      Idx m = static_cast<Idx>(fft_size / n_idx_global);
+      Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
+      Idx factor_wi_n = n / factor_sg_n;
+      Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
+      Idx factor_wi_m = m / factor_sg_m;
+      Idx temp_num_sgs_in_wg;
+      std::size_t local_memory_usage = num_scalars_in_local_mem<detail::layout::PACKED>(
+                                           detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
+                                           {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg) *
+                                       sizeof(Scalar);
+      // Checks for PACKED layout only at the moment, as the other layout will not be supported
+      // by the global implementation. For such sizes, only PACKED layout will be supported
+      if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
+          (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
+        factors.push_back(factor_wi_n);
+        factors.push_back(factor_sg_n);
+        factors.push_back(factor_wi_m);
+        factors.push_back(factor_sg_m);
+        // This factorization of N and M is duplicated in the dispatch logic on the device.
+        // The CT and spec constant factors should match.
+        ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
+        return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+      }
     }
     // TODO global
-    throw unsupported_configuration("FFT size ", fft_size, " is not supported!");
+    throw out_of_local_memory_error("FFT size ", fft_size, " is not supported due to insufficient local memory");
   }
 
   /**
@@ -608,7 +621,7 @@ class committed_descriptor {
                                          dimensions[0].kernels[0].factors, dimensions[0].kernels[0].num_sgs_per_wg) *
                                      sizeof(Scalar);
       }
-      if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
+      if (minimum_local_mem_required > static_cast<std::size_t>(local_memory_size)) {
         throw out_of_local_memory_error(
             "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
             "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
