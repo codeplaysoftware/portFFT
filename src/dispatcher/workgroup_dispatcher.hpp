@@ -59,6 +59,7 @@ PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(Idx workgrou
  * @tparam LayoutIn The input data layout
  * @param n_transforms number of transforms
  * @param subgroup_size size of subgroup used by the compute kernel
+ * @param num_sgs_per_wg number of subgroups in a workgroup
  * @param n_compute_units number of compute units on target device
  * @return Number of elements of size T that need to fit into local memory
  */
@@ -292,7 +293,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                             detail::elementwise_multiply::NOT_APPLIED,
                                             detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                             detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, &loc[0],
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0],
                 &loc[static_cast<std::size_t>(detail::pad_local<detail::pad::DO_PAD>(
                     2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad))],
                 n_transforms, global_data, twiddles, scale_factor, fft_size);

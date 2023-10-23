@@ -312,7 +312,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                            detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
-                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0], n_transforms,
                 global_data, scale_factor, fft_size);
             global_data.log_message_global("Exiting workitem kernel");
           });

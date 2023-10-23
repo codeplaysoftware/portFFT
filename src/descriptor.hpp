@@ -552,6 +552,17 @@ class committed_descriptor {
   }
 
  private:
+  /**
+   * Dispatches to the implementation for the appropriate direction.
+   *
+   * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+   * @tparam TIn Type of the input buffer or USM pointer
+   * @tparam TOut Type of the output buffer or USM pointer
+   * @param in buffer or USM pointer to memory containing input data
+   * @param out buffer or USM pointer to memory containing output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event
+   */
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_direction(const TIn& in, TOut& out, const std::vector<sycl::event>& dependencies = {}) {
     if constexpr (Dir == direction::FORWARD) {
@@ -566,7 +577,7 @@ class committed_descriptor {
   }
 
   /**
-   * Dispatches the implementation for the problem.
+   * Dispatches to the implementation for the appropriate number of dimensions.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TIn Type of the input buffer or USM pointer
@@ -574,6 +585,14 @@ class committed_descriptor {
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
    * @param dependencies events that must complete before the computation
+   * @param input_strides strides between input elements for each dimension of one FFT
+   * @param output_strides strides between output elements for each dimension of one FFT
+   * @param input_distance distance between the starts of input data for two consecutive FFTs
+   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_offset offset into input allocation where the data for FFTs start
+   * @param output_offset offset into output allocation where the data for FFTs start
+   * @param scale_factor scaling factor applied to the result
+   * @param dimension_data data for the dimension this call will work on
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
@@ -582,25 +601,26 @@ class committed_descriptor {
                                   const std::vector<std::size_t>& output_strides, std::size_t input_distance,
                                   std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
                                   Scalar scale_factor) {
-    (void)input_strides;
-    (void)output_strides;
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size =
-        std::accumulate(&params.lengths[0], &params.lengths[n_dimensions], 1UL, std::multiplies<std::size_t>());
-    // curretly multi-dimensional transforms are implemented just for default data layout
-    bool is_default_layout = total_size == input_distance && total_size == output_distance;
-    if (n_dimensions == 1 || is_default_layout) {
+        std::accumulate(params.lengths.cbegin(), params.lengths.cend(), 1UL, std::multiplies<std::size_t>());
+    // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
+    // TODO once we support strides, they should also be checked to be default here
+    const bool are_default_distances = total_size == input_distance && total_size == output_distance;
+    if (n_dimensions == 1 || are_default_distances) {
       // product of sizes of all dimension inner relative to the one we are currently working on
       std::size_t inner_size = 1;
       // product of sizes of all dimension outer relative to the one we are currently working on
       std::size_t outer_size = total_size / params.lengths.back();
       std::size_t input_stride_0 = input_strides.back();
       std::size_t output_stride_0 = output_strides.back();
-      if (input_stride_0 < input_distance) {
+      // distances are currently used just in the first dimension - these changes are meant for that one
+      // TODO fix this to support non-default layouts
+      if (input_stride_0 < input_distance) { // for example: batch interleaved input
         input_distance = params.lengths.back();
       }
-      if (output_stride_0 < output_distance) {
+      if (output_stride_0 < output_distance) { // for example: batch interleaved output
         output_distance = params.lengths.back();
       }
 
@@ -615,9 +635,9 @@ class committed_descriptor {
       inner_size *= params.lengths.back();
       for (std::size_t i = n_dimensions - 2; i != static_cast<std::size_t>(-1); i--) {
         outer_size /= params.lengths[i];
-        // TODO do everything from the next loop in a single kernel once we support more than one distnace in the
+        // TODO do everything from the next loop in a single kernel once we support more than one distance in the
         // kernels.
-        std::size_t stride_between_kernels = 2 * inner_size * params.lengths[i];
+        std::size_t stride_between_kernels = inner_size * params.lengths[i];
         for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
           sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(
               out, out, previous_events, inner_size, inner_size, inner_size, 1, 1,
@@ -643,6 +663,15 @@ class committed_descriptor {
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
    * @param dependencies events that must complete before the computation
+   * @param n_transforms number of FT transforms to do in one call
+   * @param input_stride stride between input elements of one FFT
+   * @param output_stride stride between output elements of one FFT
+   * @param input_distance distance between the starts of input data for two consecutive FFTs
+   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_offset offset into input allocation where the data for FFTs start
+   * @param output_offset offset into output allocation where the data for FFTs start
+   * @param scale_factor scaling factor applied to the result
+   * @param dimension_data data for the dimension this call will work on
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
@@ -666,6 +695,15 @@ class committed_descriptor {
    * @param in buffer or USM pointer to memory containing input data
    * @param out buffer or USM pointer to memory containing output data
    * @param dependencies events that must complete before the computation
+   * @param n_transforms number of FT transforms to do in one call
+   * @param input_stride stride between input elements of one FFT
+   * @param output_stride stride between output elements of one FFT
+   * @param input_distance distance between the starts of input data for two consecutive FFTs
+   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_offset offset into input allocation where the data for FFTs start
+   * @param output_offset offset into output allocation where the data for FFTs start
+   * @param scale_factor scaling factor applied to the result
+   * @param dimension_data data for the dimension this call will work on
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
@@ -675,12 +713,12 @@ class committed_descriptor {
                                         std::size_t input_offset, std::size_t output_offset, Scalar scale_factor,
                                         dimension_struct& dimension_data) {
     if (SubgroupSize == dimension_data.used_sg_size) {
-      std::size_t minimum_local_mem_required;
-      bool input_packed = input_distance == dimension_data.length && input_stride == 1;
-      bool output_packed = output_distance == dimension_data.length && output_stride == 1;
-      bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
-      bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
+      const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
+      const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
+      const bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
+      const bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
       for (kernel_data_struct kernel_data : dimension_data.kernels) {
+        std::size_t minimum_local_mem_required;
         if (input_batch_interleaved) {
           minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
                                            kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
@@ -759,8 +797,12 @@ class committed_descriptor {
    * @tparam TOut Type of the output USM pointer or buffer
    * @param in USM pointer to memory containing input data
    * @param out USM pointer to memory containing output data
-   * @param scale_factor Value with which the result of the FFT will be multiplied
    * @param dependencies events that must complete before the computation
+   * @param n_transforms number of FT transforms to do in one call
+   * @param input_offset offset into input allocation where the data for FFTs start
+   * @param output_offset offset into output allocation where the data for FFTs start
+   * @param scale_factor scaling factor applied to the result
+   * @param dimension_data data for the dimension this call will work on
    * @return sycl::event
    */
   template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
@@ -912,7 +954,7 @@ struct descriptor {
    * @param dir direction
    */
   std::size_t get_input_count(direction dir) const noexcept {
-    return get_buffer_count(get_strides(dir), get_distance(dir));
+    return get_buffer_count(get_strides(dir), get_distance(dir), get_offset(dir));
   }
 
   /**
@@ -961,6 +1003,24 @@ struct descriptor {
   }
 
   /**
+   * Return the offset for a given direction
+   *
+   * @param dir direction
+   */
+  std::size_t get_offset(direction dir) const noexcept {
+    return dir == direction::FORWARD ? forward_offset : backward_offset;
+  }
+
+  /**
+   * Return a mutable reference to the offset for a given direction
+   *
+   * @param dir direction
+   */
+  std::size_t& get_offset(direction dir) noexcept {
+    return dir == direction::FORWARD ? forward_offset : backward_offset;
+  }
+
+  /**
    * Return the scale for a given direction
    *
    * @param dir direction
@@ -983,14 +1043,14 @@ struct descriptor {
    * @param strides buffer's strides
    * @param distance buffer's distance
    */
-  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance) const noexcept {
+  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance, std::size_t offset) const noexcept {
     // Compute the last element that can be accessed
     // TODO: Take into account offset
     std::size_t last_elt_idx = (number_of_transforms - 1) * distance;
     for (std::size_t i = 0; i < lengths.size(); ++i) {
       last_elt_idx += (lengths[i] - 1) * strides[i];
     }
-    return last_elt_idx + 1;
+    return last_elt_idx + 1 + offset;
   }
 };
 
