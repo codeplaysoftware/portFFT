@@ -136,37 +136,27 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       const IdxGlobal batch_start_idx = offset / static_cast<IdxGlobal>(2 * FFTSize);
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
-      // Load in a transposed manner, similar to subgroup impl.
-      if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-        global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-        // transposition requested by the caller
-        global2local_transposed<level::WORKGROUP>(global_data, input, loc_view, offset / FFTSize, FFTSize, n_transforms,
-                                                  max_num_batches_in_local_mem);
-      }
+      global_data.log_message_global(__func__, "loading transposed data from global to local memory");
+      global_batchinter_2_local_batchinter<level::WORKGROUP>(global_data, input, loc_view, offset / FFTSize,
+                                                             2 * num_batches_in_local_mem, FFTSize, 2 * n_transforms,
+                                                             2 * max_num_batches_in_local_mem);
       sycl::group_barrier(global_data.it.get_group());
-      global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, LayoutIn, MultiplyOnLoad, MultiplyOnStore, ApplyScaleFactor, FFTSize, N, M, SubgroupSize>(
             loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch,
             offset / (2 * FFTSize), load_modifier_data, store_modifier_data, global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
-      global_data.log_dump_local("computed data in local memory:", loc_view,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
-
-      if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-        if constexpr (LayoutOut == detail::layout::PACKED) {
-          global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
-          // local2global_transposed cannot be used over here. This is because the data in the local memory is also
-          // stored in a strided fashion.
-          local_strided_2_global_strided_transposed(global_data, loc_view, output, offset,
-                                                    2 * max_num_batches_in_local_mem, N, M, FFTSize);
-        } else {
-          IdxGlobal current_batch = offset / (2 * FFTSize);
-          local2strides_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch,
-                                        2 * max_num_batches_in_local_mem, FFTSize, N, M);
-        }
+      if constexpr (LayoutOut == detail::layout::PACKED) {
+        global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
+        // local2global_transposed cannot be used over here. This is because the data in the local memory is also
+        // stored in a strided fashion.
+        local_batchinter_batchinter_2_global_packed<SubgroupSize>(
+            global_data, loc_view, output, offset, 2 * max_num_batches_in_local_mem, N, M, num_batches_in_local_mem);
+      } else {
+        local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
+                                                        2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
+                                                        num_batches_in_local_mem, N, M);
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
@@ -318,15 +308,14 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/) {
-    Idx fft_size = static_cast<Idx>(length);
-    Idx n = factors[0] * factors[1];
-    Idx m = factors[2] * factors[3];
+    std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
+    std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     Idx num_batches_in_local_mem =
         detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * PORTFFT_SGS_IN_WG);
-    return static_cast<std::size_t>(detail::pad_local(2 * fft_size * num_batches_in_local_mem,
-                                                      bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * m)) +
-                                    2 * (m + n));
+    return detail::pad_local(static_cast<std::size_t>(2 * num_batches_in_local_mem) * length,
+                             bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m)) +
+           2 * (m + n);
   }
 };
 

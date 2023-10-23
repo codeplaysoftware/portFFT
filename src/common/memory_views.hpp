@@ -25,6 +25,7 @@
 
 #include <defines.hpp>
 #include <enums.hpp>
+#include <traits.hpp>
 
 /*
 To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the chunk
@@ -67,13 +68,14 @@ struct offset_view {
  * Can also be used to transform size of a local allocation to account for padding indices in it this way.
  *
  * @tparam Pad whether to do padding
+ * @tparam T input type to the function
  * @param local_idx index to transform
  * @param bank_lines_per_pad A padding space will be added after every `bank_lines_per_pad` groups of
  * `PORTFFT_N_LOCAL_BANKS` banks.
  * @return transformed local_idx
  */
-template <detail::pad Pad = detail::pad::DO_PAD>
-PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
+template <detail::pad Pad = detail::pad::DO_PAD, typename T>
+PORTFFT_INLINE T pad_local(T local_idx, T bank_lines_per_pad) {
   if constexpr (Pad == detail::pad::DO_PAD) {
     local_idx += local_idx / (PORTFFT_N_LOCAL_BANKS * bank_lines_per_pad);
   }
@@ -120,6 +122,27 @@ template <std::size_t BankLinesPerPad, typename T>
 PORTFFT_INLINE constexpr padded_view<BankLinesPerPad, T> make_padded_view(T parent) noexcept {
   return padded_view<BankLinesPerPad, T>(parent);
 }
+
+/** A view of memory with a function to remap indices.
+ *
+ * @tparam RemapFuncT The remapping function type.
+ * @tparam ParentT The underlying view or pointer type.
+ */
+template <typename RemapFuncT, typename ParentT>
+struct remapping_view {
+  using element_type = get_element_t<ParentT>;
+  using reference = element_type&;
+  static constexpr bool IsContiguous = false;  // There is no way to know if the remapping function is contiguous.
+
+  ParentT data;
+  RemapFuncT func;
+
+  // Constructor: Create a view of a pointer or another view.
+  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
+
+  // Index into the view.
+  PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }
+};
 
 }  // namespace portfft::detail
 
