@@ -61,8 +61,8 @@ void test_descriptor_offsets() {
   desc.number_of_transforms = 2;
   desc.forward_offset = fwd_offset;
   desc.backward_offset = bwd_offset;
-  EXPECT_EQ(desc.get_distance(portfft::direction::FORWARD), fwd_offset);
-  EXPECT_EQ(desc.get_distance(portfft::direction::BACKWARD), bwd_offset);
+  EXPECT_EQ(desc.get_offset(portfft::direction::FORWARD), fwd_offset);
+  EXPECT_EQ(desc.get_offset(portfft::direction::BACKWARD), bwd_offset);
 }
 
 void test_descriptor_scale() {
