@@ -1058,12 +1058,11 @@ struct descriptor {
    */
   std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance, std::size_t offset) const noexcept {
     // Compute the last element that can be accessed
-    // TODO: Take into account offset
     std::size_t last_elt_idx = (number_of_transforms - 1) * distance;
     for (std::size_t i = 0; i < lengths.size(); ++i) {
       last_elt_idx += (lengths[i] - 1) * strides[i];
     }
-    return last_elt_idx + 1 + offset;
+    return offset + last_elt_idx + 1;
   }
 };
 
