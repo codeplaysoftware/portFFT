@@ -133,7 +133,7 @@ PORTFFT_INLINE constexpr Idx uint_log2(Idx x) {
     ++y;
   }
   return y;
-
-};  // namespace portfft::detail
+}
+}  // namespace portfft::detail
 
 #endif

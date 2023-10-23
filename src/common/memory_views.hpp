@@ -85,24 +85,25 @@ PORTFFT_INLINE Idx pad_local(Idx local_idx, Idx bank_lines_per_pad) {
  * @tparam BankLinesPerPad Index padding parameter. 0 indicates no padding.
  * @tparam ParentT The underlying view or pointer type.
  */
-template <Idx BankLinesPerPad, typename ParentT>
+template <typename ParentT>
 struct padded_view {
-  static_assert(BankLinesPerPad >= 0, "Negative padding is not possible");
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
-  static constexpr bool IsContiguous = IsContiguousViewV<ParentT> && !(BankLinesPerPad > 0);
+  static constexpr bool IsContiguous = IsContiguousViewV<ParentT>;
 
   ParentT data;
+  Idx bank_lines_per_pad;
 
   // Constructor: Create a view of a pointer or another view.
-  constexpr padded_view(ParentT parent) noexcept : data(parent){};
+  constexpr padded_view(ParentT parent, Idx bank_lines_per_pad) noexcept
+      : data(parent), bank_lines_per_pad(bank_lines_per_pad){};
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const {
-    if constexpr (BankLinesPerPad == 0) {
+    if (bank_lines_per_pad == 0) {
       return data[i];
     } else {
-      return data[pad_local<pad::DO_PAD>(i, BankLinesPerPad)];
+      return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
     }
   }
 };
@@ -116,9 +117,9 @@ struct padded_view {
  * @param parent A parent view or pointer to the memory to make a view of
  * @return A memory view
  */
-template <std::size_t BankLinesPerPad, typename T>
-PORTFFT_INLINE constexpr padded_view<BankLinesPerPad, T> make_padded_view(T parent) noexcept {
-  return padded_view<BankLinesPerPad, T>(parent);
+template <typename T>
+PORTFFT_INLINE constexpr padded_view<T> make_padded_view(T parent, Idx bank_lines_per_pad) noexcept {
+  return padded_view<T>(parent, bank_lines_per_pad);
 }
 
 }  // namespace portfft::detail

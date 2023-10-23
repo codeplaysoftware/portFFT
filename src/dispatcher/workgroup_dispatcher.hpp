@@ -77,10 +77,6 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam MultiplyOnLoad Whether the input data is multiplied with some data array before fft computation.
- * @tparam MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
- * @tparam ApplyScaleFactor Whether or not the scale factor is applied
- * @tparam FFTSize Problem size
  * @tparam SubgroupSize size of the subgroup
  * @tparam T Scalar type
  *
@@ -98,31 +94,32 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
                                    const T* twiddles, T scaling_factor, global_data_struct global_data,
-                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
-  detail::layout multiply_on_load = global_data.kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
-  detail::layout multiply_on_store = global_data.kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
-  detail::layout apply_scale_factor = global_data.kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+                                   sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
+                                   const T* store_modifier_data = nullptr) {
+  detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
+  detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
+  detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
 
-  const Idx FFTSize = global_data.kh.get_specialization_constant<detail::SpecConstFftSize>();
+  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
-  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "n_transforms", n_transforms);
+  global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   Idx num_workgroups = static_cast<Idx>(global_data.it.get_group_range(0));
   Idx wg_id = static_cast<Idx>(global_data.it.get_group(0));
-  IdxGlobal max_global_offset = 2 * (n_transforms - 1) * FFTSize;
+  IdxGlobal max_global_offset = 2 * (n_transforms - 1) * fft_size;
 
-  Idx N = detail::factorize(FFTSize);
-  Idx M = FFTSize / N;
-  const T* wg_twiddles = twiddles + 2 * (M + N);
-  constexpr Idx BankLinesPerPad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * M);
-  auto loc_view = make_padded_view<BankLinesPerPad>(loc);
+  Idx factor_n = detail::factorize(fft_size);
+  Idx factor_m = fft_size / factor_n;
+  const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
+  const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
+  auto loc_view = make_padded_view(loc, bank_lines_per_pad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
-  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, 2 * (M + N));
-  global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (M + N));
+  global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, 2 * (factor_m + factor_n));
+  global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (factor_m + factor_n));
 
   Idx max_num_batches_in_local_mem =
       get_num_batches_in_local_mem_workgroup<LayoutIn>(static_cast<Idx>(global_data.it.get_local_range(0)));
-  Idx max_reals_in_local_memory = 2 * FFTSize * max_num_batches_in_local_mem;
+  Idx max_reals_in_local_memory = 2 * fft_size * max_num_batches_in_local_mem;
   IdxGlobal global_offset = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_reals_in_local_memory);
   IdxGlobal offset_increment =
       static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_reals_in_local_memory);
@@ -133,27 +130,28 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
        * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
        * / 2 consecutive batches into the local memory
        */
-      const IdxGlobal batch_start_idx = offset / static_cast<IdxGlobal>(2 * FFTSize);
+      const IdxGlobal batch_start_idx = offset / static_cast<IdxGlobal>(2 * fft_size);
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
       // Load in a transposed manner, similar to subgroup impl.
       if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
         global_data.log_message_global(__func__, "loading transposed data from global to local memory");
         // transposition requested by the caller
-        global2local_transposed<level::WORKGROUP>(global_data, input, loc_view, offset / FFTSize, FFTSize, n_transforms,
-                                                  max_num_batches_in_local_mem);
+        global2local_transposed<level::WORKGROUP>(global_data, input, loc_view, offset / fft_size, fft_size,
+                                                  n_transforms, max_num_batches_in_local_mem);
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_twiddles,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
+                                 fft_size * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
-                                  sub_batch, offset / (2 * FFTSize), load_modifier_data, store_modifier_data, FFTSize,
-                                  N, M, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor, global_data);
+                                  sub_batch, offset / (2 * fft_size), load_modifier_data, store_modifier_data, fft_size,
+                                  factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
+                                  global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
       global_data.log_dump_local("computed data in local memory:", loc_view,
-                                 FFTSize * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
+                                 fft_size * static_cast<Idx>(global_data.it.get_local_range(0)) / 2);
 
       if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
         if (LayoutIn == detail::layout::PACKED) {
@@ -161,30 +159,31 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
           // local2global_transposed cannot be used over here. This is because the data in the local memory is also
           // stored in a strided fashion.
           local_strided_2_global_strided_transposed(global_data, loc_view, output, offset,
-                                                    2 * max_num_batches_in_local_mem, N, M, FFTSize);
+                                                    2 * max_num_batches_in_local_mem, factor_n, factor_m, fft_size);
         } else {
-          IdxGlobal current_batch = offset / (2 * FFTSize);
+          IdxGlobal current_batch = offset / (2 * fft_size);
           local2strides_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch,
-                                        2 * max_num_batches_in_local_mem, FFTSize, N, M);
+                                        2 * max_num_batches_in_local_mem, fft_size, factor_n, factor_m);
         }
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * FFTSize, offset);
+      global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * fft_size, offset);
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
-                                offset / static_cast<IdxGlobal>(2 * FFTSize), load_modifier_data, store_modifier_data,
-                                FFTSize, N, M, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
-                                global_data);
+                                offset / static_cast<IdxGlobal>(2 * fft_size), load_modifier_data, store_modifier_data,
+                                fft_size, factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store,
+                                apply_scale_factor, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
-      if (layout_out == detail::layout::PACKED) {
-        local2global_transposed(global_data, N, M, M, loc_view, output, offset);
+      if (LayoutOut == detail::layout::PACKED) {
+        local2global_transposed(global_data, factor_n, factor_m, factor_m, loc_view, output, offset);
       } else {
-        IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * FFTSize);
-        localstrided_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch, FFTSize, N, M);
+        IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
+        localstrided_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch, fft_size,
+                                     factor_n, factor_m);
       }
       sycl::group_barrier(global_data.it.get_group());
     }
@@ -218,12 +217,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(
             desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
             kernel_data[0].num_sgs_per_wg);
-    std::size_t sg_twiddles_offset =
-        detail::pad_local(2 * kernel_data[0].length * num_batches_in_local_mem, bank_lines_per_pad_wg());
     const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
                                                          kernel_data[0].factors[2] * kernel_data[0].factors[3]);
     std::size_t sg_twiddles_offset =
-        detail::pad_local(2 * kernel_data[0].length * num_batches_in_local_mem, bank_lines_per_pad);
+        detail::pad_local(2 * static_cast<Idx>(kernel_data[0].length) * num_batches_in_local_mem, bank_lines_per_pad);
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
@@ -236,16 +233,16 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
-            Idx fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
                 s,
 #endif
-                it, kh};
+                it};
             global_data.log_message_global("Running workgroup kernel");
-            workgroup_impl(&in_acc_or_usm[0], &out_acc_or_usm[0], loc.get_pointer(),
-                           loc.get_pointer() + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data)
-                global_data.log_message_global("Exiting workgroup kernel");
+            detail::workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], &loc[0] + sg_twiddles_offset, n_transforms, twiddles,
+                scale_factor, global_data, kh);
+            global_data.log_message_global("Exiting workgroup kernel");
           });
     });
   }

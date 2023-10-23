@@ -84,7 +84,7 @@ __attribute__((always_inline)) inline void dimension_dft(
     detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
     detail::apply_scale_factor apply_scale_factor, global_data_struct global_data) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
-  global_data.log_message_global(__func__, "entered", "DFTSize", DFTSize, "stride_within_dft", stride_within_dft,
+  global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
                                  max_num_batches_in_local_mem, "batch_num_in_local", batch_num_in_local);
   const Idx outer_stride = dft_size * stride_within_dft;
@@ -147,11 +147,12 @@ __attribute__((always_inline)) inline void dimension_dft(
       global_data.log_dump_private("data loaded in registers:", priv, 2 * fact_wi);
 
       if (wg_twiddles) {
-        detail::unrolled_loop<0, fact_wi, 1>([&](const Idx i) PORTFFT_INLINE {
+        PORTFFT_UNROLL
+        for (Idx i = 0; i < fact_wi; i++) {
           // Unintuitive indexing to ensure coalesced access
           Idx twiddle_i = i * fact_sg + wi_id_in_fft;
           Idx twiddle_j = j_outer;
-          Idx twiddle_index = twiddle_j * DFTSize + twiddle_i;
+          Idx twiddle_index = twiddle_j * dft_size + twiddle_i;
           sycl::vec<T, 2> twiddles = reinterpret_cast<const sycl::vec<T, 2>*>(wg_twiddles)[twiddle_index];
           T twiddle_real = twiddles[0];
           T twiddle_imag = twiddles[1];
@@ -159,28 +160,29 @@ __attribute__((always_inline)) inline void dimension_dft(
             twiddle_imag = -twiddle_imag;
           }
           multiply_complex(priv[2 * i], priv[2 * i + 1], twiddle_real, twiddle_imag, priv[2 * i], priv[2 * i + 1]);
-        });
+        };
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * fact_wi);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
-        if (scaling_factor != static_cast<T>(1)) {
-          detail::unrolled_loop<0, fact_wi, 1>([&](const Idx i) PORTFFT_INLINE {
-            priv[2 * i] *= scaling_factor;
-            priv[2 * i + 1] *= scaling_factor;
-          });
-          global_data.log_dump_private("data in registers after scaling:", priv, 2 * fact_wi);
-        }
+        PORTFFT_UNROLL
+        for (Idx i = 0; i < fact_wi; i++) {
+          priv[2 * i] *= scaling_factor;
+          priv[2 * i + 1] *= scaling_factor;
+        };
+        global_data.log_dump_private("data in registers after scaling:", priv, 2 * fact_wi);
       }
-      if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-        detail::unrolled_loop<0, fact_wi, 1>([&](const Idx idx) PORTFFT_INLINE {
+      if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
+        PORTFFT_UNROLL
+        for (Idx idx = 0; idx < fact_wi; idx++) {
           // load modifier needs to be tensor shape : n_transforms x M x FacWi x fact_sg
-          IdxGlobal base_offset =
-              2 * (batch_num_in_kernel + static_cast<IdxGlobal>(batch_num_in_local)) * static_cast<IdxGlobal>(DFTSize) +
-              static_cast<IdxGlobal>(2 * fact_wi * fact_sg + 2 * idx * fact_sg + 2 * wi_id_in_fft);
-          sycl::vec<T, 2> priv_modifier = *reinterpret_cast<sycl::vec<T, 2>*>(&load_modifier_data[base_offset]);
+          IdxGlobal base_offset = 2 * (batch_num_in_kernel + static_cast<IdxGlobal>(batch_num_in_local)) *
+                                      static_cast<IdxGlobal>(dft_size) +
+                                  static_cast<IdxGlobal>(2 * fact_wi * fact_sg + 2 * idx * fact_sg + 2 * wi_id_in_fft);
+          const sycl::vec<T, 2> priv_modifier =
+              *reinterpret_cast<const sycl::vec<T, 2>*>(&load_modifier_data[base_offset]);
           multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
                            priv[2 * idx + 1]);
-        });
+        };
       }
     }
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles);
@@ -188,14 +190,17 @@ __attribute__((always_inline)) inline void dimension_dft(
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Store modifier data layout in global memory - n_transforms x N x FactorSG x FactorWI
-        detail::unrolled_loop<0, fact_wi, 1>([&](const Idx idx) PORTFFT_INLINE {
+        PORTFFT_UNROLL
+        for (Idx idx = 0; idx < fact_wi; idx++) {
           IdxGlobal base_offset =
-              2 * (batch_num_in_kernel + static_cast<IdxGlobal>(batch_num_in_local)) * static_cast<IdxGlobal>(DFTSize) +
+              2 * (batch_num_in_kernel + static_cast<IdxGlobal>(batch_num_in_local)) *
+                  static_cast<IdxGlobal>(dft_size) +
               static_cast<IdxGlobal>(2 * j * fact_wi * fact_sg + 2 * idx * fact_sg + 2 * wi_id_in_fft);
-          sycl::vec<T, 2> priv_modifier = *reinterpret_cast<sycl::vec<T, 2>*>(&store_modifier_data[base_offset]);
+          const sycl::vec<T, 2> priv_modifier =
+              *reinterpret_cast<const sycl::vec<T, 2>*>(&store_modifier_data[base_offset]);
           multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
                            priv[2 * idx + 1]);
-        });
+        };
       }
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
@@ -248,20 +253,21 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                            detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
                            detail::apply_scale_factor apply_scale_factor, detail::global_data_struct global_data) {
-  global_data.log_message_global(__func__, "entered", "FFTSize", FFTSize, "N", N, "M", M,
+  global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
   // column-wise DFTs
+  // N, M, 1
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
-      detaill::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, global_data);
+      detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
-      load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, detaill::elementwise_multiply::NOT_APPLIED,
-      apply_load_factor, apply_scale_factor, global_data);
+      load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, layout_in,
+      detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, global_data);
   global_data.log_message_global(__func__, "exited");
 }
 

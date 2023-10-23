@@ -48,14 +48,13 @@ struct global_data_struct {
 #ifdef PORTFFT_LOG
       sycl::stream s,
 #endif
-      sycl::nd_item<1> it, sycl::kernel_handler kh)
+      sycl::nd_item<1> it)
       :
 #ifdef PORTFFT_LOG
         s(s << sycl::setprecision(3)),
 #endif
         it(it),
-        sg(it.get_sub_group()),
-        kh(kh) {
+        sg(it.get_sub_group()) {
   }
 
   /** Get the group for this work-item associated with a level.

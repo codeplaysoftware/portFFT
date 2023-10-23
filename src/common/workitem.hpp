@@ -31,7 +31,7 @@ namespace portfft {
 
 // forward declaration
 template <direction Dir, Idx RecursionLevel, typename T>
-inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* priv);
+inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out);
 
 namespace detail {
 
@@ -62,24 +62,24 @@ strides.
  */
 template <direction Dir, typename T>
 __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
-  sycl::span<T, 2 * MAX_COMPLEX_PER_WI> tmp;
+  std::array<T, 2 * MAX_COMPLEX_PER_WI> tmp;
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
     tmp[2 * idx_out + 0] = 0;
     tmp[2 * idx_out + 1] = 0;
     PORTFFT_UNROLL
     for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
-      auto re_multiplier = twiddle<T>::Re[fft_size][idx_in * idx_out % N];
+      auto re_multiplier = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
       auto im_multiplier = [&]() {
         if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[fft_size][idx_in * idx_out % N];
+          return twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
         }
-        return -twiddle<T>::Im[fft_size][idx_in * idx_out % N];
+        return -twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
       }();
       // multiply in and multi
       T tmp_real;
       T tmp_complex;
-      detail::multiply_complex(in[2 * idx_in * StrideIn], in[2 * idx_in * StrideIn + 1], re_multiplier, im_multiplier,
+      detail::multiply_complex(in[2 * idx_in * stride_in], in[2 * idx_in * stride_in + 1], re_multiplier, im_multiplier,
                                tmp_real, tmp_complex);
       tmp[2 * idx_out + 0] += tmp_real;
       tmp[2 * idx_out + 1] += tmp_complex;
@@ -109,10 +109,10 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
                                                             Idx stride_out) {
-  sycl::span<T, 2 * MAX_COMPLEX_PER_WI> tmp_buffer;
+  T tmp_buffer[MAX_COMPLEX_PER_WI];
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
-    wi_dft<Dir, N, M * StrideIn, 1>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N);
+    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N, N, M * stride_in, 1);
     PORTFFT_UNROLL
     for (Idx j = 0; j < N; j++) {
       auto re_multiplier = twiddle<T>::Re[N * M][i * j];
@@ -202,7 +202,7 @@ __attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_s
   const Idx F0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::uint_log2(MAX_COMPLEX_PER_WI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
-    if constexpr (fft_size == 2) {
+    if (fft_size == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
       T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
       T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];

@@ -69,24 +69,26 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
   auto index_transform = [=](Idx i) PORTFFT_INLINE { return local_offset + i * SubgroupSize + local_id; };
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
-    detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < ChunkSize; j++) {
       if constexpr (IsSgContiguous) {
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
                              vec[static_cast<int>(j)]);
       } else {
         local[index_transform(j)] = vec[static_cast<int>(j)];
       }
-    });
+    };
   } else {
     vec_t vec;
-    detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < ChunkSize; j++) {
       if constexpr (IsSgContiguous) {
         vec[static_cast<int>(j)] =
             global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]));
       } else {
         vec[static_cast<int>(j)] = local[index_transform(j)];
       }
-    });
+    };
     global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
   }
   return SgBlockCopyBlockSize;
@@ -188,12 +190,16 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct globa
     if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
       vec_t loaded;
       loaded = *reinterpret_cast<const vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]);
-      detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)]; });
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < ChunkSize; j++) {
+        local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)];
+      };
     } else {  // LOCAL_TO_GLOBAL
       vec_t to_store;
-      detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)]; });
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < ChunkSize; j++) {
+        to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)];
+      };
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]) = to_store;
     }
   }
@@ -396,17 +402,18 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local pointer
  */
-template <Idx NumElemsPerWI, typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT local, PrivT priv, Idx local_id,
-                                  Idx stride, Idx local_offset = 0) {
+template <typename LocalT, typename PrivT>
+PORTFFT_INLINE void local2private(Idx num_elements_per_wi, detail::global_data_struct global_data, LocalT local,
+                                  PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
-  global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
+  global_data.log_message_local(func_name, "NumElemsPerWI", num_elements_per_wi, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
-  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < num_elements_per_wi; i++) {
     Idx local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
-  });
+  };
 }
 
 /**
@@ -660,7 +667,7 @@ template <typename LocalT, typename PrivT>
 PORTFFT_INLINE void local2private_transposed(Idx num_elements_per_wi, detail::global_data_struct global_data,
                                              LocalT local, PrivT priv, Idx thread_id, Idx col_num, Idx stride) {
   transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE>(
-      num_elements_per_wi, global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI);
+      num_elements_per_wi, global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * num_elements_per_wi);
 }
 
 /**
