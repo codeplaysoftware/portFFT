@@ -109,7 +109,7 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
                                                             Idx stride_out) {
-  T tmp_buffer[MaxComplexPerWI];
+  T tmp_buffer[2 * MaxComplexPerWI];
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
     wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N, N, M * stride_in, 1);
