@@ -173,12 +173,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                                              i * n_reals_per_fft);
       }
       sycl::group_barrier(global_data.it.get_group());
-      if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-        global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-        // load / store in a transposed manner
-        global2local_transposed<detail::level::WORKGROUP>(global_data, input, loc_view, 2 * i, factor_wi * factor_sg,
-                                                          n_transforms, max_num_batches_local_mem);
-      }
+      global_data.log_message_global(__func__, "loading transposed data from global to local memory");
+      // load / store in a transposed manner - lots of 2* because reals are being copied.
+      global_batchinter_2_local_batchinter<detail::level::WORKGROUP>(
+          global_data, input, loc_view, 2 * i, 2 * num_batches_in_local_mem, factor_wi * factor_sg, 2 * n_transforms,
+          2 * max_num_batches_local_mem);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, n_reals_per_wi * factor_sg);
       for (Idx sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
@@ -409,19 +408,19 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies,
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
     Idx factor_sg = kernel_data[0].factors[1];
-    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
-        n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(
             desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
             kernel_data[0].num_sgs_per_wg);
+    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
+        n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t twiddle_elements = 2 * kernel_data[0].length;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
@@ -442,9 +441,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running subgroup kernel");
-            detail::subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(&in_acc_or_usm[0], &out_acc_or_usm[0],
-                                                                          &loc[0], &loc_twiddles[0], n_transforms,
-                                                                          twiddles, scale_factor, global_data, kh);
+            detail::subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0], &loc_twiddles[0],
+                n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting subgroup kernel");
           });
     });

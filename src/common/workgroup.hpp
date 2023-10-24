@@ -37,11 +37,13 @@ namespace portfft {
  * banks, each the size of a float, so we only want a padding float every 128/32=4 bank lines to read along the column
  * without bank conflicts.
  *
+ * @tparam T Input type to the function
  * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
  * @return the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
-constexpr Idx bank_lines_per_pad_wg(Idx row_size) {
-  constexpr Idx BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
+template <typename T>
+constexpr T bank_lines_per_pad_wg(T row_size) {
+  constexpr T BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
   if (row_size % BankLineSize == 0) {
     return row_size / BankLineSize;
   }

@@ -26,6 +26,7 @@
 
 #include <sycl/sycl.hpp>
 
+#include <limits>
 #include <vector>
 
 namespace portfft {
@@ -67,6 +68,23 @@ std::vector<sycl::kernel_id> get_ids() {
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
 #undef INSTANTIATE_DIRECTION_MEM_LAYOUTS
   return ids;
+}
+
+/**
+ * Utility function to check if a value can be casted safely.
+ * @tparam InputType Input Type
+ * @tparam OutputType Type to be casted to
+ * @param x value to be casted
+ * @return bool, true if its safe to cast
+ */
+template <typename InputType, typename OutputType>
+constexpr bool can_cast_safely(const InputType& x) {
+  static_assert(std::is_signed_v<InputType> && std::is_signed_v<OutputType>);
+  if constexpr (sizeof(OutputType) > sizeof(InputType)) {
+    return true;
+  }
+  OutputType x_converted = static_cast<OutputType>(x);
+  return (static_cast<InputType>(x_converted) == x);
 }
 }  // namespace detail
 }  // namespace portfft

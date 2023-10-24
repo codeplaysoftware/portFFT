@@ -45,8 +45,8 @@ struct test_placement_layouts_params {
   detail::layout output_layout;
 };
 
-using basic_param_tuple =
-    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/, std::size_t /*length*/>;
+using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+                                     std::vector<std::size_t> /*lengths*/>;
 // More tuples can be added here to easily instantiate tests that will require different parameters
 
 struct test_params {
@@ -55,7 +55,7 @@ struct test_params {
   detail::layout output_layout;
   direction dir;
   std::size_t batch;
-  std::size_t length;
+  std::vector<std::size_t> lengths;
 
   test_params() = default;
 
@@ -66,7 +66,7 @@ struct test_params {
     output_layout = placement_layouts.output_layout;
     dir = std::get<1>(params);
     batch = std::get<2>(params);
-    length = std::get<3>(params);
+    lengths = std::get<3>(params);
   }
 };
 
@@ -97,7 +97,10 @@ struct test_params_print {
 
     ss << "__Direction_" << (params.dir == direction::FORWARD ? "Fwd" : "Bwd");
     ss << "__Batch_" << params.batch;
-    ss << "__Length_" << params.length;
+    ss << "__Lengths";
+    for (std::size_t length : params.lengths) {
+      ss << "_" << length;
+    }
     return ss.str();
   }
 };
@@ -119,7 +122,7 @@ void operator<<(std::ostream&, const test_params&) {}
  */
 template <typename FType>
 auto get_descriptor(const test_params& params) {
-  descriptor<FType, domain::COMPLEX> desc{{params.length}};
+  descriptor<FType, domain::COMPLEX> desc{params.lengths};
   desc.number_of_transforms = params.batch;
   desc.placement = params.placement;
 
@@ -277,7 +280,6 @@ void run_test(const test_params& params) {
     return;
   }
 
-  ASSERT_TRUE(params.length > 0);
   auto desc = get_descriptor<FType>(params);
 
   auto [host_input, host_reference_output] = gen_fourier_data<Dir>(desc, params.input_layout, params.output_layout);

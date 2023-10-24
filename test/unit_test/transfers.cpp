@@ -63,7 +63,7 @@ void test() {
   q.wait();
 
   std::size_t padded_local_size =
-      static_cast<std::size_t>(portfft::detail::pad_local<Pad>(N * wg_size, BankGroupsPerPad));
+      static_cast<std::size_t>(portfft::detail::pad_local<Pad>(N * wg_size, static_cast<int>(BankGroupsPerPad)));
 
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
