@@ -59,14 +59,16 @@ PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(Idx workgrou
  * @tparam LayoutIn The input data layout
  * @param n_transforms number of transforms
  * @param subgroup_size size of subgroup used by the compute kernel
+ * @param num_sgs_per_wg number of subgroups in a workgroup
  * @param n_compute_units number of compute units on target device
  * @return Number of elements of size T that need to fit into local memory
  */
 template <typename T, detail::layout LayoutIn>
-IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, Idx n_compute_units) {
+IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, Idx num_sgs_per_wg,
+                                    Idx n_compute_units) {
   Idx maximum_n_sgs = 8 * n_compute_units * 64;
-  Idx maximum_n_wgs = maximum_n_sgs / PORTFFT_SGS_IN_WG;
-  Idx wg_size = subgroup_size * PORTFFT_SGS_IN_WG;
+  Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
+  Idx wg_size = subgroup_size * num_sgs_per_wg;
   Idx dfts_per_wg = get_num_batches_in_local_mem_workgroup<LayoutIn>(wg_size);
 
   return static_cast<IdxGlobal>(wg_size) * sycl::min(static_cast<IdxGlobal>(maximum_n_wgs),
@@ -235,8 +237,9 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies,
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
@@ -247,13 +250,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     }();
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
-    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
-    std::size_t global_size = static_cast<std::size_t>(
-        detail::get_global_size_workgroup<Scalar, LayoutIn>(n_transforms, SubgroupSize, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(
             desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
             kernel_data[0].num_sgs_per_wg);
+    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workgroup<Scalar, LayoutIn>(
+        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
                                                          kernel_data[0].factors[2] * kernel_data[0].factors[3]);
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -268,7 +270,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.parallel_for<detail::workgroup_kernel<
           Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
           detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx fft_size = kh.get_specialization_constant<detail::WorkgroupSpecConstFftSize>();
             detail::global_data_struct global_data{
@@ -281,7 +283,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                             detail::elementwise_multiply::NOT_APPLIED,
                                             detail::apply_scale_factor::APPLIED, SubgroupSize, Scalar,
                                             detail::cooley_tukey_size_list_t>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0],
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0],
                 &loc[static_cast<std::size_t>(detail::pad_local<detail::pad::DO_PAD>(
                     2 * fft_size * num_batches_in_local_mem, bank_lines_per_pad))],
                 n_transforms, global_data, twiddles, scale_factor, fft_size);

@@ -276,17 +276,17 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, Scalar scale_factor,
-                             const std::vector<sycl::event>& dependencies,
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
     constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    IdxGlobal n_transforms = static_cast<IdxGlobal>(desc.params.number_of_transforms);
-    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
-        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
             desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
             kernel_data[0].num_sgs_per_wg);
+    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
+        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
@@ -312,7 +312,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                            detail::elementwise_multiply::NOT_APPLIED,
                                            detail::apply_scale_factor::APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
-                &in_acc_or_usm[0], &out_acc_or_usm[0], &loc[0], n_transforms, global_data, scale_factor, fft_size);
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0], n_transforms,
+                global_data, scale_factor, fft_size);
             global_data.log_message_global("Exiting workitem kernel");
           });
     });
