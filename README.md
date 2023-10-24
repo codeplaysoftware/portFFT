@@ -89,7 +89,10 @@ portFFT is still in early development. The supported configurations are:
 * in-place and out-of-place transforms
 * USM and buffer containers
 * batched transforms
-* 1D transforms only
+* 1D transforms
+* multi-dimensional transforms with the following restrictions:
+  * default values for strides and distances
+  * size in each dimension must be supported by 1D transforms
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.
