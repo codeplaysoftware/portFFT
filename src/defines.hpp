@@ -40,7 +40,7 @@
 static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
               "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
 
-#define MAX_COMPLEX_PER_WI 56
+constexpr int MaxComplexPerWI = 56;
 namespace portfft {
 
 using Idx = std::int32_t;

@@ -105,7 +105,7 @@ __attribute__((always_inline)) inline void dimension_dft(
   // id of the work-item in the fft
   const Idx wi_id_in_fft = static_cast<Idx>(global_data.sg.get_local_linear_id()) % fact_sg;
 
-  T priv[2 * MAX_COMPLEX_PER_WI];
+  T priv[2 * MaxComplexPerWI];
 
   const Idx begin = static_cast<Idx>(global_data.sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
   const Idx step = num_sgs * ffts_per_sg;

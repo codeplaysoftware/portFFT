@@ -96,7 +96,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                  n_transforms);
   const Idx n_reals_per_wi = 2 * factor_wi;
 
-  T priv[2 * MAX_COMPLEX_PER_WI];
+  T priv[2 * MaxComplexPerWI];
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx n_sgs_in_wg = static_cast<Idx>(global_data.it.get_local_range(0)) / SubgroupSize;

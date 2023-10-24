@@ -62,7 +62,7 @@ strides.
  */
 template <direction Dir, typename T>
 __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
-  T tmp[2 * MAX_COMPLEX_PER_WI];
+  T tmp[2 * MaxComplexPerWI];
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
     tmp[2 * idx_out + 0] = 0;
@@ -109,7 +109,7 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
                                                             Idx stride_out) {
-  T tmp_buffer[MAX_COMPLEX_PER_WI];
+  T tmp_buffer[MaxComplexPerWI];
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
     wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N, N, M * stride_in, 1);
@@ -200,7 +200,7 @@ constexpr bool fits_in_wi(TIdx N) {
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
   const Idx f0 = detail::factorize(fft_size);
-  constexpr Idx MaxRecursionLevel = detail::uint_log2(MAX_COMPLEX_PER_WI) - 1;
+  constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (fft_size == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
