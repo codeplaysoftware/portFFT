@@ -111,6 +111,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   const Idx n_reals = 2 * fft_size;
 
   T priv[2 * MaxComplexPerWI];
+  T wi_priv_scratch[2 * wi_temps(MaxFftSizeWi)];
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
@@ -182,7 +183,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         detail::apply_modifier(fft_size, priv, loc_load_modifier_view,
                                static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1);
+      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_priv_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)

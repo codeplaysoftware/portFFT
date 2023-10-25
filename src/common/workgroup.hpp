@@ -188,7 +188,8 @@ __attribute__((always_inline)) inline void dimension_dft(
         };
       }
     }
-    sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles);
+    T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+    sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
 
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {

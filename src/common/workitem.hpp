@@ -31,7 +31,7 @@ namespace portfft {
 
 // forward declaration
 template <direction Dir, Idx RecursionLevel, typename T>
-inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out);
+inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
 
 namespace detail {
 
@@ -59,14 +59,15 @@ strides.
  * @param fft_size size of the DFT transform
  * @param stride_in stride (in complex values) between complex values in `in`
  * @param stride_out stride (in complex values) between complex values in `out`
+ * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, typename T>
-__attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
-  T tmp[2 * MaxComplexPerWI];
+__attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
+                                                     T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
-    tmp[2 * idx_out + 0] = 0;
-    tmp[2 * idx_out + 1] = 0;
+    privateScratch[2 * idx_out + 0] = 0;
+    privateScratch[2 * idx_out + 1] = 0;
     PORTFFT_UNROLL
     for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       auto re_multiplier = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
@@ -81,14 +82,14 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
       T tmp_complex;
       detail::multiply_complex(in[2 * idx_in * stride_in], in[2 * idx_in * stride_in + 1], re_multiplier, im_multiplier,
                                tmp_real, tmp_complex);
-      tmp[2 * idx_out + 0] += tmp_real;
-      tmp[2 * idx_out + 1] += tmp_complex;
+      privateScratch[2 * idx_out + 0] += tmp_real;
+      privateScratch[2 * idx_out + 1] += tmp_complex;
     }
   }
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < 2 * fft_size; idx_out += 2) {
-    out[idx_out * stride_out + 0] = tmp[idx_out + 0];
-    out[idx_out * stride_out + 1] = tmp[idx_out + 1];
+    out[idx_out * stride_out + 0] = privateScratch[idx_out + 0];
+    out[idx_out * stride_out + 1] = privateScratch[idx_out + 1];
   }
 }
 
@@ -105,14 +106,15 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
  * @param M the second factor of the problem size
  * @param stride_in stride (in complex values) between complex values in `in`
  * @param stride_in stride (in complex values) between complex values in `out`
+ * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
-                                                            Idx stride_out) {
-  T tmp_buffer[2 * MaxComplexPerWI];
+                                                            Idx stride_out, T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
-    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, tmp_buffer + 2 * i * N, N, M * stride_in, 1);
+    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * N, N, M * stride_in, 1,
+                                privateScratch + 2 * N * M);
     PORTFFT_UNROLL
     for (Idx j = 0; j < N; j++) {
       auto re_multiplier = twiddle<T>::Re[N * M][i * j];
@@ -122,13 +124,14 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out,
         }
         return -twiddle<T>::Im[N * M][i * j];
       }();
-      detail::multiply_complex(tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1], re_multiplier,
-                               im_multiplier, tmp_buffer[2 * i * N + 2 * j], tmp_buffer[2 * i * N + 2 * j + 1]);
+      detail::multiply_complex(privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1], re_multiplier,
+                               im_multiplier, privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1]);
     };
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < N; i++) {
-    wi_dft<Dir, RecursionLevel>(tmp_buffer + 2 * i, out + 2 * i * stride_out, M, N, N * stride_out);
+    wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, M, N, N * stride_out,
+                                privateScratch + 2 * N * M);
   };
 }
 
@@ -153,18 +156,24 @@ constexpr T factorize(T N) {
  * Calculates how many temporary complex values a workitem implementation needs
  * for solving FFT.
  * @tparam TIdx type of the size
+ * @tparam RecursionLevel Level of recursion
  * @param N size of the FFT problem
  * @return Number of temporary complex values
  */
-template <typename TIdx>
+template <typename TIdx, Idx RecursionLevel = 0>
 constexpr TIdx wi_temps(TIdx N) {
   TIdx f0 = factorize(N);
   TIdx f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
     return N;
   }
-  TIdx a = wi_temps(f0);
-  TIdx b = wi_temps(f1);
+  constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
+  TIdx a{2};
+  TIdx b{2};
+  if constexpr (RecursionLevel < MaxRecursionLevel) {
+    a = wi_temps<TIdx, RecursionLevel + 1>(f0);
+    b = wi_temps<TIdx, RecursionLevel + 1>(f1);
+  }
   return (a > b ? a : b) + N;
 }
 
@@ -193,12 +202,14 @@ constexpr bool fits_in_wi(TIdx N) {
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
- * @tparam fft_size size of the DFT transform
- * @tparam stride_in stride (in complex values) between complex values in `in`
- * @tparam stride_out stride (in complex values) between complex values in `out`
+ * @param fft_size size of the DFT transform
+ * @param stride_in stride (in complex values) between complex values in `in`
+ * @param stride_out stride (in complex values) between complex values in `out`
+ * @param privateScratch Scratch memory for this WI.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out) {
+__attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
+                                                  T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
@@ -211,9 +222,10 @@ __attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_s
       out[0 * stride_out + 1] = b;
       out[2 * stride_out + 0] = c;
     } else if (f0 >= 2 && fft_size / f0 >= 2) {
-      detail::cooley_tukey_dft<Dir, RecursionLevel + 1>(in, out, fft_size / f0, f0, stride_in, stride_out);
+      detail::cooley_tukey_dft<Dir, RecursionLevel + 1>(in, out, fft_size / f0, f0, stride_in, stride_out,
+                                                        privateScratch);
     } else {
-      detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out);
+      detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out, privateScratch);
     }
   }
 }

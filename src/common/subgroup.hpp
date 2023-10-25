@@ -60,7 +60,7 @@ factors and does transposition and twiddle multiplication inbetween.
 
 // forward declaration
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg);
+inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg, T* private_scratch);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
@@ -168,17 +168,19 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * @param stride Stride between workitems working on consecutive values of one
  * DFT
  * @param sg subgroup
+ * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
 __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m,
-                                                                     Idx stride, sycl::sub_group& sg) {
+                                                                     Idx stride, sycl::sub_group& sg,
+                                                                     T* private_scratch) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
   Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
   Idx n = index_in_outer_dft / factor_n;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_n, factor_m * stride, sg);
+  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_n, factor_m * stride, sg, private_scratch);
   // transpose
   cross_sg_transpose(real, imag, factor_n, factor_m, stride, sg);
   T multi_re = twiddle<T>::Re[factor_n * factor_m][k * n];
@@ -188,7 +190,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   }
   detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
-  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_m, factor_n * stride, sg);
+  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_m, factor_n * stride, sg, private_scratch);
 }
 
 /**
@@ -205,15 +207,17 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * @tparam stride Stride between workitems working on consecutive values of one
  * DFT
  * @param sg subgroup
+ * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride,
-                                                        sycl::sub_group& sg) {
+__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg,
+                                                        T* private_scratch) {
   constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     const Idx f0 = detail::factorize(fft_size);
     if (f0 >= 2 && fft_size / f0 >= 2) {
-      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
+      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg,
+                                                                       private_scratch);
     } else {
       cross_sg_naive_dft<Dir>(real, imag, fft_size, stride, sg);
     }
@@ -271,9 +275,11 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * @param N number of workitems in a subgroup that work on one FFT
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
+ * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles) {
+__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles,
+                                                  T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % N;
   PORTFFT_UNROLL
   for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < M; idx_of_element_in_wi++) {
@@ -281,7 +287,7 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
     if (N > 1) {
-      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, N, 1, sg);
+      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, N, 1, sg, private_scratch);
       if (idx_of_element_in_wi > 0) {
         T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
         T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
@@ -292,8 +298,7 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
       }
     }
   };
-
-  wi_dft<Dir, 0>(inout, inout, M, 1, 1);
+  wi_dft<Dir, 0>(inout, inout, M, 1, 1, private_scratch);
 }
 
 /**
