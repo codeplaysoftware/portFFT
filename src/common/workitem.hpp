@@ -166,7 +166,7 @@ PORTFFT_INLINE constexpr TIdx wi_temps(TIdx N) {
   if (f0 < 2 || f1 < 2) {
     return N;
   }
-  constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
+  constexpr Idx MaxRecursionLevel = detail::int_log2(MaxComplexPerWI) - 1;
   TIdx a{2};
   TIdx b{2};
   if constexpr (RecursionLevel < MaxRecursionLevel) {
@@ -209,7 +209,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
 template <direction Dir, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
-  constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
+  constexpr Idx MaxRecursionLevel = detail::int_log2(MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (fft_size == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];

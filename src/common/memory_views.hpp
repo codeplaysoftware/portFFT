@@ -45,7 +45,9 @@ template <typename ParentT, typename OffsetT = Idx>
 struct offset_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
-  static constexpr bool IsContiguous = IsContiguousViewV<ParentT>;
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(data); }
 
   ParentT data;
   OffsetT offset;
@@ -90,7 +92,11 @@ template <typename ParentT>
 struct padded_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
-  static constexpr bool IsContiguous = IsContiguousViewV<ParentT>;
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
+    return is_contiguous_view(data) && bank_lines_per_pad == 0;
+  }
 
   ParentT data;
   Idx bank_lines_per_pad;
@@ -131,7 +137,11 @@ template <typename RemapFuncT, typename ParentT>
 struct remapping_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
-  static constexpr bool IsContiguous = false;  // There is no way to know if the remapping function is contiguous.
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
+    return false;  // No way to know if the RemapFuncT is contiguous.
+  }
 
   ParentT data;
   RemapFuncT func;

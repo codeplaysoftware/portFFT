@@ -212,7 +212,7 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Id
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg, T* private_scratch) {
-  constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
+  constexpr Idx MaxRecursionLevel = detail::int_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     const Idx f0 = detail::factorize(fft_size);
     if (f0 >= 2 && fft_size / f0 >= 2) {

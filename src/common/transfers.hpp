@@ -55,17 +55,16 @@ template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize,
           typename LocalViewT>
 PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
                                               IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
-  static_assert(IsContiguousViewV<GlobalViewT>, "Expecting contiguous global view");
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
 
   // Is the local memory suitable for using Intel's subgroup copy extensions with?
   // NB: This assumes any offset aligns with padding in a padded view
-  constexpr bool IsSgContiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || IsContiguousViewV<LocalViewT>;
+  const bool is_sg_contiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || is_contiguous_view(local);
   const char* func_name = __func__;
   global_data.log_message_subgroup(func_name, "SgBlockCopyBlockSize", SgBlockCopyBlockSize, "global_offset",
-                                   global_offset, "local_offset", local_offset, "IsSgContiguous", IsSgContiguous);
+                                   global_offset, "local_offset", local_offset, "is_sg_contiguous", is_sg_contiguous);
   Idx local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   // A helper function to generate indexes in local memory.
   auto index_transform = [=](Idx i) PORTFFT_INLINE { return local_offset + i * SubgroupSize + local_id; };
@@ -73,7 +72,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
     vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
     PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
-      if constexpr (IsSgContiguous) {
+      if (is_sg_contiguous) {
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
                              vec[static_cast<int>(j)]);
       } else {
@@ -84,7 +83,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
     vec_t vec;
     PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
-      if constexpr (IsSgContiguous) {
+      if (is_sg_contiguous) {
         vec[static_cast<int>(j)] =
             global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]));
       } else {
@@ -307,7 +306,6 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_floating_point_v<real_t>, "Expecting floating-point data type");
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Type mismatch between global and local");
-  static_assert(IsContiguousViewV<GlobalViewT>, "Expecting a global view that is contiguous in memory");
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset);
   static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
