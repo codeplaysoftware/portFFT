@@ -41,6 +41,7 @@ struct md_view{
   std::array<TIdx, NDim> strides;
   TIdx cumulative_offset;
 
+  //should a constructor with cumulative_offset be private?
   md_view(ParentT parent, const std::array<TIdx, NDim>& offsets, const std::array<TIdx, NDim>& strides, TIdx cumulative_offset = 0) : 
       parent(parent), offsets(offsets), strides(strides), cumulative_offset(cumulative_offset) {}
 
@@ -67,6 +68,33 @@ struct md_view{
     return parent[cumulative_offset + index];
   }
 };
+
+//NDim is std::size_t to match std::array
+template<typename ParentT, typename TIdx, std::size_t NDim>
+struct strided_view{
+  //using ParentT = ParentT_;
+  //static constexpr int NDim = NDim_;
+  ParentT parent;
+  std::array<TIdx, NDim> offsets;
+  std::array<TIdx, NDim> sizes; // of the array, NOT the copy
+
+  strided_view(ParentT parent, const std::array<TIdx, NDim>& offsets, const std::array<TIdx, NDim>& sizes) : 
+      parent(parent), offsets(offsets), sizes(sizes) {}
+
+  auto& operator[](TIdx index){
+    detail::unrolled_loop<0, NDim, 1>([&](const Idx i) PORTFFT_INLINE {
+      index = index * sizes[i] + offsets[i];
+    });
+    return parent[index];
+  }
+};
+
+template<typename View1, typename View2, typename TIdx>
+static void copy_wi(View1 src, View2 dst, TIdx size){
+  for(TIdx i = 0; i < size; i++){
+    dst[i] = src[i];
+  }
+}
 
 template<typename ParentT1, typename ParentT2, typename TIdx, std::size_t NDim>
 static void copy_wi(md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
@@ -461,9 +489,10 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
   });*/
-  copy_wi(md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
+  /*copy_wi(md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
           md_view{priv, std::array<Idx, 1>{0}}, 
-          std::array<Idx, 1>{NumElemsPerWI});
+          std::array<Idx, 1>{NumElemsPerWI});*/
+  copy_wi(detail::offset_view{local, local_offset + local_id * stride}, priv, NumElemsPerWI);
 }
 
 /**
@@ -562,9 +591,10 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT 
     global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
     local[local_offset + local_id * stride + i] = priv[i];
   });*/
-  copy_wi(md_view{priv, std::array<Idx, 1>{0}}, 
+  /*copy_wi(md_view{priv, std::array<Idx, 1>{0}}, 
           md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
-          std::array<Idx, 1>{NumElemsPerWI});
+          std::array<Idx, 1>{NumElemsPerWI});*/
+  copy_wi(priv, detail::offset_view{local, local_offset + local_id * stride}, NumElemsPerWI);
 }
 
 /**
