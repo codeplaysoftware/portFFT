@@ -21,6 +21,7 @@
 #ifndef PORTFFT_TRAITS_HPP
 #define PORTFFT_TRAITS_HPP
 
+#include "defines.hpp"
 #include "enums.hpp"
 
 #include <complex>
