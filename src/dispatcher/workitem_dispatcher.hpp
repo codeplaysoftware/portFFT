@@ -111,7 +111,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   const Idx n_reals = 2 * fft_size;
 
   T priv[2 * MaxComplexPerWI];
-  T wi_priv_scratch[2 * wi_temps(MaxFftSizeWi)];
+  T wi_priv_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));

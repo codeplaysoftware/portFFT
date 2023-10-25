@@ -206,7 +206,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             }
           }
         }
-        T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+        T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
         sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
@@ -314,7 +314,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
       }
-      T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+      T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
       sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);

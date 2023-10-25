@@ -36,7 +36,7 @@ PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx
 namespace detail {
 
 // Maximum size of an FFT that can fit in the workitem implementation
-static constexpr Idx MaxFftSizeWi = 56;
+static constexpr Idx MaxComplexPerWI = 56;
 
 /*
 `wi_dft` calculates a DFT by a workitem on values that are already loaded into its private memory.
@@ -166,7 +166,7 @@ PORTFFT_INLINE constexpr TIdx wi_temps(TIdx N) {
   if (f0 < 2 || f1 < 2) {
     return N;
   }
-  constexpr Idx MaxRecursionLevel = detail::int_log2(MaxComplexPerWI) - 1;
+  constexpr Idx MaxRecursionLevel = detail::int_log2(detail::MaxComplexPerWI) - 1;
   TIdx a{2};
   TIdx b{2};
   if constexpr (RecursionLevel < MaxRecursionLevel) {
@@ -209,7 +209,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
 template <direction Dir, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
-  constexpr Idx MaxRecursionLevel = detail::int_log2(MaxComplexPerWI) - 1;
+  constexpr Idx MaxRecursionLevel = detail::int_log2(detail::MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (fft_size == 2) {
       T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];

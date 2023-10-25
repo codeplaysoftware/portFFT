@@ -188,7 +188,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         };
       }
     }
-    T wi_private_scratch[2 * wi_temps(MaxFftSizeWi)];
+    T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
 
     if (working) {
