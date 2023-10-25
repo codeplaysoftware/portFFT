@@ -62,8 +62,7 @@ strides.
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, typename T>
-PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
-                                                     T* privateScratch) {
+PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
     privateScratch[2 * idx_out + 0] = 0;
@@ -109,8 +108,8 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
-                                                            Idx stride_out, T* privateScratch) {
+PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in, Idx stride_out,
+                                     T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
     wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * N, N, M * stride_in, 1,
@@ -208,8 +207,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
  * @param privateScratch Scratch memory for this WI.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
-                                                  T* privateScratch) {
+PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {

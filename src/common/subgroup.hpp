@@ -78,8 +78,7 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
  * @param sg subgroup
  */
 template <direction Dir, typename T>
-__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx stride,
-                                                              sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
   if (fft_size == 2 && (stride & (stride - 1)) == 0) {
     Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
     Idx idx_out = (local_id / stride) % 2;
@@ -141,8 +140,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * @param sg subgroup
  */
 template <typename T>
-__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
-                                                              sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride, sycl::sub_group& sg) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
   Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
@@ -158,6 +156,8 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam SubgroupSize Size of subgroup in kernel
+ * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
@@ -171,9 +171,8 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m,
-                                                                     Idx stride, sycl::sub_group& sg,
-                                                                     T* private_scratch) {
+PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
+                                              sycl::sub_group& sg, T* private_scratch) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
   Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
@@ -198,20 +197,21 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Id
  * output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam SubgroupSize Size of subgroup in kernel
+ * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
- * @tparam fft_size Size of the DFT
- * @tparam stride Stride between workitems working on consecutive values of one
+ * @param fft_size Size of the DFT
+ * @param stride Stride between workitems working on consecutive values of one
  * DFT
  * @param sg subgroup
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg,
-                                                        T* private_scratch) {
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg, T* private_scratch) {
   constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     const Idx f0 = detail::factorize(fft_size);
@@ -268,6 +268,7 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * end result needs to be transposed when storing it to the local memory!
  *
  * @tparam Dir direction of the FFT
+ * @tparam SubgroupSize Size of subgroup in kernel
  * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
@@ -278,8 +279,7 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, typename T>
-PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles,
-                                                  T* private_scratch) {
+PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles, T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % N;
   PORTFFT_UNROLL
   for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < M; idx_of_element_in_wi++) {
