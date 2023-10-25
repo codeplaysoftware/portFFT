@@ -101,14 +101,26 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_imag = 0;
 
     unrolled_loop<0, N, 1>([&](Idx idx_in) __attribute__((always_inline)) {
-      const T multi_re = twiddle<T>::Re[N][idx_in * idx_out % N];
-      const T multi_im = [&]() __attribute__((always_inline)) {
-        if constexpr (Dir == direction::FORWARD) {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+      T theta = (static_cast<T>(-2 * M_PI)) * static_cast<T>(idx_in * idx_out % N) / static_cast<T>(N);
+#endif
+      T multi_re = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+        return static_cast<T>(sycl::cos(theta));
+#else  
+          return twiddle<T>::Re[N][idx_in * idx_out % N];
+#endif
+      }();
+      T multi_im = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+        return static_cast<T>(sycl::sin(theta));
+#else  
           return twiddle<T>::Im[N][idx_in * idx_out % N];
-        }
-        return -twiddle<T>::Im[N][idx_in * idx_out % N];
+#endif
+      }();
+      if constexpr (Dir == direction::BACKWARD) {
+        multi_im = -multi_im;
       }
-      ();
       std::size_t source_wi_id = static_cast<std::size_t>(fft_start + idx_in * Stride);
 
       T cur_real = sycl::select_from_group(sg, real, source_wi_id);
@@ -181,14 +193,26 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
   // transpose
   cross_sg_transpose<N, M, Stride>(real, imag, sg);
   // twiddle
-  const T multi_re = twiddle<T>::Re[N * M][k * n];
-  const T multi_im = [&]() __attribute__((always_inline)) {
-    if constexpr (Dir == direction::FORWARD) {
-      return twiddle<T>::Im[N * M][k * n];
-    }
-    return -twiddle<T>::Im[N * M][k * n];
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+  T theta = (static_cast<T>(-2 * M_PI) * static_cast<T>(k * n)) / static_cast<T>(N * M);
+#endif
+  T multi_re = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+    return static_cast<T>(sycl::cos(theta));
+#else
+    return twiddle<T>::Re[N * M][k * n];
+#endif
+  }();
+  T multi_im = [&]() {
+#ifdef PORTFFT_USE_FAST_TRIG_APPROX
+    return static_cast<T>(sycl::sin(theta));
+#else
+    return twiddle<T>::Im[N * M][k * n];
+#endif
+  }();
+  if constexpr (Dir == direction::BACKWARD) {
+    multi_im = -multi_im;
   }
-  ();
   detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
   cross_sg_dft<Dir, M, N * Stride>(real, imag, sg);
