@@ -31,7 +31,7 @@ namespace portfft {
 
 // forward declaration
 template <direction Dir, Idx RecursionLevel, typename T>
-inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
+PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
 
 namespace detail {
 
@@ -62,7 +62,7 @@ strides.
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, typename T>
-__attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
+PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
                                                      T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
@@ -109,7 +109,7 @@ __attribute__((always_inline)) inline void naive_dft(const T* in, T* out, Idx ff
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
+PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in,
                                                             Idx stride_out, T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < M; i++) {
@@ -142,7 +142,7 @@ __attribute__((always_inline)) inline void cooley_tukey_dft(const T* in, T* out,
  * @return the smaller of the factors
  */
 template <typename T>
-constexpr T factorize(T N) {
+PORTFFT_INLINE constexpr T factorize(T N) {
   T res = 1;
   for (T i = 2; i * i <= N; i++) {
     if (N % i == 0) {
@@ -161,7 +161,7 @@ constexpr T factorize(T N) {
  * @return Number of temporary complex values
  */
 template <typename TIdx, Idx RecursionLevel = 0>
-constexpr TIdx wi_temps(TIdx N) {
+PORTFFT_INLINE constexpr TIdx wi_temps(TIdx N) {
   TIdx f0 = factorize(N);
   TIdx f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
@@ -186,7 +186,7 @@ constexpr TIdx wi_temps(TIdx N) {
  * @return true if the problem fits in the registers
  */
 template <typename Scalar, typename TIdx>
-constexpr bool fits_in_wi(TIdx N) {
+PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
   TIdx n_complex = N + wi_temps(N);
   TIdx complex_size = 2 * sizeof(Scalar);
   TIdx register_space = PORTFFT_REGISTERS_PER_WI * 4;
@@ -208,7 +208,7 @@ constexpr bool fits_in_wi(TIdx N) {
  * @param privateScratch Scratch memory for this WI.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
+PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out,
                                                   T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::uint_log2(MaxComplexPerWI) - 1;

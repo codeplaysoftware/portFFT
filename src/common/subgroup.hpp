@@ -60,7 +60,7 @@ factors and does transposition and twiddle multiplication inbetween.
 
 // forward declaration
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg, T* private_scratch);
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg, T* private_scratch);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
@@ -171,7 +171,7 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m,
+PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m,
                                                                      Idx stride, sycl::sub_group& sg,
                                                                      T* private_scratch) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
@@ -210,7 +210,7 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg,
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg,
                                                         T* private_scratch) {
   constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
@@ -278,7 +278,7 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles,
+PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles,
                                                   T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % N;
   PORTFFT_UNROLL
