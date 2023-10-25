@@ -28,8 +28,6 @@
 namespace portfft {
 namespace detail {
 constexpr static sycl::specialization_id<Idx> SpecConstFftSize{};
-// constexpr static sycl::specialization_id<detail::layout> SpecConstLayoutIn{};
-// constexpr static sycl::specialization_id<detail::layout> SpecConstLayoutOut{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnLoad{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnStore{};
 constexpr static sycl::specialization_id<detail::apply_scale_factor> SpecConstApplyScaleFactor{};

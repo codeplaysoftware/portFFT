@@ -57,7 +57,7 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  *
  * @tparam PrivT Private view type
  * @tparam LocalT Local view type
- * @param fft_size FFTSize, the number of elements each workitem holds
+ * @param num_elements the number of complex values to modify
  * @param priv pointer to private memory
  * @param loc_modifier Pointer to local memory in which modifier data is stored
  * @param id_of_wi_in_wg workitem id in workgroup

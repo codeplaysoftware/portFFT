@@ -391,23 +391,23 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * Copies data from local memory to private memory. Each work item gets a chunk
  * of consecutive values from local memory.
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
  * @param local View of local memory
  * @param priv View of private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
- * Should be >= NumElemsPerWI
+ * Should be >= num_elements_per_wi
  * @param local_offset offset to the local pointer
  */
 template <typename LocalT, typename PrivT>
 PORTFFT_INLINE void local2private(Idx num_elements_per_wi, detail::global_data_struct global_data, LocalT local,
                                   PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
-  global_data.log_message_local(func_name, "NumElemsPerWI", num_elements_per_wi, "local_id", local_id, "stride", stride,
-                                "local_offset", local_offset);
+  global_data.log_message_local(func_name, "num_elements_per_wi", num_elements_per_wi, "local_id", local_id, "stride",
+                                stride, "local_offset", local_offset);
   PORTFFT_UNROLL
   for (Idx i = 0; i < num_elements_per_wi; i++) {
     Idx local_idx = local_offset + local_id * stride + i;
@@ -490,11 +490,11 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
 /**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
- * local[local_offset + local_id * stride + i] = priv[i] for i in [0, NumElemsPerWI)
+ * local[local_offset + local_id * stride + i] = priv[i] for i in [0, num_elemets_per_wi)
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memorys
+ * @param num_elemets_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
  * @param priv A view of private memory
  * @param local A view of local memory
@@ -522,10 +522,10 @@ PORTFFT_INLINE void private2local(Idx num_elemets_per_wi, detail::global_data_st
  * destination[destination_offset + local_id * 2 + i * workers_in_group + 1] := priv[i + 1]
  * for i in [0, NumElemsPerWI)
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of the private memory view
  * @tparam DestT The type of the destination memory view
  * @tparam TDstIdx type of destination index
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
  * @param priv View of private memory
  * @param destination View of destination - local or global memory
@@ -572,14 +572,14 @@ PORTFFT_INLINE void store_transposed(Idx num_elements_per_wi, detail::global_dat
  * output[out_idx] = input[in_idx]
  * output[out_idx + 1] = input[in_idx + 1]
  * where out_idx and in_idx are chosen according to TransferDirection
- * for i in [0, NumComplexElements) where loc is indexed repecting padding.
+ * for i in [0, num_complex_elements) where loc is indexed repecting padding.
  *
  * @tparam TransferDirection Direction of Transfer
- * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TDstIdx type of destination index
  * @tparam InputT The type of the input memory view
  * @tparam DestT The type of the dest memory view
  *
+ * @param num_complex_elements Number of complex elements to transfer between the two.
  * @param global_data global data for the kernel
  * @param input Input view
  * @param output Output view
@@ -625,12 +625,12 @@ PORTFFT_INLINE void transfer_strided(Idx num_complex_elements, detail::global_da
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column:
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num] := priv[i]
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num + 1] := priv[i + 1]
- * for i in [0, NumElementsPerWI).
+ * for i in [0, num_elements_per_wi).
  *
- * @tparam NumElementsPerWI Elements per workitem
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
+ * @param num_elements_per_wi Elements per workitem
  * @param global_data global data for the kernel
  * @param priv View of private memory
  * @param local View of local memory
@@ -649,14 +649,14 @@ PORTFFT_INLINE void private2local_transposed(Idx num_elements_per_wi, detail::gl
 
 /**
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
- * priv[2 * i] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num]
- * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num + 1]
- * for i in [0, NumElementsPerWI)
+ * priv[2 * i] := loc[2 * stride * (i + thread_id * num_elements_per_wi) + 2 * col_num]
+ * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * num_elements_per_wi) + 2 * col_num + 1]
+ * for i in [0, num_elements_per_wi)
  *
- * @tparam NumElementsPerWI Elements per workitem
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
+ * @param num_elements_per_wi Elements per workitem
  * @param global_data global data for the kernel
  * @param local View of local memory
  * @param priv View of private memory

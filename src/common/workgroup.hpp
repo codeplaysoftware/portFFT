@@ -241,13 +241,13 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param batch_num_in_kernel Absosulte batch from which batches loaded in local memory will be computed
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
- * @tparam fft_size Problem Size
- * @tparam N Smaller factor of the Problem size
- * @tparam M Larger factor of the problem size
- * @tparam layout_in Whether or not the input is transposed
- * @tparam multiply_on_load Whether the input data is multiplied with some data array before fft computation.
- * @tparam multiply_on_store Whether the input data is multiplied with some data array after fft computation.
- * @tparam apply_scale_factor Whether or not the scale factor is applied
+ * @param fft_size Problem Size
+ * @param N Smaller factor of the Problem size
+ * @param M Larger factor of the problem size
+ * @param layout_in Whether or not the input is transposed
+ * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
+ * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
+ * @param apply_scale_factor Whether or not the scale factor is applied
  * @param global_data global data for the kernel
  */
 template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
