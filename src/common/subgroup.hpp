@@ -272,25 +272,26 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
- * @param M number of elements per workitem
- * @param N number of workitems in a subgroup that work on one FFT
+ * @param factor_wi number of elements per workitem
+ * @param factor_sg number of workitems in a subgroup that work on one FFT
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
  * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, typename T>
-PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles, T* private_scratch) {
-  Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % N;
+PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx factor_sg, const T* sg_twiddles,
+                           T* private_scratch) {
+  Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % factor_sg;
   PORTFFT_UNROLL
-  for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < M; idx_of_element_in_wi++) {
+  for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < factor_wi; idx_of_element_in_wi++) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    if (N > 1) {
-      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, N, 1, sg, private_scratch);
+    if (factor_sg > 1) {
+      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, factor_sg, 1, sg, private_scratch);
       if (idx_of_element_in_wi > 0) {
-        T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
-        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
+        T twiddle_real = sg_twiddles[idx_of_element_in_wi * factor_sg + idx_of_wi_in_fft];
+        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + factor_wi) * factor_sg + idx_of_wi_in_fft];
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
@@ -298,24 +299,24 @@ PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T*
       }
     }
   };
-  wi_dft<Dir, 0>(inout, inout, M, 1, 1, private_scratch);
+  wi_dft<Dir, 0>(inout, inout, factor_wi, 1, 1, private_scratch);
 }
 
 /**
  * Calculates a twiddle factor for subgroup implementation.
  *
  * @tparam T type of the scalar used for computations
- * @param N number of workitems in a subgroup that work on one FFT
- * @param M number of elements per workitem
- * @param n index of the twiddle to calculate in the direction of N
- * @param k index of the twiddle to calculate in the direction of M
+ * @param factor_sg number of workitems in a subgroup that work on one FFT
+ * @param factor_wi number of elements per workitem
+ * @param n index of the twiddle to calculate in the direction of factor_sg
+ * @param k index of the twiddle to calculate in the direction of factor_wi
  * @param sg_twiddles destination into which to store the twiddles
  */
 template <typename T>
-void sg_calc_twiddles(Idx N, Idx M, Idx n, Idx k, T* sg_twiddles) {
-  std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
-  sg_twiddles[k * N + n] = twiddle.real();
-  sg_twiddles[(k + M) * N + n] = twiddle.imag();
+void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles) {
+  std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, factor_sg * factor_wi);
+  sg_twiddles[k * factor_sg + n] = twiddle.real();
+  sg_twiddles[(k + factor_wi) * factor_sg + n] = twiddle.imag();
 }
 
 };  // namespace portfft

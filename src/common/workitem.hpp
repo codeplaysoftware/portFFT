@@ -101,36 +101,37 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
- * @param N the first factor of the problem size
- * @param M the second factor of the problem size
+ * @param factor_n the first factor of the problem size
+ * @param factor_m the second factor of the problem size
  * @param stride_in stride (in complex values) between complex values in `in`
  * @param stride_in stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stride_in, Idx stride_out,
+PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_m, Idx stride_in, Idx stride_out,
                                      T* privateScratch) {
   PORTFFT_UNROLL
-  for (Idx i = 0; i < M; i++) {
-    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * N, N, M * stride_in, 1,
-                                privateScratch + 2 * N * M);
+  for (Idx i = 0; i < factor_m; i++) {
+    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n,
+                                factor_m * stride_in, 1, privateScratch + 2 * factor_n * factor_m);
     PORTFFT_UNROLL
-    for (Idx j = 0; j < N; j++) {
-      auto re_multiplier = twiddle<T>::Re[N * M][i * j];
+    for (Idx j = 0; j < factor_n; j++) {
+      auto re_multiplier = twiddle<T>::Re[factor_n * factor_m][i * j];
       auto im_multiplier = [&]() {
         if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[N * M][i * j];
+          return twiddle<T>::Im[factor_n * factor_m][i * j];
         }
-        return -twiddle<T>::Im[N * M][i * j];
+        return -twiddle<T>::Im[factor_n * factor_m][i * j];
       }();
-      detail::multiply_complex(privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1], re_multiplier,
-                               im_multiplier, privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1]);
+      detail::multiply_complex(privateScratch[2 * i * factor_n + 2 * j], privateScratch[2 * i * factor_n + 2 * j + 1],
+                               re_multiplier, im_multiplier, privateScratch[2 * i * factor_n + 2 * j],
+                               privateScratch[2 * i * factor_n + 2 * j + 1]);
     }
   }
   PORTFFT_UNROLL
-  for (Idx i = 0; i < N; i++) {
-    wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, M, N, N * stride_out,
-                                privateScratch + 2 * N * M);
+  for (Idx i = 0; i < factor_n; i++) {
+    wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n,
+                                factor_n * stride_out, privateScratch + 2 * factor_n * factor_m);
   }
 }
 
