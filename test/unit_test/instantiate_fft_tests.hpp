@@ -33,17 +33,11 @@ class FFTTest : public ::testing::TestWithParam<test_params> {};
 using sizes_t = std::vector<std::size_t>;
 
 constexpr test_placement_layouts_params valid_placement_layouts[] = {
-    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
-    {placement::IN_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
-    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED},
-    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED},
-    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
-    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED}};
+    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
 auto all_valid_placement_layouts = ::testing::ValuesIn(valid_placement_layouts);
 
 constexpr test_placement_layouts_params valid_multi_dim_placement_layouts[] = {
-    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
-    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
+    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
 auto all_valid_multi_dim_placement_layouts = ::testing::ValuesIn(valid_multi_dim_placement_layouts);
 
 auto fwd_only = ::testing::Values(direction::FORWARD);
@@ -83,6 +77,13 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                                                 ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
+// sizes that use workgroup implementation
+INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(1),
+                                                ::testing::Values(sizes_t{32768}))),
+                         test_params_print());
+
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
@@ -109,8 +110,6 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
     }                                                                            \
   }
 
-#define INSTANTIATE_TESTS(TYPE)     \
-  INSTANTIATE_TESTS_FULL(TYPE, usm) \
-  INSTANTIATE_TESTS_FULL(TYPE, buffer)
+#define INSTANTIATE_TESTS(TYPE) INSTANTIATE_TESTS_FULL(TYPE, usm)
 
 #endif

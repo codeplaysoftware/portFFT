@@ -86,6 +86,37 @@ constexpr bool can_cast_safely(const InputType& x) {
   OutputType x_converted = static_cast<OutputType>(x);
   return (static_cast<InputType>(x_converted) == x);
 }
+
+template <typename F>
+IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+  IdxGlobal fact_1 = factor_size;
+  if (check_and_select_target_level(fact_1, transposed)) {
+    return fact_1;
+  }
+  if ((detail::factorize(fact_1) == 1)) {
+    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
+  }
+  do {
+    fact_1 = detail::factorize(fact_1);
+  } while (!check_and_select_target_level(fact_1));
+  std::cout << fact_1 << std::endl;
+  return fact_1;
+}
+
+template <typename F>
+void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+  if (detail::factorize(input_size) == 1) {
+    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
+  }
+  IdxGlobal temp = 1;
+  while (true) {
+    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+    if (input_size / temp == 1) {
+      break;
+    }
+  }
+}
+
 }  // namespace detail
 }  // namespace portfft
 #endif

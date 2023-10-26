@@ -36,6 +36,8 @@ constexpr static sycl::specialization_id<detail::apply_scale_factor> SpecConstAp
 
 constexpr static sycl::specialization_id<Idx> SubgroupFactorWISpecConst{};
 constexpr static sycl::specialization_id<Idx> SubgroupFactorSGSpecConst{};
+
+constexpr static sycl::specialization_id<level> GlobalSubImplSpecConst{};
 }  // namespace detail
 }  // namespace portfft
 #endif

@@ -245,14 +245,13 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& /*factors*/) {
+                      std::size_t length, const std::vector<Idx>& /*factors*/,
+                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
+                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/) {
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(static_cast<Idx>(length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(
-        detail::apply_scale_factor::APPLIED);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
   }
 };
 
