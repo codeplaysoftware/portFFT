@@ -261,7 +261,6 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
   // column-wise DFTs
-  // N, M, 1
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
