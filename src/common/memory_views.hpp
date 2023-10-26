@@ -46,9 +46,6 @@ struct offset_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(data); }
-
   ParentT data;
   OffsetT offset;
 
@@ -57,6 +54,9 @@ struct offset_view {
    * @param offset The offset to add to index look-ups.
    */
   constexpr offset_view(ParentT parent, OffsetT offset) noexcept : data(parent), offset(offset){};
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(data); }
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return data[offset + i]; }
@@ -93,17 +93,17 @@ struct padded_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return is_contiguous_view(data) && bank_lines_per_pad == 0;
-  }
-
   ParentT data;
   Idx bank_lines_per_pad;
 
   // Constructor: Create a view of a pointer or another view.
   constexpr padded_view(ParentT parent, Idx bank_lines_per_pad) noexcept
       : data(parent), bank_lines_per_pad(bank_lines_per_pad){};
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
+    return is_contiguous_view(data) && bank_lines_per_pad == 0;
+  }
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const {
@@ -113,20 +113,6 @@ struct padded_view {
     return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
   }
 };
-
-/**
- * Make a padded view from a pointer or another view.
- *
- * @tparam T The element type of the view.
- * @param parent A parent view or pointer to the memory to make a view of
- * @param BankLinesPerPad The padding space to be added after every `bank_lines_per_pad` groups of
- * `PORTFFT_N_LOCAL_BANKS` banks. 0 indicates no padding.
- * @return A memory view
- */
-template <typename T>
-PORTFFT_INLINE constexpr padded_view<T> make_padded_view(T parent, Idx bank_lines_per_pad) noexcept {
-  return padded_view<T>(parent, bank_lines_per_pad);
-}
 
 /** A view of memory with a function to remap indices.
  *
@@ -138,16 +124,16 @@ struct remapping_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return false;  // No way to know if the RemapFuncT is contiguous.
-  }
-
   ParentT data;
   RemapFuncT func;
 
   // Constructor: Create a view of a pointer or another view.
   constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
+
+  /// Is this view contiguous?
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
+    return false;  // No way to know if the RemapFuncT is contiguous.
+  }
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }

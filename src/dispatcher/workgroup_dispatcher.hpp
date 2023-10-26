@@ -113,7 +113,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   Idx factor_m = fft_size / factor_n;
   const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
   const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
-  auto loc_view = make_padded_view(loc, bank_lines_per_pad);
+  auto loc_view = padded_view(loc, bank_lines_per_pad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
   global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, 2 * (factor_m + factor_n));

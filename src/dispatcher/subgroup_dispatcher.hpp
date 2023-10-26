@@ -126,9 +126,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   }
 
   constexpr Idx BankLinesPerPad = 1;
-  auto loc_view = detail::make_padded_view(loc, BankLinesPerPad);
-  auto loc_load_modifier_view = detail::make_padded_view(loc_load_modifier, BankLinesPerPad);
-  auto loc_store_modifier_view = detail::make_padded_view(loc_store_modifier, BankLinesPerPad);
+  auto loc_view = detail::padded_view(loc, BankLinesPerPad);
+  auto loc_load_modifier_view = detail::padded_view(loc_load_modifier, BankLinesPerPad);
+  auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
   global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, n_reals_per_wi * factor_sg);

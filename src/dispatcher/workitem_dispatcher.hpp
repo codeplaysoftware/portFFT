@@ -118,9 +118,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx local_offset = n_reals * SubgroupSize * subgroup_id;
   constexpr Idx BankLinesPerPad = 1;
-  auto loc_view = detail::make_padded_view(loc, BankLinesPerPad);
-  auto loc_load_modifier_view = detail::make_padded_view(loc_load_modifier, BankLinesPerPad);
-  auto loc_store_modifier_view = detail::make_padded_view(loc_store_modifier, BankLinesPerPad);
+  auto loc_view = detail::padded_view(loc, BankLinesPerPad);
+  auto loc_load_modifier_view = detail::padded_view(loc_load_modifier, BankLinesPerPad);
+  auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {

@@ -78,7 +78,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
       } else {
         local[index_transform(j)] = vec[static_cast<int>(j)];
       }
-    };
+    }
   } else {
     vec_t vec;
     PORTFFT_UNROLL
@@ -89,7 +89,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
       } else {
         vec[static_cast<int>(j)] = local[index_transform(j)];
       }
-    };
+    }
     global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
   }
   return SgBlockCopyBlockSize;
@@ -194,13 +194,13 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct globa
       PORTFFT_UNROLL
       for (Idx j = 0; j < ChunkSize; j++) {
         local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)];
-      };
+      }
     } else {  // LOCAL_TO_GLOBAL
       vec_t to_store;
       PORTFFT_UNROLL
       for (Idx j = 0; j < ChunkSize; j++) {
         to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)];
-      };
+      }
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]) = to_store;
     }
   }
@@ -413,7 +413,7 @@ PORTFFT_INLINE void local2private(Idx num_elements_per_wi, detail::global_data_s
     Idx local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
-  };
+  }
 }
 
 /**
@@ -835,6 +835,6 @@ PORTFFT_INLINE void local_batchinter_batchinter_2_global_batchinter(detail::glob
   }
 }
 
-};  // namespace portfft
+}  // namespace portfft
 
 #endif

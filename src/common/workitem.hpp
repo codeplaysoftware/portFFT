@@ -125,13 +125,13 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx N, Idx M, Idx stri
       }();
       detail::multiply_complex(privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1], re_multiplier,
                                im_multiplier, privateScratch[2 * i * N + 2 * j], privateScratch[2 * i * N + 2 * j + 1]);
-    };
+    }
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < N; i++) {
     wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, M, N, N * stride_out,
                                 privateScratch + 2 * N * M);
-  };
+  }
 }
 
 /**
@@ -192,7 +192,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
   return n_complex * complex_size <= register_space;
 }
 
-};  // namespace detail
+}  // namespace detail
 
 /**
  * Calculates DFT using FFT algorithm. Can work in or out of place.
@@ -228,6 +228,6 @@ PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx
   }
 }
 
-};  // namespace portfft
+}  // namespace portfft
 
 #endif

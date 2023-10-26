@@ -163,7 +163,7 @@ __attribute__((always_inline)) inline void dimension_dft(
             twiddle_imag = -twiddle_imag;
           }
           multiply_complex(priv[2 * i], priv[2 * i + 1], twiddle_real, twiddle_imag, priv[2 * i], priv[2 * i + 1]);
-        };
+        }
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * fact_wi);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
@@ -171,7 +171,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         for (Idx i = 0; i < fact_wi; i++) {
           priv[2 * i] *= scaling_factor;
           priv[2 * i + 1] *= scaling_factor;
-        };
+        }
         global_data.log_dump_private("data in registers after scaling:", priv, 2 * fact_wi);
       }
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -185,7 +185,7 @@ __attribute__((always_inline)) inline void dimension_dft(
               *reinterpret_cast<const sycl::vec<T, 2>*>(&load_modifier_data[base_offset]);
           multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
                            priv[2 * idx + 1]);
-        };
+        }
       }
     }
     T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
@@ -204,7 +204,7 @@ __attribute__((always_inline)) inline void dimension_dft(
               *reinterpret_cast<const sycl::vec<T, 2>*>(&store_modifier_data[base_offset]);
           multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
                            priv[2 * idx + 1]);
-        };
+        }
       }
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
