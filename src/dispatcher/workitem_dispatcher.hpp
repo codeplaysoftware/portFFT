@@ -173,7 +173,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         }
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private(n_reals, global_data, loc_view, priv, subgroup_local_id, n_reals, local_offset);
+        local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -197,12 +197,12 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         for (Idx idx = 0; idx < n_reals; idx += 2) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
-        };
+        }
       }
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if (LayoutOut == detail::layout::PACKED) {
-        private2local(n_reals, global_data, priv, loc_view, subgroup_local_id, n_reals, local_offset);
+        private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
       } else {
         PORTFFT_UNROLL
         for (IdxGlobal j = 0; j < fft_size; j++) {

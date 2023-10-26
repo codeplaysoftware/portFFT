@@ -94,8 +94,8 @@ void test() {
           group_barrier(it.get_group());
           portfft::global2local<detail::level::WORKGROUP, sg_size>(global_data, a_dev_work, loc1_view, N * wg_size);
           group_barrier(it.get_group());
-          portfft::local2private(N, global_data, loc1_view, priv, local_id, N);
-          portfft::private2local(N, global_data, priv, loc2_view, local_id, N);
+          portfft::local2private(global_data, N, loc1_view, priv, local_id, N);
+          portfft::private2local(global_data,N,  priv, loc2_view, local_id, N);
           group_barrier(it.get_group());
           portfft::local2global<detail::level::WORKGROUP, sg_size>(global_data, loc2_view, b_dev_work, N * wg_size);
           group_barrier(it.get_group());

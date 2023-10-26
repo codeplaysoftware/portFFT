@@ -393,8 +393,8 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  *
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
- * @param num_elements_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param local View of local memory
  * @param priv View of private memory
  * @param local_id local id of work item
@@ -403,7 +403,7 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * @param local_offset offset to the local pointer
  */
 template <typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private(Idx num_elements_per_wi, detail::global_data_struct global_data, LocalT local,
+PORTFFT_INLINE void local2private( detail::global_data_struct global_data, Idx num_elements_per_wi,LocalT local,
                                   PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "num_elements_per_wi", num_elements_per_wi, "local_id", local_id, "stride",
@@ -494,8 +494,8 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
  *
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memorys
- * @param num_elemets_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
+ * @param num_elemets_per_wi Number of elements to copy by each work item
  * @param priv A view of private memory
  * @param local A view of local memory
  * @param local_id local id of work item
@@ -504,7 +504,7 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
  * @param local_offset offset to the local base index
  */
 template <typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local(Idx num_elemets_per_wi, detail::global_data_struct global_data, PrivT priv,
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, Idx num_elemets_per_wi, PrivT priv,
                                   LocalT local, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
@@ -525,8 +525,8 @@ PORTFFT_INLINE void private2local(Idx num_elemets_per_wi, detail::global_data_st
  * @tparam PrivT The type of the private memory view
  * @tparam DestT The type of the destination memory view
  * @tparam TDstIdx type of destination index
- * @param num_elements_per_wi Number of elements to copy by each work item
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param priv View of private memory
  * @param destination View of destination - local or global memory
  * @param local_id local id of work item
@@ -535,7 +535,7 @@ PORTFFT_INLINE void private2local(Idx num_elemets_per_wi, detail::global_data_st
  * @param destination_offset offset to the destination pointer
  */
 template <typename PrivT, typename DestT, typename TDstIdx>
-PORTFFT_INLINE void store_transposed(Idx num_elements_per_wi, detail::global_data_struct global_data, PrivT priv,
+PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi, PrivT priv,
                                      DestT destination, Idx local_id, Idx workers_in_group,
                                      TDstIdx destination_offset = 0) {
   using real_t = detail::get_element_remove_cv_t<PrivT>;
@@ -591,7 +591,7 @@ PORTFFT_INLINE void store_transposed(Idx num_elements_per_wi, detail::global_dat
  * @param offset_3 Outermost offset
  */
 template <detail::transfer_direction TransferDirection, typename TDstIdx, typename InputT, typename DestT>
-PORTFFT_INLINE void transfer_strided(Idx num_complex_elements, detail::global_data_struct global_data, InputT input,
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Idx num_complex_elements, InputT input,
                                      DestT output, TDstIdx stride_1, TDstIdx offset_1, TDstIdx stride_2,
                                      TDstIdx offset_2, TDstIdx stride_3, TDstIdx offset_3) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<InputT>, detail::get_element_t<DestT>>,
@@ -640,10 +640,10 @@ PORTFFT_INLINE void transfer_strided(Idx num_complex_elements, detail::global_da
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local_transposed(Idx num_elements_per_wi, detail::global_data_struct global_data,
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data,Idx num_elements_per_wi, 
                                              PrivT priv, LocalT local, Idx thread_id, Idx num_workers, Idx col_num,
                                              Idx stride) {
-  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL>(num_elements_per_wi, global_data, priv, local, 1, 0,
+  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL>(global_data, num_elements_per_wi, priv, local, 1, 0,
                                                                  2 * stride, 2 * col_num, num_workers, thread_id);
 }
 
@@ -665,10 +665,10 @@ PORTFFT_INLINE void private2local_transposed(Idx num_elements_per_wi, detail::gl
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private_transposed(Idx num_elements_per_wi, detail::global_data_struct global_data,
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data,Idx num_elements_per_wi, 
                                              LocalT local, PrivT priv, Idx thread_id, Idx col_num, Idx stride) {
   transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE>(
-      num_elements_per_wi, global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * num_elements_per_wi);
+      global_data, num_elements_per_wi, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * num_elements_per_wi);
 }
 
 /**
