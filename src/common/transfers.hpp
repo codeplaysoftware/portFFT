@@ -403,7 +403,7 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * @param local_offset offset to the local pointer
  */
 template <typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private( detail::global_data_struct global_data, Idx num_elements_per_wi,LocalT local,
+PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx num_elements_per_wi, LocalT local,
                                   PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "num_elements_per_wi", num_elements_per_wi, "local_id", local_id, "stride",
@@ -579,8 +579,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Idx
  * @tparam InputT The type of the input memory view
  * @tparam DestT The type of the dest memory view
  *
- * @param num_complex_elements Number of complex elements to transfer between the two.
  * @param global_data global data for the kernel
+ * @param num_complex_elements Number of complex elements to transfer between the two.
  * @param input Input view
  * @param output Output view
  * @param stride_1 Innermost stride
@@ -630,8 +630,8 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Idx
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
- * @param num_elements_per_wi Elements per workitem
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Elements per workitem
  * @param priv View of private memory
  * @param local View of local memory
  * @param thread_id Id of the working thread for the FFT
@@ -640,7 +640,7 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Idx
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data,Idx num_elements_per_wi, 
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi,
                                              PrivT priv, LocalT local, Idx thread_id, Idx num_workers, Idx col_num,
                                              Idx stride) {
   transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL>(global_data, num_elements_per_wi, priv, local, 1, 0,
@@ -656,8 +656,8 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
- * @param num_elements_per_wi Elements per workitem
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Elements per workitem
  * @param local View of local memory
  * @param priv View of private memory
  * @param thread_id ID of the working thread in FFT
@@ -665,7 +665,7 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
  * @param stride Inner most dimension of the reinterpreted matrix
  */
 template <typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data,Idx num_elements_per_wi, 
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi,
                                              LocalT local, PrivT priv, Idx thread_id, Idx col_num, Idx stride) {
   transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE>(
       global_data, num_elements_per_wi, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * num_elements_per_wi);
