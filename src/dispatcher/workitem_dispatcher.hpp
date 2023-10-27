@@ -110,8 +110,15 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   const Idx n_reals = 2 * fft_size;
 
+#ifdef PORTFFT_USE_SCLA
+  T wi_private_scratch[detail::SpecConstWIScratchSize];
+  T priv_scla[detail::SpecConstNumRealsPerFFT];
+  // Decay the scla to T* to avoid assert when it is decayed to const T*
+  T* priv = priv_scla;
+#else
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   T priv[2 * MaxComplexPerWI];
-  T wi_priv_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+#endif
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
@@ -183,7 +190,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         detail::apply_modifier(fft_size, priv, loc_load_modifier_view,
                                static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_priv_scratch);
+      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
@@ -274,7 +281,10 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/) {
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(static_cast<Idx>(length));
+    const Idx casted_length = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
         detail::elementwise_multiply::NOT_APPLIED);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
