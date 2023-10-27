@@ -142,6 +142,10 @@ __attribute__((always_inline)) inline void dimension_dft(LocalT loc, T* loc_twid
         transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, FactWi>(
             global_data, loc, priv, 2 * max_num_batches_in_local_mem, 2 * batch_num_in_local, StrideWithinDFT,
             j_inner + j_outer * OuterStride, 1, wi_id_in_fft * FactWi);
+        /*copy_wi<2>(global_data, strided_view(loc, 
+                                            std::array{1, StrideWithinDFT, 2 * max_num_batches_in_local_mem}, 
+                                            std::array{wi_id_in_fft * FactWi, j_inner + j_outer * OuterStride, 2 * batch_num_in_local}), 
+                                strided_view(priv, 2), FactWi);*/
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns

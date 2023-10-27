@@ -31,6 +31,23 @@
 
 namespace portfft {
 
+/*template<typename ParentT, std::size_t size>
+struct vector_view{
+  using element_type = get_element_t<ParentT>;
+  ParentT parent;
+  md_view(ParentT parent) : 
+      parent(parent) {}
+
+  sycl::vec<element_type, size> operator[](Idx index){
+    sycl::vec<element_type, size> res; //TODO assign to this?
+    detail::unrolled_loop<0, NDim, 1>([&](const std::size_t i) PORTFFT_INLINE {
+      res[i] = parent[index * size + i];
+    });
+    return res;
+  }
+}*/
+
+
 //NDim is std::size_t to match std::array
 template<typename ParentT, typename TIdx, std::size_t NDim>
 struct md_view{
@@ -64,7 +81,7 @@ struct md_view{
   }
 
   template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
-  auto& operator[](TIdx index){
+  PORTFFT_INLINE auto& operator[](TIdx index){
     return parent[cumulative_offset + index];
   }
 };
@@ -72,40 +89,94 @@ struct md_view{
 //NDim is std::size_t to match std::array
 template<typename ParentT, typename TIdx, std::size_t NDim>
 struct strided_view{
+  using element_type = detail::get_element_t<ParentT>;
+  using reference = element_type&;
   //using ParentT = ParentT_;
   //static constexpr int NDim = NDim_;
   ParentT parent;
-  std::array<TIdx, NDim> offsets;
   std::array<TIdx, NDim> sizes; // of the array, NOT the copy
+  std::array<TIdx, NDim> offsets;
 
-  strided_view(ParentT parent, const std::array<TIdx, NDim>& offsets, const std::array<TIdx, NDim>& sizes) : 
-      parent(parent), offsets(offsets), sizes(sizes) {}
+  strided_view(ParentT parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) : 
+      parent(parent), sizes(sizes), offsets(offsets) {}
 
-  auto& operator[](TIdx index){
-    detail::unrolled_loop<0, NDim, 1>([&](const Idx i) PORTFFT_INLINE {
+  strided_view(ParentT parent, const TIdx size, const TIdx offset = 0) : 
+      parent(parent), sizes{size}, offsets{offset} {}
+
+  PORTFFT_INLINE constexpr reference operator[](TIdx index) const {
+    #pragma clang loop unroll(full)
+    for(std::size_t i = 0; i < NDim; i++){
       index = index * sizes[i] + offsets[i];
-    });
+    }
     return parent[index];
   }
 };
+//deduction guides
+template<typename ParentT, typename TIdx>
+strided_view(ParentT, TIdx) -> strided_view<ParentT, TIdx, 1>;
+template<typename ParentT, typename TIdx>
+strided_view(ParentT, TIdx, TIdx) -> strided_view<ParentT, TIdx, 1>;
+
+template<int VectorSize = 1, typename View1, typename View2, typename TIdx>
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, TIdx size){
+  using Scalar = detail::get_element_t<View1>;
+  //using Vec = sycl::vec<Scalar,VectorSize>;
+  #pragma clang loop unroll(full)
+  for(TIdx i = 0; i < size; i++){
+    if constexpr(VectorSize == 1){
+      //TODO sensible logging
+      global_data.log_message(__func__, "from", &src[i] - &src[0], "to", &dst[i] - &dst[0], "value", src[i]);
+      dst[i] = src[i];
+    } else{
+      Scalar* src_start = &src[i];
+      Scalar* dst_start = &dst[i];
+      #pragma clang loop unroll(full)
+      for(TIdx j = 0; j < VectorSize; j++){
+        global_data.log_message(__func__, "from", &src_start[j] - &src[0], "to", &dst_start[j] - &dst[0], "value", src_start[j]);
+        dst_start[j] = src_start[j];
+      }
+    }
+  }
+}
 
 template<typename View1, typename View2, typename TIdx>
-static void copy_wi(View1 src, View2 dst, TIdx size){
-  for(TIdx i = 0; i < size; i++){
+PORTFFT_INLINE void copy_group(Idx group_size, Idx local_id, View1 src, View2 dst, TIdx size){
+  #pragma clang loop unroll(full)
+  for(TIdx i = local_id; i < size; i+=group_size){
     dst[i] = src[i];
   }
 }
 
 template<typename ParentT1, typename ParentT2, typename TIdx, std::size_t NDim>
-static void copy_wi(md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
+PORTFFT_INLINE void copy_wi(md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
   if constexpr(NDim == 0){
     dst[0] = src[0];
   } else{
+    #pragma clang loop unroll(full)
     for(TIdx i = 0; i < sizes[0]; i++){
       if constexpr(NDim == 1){
         copy_wi<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {});
       } else{
         copy_wi<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {sizes.begin()+1, sizes.end()});
+      }
+    }
+  }
+}
+
+template<typename ParentT1, typename ParentT2, typename TIdx, std::size_t NDim>
+PORTFFT_INLINE void copy_group(Idx group_size, Idx local_id, md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
+  if constexpr(NDim == 0){
+    dst[0] = src[0];
+  } else{
+    if constexpr(NDim == 1){
+      #pragma clang loop unroll(full)
+      for(TIdx i = local_id; i < sizes[0]; i+=group_size){
+        copy_group<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {});
+      } 
+    }else{
+      #pragma clang loop unroll(full)
+      for(TIdx i = 0; i < sizes[0]; i++){
+        copy_group<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {sizes.begin()+1, sizes.end()});
       }
     }
   }
@@ -484,15 +555,19 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
                                 "local_offset", local_offset);
-  /*detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  //detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  #pragma clang loop unroll(full)
+  for(Idx i = 0; i < NumElemsPerWI; i++){
     Idx local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
-  });*/
+  }
+  //});
   /*copy_wi(md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
           md_view{priv, std::array<Idx, 1>{0}}, 
           std::array<Idx, 1>{NumElemsPerWI});*/
-  copy_wi(detail::offset_view{local, local_offset + local_id * stride}, priv, NumElemsPerWI);
+  //copy_wi(global_data, detail::offset_view{local, local_offset + local_id * stride}, priv, NumElemsPerWI);
+  
 }
 
 /**
@@ -587,14 +662,14 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT 
                                   Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
-  /*detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
     global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
     local[local_offset + local_id * stride + i] = priv[i];
-  });*/
+  });
   /*copy_wi(md_view{priv, std::array<Idx, 1>{0}}, 
           md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
           std::array<Idx, 1>{NumElemsPerWI});*/
-  copy_wi(priv, detail::offset_view{local, local_offset + local_id * stride}, NumElemsPerWI);
+  //copy_wi(global_data, priv, detail::offset_view{local, local_offset + local_id * stride}, NumElemsPerWI);
 }
 
 /**
@@ -747,8 +822,10 @@ PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_d
 template <Idx NumElementsPerWI, typename LocalT, typename PrivT>
 PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, LocalT local, PrivT priv,
                                              Idx thread_id, Idx col_num, Idx stride) {
-  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, NumElementsPerWI>(
-      global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI);
+  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, NumElementsPerWI>(global_data, local, priv, 
+      1,          0, 
+      2 * stride, 2 * col_num, 
+      1,          thread_id * NumElementsPerWI);
 }
 
 /**

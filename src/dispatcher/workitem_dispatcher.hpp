@@ -170,7 +170,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         });
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private<NReals>(global_data, loc_view, priv, subgroup_local_id, NReals, local_offset);
+        //local2private<NReals>(global_data, loc_view, priv, subgroup_local_id, NReals, local_offset);
+        copy_wi(global_data, detail::offset_view{loc_view, local_offset + subgroup_local_id * NReals}, priv, NReals);
       }
       global_data.log_dump_private("data loaded in registers:", priv, NReals);
       if constexpr (MultiplyOnLoad == detail::elementwise_multiply::APPLIED) {
@@ -198,7 +199,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, NReals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if constexpr (LayoutOut == detail::layout::PACKED) {
-        private2local<NReals>(global_data, priv, loc_view, subgroup_local_id, NReals, local_offset);
+        //private2local<NReals>(global_data, priv, loc_view, subgroup_local_id, NReals, local_offset);
+        copy_wi(global_data, priv, detail::offset_view{loc_view, local_offset + subgroup_local_id * NReals}, NReals);
       } else {
         detail::unrolled_loop<0, N, 1>([&](IdxGlobal j) PORTFFT_INLINE {
           using T_vec = sycl::vec<T, 2>;
