@@ -55,40 +55,41 @@ template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize,
           typename LocalViewT>
 PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
                                               IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
-  static_assert(IsContiguousViewV<GlobalViewT>, "Expecting contiguous global view");
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
   using vec_t = sycl::vec<real_t, ChunkSize>;
 
   // Is the local memory suitable for using Intel's subgroup copy extensions with?
   // NB: This assumes any offset aligns with padding in a padded view
-  constexpr bool IsSgContiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || IsContiguousViewV<LocalViewT>;
+  const bool is_sg_contiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || is_contiguous_view(local);
   const char* func_name = __func__;
   global_data.log_message_subgroup(func_name, "SgBlockCopyBlockSize", SgBlockCopyBlockSize, "global_offset",
-                                   global_offset, "local_offset", local_offset, "IsSgContiguous", IsSgContiguous);
+                                   global_offset, "local_offset", local_offset, "is_sg_contiguous", is_sg_contiguous);
   Idx local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   // A helper function to generate indexes in local memory.
   auto index_transform = [=](Idx i) PORTFFT_INLINE { return local_offset + i * SubgroupSize + local_id; };
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
-    detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
-      if constexpr (IsSgContiguous) {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < ChunkSize; j++) {
+      if (is_sg_contiguous) {
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
                              vec[static_cast<int>(j)]);
       } else {
         local[index_transform(j)] = vec[static_cast<int>(j)];
       }
-    });
+    }
   } else {
     vec_t vec;
-    detail::unrolled_loop<0, ChunkSize, 1>([&](Idx j) PORTFFT_INLINE {
-      if constexpr (IsSgContiguous) {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < ChunkSize; j++) {
+      if (is_sg_contiguous) {
         vec[static_cast<int>(j)] =
             global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]));
       } else {
         vec[static_cast<int>(j)] = local[index_transform(j)];
       }
-    });
+    }
     global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
   }
   return SgBlockCopyBlockSize;
@@ -190,12 +191,16 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct globa
     if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
       vec_t loaded;
       loaded = *reinterpret_cast<const vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]);
-      detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)]; });
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < ChunkSize; j++) {
+        local[index_transform(j, loop_idx)] = loaded[static_cast<int>(j)];
+      }
     } else {  // LOCAL_TO_GLOBAL
       vec_t to_store;
-      detail::unrolled_loop<0, ChunkSize, 1>(
-          [&](Idx j) PORTFFT_INLINE { to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)]; });
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < ChunkSize; j++) {
+        to_store[static_cast<int>(j)] = local[index_transform(j, loop_idx)];
+      }
       *reinterpret_cast<vec_t*>(&global[global_offset + wi_offset + block_size * loop_idx]) = to_store;
     }
   }
@@ -301,7 +306,6 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_floating_point_v<real_t>, "Expecting floating-point data type");
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Type mismatch between global and local");
-  static_assert(IsContiguousViewV<GlobalViewT>, "Expecting a global view that is contiguous in memory");
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset);
   static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
@@ -387,28 +391,29 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * Copies data from local memory to private memory. Each work item gets a chunk
  * of consecutive values from local memory.
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param local View of local memory
  * @param priv View of private memory
  * @param local_id local id of work item
  * @param stride stride between two chunks assigned to consecutive work items.
- * Should be >= NumElemsPerWI
+ * Should be >= num_elements_per_wi
  * @param local_offset offset to the local pointer
  */
-template <Idx NumElemsPerWI, typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, LocalT local, PrivT priv, Idx local_id,
-                                  Idx stride, Idx local_offset = 0) {
+template <typename LocalT, typename PrivT>
+PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx num_elements_per_wi, LocalT local,
+                                  PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
-  global_data.log_message_local(func_name, "NumElemsPerWI", NumElemsPerWI, "local_id", local_id, "stride", stride,
-                                "local_offset", local_offset);
-  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  global_data.log_message_local(func_name, "num_elements_per_wi", num_elements_per_wi, "local_id", local_id, "stride",
+                                stride, "local_offset", local_offset);
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < num_elements_per_wi; i++) {
     Idx local_idx = local_offset + local_id * stride + i;
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
-  });
+  }
 }
 
 /**
@@ -485,12 +490,12 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
 /**
  * Copies data from private memory to local memory. Each work item writes a
  * chunk of consecutive values to local memory.
- * local[local_offset + local_id * stride + i] = priv[i] for i in [0, NumElemsPerWI)
+ * local[local_offset + local_id * stride + i] = priv[i] for i in [0, num_elemets_per_wi)
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memorys
  * @param global_data global data for the kernel
+ * @param num_elemets_per_wi Number of elements to copy by each work item
  * @param priv A view of private memory
  * @param local A view of local memory
  * @param local_id local id of work item
@@ -498,15 +503,16 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
  * Should be >= NumElemsPerWI
  * @param local_offset offset to the local base index
  */
-template <Idx NumElemsPerWI, typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT priv, LocalT local, Idx local_id,
-                                  Idx stride, Idx local_offset = 0) {
+template <typename PrivT, typename LocalT>
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, Idx num_elemets_per_wi, PrivT priv,
+                                  LocalT local, Idx local_id, Idx stride, Idx local_offset = 0) {
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
-  detail::unrolled_loop<0, NumElemsPerWI, 1>([&](Idx i) PORTFFT_INLINE {
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < num_elemets_per_wi; i++) {
     global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
     local[local_offset + local_id * stride + i] = priv[i];
-  });
+  }
 }
 
 /**
@@ -516,11 +522,11 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT 
  * destination[destination_offset + local_id * 2 + i * workers_in_group + 1] := priv[i + 1]
  * for i in [0, NumElemsPerWI)
  *
- * @tparam NumElemsPerWI Number of elements to copy by each work item
  * @tparam PrivT The type of the private memory view
  * @tparam DestT The type of the destination memory view
  * @tparam TDstIdx type of destination index
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Number of elements to copy by each work item
  * @param priv View of private memory
  * @param destination View of destination - local or global memory
  * @param local_id local id of work item
@@ -528,9 +534,10 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, PrivT 
  * less than the group size)
  * @param destination_offset offset to the destination pointer
  */
-template <Idx NumElemsPerWI, typename PrivT, typename DestT, typename TDstIdx>
-PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, PrivT priv, DestT destination,
-                                     Idx local_id, Idx workers_in_group, TDstIdx destination_offset = 0) {
+template <typename PrivT, typename DestT, typename TDstIdx>
+PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi, PrivT priv,
+                                     DestT destination, Idx local_id, Idx workers_in_group,
+                                     TDstIdx destination_offset = 0) {
   using real_t = detail::get_element_remove_cv_t<PrivT>;
   static_assert(std::is_same_v<real_t, detail::get_element_t<DestT>>,
                 "Type mismatch between private and destination views");
@@ -541,8 +548,8 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
   using T_vec = sycl::vec<real_t, VecSize>;
   const T_vec* priv_vec = reinterpret_cast<const T_vec*>(priv);
   T_vec* destination_vec = reinterpret_cast<T_vec*>(&destination[0]);
-
-  detail::unrolled_loop<0, NumElemsPerWI, 2>([&](Idx i) PORTFFT_INLINE {
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < num_elements_per_wi; i += 2) {
     TDstIdx destination_idx = destination_offset + static_cast<TDstIdx>(local_id * 2 + i * workers_in_group);
     global_data.log_message(func_name, "from", i, "to", destination_idx, "value", priv[i]);
     global_data.log_message(func_name, "from", i + 1, "to", destination_idx + 1, "value", priv[i + 1]);
@@ -555,7 +562,7 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
       destination[destination_idx] = priv[i];
       destination[destination_idx + 1] = priv[i + 1];
     }
-  });
+  }
 }
 
 /**
@@ -565,15 +572,15 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
  * output[out_idx] = input[in_idx]
  * output[out_idx + 1] = input[in_idx + 1]
  * where out_idx and in_idx are chosen according to TransferDirection
- * for i in [0, NumComplexElements) where loc is indexed repecting padding.
+ * for i in [0, num_complex_elements) where loc is indexed repecting padding.
  *
  * @tparam TransferDirection Direction of Transfer
- * @tparam NumComplexElements Number of complex elements to transfer between the two.
  * @tparam TDstIdx type of destination index
  * @tparam InputT The type of the input memory view
  * @tparam DestT The type of the dest memory view
  *
  * @param global_data global data for the kernel
+ * @param num_complex_elements Number of complex elements to transfer between the two.
  * @param input Input view
  * @param output Output view
  * @param stride_1 Innermost stride
@@ -583,17 +590,17 @@ PORTFFT_INLINE void store_transposed(detail::global_data_struct global_data, Pri
  * @param stride_3 Outermost stride
  * @param offset_3 Outermost offset
  */
-template <detail::transfer_direction TransferDirection, Idx NumComplexElements, typename TDstIdx, typename InputT,
-          typename DestT>
-PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, InputT input, DestT output,
-                                     TDstIdx stride_1, TDstIdx offset_1, TDstIdx stride_2, TDstIdx offset_2,
-                                     TDstIdx stride_3, TDstIdx offset_3) {
+template <detail::transfer_direction TransferDirection, typename TDstIdx, typename InputT, typename DestT>
+PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Idx num_complex_elements, InputT input,
+                                     DestT output, TDstIdx stride_1, TDstIdx offset_1, TDstIdx stride_2,
+                                     TDstIdx offset_2, TDstIdx stride_3, TDstIdx offset_3) {
   static_assert(std::is_same_v<detail::get_element_remove_cv_t<InputT>, detail::get_element_t<DestT>>,
                 "Type mismatch between local and private views");
   const char* func_name = __func__;
   global_data.log_message_local(__func__, "stride_1", stride_1, "offset_1", offset_1, "stride_2", stride_2, "offset_2",
                                 offset_2, "stride_3", stride_3, "offset_3", offset_3);
-  detail::unrolled_loop<0, NumComplexElements, 1>([&](const Idx j) PORTFFT_INLINE {
+  PORTFFT_UNROLL
+  for (Idx j = 0; j < num_complex_elements; j++) {
     TDstIdx base_offset = stride_1 * (stride_2 * static_cast<TDstIdx>((j * stride_3 + offset_3)) + offset_2) + offset_1;
     if constexpr (TransferDirection == detail::transfer_direction::LOCAL_TO_PRIVATE) {
       global_data.log_message(func_name, "from", base_offset, "to", 2 * j, "value", input[base_offset]);
@@ -611,20 +618,20 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Inp
       output[base_offset] = input[2 * j];
       output[base_offset + 1] = input[2 * j + 1];
     }
-  });
+  }
 }
 
 /**
  * Views the data in the local memory as an NxM matrix, and stores data from the private memory along the column:
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num] := priv[i]
  * loc[2 * stride * (num_workers * i + thread_id) + 2 * col_num + 1] := priv[i + 1]
- * for i in [0, NumElementsPerWI).
+ * for i in [0, num_elements_per_wi).
  *
- * @tparam NumElementsPerWI Elements per workitem
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Elements per workitem
  * @param priv View of private memory
  * @param local View of local memory
  * @param thread_id Id of the working thread for the FFT
@@ -632,35 +639,36 @@ PORTFFT_INLINE void transfer_strided(detail::global_data_struct global_data, Inp
  * @param col_num Column number in which the data will be stored
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <Idx NumElementsPerWI, typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, PrivT priv, LocalT local,
-                                             Idx thread_id, Idx num_workers, Idx col_num, Idx stride) {
-  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL, NumElementsPerWI>(
-      global_data, priv, local, 1, 0, 2 * stride, 2 * col_num, num_workers, thread_id);
+template <typename PrivT, typename LocalT>
+PORTFFT_INLINE void private2local_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi,
+                                             PrivT priv, LocalT local, Idx thread_id, Idx num_workers, Idx col_num,
+                                             Idx stride) {
+  transfer_strided<detail::transfer_direction::PRIVATE_TO_LOCAL>(global_data, num_elements_per_wi, priv, local, 1, 0,
+                                                                 2 * stride, 2 * col_num, num_workers, thread_id);
 }
 
 /**
  * Views the data in the local memory as an NxM matrix, and loads a column into the private memory
- * priv[2 * i] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num]
- * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * NumElementsPerWI) + 2 * col_num + 1]
- * for i in [0, NumElementsPerWI)
+ * priv[2 * i] := loc[2 * stride * (i + thread_id * num_elements_per_wi) + 2 * col_num]
+ * priv[2 * i + 1] := loc[2 * stride * (i + thread_id * num_elements_per_wi) + 2 * col_num + 1]
+ * for i in [0, num_elements_per_wi)
  *
- * @tparam NumElementsPerWI Elements per workitem
  * @tparam PrivT The type of view of private memory
  * @tparam LocalT The type of view of local memory
  *
  * @param global_data global data for the kernel
+ * @param num_elements_per_wi Elements per workitem
  * @param local View of local memory
  * @param priv View of private memory
  * @param thread_id ID of the working thread in FFT
  * @param col_num Column number which is to be loaded
  * @param stride Inner most dimension of the reinterpreted matrix
  */
-template <Idx NumElementsPerWI, typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, LocalT local, PrivT priv,
-                                             Idx thread_id, Idx col_num, Idx stride) {
-  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, NumElementsPerWI>(
-      global_data, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * NumElementsPerWI);
+template <typename LocalT, typename PrivT>
+PORTFFT_INLINE void local2private_transposed(detail::global_data_struct global_data, Idx num_elements_per_wi,
+                                             LocalT local, PrivT priv, Idx thread_id, Idx col_num, Idx stride) {
+  transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE>(
+      global_data, num_elements_per_wi, local, priv, 1, 0, 2 * stride, 2 * col_num, 1, thread_id * num_elements_per_wi);
 }
 
 /**
@@ -827,6 +835,6 @@ PORTFFT_INLINE void local_batchinter_batchinter_2_global_batchinter(detail::glob
   }
 }
 
-};  // namespace portfft
+}  // namespace portfft
 
 #endif

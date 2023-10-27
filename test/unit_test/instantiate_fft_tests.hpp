@@ -95,8 +95,8 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_multi_dim_placement_layouts, both_directions, ::testing::Values(1, 3),
-                             ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048}, sizes_t{2, 3, 6},
-                                               sizes_t{2, 3, 2, 3}))),
+                             ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
+                                               sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
                          test_params_print());
 
 #define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                     \

@@ -127,6 +127,17 @@ PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, con
   output_imag = input_real * multiplier_imag + input_imag * multiplier_real;
 }
 
-};  // namespace portfft::detail
+/**
+ * Log2 of an Idx
+ * @param x The value to get log2 of. Must be more than 0.
+ */
+PORTFFT_INLINE constexpr Idx int_log2(Idx x) {
+  Idx y = 0;
+  for (; x > 1; x /= 2) {
+    ++y;
+  }
+  return y;
+}
+}  // namespace portfft::detail
 
 #endif
