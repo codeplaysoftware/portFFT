@@ -107,7 +107,13 @@ __attribute__((always_inline)) inline void dimension_dft(
   // id of the work-item in the fft
   const Idx wi_id_in_fft = static_cast<Idx>(global_data.sg.get_local_linear_id()) % fact_sg;
 
+#ifdef PORTFFT_USE_SCLA
+  T wi_private_scratch[detail::SpecConstWIScratchSize];
+  T priv[detail::SpecConstNumRealsPerFFT];
+#else
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   T priv[2 * MaxComplexPerWI];
+#endif
 
   const Idx begin = static_cast<Idx>(global_data.sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
   const Idx step = num_sgs * ffts_per_sg;
@@ -188,7 +194,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
       }
     }
-    T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
 
     if (working) {
