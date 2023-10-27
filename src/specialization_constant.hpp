@@ -18,33 +18,22 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_DEFINES_HPP
-#define PORTFFT_DEFINES_HPP
+#ifndef PORTFFT_SPECIALIZATION_CONSTANT_HPP
+#define PORTFFT_SPECIALIZATION_CONSTANT_HPP
 
-#include <cstdint>
-
-#ifdef PORTFFT_LOG
-#define PORTFFT_INLINE __attribute__((noinline))
-#else
-#define PORTFFT_INLINE __attribute__((always_inline))
-#endif
-
-#ifndef PORTFFT_N_LOCAL_BANKS
-#define PORTFFT_N_LOCAL_BANKS 32
-#endif
-
-#ifndef PORTFFT_UNROLL
-#define PORTFFT_UNROLL _Pragma("clang loop unroll(full)")
-#endif
-
-static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
-              "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
+#include <defines.hpp>
+#include <enums.hpp>
+#include <sycl/sycl.hpp>
 
 namespace portfft {
+namespace detail {
+constexpr static sycl::specialization_id<Idx> SpecConstFftSize{};
+constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnLoad{};
+constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnStore{};
+constexpr static sycl::specialization_id<detail::apply_scale_factor> SpecConstApplyScaleFactor{};
 
-using Idx = std::int32_t;
-using IdxGlobal = std::int64_t;
-
+constexpr static sycl::specialization_id<Idx> SubgroupFactorWISpecConst{};
+constexpr static sycl::specialization_id<Idx> SubgroupFactorSGSpecConst{};
+}  // namespace detail
 }  // namespace portfft
-
 #endif

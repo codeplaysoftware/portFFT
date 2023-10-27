@@ -54,6 +54,17 @@ void test_descriptor_distance() {
   EXPECT_EQ(desc.get_distance(portfft::direction::BACKWARD), bwd_distance);
 }
 
+void test_descriptor_offsets() {
+  std::size_t fwd_offset = 2;
+  std::size_t bwd_offset = 3;
+  portfft::descriptor<Scalar, Domain> desc({2, 3});
+  desc.number_of_transforms = 2;
+  desc.forward_offset = fwd_offset;
+  desc.backward_offset = bwd_offset;
+  EXPECT_EQ(desc.get_offset(portfft::direction::FORWARD), fwd_offset);
+  EXPECT_EQ(desc.get_offset(portfft::direction::BACKWARD), bwd_offset);
+}
+
 void test_descriptor_scale() {
   Scalar fwd_scale = 2.f;
   Scalar bwd_scale = 3.f;
@@ -77,12 +88,16 @@ void test_descriptor_buffer_count() {
   std::vector<std::size_t> bwd_strides{2, 4};
   std::size_t fwd_distance = 15;
   std::size_t bwd_distance = 1;
+  std::size_t fwd_offset = 3;
+  std::size_t bwd_offset = 5;
   portfft::descriptor<Scalar, Domain> desc(lengths);
   desc.number_of_transforms = batch_size;
   desc.forward_strides = fwd_strides;
   desc.backward_strides = bwd_strides;
   desc.forward_distance = fwd_distance;
   desc.backward_distance = bwd_distance;
+  desc.forward_offset = fwd_offset;
+  desc.backward_offset = bwd_offset;
 
   std::size_t fwd_input_count = desc.get_input_count(portfft::direction::FORWARD);
   std::size_t fwd_output_count = desc.get_output_count(portfft::direction::FORWARD);
@@ -90,8 +105,8 @@ void test_descriptor_buffer_count() {
   std::size_t bwd_output_count = desc.get_output_count(portfft::direction::BACKWARD);
   EXPECT_EQ(fwd_input_count, bwd_output_count);
   EXPECT_EQ(fwd_output_count, bwd_input_count);
-  EXPECT_EQ(fwd_input_count, 30);
-  EXPECT_EQ(fwd_output_count, 12);
+  EXPECT_EQ(fwd_input_count, 33);
+  EXPECT_EQ(fwd_output_count, 17);
 }
 
 TEST(descriptor, lengths) { test_descriptor_lengths(); }

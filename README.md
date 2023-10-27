@@ -89,15 +89,14 @@ portFFT is still in early development. The supported configurations are:
 * in-place and out-of-place transforms
 * USM and buffer containers
 * batched transforms
-* 1D transforms only
+* 1D transforms
+* multi-dimensional transforms with the following restrictions:
+  * default values for strides and distances
+  * size in each dimension must be supported by 1D transforms
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.
 For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem.
-
-The FFT sizes supported in the work-item, sub-group and work-group implementations are set using `PORTFFT_COOLEY_TUKEY_OPTIMIZED_SIZES`.
-The supported sizes are given as a comma-separated list of values.
-By default, the size of $2^n$ and $2^n \times 3$ are enabled up to a value of 8192.
 
 FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `PORTFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
 
