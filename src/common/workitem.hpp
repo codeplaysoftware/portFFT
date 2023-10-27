@@ -25,6 +25,7 @@
 #include <common/twiddle.hpp>
 #include <defines.hpp>
 #include <enums.hpp>
+#include <specialization_constant.hpp>
 #include <sycl/sycl.hpp>
 
 namespace portfft {
@@ -59,7 +60,7 @@ strides.
  * @param fft_size size of the DFT transform
  * @param stride_in stride (in complex values) between complex values in `in`
  * @param stride_out stride (in complex values) between complex values in `out`
- * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
+ * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size or nullptr if SCLA is used.
  */
 template <direction Dir, typename T>
 PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
@@ -104,8 +105,8 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
  * @param factor_n the first factor of the problem size
  * @param factor_m the second factor of the problem size
  * @param stride_in stride (in complex values) between complex values in `in`
- * @param stride_in stride (in complex values) between complex values in `out`
- * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
+ * @param stride_out stride (in complex values) between complex values in `out`
+ * @param privateScratch Scratch memory for this WI.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_m, Idx stride_in, Idx stride_out,

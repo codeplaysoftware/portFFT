@@ -247,7 +247,10 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/) {
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(static_cast<Idx>(length));
+    const Idx casted_length = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
         detail::elementwise_multiply::NOT_APPLIED);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
