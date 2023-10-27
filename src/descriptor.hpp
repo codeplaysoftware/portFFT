@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DESCRIPTOR_HPP
 #define PORTFFT_DESCRIPTOR_HPP
 
-#include <common/cooley_tukey_compiled_sizes.hpp>
 #include <common/exceptions.hpp>
 #include <common/subgroup.hpp>
 #include <defines.hpp>
@@ -42,14 +41,11 @@ namespace detail {
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout,
-          detail::elementwise_multiply, detail::elementwise_multiply, detail::apply_scale_factor, Idx SubgroupSize>
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workgroup_kernel;
 
 }  // namespace detail
@@ -207,9 +203,6 @@ class committed_descriptor {
     std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
-    if (!detail::cooley_tukey_size_list_t::has_size(fft_size)) {
-      throw unsupported_configuration("FFT size ", fft_size, " is not compiled in!");
-    }
 
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
@@ -630,10 +623,10 @@ class committed_descriptor {
       std::size_t output_stride_0 = output_strides.back();
       // distances are currently used just in the first dimension - these changes are meant for that one
       // TODO fix this to support non-default layouts
-      if (input_stride_0 < input_distance) { // for example: batch interleaved input
+      if (input_stride_0 < input_distance) {  // for example: batch interleaved input
         input_distance = params.lengths.back();
       }
-      if (output_stride_0 < output_distance) { // for example: batch interleaved output
+      if (output_stride_0 < output_distance) {  // for example: batch interleaved output
         output_distance = params.lengths.back();
       }
 
@@ -935,7 +928,7 @@ struct descriptor {
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = 1;
     for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
-      std::size_t i = i_plus1 -1;
+      std::size_t i = i_plus1 - 1;
       forward_strides[i] = total_size;
       backward_strides[i] = total_size;
       total_size *= lengths[i];
@@ -1057,7 +1050,8 @@ struct descriptor {
    * @param strides buffer's strides
    * @param distance buffer's distance
    */
-  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance, std::size_t offset) const noexcept {
+  std::size_t get_buffer_count(const std::vector<std::size_t>& strides, std::size_t distance,
+                               std::size_t offset) const noexcept {
     // Compute the last element that can be accessed
     std::size_t last_elt_idx = (number_of_transforms - 1) * distance;
     for (std::size_t i = 0; i < lengths.size(); ++i) {

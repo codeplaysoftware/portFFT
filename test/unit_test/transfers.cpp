@@ -89,13 +89,13 @@ void test() {
               loc2[i] = sentinel_loc2;
             }
           }
-          auto loc1_view = detail::make_padded_view<BankGroupsPerPad>(loc1_work);
-          auto loc2_view = detail::make_padded_view<BankGroupsPerPad>(loc2_work);
+          auto loc1_view = detail::padded_view(loc1_work, BankGroupsPerPad);
+          auto loc2_view = detail::padded_view(loc2_work, BankGroupsPerPad);
           group_barrier(it.get_group());
           portfft::global2local<detail::level::WORKGROUP, sg_size>(global_data, a_dev_work, loc1_view, N * wg_size);
           group_barrier(it.get_group());
-          portfft::local2private<N>(global_data, loc1_view, priv, local_id, N);
-          portfft::private2local<N>(global_data, priv, loc2_view, local_id, N);
+          portfft::local2private(global_data, N, loc1_view, priv, local_id, N);
+          portfft::private2local(global_data, N, priv, loc2_view, local_id, N);
           group_barrier(it.get_group());
           portfft::local2global<detail::level::WORKGROUP, sg_size>(global_data, loc2_view, b_dev_work, N * wg_size);
           group_barrier(it.get_group());
