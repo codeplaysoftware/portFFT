@@ -119,7 +119,7 @@ strided_view(ParentT, TIdx, TIdx) -> strided_view<ParentT, TIdx, 1>;
 
 template<int VectorSize = 1, typename View1, typename View2, typename TIdx>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, TIdx size){
-  using Scalar = detail::get_element_t<View1>;
+  using Scalar = detail::get_element_t<View2>;
   //using Vec = sycl::vec<Scalar,VectorSize>;
   #pragma clang loop unroll(full)
   for(TIdx i = 0; i < size; i++){
@@ -128,7 +128,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, V
       global_data.log_message(__func__, "from", &src[i] - &src[0], "to", &dst[i] - &dst[0], "value", src[i]);
       dst[i] = src[i];
     } else{
-      Scalar* src_start = &src[i];
+      const Scalar* src_start = &src[i];
       Scalar* dst_start = &dst[i];
       #pragma clang loop unroll(full)
       for(TIdx j = 0; j < VectorSize; j++){
