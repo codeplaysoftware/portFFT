@@ -91,6 +91,7 @@ template <typename F>
 IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
+    std::cout << fact_1 << std::endl;
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {

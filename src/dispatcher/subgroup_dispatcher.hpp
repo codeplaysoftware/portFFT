@@ -456,7 +456,7 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t /*length*/, const std::vector<Idx>& factors,
                       detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/) {
+                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/) {
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
