@@ -152,7 +152,7 @@ class committed_descriptor {
     std::shared_ptr<Scalar> twiddles_forward;
     detail::level level;
     IdxGlobal batch_size;
-    IdxGlobal local_mem_required;
+    std::size_t local_mem_required;
     IdxGlobal global_range;
     IdxGlobal local_range;
 
@@ -326,13 +326,15 @@ class committed_descriptor {
                             detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
                             {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
                         sizeof(Scalar) +
-                    2 * factor_size * sizeof(Scalar)) < static_cast<std::size_t>(local_memory_size);
+                    2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                   static_cast<std::size_t>(local_memory_size);
           }
           return (num_scalars_in_local_mem<detail::layout::PACKED>(
                       detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
                       {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
                       sizeof(Scalar) +
-                  2 * factor_size * sizeof(Scalar)) < static_cast<std::size_t>(local_memory_size);
+                  2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                 static_cast<std::size_t>(local_memory_size);
         }
         return false;
       }();
@@ -465,12 +467,12 @@ class committed_descriptor {
               std::cout << "SETTING SPEC CONSTANT OF LAST FACTOR " << std::endl;
               set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                                 detail::apply_scale_factor::APPLIED, counter);
+                                 detail::apply_scale_factor::APPLIED, static_cast<Idx>(counter));
             } else {
               std::cout << "SETTING SPEC CONSTANT OF THE INITIAL VECTORS " << std::endl;
               set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-                                 detail::apply_scale_factor::NOT_APPLIED, counter);
+                                 detail::apply_scale_factor::NOT_APPLIED, static_cast<Idx>(counter));
             }
           } else {
             set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
@@ -700,7 +702,7 @@ class committed_descriptor {
             queue.wait();
             // build transpose kernels
             std::size_t num_transposes_required = factors.size() - 1;
-            for (std::size_t i = 0; i < num_transposes_required; i++) {
+            for (std::size_t j = 0; j < num_transposes_required; j++) {
               std::vector<sycl::kernel_id> ids;
               ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::USM>>());
               ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::BUFFER>>());
@@ -710,7 +712,7 @@ class committed_descriptor {
                   static_cast<Idx>(factors.size()));
               dimensions.at(i).kernels.emplace_back(
                   sycl::build(in_bundle),
-                  std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
+                  std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
                   std::shared_ptr<Scalar>(), detail::level::GLOBAL);
             }
           }

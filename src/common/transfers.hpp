@@ -858,15 +858,21 @@ __attribute__((always_inline)) inline void generic_transpose(IdxGlobal N, IdxGlo
   T_vec priv;
   IdxGlobal rounded_up_n = detail::round_up_to_multiple(N, static_cast<IdxGlobal>(tile_size));
   IdxGlobal rounded_up_m = detail::round_up_to_multiple(M, static_cast<IdxGlobal>(tile_size));
-  for (std::size_t tile_y = it.get_group(1); tile_y < static_cast<std::size_t>(rounded_up_n);
-       tile_y += it.get_group_range(1)) {
-    for (std::size_t tile_x = it.get_group(0); tile_x < static_cast<std::size_t>(rounded_up_m);
-         tile_x += it.get_group_range(0)) {
-      std::size_t tile_id_y = tile_y * static_cast<std::size_t>(tile_size);
-      std::size_t tile_id_x = tile_x * static_cast<std::size_t>(tile_size);
 
-      std::size_t i = tile_id_y + it.get_local_id(1);
-      std::size_t j = tile_id_x + it.get_local_id(0);
+  IdxGlobal start_y = static_cast<IdxGlobal>(it.get_group(1));
+  IdxGlobal y_increment = static_cast<IdxGlobal>(it.get_group_range(1));
+  IdxGlobal start_x = static_cast<IdxGlobal>(it.get_group(0));
+  IdxGlobal x_increment = static_cast<IdxGlobal>(it.get_group_range(0));
+  IdxGlobal tid_y = static_cast<IdxGlobal>(it.get_local_id(1));
+  IdxGlobal tid_x = static_cast<IdxGlobal>(it.get_local_id(0));
+
+  for (IdxGlobal tile_y = start_y; tile_y < rounded_up_n; tile_y += y_increment) {
+    for (IdxGlobal tile_x = start_x; tile_x < rounded_up_m; tile_x += x_increment) {
+      IdxGlobal tile_id_y = tile_y * static_cast<IdxGlobal>(tile_size);
+      IdxGlobal tile_id_x = tile_x * static_cast<IdxGlobal>(tile_size);
+
+      IdxGlobal i = tile_id_y + tid_y;
+      IdxGlobal j = tile_id_x + tid_x;
 
       if (i < N && j < M) {
         priv.load(0, get_global_multi_ptr(&input[2 * i * M + 2 * j]));
@@ -875,8 +881,8 @@ __attribute__((always_inline)) inline void generic_transpose(IdxGlobal N, IdxGlo
       }
       sycl::group_barrier(it.get_group());
 
-      std::size_t i_transposed = tile_id_x + it.get_local_id(1);
-      std::size_t j_transposed = tile_id_y + it.get_local_id(0);
+      IdxGlobal i_transposed = tile_id_x + tid_y;
+      IdxGlobal j_transposed = tile_id_y + tid_x;
 
       if (j_transposed < N && i_transposed < M) {
         priv[0] = loc[it.get_local_id(1)][2 * it.get_local_id(0)];
