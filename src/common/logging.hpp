@@ -36,7 +36,6 @@ struct global_data_struct {
 #endif
   sycl::nd_item<1> it;
   sycl::sub_group sg;
-  sycl::kernel_handler kh;
 
   /**
    * Constructor.
