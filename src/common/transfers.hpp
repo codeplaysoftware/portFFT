@@ -875,7 +875,7 @@ __attribute__((always_inline)) inline void generic_transpose(IdxGlobal N, IdxGlo
       IdxGlobal j = tile_id_x + tid_x;
 
       if (i < N && j < M) {
-        priv.load(0, get_global_multi_ptr(&input[2 * i * M + 2 * j]));
+        priv.load(0, detail::get_global_multi_ptr(&input[2 * i * M + 2 * j]));
         loc[it.get_local_id(0)][2 * it.get_local_id(1)] = priv[0];
         loc[it.get_local_id(0)][2 * it.get_local_id(1) + 1] = priv[1];
       }
@@ -887,7 +887,7 @@ __attribute__((always_inline)) inline void generic_transpose(IdxGlobal N, IdxGlo
       if (j_transposed < N && i_transposed < M) {
         priv[0] = loc[it.get_local_id(1)][2 * it.get_local_id(0)];
         priv[1] = loc[it.get_local_id(1)][2 * it.get_local_id(0) + 1];
-        priv.store(0, get_global_multi_ptr(&output[2 * i_transposed * N + 2 * j_transposed]));
+        priv.store(0, detail::get_global_multi_ptr(&output[2 * i_transposed * N + 2 * j_transposed]));
       }
       sycl::group_barrier(it.get_group());  // TODO: This barrier should not required, use double buffering
     }

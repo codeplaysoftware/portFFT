@@ -37,10 +37,9 @@
 #include <vector>
 
 namespace portfft {
-
-template <typename, domain>
+template <typename Scalar, domain Domain>
 class committed_descriptor;
-
+namespace detail {
 template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(
@@ -56,7 +55,6 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
                             IdxGlobal output_offset, sycl::queue& queue, std::shared_ptr<Scalar>& ptr1,
                             std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
-namespace detail {
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -70,6 +68,22 @@ template <typename Scalar, domain, direction, detail::memory, detail::layout, de
 class global_kernel;
 template <typename Scalar, detail::memory>
 class transpose_kernel;
+
+template <typename Scalar>
+std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
+  std::vector<sycl::kernel_id> ids;
+#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                                     \
+  try {                                                                             \
+    ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, MEMORY>>()); \
+  } catch (...) {                                                                   \
+  }
+
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::USM)
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
+#undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
+  return ids;
+}
+
 }  // namespace detail
 
 // forward declaration
@@ -117,7 +131,7 @@ class committed_descriptor {
   friend struct descriptor<Scalar, Domain>;
   template <typename Scalar1, domain Domain1, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
             Idx SubgroupSize, typename TIn>
-  friend std::vector<sycl::event> compute_level(
+  friend std::vector<sycl::event> detail::compute_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const TIn input,
       Scalar* output, const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
       IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
@@ -125,13 +139,14 @@ class committed_descriptor {
       Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
+  template <typename Scalar, domain Domain, typename TOut>
   friend sycl::event transpose_level(
-      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar1* input,
+      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar* input,
       TOut output, const IdxGlobal* device_factors, IdxGlobal committed_size, Idx num_batches_in_l2,
       IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, IdxGlobal output_offset, sycl::queue& queue,
-      std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
+      std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events)
 
-  descriptor<Scalar, Domain> params;
+      descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
@@ -374,12 +389,13 @@ class committed_descriptor {
    * @param length length of the FFT the kernel will execute
    * @param factors factorization of the FFT size the kernel will use
    */
-  void set_spec_constants(detail::level level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+  void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-                          detail::apply_scale_factor scale_factor_applied, Idx factor_num = 0) {
-    dispatch<set_spec_constants_struct>(level, in_bundle, length, factors, multiply_on_load, multiply_on_store,
-                                        scale_factor_applied, level, factor_num);
+                          detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num = 0,
+                          Idx num_factors = 0) {
+    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, multiply_on_load, multiply_on_store,
+                                        scale_factor_applied, level, factor_num, num_factors);
   }
 
   /**
@@ -445,10 +461,8 @@ class committed_descriptor {
   dimension_struct build_w_spec_const(std::size_t kernel_num) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
-      std::cout << "RETURNED FROM PREP IMPLEMENTATION " << std::endl;
       bool is_compatible = true;
       for (auto [level, ids, factors] : prepared_vec) {
-        std::cout << "IN THIS FOR LOOP " << std::endl;
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
         if (!is_compatible) {
           break;
@@ -456,41 +470,36 @@ class committed_descriptor {
       }
       std::vector<kernel_data_struct> result;
       if (is_compatible) {
-        std::cout << "IT IS COMPATIBLE " << std::endl;
         std::size_t counter = 0;
+        std::cout << prepared_vec.size() << std::endl;
         for (auto [level, ids, factors] : prepared_vec) {
-          std::cout << "IN THAT FOR LOOP " << std::endl;
           auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-          if (level == detail::level::GLOBAL) {
-            std::cout << "SETTING GLOBAL SPEC CONSTANT" << std::endl;
+          if (top_level == detail::level::GLOBAL) {
             if (counter == prepared_vec.size() - 1) {
-              std::cout << "SETTING SPEC CONSTANT OF LAST FACTOR " << std::endl;
-              set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
+              set_spec_constants(detail::level::GLOBAL, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                                 detail::apply_scale_factor::APPLIED, static_cast<Idx>(counter));
+                                 detail::apply_scale_factor::APPLIED, level, static_cast<Idx>(counter),
+                                 static_cast<Idx>(prepared_vec.size()));
             } else {
-              std::cout << "SETTING SPEC CONSTANT OF THE INITIAL VECTORS " << std::endl;
-              set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
+              set_spec_constants(detail::level::GLOBAL, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-                                 detail::apply_scale_factor::NOT_APPLIED, static_cast<Idx>(counter));
+                                 detail::apply_scale_factor::NOT_APPLIED, level, static_cast<Idx>(counter),
+                                 static_cast<Idx>(prepared_vec.size()));
             }
           } else {
             set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                               detail::apply_scale_factor::APPLIED);
+                               detail::apply_scale_factor::APPLIED, level);
           }
           try {
-            std::cout << "BUILDING KERNEL " << std::endl;
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
                                 PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
           } catch (std::exception& e) {
-            std::cout << "FAILED BUILDING KERNEL" << std::endl;
             std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
                       << e.what() << std::endl;
             is_compatible = false;
             break;
           }
-          std::cout << "DONE BUILDING KERNEL " << std::endl;
           counter++;
         }
         if (is_compatible) {
@@ -630,9 +639,8 @@ class committed_descriptor {
         std::size_t num_transposes_required = factors.size() - 1;
         for (std::size_t i = 0; i < num_transposes_required; i++) {
           std::vector<sycl::kernel_id> ids;
-          ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::USM>>());
-          ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::BUFFER>>());
-          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+              queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
           in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
           in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
               static_cast<Idx>(factors.size()));
@@ -703,10 +711,8 @@ class committed_descriptor {
             // build transpose kernels
             std::size_t num_transposes_required = factors.size() - 1;
             for (std::size_t j = 0; j < num_transposes_required; j++) {
-              std::vector<sycl::kernel_id> ids;
-              ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::USM>>());
-              ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, detail::memory::BUFFER>>());
-              auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+              auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+                  queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
               in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
               in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
                   static_cast<Idx>(factors.size()));

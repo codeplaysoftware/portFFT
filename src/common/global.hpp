@@ -23,6 +23,7 @@
 
 #include <common/helpers.hpp>
 #include <defines.hpp>
+#include <descriptor.hpp>
 #include <dispatcher/subgroup_dispatcher.hpp>
 #include <dispatcher/workgroup_dispatcher.hpp>
 #include <dispatcher/workitem_dispatcher.hpp>
@@ -88,6 +89,27 @@ PORTFFT_INLINE IdxGlobal get_outer_batch_offset(const IdxGlobal* device_factors,
   return get_outer_batch_offset_impl(level_num);
 }
 
+/**
+ * Device function responsible for calling the corresponding sub-implementation
+ *
+ * @tparam Dir Direction of the FFT
+ * @tparam Scalar  Scalar type
+ * @tparam LayoutIn Input layout
+ * @tparam LayoutOut Output layout
+ * @tparam SubgroupSize Subgroup size
+ * @param input input pointer
+ * @param output output pointer
+ * @param implementation_twiddles global twiddles pointer containing twiddles for the sub implementation
+ * @param store_modifier store modifier data
+ * @param input_loc local memory for storing the input
+ * @param twiddles_loc local memory for storing the twiddles for sub-implementation
+ * @param store_modifier_loc local memory for store modifier data
+ * @param device_factors global pointer containing factors and scan of the factors
+ * @param batch_size Batch size for th corresponding input
+ * @param scale_factor scale_factor
+ * @param global_data global data
+ * @param kh kernel handler
+ */
 template <direction Dir, typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
@@ -97,8 +119,8 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+  global_data.log_message_global(__func__, "dispatching sub implementation for factor num = ", level_num);
   IdxGlobal outer_batch_product = get_outer_batch_product(device_factors, num_factors, level_num);
-  global_data.log_message_global(__func__, "Level num = ", level_num, "num_factors = ", num_factors);
   for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
     IdxGlobal outer_batch_offset =
         get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
@@ -119,6 +141,28 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
   }
 }
 
+/**
+ * Utility function to launch the kernel when the input is a buffer
+ * @tparam Scalar Scalar type
+ * @tparam Dir Direction of the FFT
+ * @tparam Domain Domain of the compute
+ * @tparam LayoutIn Input layout
+ * @tparam LayoutOut Output layout
+ * @tparam SubgroupSize Subgroup size
+ * @param input input of type sycl::accessor
+ * @param output USM output pointer
+ * @param loc_for_input local memory for input
+ * @param loc_for_twiddles local memory for twiddles
+ * @param loc_for_store_modifier local memory for store modifier data
+ * @param multipliers_between_factors twiddles to be multiplied between factors
+ * @param impl_twiddles twiddles required for sub implementation
+ * @param factors_and_scans global pointer containing factors and scan
+ * @param n_transforms batch size corresposding to the factor
+ * @param scale_factor scale factor
+ * @param input_batch_offset offset for the input pointer
+ * @param launch_params launch configuration
+ * @param cgh associated command group handler
+ */
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
           int SubgroupSize>
 void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& input, Scalar* output,
@@ -146,6 +190,28 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
       });
 }
 
+/**
+ * Utility function to launch the kernel when the input is an USM
+ * @tparam Scalar Scalar type
+ * @tparam Dir Direction of the FFT
+ * @tparam Domain Domain of the compute
+ * @tparam LayoutIn Input layout
+ * @tparam LayoutOut Output layout
+ * @tparam SubgroupSize Subgroup size
+ * @param input input of type sycl::accessor
+ * @param output USM output pointer
+ * @param loc_for_input local memory for input
+ * @param loc_for_twiddles local memory for twiddles
+ * @param loc_for_store_modifier local memory for store modifier data
+ * @param multipliers_between_factors twiddles to be multiplied between factors
+ * @param impl_twiddles twiddles required for sub implementation
+ * @param factors_and_scans global pointer containing factors and scan
+ * @param n_transforms batch size corresposding to the factor
+ * @param scale_factor scale factor
+ * @param input_batch_offset offset for the input pointer
+ * @param launch_params launch configuration
+ * @param cgh associated command group handler
+ */
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
           int SubgroupSize>
 void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 1>& loc_for_input,
@@ -173,14 +239,26 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
       });
 }
 
+/**
+ * Utility function to launch the transpose kernel, when the input is a buffer
+ * @tparam Scalar Scalar type
+ * @param input input accessor
+ * @param output output pointer
+ * @param loc 2D local memory
+ * @param device_factors global pointer containing factors and scan of factors
+ * @param output_offset offset to output pointer
+ * @param ldb leading dimension of the output
+ * @param lda leading dimension of the input
+ * @param cgh associated command group handler
+ */
 template <typename Scalar>
 static void dispatch_transpose_kernel_impl(const Scalar* input,
                                            sycl::accessor<const Scalar, 1, sycl::access::mode::write>& output,
                                            sycl::local_accessor<Scalar, 2>& loc, const IdxGlobal* device_factors,
-                                           IdxGlobal N, IdxGlobal M, sycl::handler& cgh) {
+                                           IdxGlobal output_offset, IdxGlobal lda, IdxGlobal ldb, sycl::handler& cgh) {
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::BUFFER>>(
-      sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(N), static_cast<std::size_t>(16)),
-                         detail::round_up_to_multiple(static_cast<std::size_t>(M), static_cast<std::size_t>(16))},
+      sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
+                         detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
       [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
@@ -189,18 +267,31 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
-          generic_transpose(N, M, 16, input + outer_batch_offset, &output[0] + outer_batch_offset, loc, it);
+          generic_transpose(lda, ldb, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset,
+                            loc, it);
         }
       });
 }
 
+/**
+ * Utility function to launch the transpose kernel, when the input is a buffer
+ * @tparam Scalar Scalar type
+ * @param input input accessor
+ * @param output output pointer
+ * @param loc 2D local memory
+ * @param device_factors global pointer containing factors and scan of factors
+ * @param output_offset offset to output pointer
+ * @param ldb leading dimension of the output
+ * @param lda leading dimension of the input
+ * @param cgh associated command group handler
+ */
 template <typename Scalar>
 static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 2>& loc,
-                                           const IdxGlobal* device_factors, IdxGlobal output_offset, IdxGlobal N,
-                                           IdxGlobal M, sycl::handler& cgh) {
+                                           const IdxGlobal* device_factors, IdxGlobal output_offset, IdxGlobal lda,
+                                           IdxGlobal ldb, sycl::handler& cgh) {
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::USM>>(
-      sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(N), static_cast<std::size_t>(16)),
-                         detail::round_up_to_multiple(static_cast<std::size_t>(M), static_cast<std::size_t>(16))},
+      sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
+                         detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
       [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
@@ -209,14 +300,33 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(device_factors, num_factors, level_num, iter_value, outer_batch_product);
-          generic_transpose(N, M, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset, loc,
-                            it);
+          generic_transpose(lda, ldb, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset,
+                            loc, it);
         }
       });
 }
 
-}  // namespace detail
-
+/**
+ * Prepares the launch of transposition at a particular level
+ * @tparam Scalar Scalar type
+ * @tparam TOut Output type
+ * @tparam Domain Domain of the FFT
+ * @param kd_struct kernel data struct
+ * @param input input pointer
+ * @param output output usm/buffer
+ * @param device_factors global pointer containing factors and scan of factors
+ * @param committed_size committed size of the FFT
+ * @param num_batches_in_l2 number of batches in l2
+ * @param n_transforms number of transforms as set in the descriptor
+ * @param batch_start start of the current global batch being processed
+ * @param factor_num Current transpose level being run
+ * @param output_offset offset to the output pointer
+ * @param queue queue associated with the commit
+ * @param ptr1 shared_ptr for the first scratch pointer
+ * @param ptr2 shared_ptr for the second scratch pointer
+ * @param events event dependencies
+ * @return sycl::even
+ */
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
                             const Scalar* input, TOut output, const IdxGlobal* device_factors, IdxGlobal committed_size,
@@ -253,6 +363,35 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
   ;
 }
 
+/**
+ * Prepares the launch of fft compute at a particular level
+ * @tparam Scalar Scalar type
+ * @tparam TIn input type
+ * @tparam Domain Domain of FFT
+ * @tparam Dir Direction of the FFT
+ * @tparam LayoutIn Input layout
+ * @tparam LayoutOut output layout
+ * @tparam SubgroupSize subgroup size
+ * @param kd_struct associated kernel data struct with the factor
+ * @param input input usm/buffer
+ * @param output output pointer
+ * @param twiddles_ptr global pointer containing the input
+ * @param factors_and_scans global pointer containing factors and the scan of factors
+ * @param scale_factor scale factor
+ * @param intermediate_twiddle_offset offset value to the global pointer for twiddles in between factors
+ * @param subimpl_twiddle_offset offset value to to the global pointer for obtaining the twiddles required for sub
+ * implementation
+ * @param input_global_offset offset value for the input pointer
+ * @param committed_size committed size
+ * @param num_batches_in_l2 number of batches in l2
+ * @param n_transforms number of transforms as set in the descriptor
+ * @param batch_start start of the current global batch being processed
+ * @param factor_id current factor being proccessed
+ * @param total_factors total number of factors
+ * @param dependencies even dependencies
+ * @param queue queue
+ * @return vector events, one for each batch in l2
+ */
 template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(
@@ -263,7 +402,6 @@ std::vector<sycl::event> compute_level(
     Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue) {
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
-  std::cout << "local range = " << local_range << " Global Range = " << global_range << std::endl;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
   std::size_t local_mem_for_store_modifier = [&]() {
@@ -313,6 +451,7 @@ std::vector<sycl::event> compute_level(
   }
   return events;
 }
+}  // namespace detail
 }  // namespace portfft
 
 #endif
