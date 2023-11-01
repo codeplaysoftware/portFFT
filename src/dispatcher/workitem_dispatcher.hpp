@@ -105,14 +105,14 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
 
-  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
+  const Idx fft_size = 16;//kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   const Idx n_reals = 2 * fft_size;
 
 #ifdef PORTFFT_USE_SCLA
-  T wi_private_scratch[detail::SpecConstWIScratchSize];
-  T priv_scla[detail::SpecConstNumRealsPerFFT];
+  T wi_private_scratch[2 * detail::wi_temps(16)];
+  T priv_scla[2 * 16];
   // Decay the scla to T* to avoid assert when it is decayed to const T*
   T* priv = priv_scla;
 #else
