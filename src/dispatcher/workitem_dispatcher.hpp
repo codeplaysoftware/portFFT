@@ -57,7 +57,7 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  *
  * @tparam PrivT Private view type
  * @tparam LocalT Local view type
- * @param fft_size FFTSize, the number of elements each workitem holds
+ * @param num_elements the number of complex values to modify
  * @param priv pointer to private memory
  * @param loc_modifier Pointer to local memory in which modifier data is stored
  * @param id_of_wi_in_wg workitem id in workgroup
@@ -111,15 +111,16 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   const Idx n_reals = 2 * fft_size;
 
   T priv[2 * MaxComplexPerWI];
+  T wi_priv_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx local_offset = n_reals * SubgroupSize * subgroup_id;
   constexpr Idx BankLinesPerPad = 1;
-  auto loc_view = detail::make_padded_view(loc, BankLinesPerPad);
-  auto loc_load_modifier_view = detail::make_padded_view(loc_load_modifier, BankLinesPerPad);
-  auto loc_store_modifier_view = detail::make_padded_view(loc_store_modifier, BankLinesPerPad);
+  auto loc_view = detail::padded_view(loc, BankLinesPerPad);
+  auto loc_load_modifier_view = detail::padded_view(loc_load_modifier, BankLinesPerPad);
+  auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
@@ -172,7 +173,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         }
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private(n_reals, global_data, loc_view, priv, subgroup_local_id, n_reals, local_offset);
+        local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -182,7 +183,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         detail::apply_modifier(fft_size, priv, loc_load_modifier_view,
                                static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1);
+      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_priv_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
@@ -196,12 +197,12 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         for (Idx idx = 0; idx < n_reals; idx += 2) {
           priv[idx] *= scaling_factor;
           priv[idx + 1] *= scaling_factor;
-        };
+        }
       }
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if (LayoutOut == detail::layout::PACKED) {
-        private2local(n_reals, global_data, priv, loc_view, subgroup_local_id, n_reals, local_offset);
+        private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
       } else {
         PORTFFT_UNROLL
         for (IdxGlobal j = 0; j < fft_size; j++) {

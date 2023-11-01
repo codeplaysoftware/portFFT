@@ -21,6 +21,7 @@
 #ifndef PORTFFT_TRAITS_HPP
 #define PORTFFT_TRAITS_HPP
 
+#include "defines.hpp"
 #include "enums.hpp"
 
 #include <complex>
@@ -77,27 +78,24 @@ using get_element_t = typename get_element<T>::type;
 template <typename T>
 using get_element_remove_cv_t = std::remove_cv_t<get_element_t<T>>;
 
-/** Trait to test if a view of memory is contiguous
+/** Test if a view of memory is contiguous
  *  Examples:
- *  * false for a pointer
- *  * true for a padded view where BankLinesPerPad > 0
+ *  * true for a pointer
+ *  * false for a padded view where bank_lines_per_pad > 0
  *
  *  @tparam T The type to test for contiguousness
+ *  @param view The view type
  **/
 template <typename T>
-struct is_contiguous_view {
-  static constexpr bool Value = T::IsContiguous;
-};
+PORTFFT_INLINE constexpr bool is_contiguous_view(T&& view) noexcept {
+  return view.is_contiguous();
+}
 
 /// Specialization of is_contiguous_view for pointer
 template <typename T>
-struct is_contiguous_view<T*> {
-  static constexpr bool Value = true;
-};
-
-/// is_contiguous_view::value shortcut
-template <typename T>
-constexpr bool IsContiguousViewV = is_contiguous_view<T>::Value;
+PORTFFT_INLINE constexpr bool is_contiguous_view(T*) noexcept {
+  return true;
+}
 
 }  // namespace detail
 

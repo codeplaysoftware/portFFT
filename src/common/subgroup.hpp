@@ -60,7 +60,7 @@ factors and does transposition and twiddle multiplication inbetween.
 
 // forward declaration
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg);
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
@@ -78,8 +78,7 @@ inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_g
  * @param sg subgroup
  */
 template <direction Dir, typename T>
-__attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx stride,
-                                                              sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
   if (fft_size == 2 && (stride & (stride - 1)) == 0) {
     Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
     Idx idx_out = (local_id / stride) % 2;
@@ -101,8 +100,8 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
     T res_real = 0;
     T res_imag = 0;
 
-    PORTFFT_UNROLL
-    for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
+    PORTFFT_UNROLL  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+        for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       T multi_re = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
       T multi_im = twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
       if constexpr (Dir == direction::BACKWARD) {
@@ -141,8 +140,7 @@ __attribute__((always_inline)) inline void cross_sg_naive_dft(T& real, T& imag, 
  * @param sg subgroup
  */
 template <typename T>
-__attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
-                                                              sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride, sycl::sub_group& sg) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
   Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
@@ -158,6 +156,8 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * Each workitem holds one input and one output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam SubgroupSize Size of subgroup in kernel
+ * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
@@ -170,8 +170,8 @@ __attribute__((always_inline)) inline void cross_sg_transpose(T& real, T& imag, 
  * @param sg subgroup
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m,
-                                                                     Idx stride, sycl::sub_group& sg) {
+PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
+                                              sycl::sub_group& sg) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
   Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
@@ -196,20 +196,21 @@ __attribute__((always_inline)) inline void cross_sg_cooley_tukey_dft(T& real, T&
  * output complex value.
  *
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
+ * @tparam SubgroupSize Size of subgroup in kernel
+ * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
- * @tparam fft_size Size of the DFT
- * @tparam stride Stride between workitems working on consecutive values of one
+ * @param fft_size Size of the DFT
+ * @param stride Stride between workitems working on consecutive values of one
  * DFT
  * @param sg subgroup
  */
 template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-__attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride,
-                                                        sycl::sub_group& sg) {
-  constexpr Idx MaxRecursionLevel = detail::uint_log2(SubgroupSize);
+PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
+  constexpr Idx MaxRecursionLevel = detail::int_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     const Idx f0 = detail::factorize(fft_size);
     if (f0 >= 2 && fft_size / f0 >= 2) {
@@ -229,7 +230,7 @@ __attribute__((always_inline)) inline void cross_sg_dft(T& real, T& imag, Idx ff
  * @return the factor below or equal to subgroup size
  */
 template <typename T>
-constexpr T factorize_sg(T N, Idx sg_size) {
+PORTFFT_INLINE constexpr T factorize_sg(T N, Idx sg_size) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
@@ -264,27 +265,30 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * end result needs to be transposed when storing it to the local memory!
  *
  * @tparam Dir direction of the FFT
+ * @tparam SubgroupSize Size of subgroup in kernel
  * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
  * @param sg subgroup
- * @param M number of elements per workitem
- * @param N number of workitems in a subgroup that work on one FFT
+ * @param factor_wi number of elements per workitem
+ * @param factor_sg number of workitems in a subgroup that work on one FFT
  * @param sg_twiddles twiddle factors to use - calculated by sg_calc_twiddles in
  * commit
+ * @param private_scratch Scratch memory for wi implementation
  */
 template <direction Dir, Idx SubgroupSize, typename T>
-__attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg, Idx M, Idx N, const T* sg_twiddles) {
-  Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % N;
-  PORTFFT_UNROLL
-  for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < M; idx_of_element_in_wi++) {
+PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx factor_sg, const T* sg_twiddles,
+                           T* private_scratch) {
+  Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % factor_sg;
+  PORTFFT_UNROLL  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+      for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < factor_wi; idx_of_element_in_wi++) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
-    if (N > 1) {
-      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, N, 1, sg);
+    if (factor_sg > 1) {
+      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, factor_sg, 1, sg);
       if (idx_of_element_in_wi > 0) {
-        T twiddle_real = sg_twiddles[idx_of_element_in_wi * N + idx_of_wi_in_fft];
-        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + M) * N + idx_of_wi_in_fft];
+        T twiddle_real = sg_twiddles[idx_of_element_in_wi * factor_sg + idx_of_wi_in_fft];
+        T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + factor_wi) * factor_sg + idx_of_wi_in_fft];
         if constexpr (Dir == direction::BACKWARD) {
           twiddle_imag = -twiddle_imag;
         }
@@ -292,25 +296,24 @@ __attribute__((always_inline)) inline void sg_dft(T* inout, sycl::sub_group& sg,
       }
     }
   };
-
-  wi_dft<Dir, 0>(inout, inout, M, 1, 1);
+  wi_dft<Dir, 0>(inout, inout, factor_wi, 1, 1, private_scratch);
 }
 
 /**
  * Calculates a twiddle factor for subgroup implementation.
  *
  * @tparam T type of the scalar used for computations
- * @param N number of workitems in a subgroup that work on one FFT
- * @param M number of elements per workitem
- * @param n index of the twiddle to calculate in the direction of N
- * @param k index of the twiddle to calculate in the direction of M
+ * @param factor_sg number of workitems in a subgroup that work on one FFT
+ * @param factor_wi number of elements per workitem
+ * @param n index of the twiddle to calculate in the direction of factor_sg
+ * @param k index of the twiddle to calculate in the direction of factor_wi
  * @param sg_twiddles destination into which to store the twiddles
  */
 template <typename T>
-void sg_calc_twiddles(Idx N, Idx M, Idx n, Idx k, T* sg_twiddles) {
-  std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, N * M);
-  sg_twiddles[k * N + n] = twiddle.real();
-  sg_twiddles[(k + M) * N + n] = twiddle.imag();
+void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles) {
+  std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, factor_sg * factor_wi);
+  sg_twiddles[k * factor_sg + n] = twiddle.real();
+  sg_twiddles[(k + factor_wi) * factor_sg + n] = twiddle.imag();
 }
 
 };  // namespace portfft
