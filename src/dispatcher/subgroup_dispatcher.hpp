@@ -386,7 +386,7 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
-    Idx factor_wi = kernel_data.factors[0];
+    /*Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
@@ -400,7 +400,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     });
     desc.queue.wait();  // waiting once here can be better than depending on the event
                         // for all future calls to compute
-    return res;
+    return res;*/
+    return nullptr;
   }
 };
 
@@ -414,7 +415,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
-    constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
+    /*constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data[0].twiddles_forward.get();
     Idx factor_sg = kernel_data[0].factors[1];
     std::size_t local_elements =
@@ -448,7 +449,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting subgroup kernel");
           });
-    });
+    });*/
+    return {};
   }
 };
 

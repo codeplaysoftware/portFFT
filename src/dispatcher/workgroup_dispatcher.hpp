@@ -195,7 +195,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
-    Idx num_batches_in_local_mem = [=]() {
+    /*Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return kernel_data[0].used_sg_size * PORTFFT_SGS_IN_WG / 2;
       } else {
@@ -237,7 +237,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });
-    });
+    });*/
+    return {};
   }
 };
 
@@ -277,7 +278,7 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
-    Idx factor_wi_n = kernel_data.factors[0];
+    /*Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];
     Idx factor_sg_m = kernel_data.factors[3];
@@ -320,7 +321,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.wait();
-    return res;
+    return res;*/
+    return nullptr;
   }
 };
 
