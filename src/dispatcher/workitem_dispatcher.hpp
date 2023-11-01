@@ -105,13 +105,13 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
 
-  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
+  const Idx fft_size = 16;//kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   const Idx n_reals = 2 * fft_size;
 
-  T priv[2 * MaxComplexPerWI];
-  T wi_priv_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+  T priv[2 * 16];
+  T wi_priv_scratch[2 * wi_temps(16)];
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
