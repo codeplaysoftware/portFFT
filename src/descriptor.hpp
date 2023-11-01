@@ -307,10 +307,8 @@ class committed_descriptor {
                                        sizeof(Scalar);
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
-      std::cout << local_memory_usage << " " << local_memory_size << std::endl;
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
           (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
-        std::cout << "I AM SELECTING WORKGROUP IMPL " << std::endl;
         factors.push_back(factor_wi_n);
         factors.push_back(factor_sg_n);
         factors.push_back(factor_wi_m);
@@ -365,7 +363,6 @@ class committed_descriptor {
       return false;
     };
     detail::factorize_input(fft_size, check_and_select_target_level);
-    std::cout << "SELECTING GLOBAL IMPL " << std::endl;
     return {detail::level::GLOBAL, param_vec};
   }
 
@@ -471,7 +468,6 @@ class committed_descriptor {
       std::vector<kernel_data_struct> result;
       if (is_compatible) {
         std::size_t counter = 0;
-        std::cout << prepared_vec.size() << std::endl;
         for (auto [level, ids, factors] : prepared_vec) {
           auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
           if (top_level == detail::level::GLOBAL) {
@@ -535,9 +531,7 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
-      std::cout << "I AM NOW GOING TO CALCULATE TWIDDLES" << std::endl;
       if (dimensions.at(i).level == detail::level::GLOBAL) {
-        std::cout << "I HAVE SELECTED GLOBAL IMPL " << std::endl;
         dimensions.back().kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
             dispatch<calculate_twiddles_struct>(detail::level::GLOBAL, dimensions.back().kernels.at(0)),
             [queue](Scalar* ptr) {
@@ -555,7 +549,6 @@ class committed_descriptor {
         }
       }
     }
-    std::cout << "DONE CALCULATING TWIDDLES " << std::endl;
     bool is_scratch_required = false;
     Idx num_global_level_dimensions = 0;
     for (std::size_t i = 0; i < n_kernels; i++) {
@@ -589,14 +582,11 @@ class committed_descriptor {
         dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
         std::size_t cache_space_left_for_batches =
             static_cast<std::size_t>(l2_cache_size) - cache_required_for_twiddles;
-        std::cout << l2_cache_size << " " << cache_required_for_twiddles << " " << cache_space_left_for_batches << " "
-                  << 2 * dimensions.at(global_dimension).length * sizeof(Scalar) << std::endl;
         // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
         dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
             params.number_of_transforms,
             std::max(std::size_t(1),
                      cache_space_left_for_batches / (2 * dimensions.at(global_dimension).length * sizeof(Scalar)))));
-        std::cout << "NUM BATCHES IN L2 = " << dimensions.at(global_dimension).num_batches_in_l2 << std::endl;
         scratch_space_required = 2 * dimensions.at(global_dimension).length *
                                  static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
         scratch_ptr_1 = std::shared_ptr<Scalar>(
@@ -728,7 +718,6 @@ class committed_descriptor {
   }
 
   void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
-    std::cerr << "IN CREATE COPY " << std::endl;
 #define COPY(x) this->x = desc.x;
     COPY(params)
     COPY(queue)
@@ -752,28 +741,21 @@ class committed_descriptor {
       this->scratch_ptr_1 = std::shared_ptr(sycl::malloc<Scalar>(desc.scratch_space_required, this->queue),
                                             [captured_queue = this->queue](Scalar* ptr) {
                                               if (ptr != nullptr) {
-                                                std::cout << "I AM IN THE SPTR1 COPY DELETER";
                                                 sycl::free(ptr, captured_queue);
                                               }
                                             });
       this->scratch_ptr_1 = std::shared_ptr(sycl::malloc<Scalar>(desc.scratch_space_required, this->queue),
                                             [captured_queue = this->queue](Scalar* ptr) {
                                               if (ptr != nullptr) {
-                                                std::cout << "I AM IN THE SPTR2 COPY DELETER";
                                                 sycl::free(ptr, captured_queue);
                                               }
                                             });
     }
-    std::cerr << "DONE COPYING " << std::endl;
   }
 
  public:
-  committed_descriptor(const committed_descriptor& desc) : params(desc.params) {
-    std::cerr << "I AM IN THE COPY CONSTRUCTOR" << std::endl;
-    create_copy(desc);
-  }
+  committed_descriptor(const committed_descriptor& desc) : params(desc.params) { create_copy(desc); }
   committed_descriptor& operator=(const committed_descriptor& desc) {
-    std::cerr << "I AM IN THE COPY ASSIGMENT OPERATOR " << std::endl;
     if (this != &desc) {
       create_copy(desc);
     }
