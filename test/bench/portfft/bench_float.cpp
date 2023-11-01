@@ -47,8 +47,8 @@ int main(int argc, char** argv) {
   // Benchmark configurations must match with the ones in test/bench/utils/reference_dft_set.hpp
   // Configurations are progressively added as portFFT supports more of them.
   bench_dft<std::complex<ftype>>(q, profiling_q, "small_1d", {16}, 8 * 1024 * 1024);
-  bench_dft<std::complex<ftype>>(q, profiling_q, "medium_small_1d", {256}, 512 * 1024);
-  bench_dft<std::complex<ftype>>(q, profiling_q, "medium_large_1d", {4096}, 32 * 1024);
+  //bench_dft<std::complex<ftype>>(q, profiling_q, "medium_small_1d", {256}, 512 * 1024);
+  //bench_dft<std::complex<ftype>>(q, profiling_q, "medium_large_1d", {4096}, 32 * 1024);
 
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();
