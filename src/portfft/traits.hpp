@@ -21,10 +21,10 @@
 #ifndef PORTFFT_TRAITS_HPP
 #define PORTFFT_TRAITS_HPP
 
+#include <complex>
+
 #include "defines.hpp"
 #include "enums.hpp"
-
-#include <complex>
 
 namespace portfft {
 

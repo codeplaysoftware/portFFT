@@ -21,8 +21,9 @@
 #ifndef PORTFFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
 #define PORTFFT_BENCH_DEVICE_NUMBER_GENERATOR_HPP
 
-#include <complex>
 #include <sycl/sycl.hpp>
+
+#include <complex>
 
 template <typename T>
 class memFillKernel;

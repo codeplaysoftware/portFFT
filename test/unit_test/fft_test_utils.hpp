@@ -21,13 +21,14 @@
 #ifndef PORTFFT_UNIT_TEST_FFT_TEST_UTILS
 #define PORTFFT_UNIT_TEST_FFT_TEST_UTILS
 
-#include "reference_data_wrangler.hpp"
-
-#include <gtest/gtest.h>
-#include <portfft.hpp>
 #include <sycl/sycl.hpp>
 
 #include <type_traits>
+
+#include <gtest/gtest.h>
+#include <portfft/portfft.hpp>
+
+#include "reference_data_wrangler.hpp"
 
 using namespace portfft;
 

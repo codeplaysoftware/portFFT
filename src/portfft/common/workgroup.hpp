@@ -21,12 +21,12 @@
 #ifndef PORTFFT_COMMON_WORKGROUP_HPP
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
-#include <common/helpers.hpp>
-#include <common/logging.hpp>
-#include <common/subgroup.hpp>
-#include <defines.hpp>
-#include <enums.hpp>
-#include <traits.hpp>
+#include "helpers.hpp"
+#include "logging.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/traits.hpp"
+#include "subgroup.hpp"
 
 namespace portfft {
 

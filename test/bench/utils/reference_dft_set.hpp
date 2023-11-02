@@ -30,9 +30,9 @@
  * macros should do.
  **/
 
-#include <benchmark/benchmark.h>
-
 #include <vector>
+
+#include <benchmark/benchmark.h>
 
 // clang-format off
 // Forward, float, out-of-place only:

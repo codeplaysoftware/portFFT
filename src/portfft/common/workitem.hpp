@@ -21,11 +21,12 @@
 #ifndef PORTFFT_COMMON_WORKITEM_HPP
 #define PORTFFT_COMMON_WORKITEM_HPP
 
-#include <common/helpers.hpp>
-#include <common/twiddle.hpp>
-#include <defines.hpp>
-#include <enums.hpp>
 #include <sycl/sycl.hpp>
+
+#include "helpers.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "twiddle.hpp"
 
 namespace portfft {
 

@@ -21,11 +21,11 @@
 #ifndef PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 #define PORTFFT_UNIT_TEST_INSTANTIATE_FFT_TESTS_HPP
 
-#include <gtest/gtest.h>
 #include <type_traits>
 
+#include <gtest/gtest.h>
+
 #include "fft_test_utils.hpp"
-#include <common/exceptions.hpp>
 
 // Parameters: placement, layout, direction, batch, length
 class FFTTest : public ::testing::TestWithParam<test_params> {};

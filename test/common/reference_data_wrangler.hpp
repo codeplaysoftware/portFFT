@@ -21,9 +21,6 @@
 #ifndef PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 #define PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
-#include <descriptor.hpp>
-#include <enums.hpp>
-
 #include <complex>
 #include <cstdio>
 #include <exception>
@@ -33,6 +30,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <portfft/descriptor.hpp>
+#include <portfft/enums.hpp>
 
 /**
  * Runs Out of place transpose
