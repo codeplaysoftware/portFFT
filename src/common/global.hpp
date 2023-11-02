@@ -70,10 +70,11 @@ PORTFFT_INLINE IdxGlobal get_outer_batch_offset(const IdxGlobal* device_factors,
     for (Idx j = 0; j < N; j++) {
       if (j == N - 1) {
         outer_batch_offset += 2 * (iter_value % device_factors[j]) * device_factors[num_factors + j];
+      } else {
+        outer_batch_offset +=
+            2 * ((iter_value / (outer_batch_product / device_factors[2 * num_factors + j])) % device_factors[j]) *
+            device_factors[num_factors + j];
       }
-      outer_batch_offset +=
-          2 * ((iter_value / (outer_batch_product / device_factors[2 * num_factors + j])) % device_factors[j]) *
-          device_factors[num_factors + j];
     }
     return outer_batch_offset;
   };
@@ -253,7 +254,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
  */
 template <typename Scalar>
 static void dispatch_transpose_kernel_impl(const Scalar* input,
-                                           sycl::accessor<const Scalar, 1, sycl::access::mode::write>& output,
+                                           sycl::accessor<Scalar, 1, sycl::access::mode::write>& output,
                                            sycl::local_accessor<Scalar, 2>& loc, const IdxGlobal* device_factors,
                                            IdxGlobal output_offset, IdxGlobal lda, IdxGlobal ldb, sycl::handler& cgh) {
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::BUFFER>>(

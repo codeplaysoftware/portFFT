@@ -69,6 +69,11 @@ class global_kernel;
 template <typename Scalar, detail::memory>
 class transpose_kernel;
 
+/**
+ * Obtains kernel ids for transpose kernels
+ * @tparam Scalar Scalar type
+ * @return vector containing sycl::kernel_ids
+ */
 template <typename Scalar>
 std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
   std::vector<sycl::kernel_id> ids;
@@ -139,14 +144,13 @@ class committed_descriptor {
       Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
-  template <typename Scalar, domain Domain, typename TOut>
-  friend sycl::event transpose_level(
+  friend sycl::event detail::transpose_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar* input,
       TOut output, const IdxGlobal* device_factors, IdxGlobal committed_size, Idx num_batches_in_l2,
       IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, IdxGlobal output_offset, sycl::queue& queue,
-      std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events)
+      std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
 
-      descriptor<Scalar, Domain> params;
+  descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
   sycl::context ctx;
@@ -379,12 +383,17 @@ class committed_descriptor {
   };
 
   /**
-   * Sets the implementation dependant specialization constant values.
-   *
-   * @param level the implementation that will be used
-   * @param in_bundle kernel bundle to set the specialization constants on
-   * @param length length of the FFT the kernel will execute
-   * @param factors factorization of the FFT size the kernel will use
+   * free function to set spec constants
+   * @param top_level implementation to dispatch to
+   * @param in_bundle input kernel bundle to set spec constants for
+   * @param length length of the fft
+   * @param factors factors of the corresponsing length
+   * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
+   * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
+   * @param scale_factor_applied whether or not to multiply scale factor
+   * @param level sub implementation to run which will be set as a spec constant.
+   * @param factor_num factor number which is set as a spec constant
+   * @param num_factors total number of factors of the committed size, set as a spec constant.
    */
   void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors,
@@ -717,6 +726,10 @@ class committed_descriptor {
     }
   }
 
+  /**
+   * Utility function fo copy constructor and copy assignment operator
+   * @param desc committed_descriptor of which the copy is to be made
+   */
   void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
 #define COPY(x) this->x = desc.x;
     COPY(params)
