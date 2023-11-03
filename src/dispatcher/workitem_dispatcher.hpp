@@ -173,7 +173,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         }*/
         copy_wi<2>(global_data, 
                    strided_view(input, 2 * n_transforms, i * 2), 
-                   strided_view(priv, static_cast<IdxGlobal>(2)), static_cast<IdxGlobal>(fft_size));
+                   strided_view(priv, 2), fft_size);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         //local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
@@ -216,9 +216,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
               ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
         }*/
         copy_wi<2>(global_data, 
-                   strided_view(priv, static_cast<IdxGlobal>(2)), 
+                   strided_view(priv, 2), 
                    strided_view(output, 2 * n_transforms, i * 2), 
-                   static_cast<IdxGlobal>(fft_size));
+                   fft_size);
       }
     }
     if (LayoutOut == detail::layout::PACKED) {

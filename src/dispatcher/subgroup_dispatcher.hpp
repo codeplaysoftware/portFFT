@@ -256,12 +256,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //store_transposed(global_data, 2 * factor_wi, priv, output, id_of_wi_in_fft, factor_sg,
               //               (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
             copy_wi<2>(global_data,
-                       strided_view(priv, static_cast<IdxGlobal>(2)), 
+                       strided_view(priv, 2), 
                        strided_view(output, 
                                     static_cast<IdxGlobal>(factor_sg * 2), 
                                     (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft) + static_cast<IdxGlobal>(2 * id_of_wi_in_fft)
                                     ), 
-                       static_cast<IdxGlobal>(factor_wi));
+                       factor_wi);
           }
         } else {
           if (working_inner) {
@@ -395,7 +395,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               i * static_cast<IdxGlobal>(n_reals_per_sg) + static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft));
             */  
           copy_wi<2>(global_data,
-                      strided_view(priv, static_cast<IdxGlobal>(2)), 
+                      strided_view(priv, 2), 
                       strided_view(output, 
                                   static_cast<IdxGlobal>(factor_sg * 2), 
                                   i * static_cast<IdxGlobal>(n_reals_per_sg)

@@ -77,12 +77,13 @@ struct strided_view{
   strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : 
       parent(parent), sizes{size}, offsets{offset} {}
 
-  PORTFFT_INLINE constexpr reference operator[](TIdx index) const {
+  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
+    TIdx index_calculated = static_cast<TIdx>(index);
     #pragma clang loop unroll(full)
     for(std::size_t i = 0; i < NDim; i++){
-      index = index * sizes[i] + offsets[i];
+      index_calculated = index_calculated * sizes[i] + offsets[i];
     }
-    return parent[index];
+    return parent[index_calculated];
   }
 };
 //deduction guides
