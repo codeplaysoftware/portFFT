@@ -116,15 +116,15 @@ struct padded_view {
 
 /**
  * Multidimensional view.
- * 
+ *
  * @tparam NDim number of dimensions
  * @tparam TParent type of the underlying view or pointer
  * @tparam TStrides integral type used for strides
  * @tparam TOffset integral type for offset. Needs to be big enough for the raw index into underlying view.
  */
 // NDim is std::size_t to match std::array
-template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset=Idx>
-struct md_view{
+template <std::size_t NDim, typename TParent, typename TStrides, typename TOffset = Idx>
+struct md_view {
   using element_type = get_element_t<TParent>;
 
   TParent parent;
@@ -132,38 +132,36 @@ struct md_view{
   TOffset offset;
   /**
    * Constructor
-   * 
+   *
    * @param parent underlying view or pointer
    * @param strides strides for each of the dimensions
    * @param offset offset
    */
-  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset=0) : 
-      parent(parent), strides(strides), offset(offset){}
+  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset = 0)
+      : parent(parent), strides(strides), offset(offset) {}
 
   /**
    * Return a view into remaining dimensions after indexing into the first one.
-   * 
+   *
    * @param index index into the first dimension
    * @return view into remaining dimensions
    */
-  md_view<NDim-1, TParent, TStrides, TOffset> inner(TStrides index){
-    std::array<TStrides, NDim-1> next_strides;
-    #pragma clang loop unroll(full)
-    for(std::size_t j = 0;j<NDim-1;j++){
-      next_strides[j] = strides[j+1];
+  md_view<NDim - 1, TParent, TStrides, TOffset> inner(TStrides index) {
+    std::array<TStrides, NDim - 1> next_strides;
+#pragma clang loop unroll(full)
+    for (std::size_t j = 0; j < NDim - 1; j++) {
+      next_strides[j] = strides[j + 1];
     }
-    return {parent, 
-            next_strides,
-            offset + static_cast<TOffset>(index) * strides[0]};
+    return {parent, next_strides, offset + static_cast<TOffset>(index) * strides[0]};
   }
 
   /**
    * Only available on 0-dimensional view. Gets the element the view points to.
-   * 
-   * @return a reference to the element 
+   *
+   * @return a reference to the element
    */
-  template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
-  PORTFFT_INLINE auto& get(){
+  template <typename T = int, std::enable_if_t<NDim == 0 && std::is_same_v<T, T>>* = nullptr>
+  PORTFFT_INLINE auto& get() {
     return parent[offset];
   }
 };
@@ -173,11 +171,11 @@ struct md_view{
  * @tparam TParent type of the underlying view or pointer
  * @tparam TIdx integral type used strides and offsets
  * @tparam NDim number of dimensions
- * 
+ *
  */
-//NDim is std::size_t to match std::array
-template<typename TParent, typename TIdx, std::size_t NDim>
-struct strided_view{
+// NDim is std::size_t to match std::array
+template <typename TParent, typename TIdx, std::size_t NDim>
+struct strided_view {
   using element_type = get_element_t<TParent>;
   using reference = element_type&;
   TParent parent;
@@ -186,70 +184,68 @@ struct strided_view{
 
   /**
    * Constructor.
-   * 
+   *
    * @param parent underlying view or pointer
    * @param sizes sizes for each of the dimensions
    * @param offsets offsets into each of the dimensions
    */
-  strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) : 
-      parent(parent), sizes(sizes), offsets(offsets) {}
+  strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets)
+      : parent(parent), sizes(sizes), offsets(offsets) {}
 
   /**
    * Constructor for 1-dimensional stride and offset.
-   * 
+   *
    * @param parent underlying view or pointer
    * @param sizes size
    * @param offsets offset
    */
-  strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : 
-      parent(parent), sizes{size}, offsets{offset} {}
+  strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : parent(parent), sizes{size}, offsets{offset} {}
 
   /**
    * Index into the view
-   * 
+   *
    * @param index index
    * @return reference to the indexed element
    */
   PORTFFT_INLINE constexpr reference operator[](Idx index) const {
     TIdx index_calculated = static_cast<TIdx>(index);
-    #pragma clang loop unroll(full)
-    for(std::size_t i = 0; i < NDim; i++){
+#pragma clang loop unroll(full)
+    for (std::size_t i = 0; i < NDim; i++) {
       index_calculated = index_calculated * sizes[i] + offsets[i];
     }
     return parent[index_calculated];
   }
 };
-//deduction guides
-template<typename TParent, typename TIdx>
+// deduction guides
+template <typename TParent, typename TIdx>
 strided_view(TParent, TIdx) -> strided_view<TParent, TIdx, 1>;
-template<typename TParent, typename TIdx>
+template <typename TParent, typename TIdx>
 strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
 
 /**
  * Get the raw pointer object. No-op for pointers
- * 
+ *
  * @tparam T type pointed to
  * @param arg pointer or view to get the raw pointer from
  * @return raw pointer
  */
-template<typename T>
-T* get_raw_pointer(T* arg){
+template <typename T>
+T* get_raw_pointer(T* arg) {
   return arg;
 }
 
 /**
  * Get the raw pointer object from a view.
- * 
+ *
  * @tparam TView type of the view
  * @param arg pointer or view to get the raw pointer from
  * @return raw pointer
  */
-template<typename TView>
-get_element_t<TView>* get_raw_pointer(TView arg){
+template <typename TView>
+get_element_t<TView>* get_raw_pointer(TView arg) {
   return get_raw_pointer(arg.parent);
 }
 
 }  // namespace portfft::detail
 
 #endif  // PORTFFT_COMMON_MEMORY_VIEWS_HPP
-
