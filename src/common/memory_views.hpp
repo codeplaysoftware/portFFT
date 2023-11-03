@@ -139,6 +139,67 @@ struct remapping_view {
   PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }
 };
 
+//NDim is std::size_t to match std::array
+template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset=Idx>
+struct md_view{
+  //using TParent = TParent_;
+  //static constexpr int NDim = NDim_;
+  TParent parent;
+  std::array<TStrides, NDim> strides;
+  TOffset offset;
+
+  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset=0) : 
+      parent(parent), strides(strides), offset(offset){}
+
+  md_view<NDim-1, TParent, TStrides, TOffset> inner(TStrides offset_arg){
+    std::array<TStrides, NDim-1> next_strides;
+    #pragma clang loop unroll(full)
+    for(std::size_t j = 0;j<NDim-1;j++){
+      next_strides[j] = strides[j+1];
+    }
+    return {parent, 
+            next_strides,
+            offset + static_cast<TOffset>(offset_arg) * strides[0]};
+  }
+
+  template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
+  PORTFFT_INLINE auto& operator[](Idx index){
+    return parent[offset + index];
+  }
+};
+
+//NDim is std::size_t to match std::array
+template<typename TParent, typename TIdx, std::size_t NDim>
+struct strided_view{
+  using element_type = detail::get_element_t<TParent>;
+  using reference = element_type&;
+  //using TParent = TParent_;
+  //static constexpr int NDim = NDim_;
+  TParent parent;
+  std::array<TIdx, NDim> sizes; // of the array, NOT the copy
+  std::array<TIdx, NDim> offsets;
+
+  strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) : 
+      parent(parent), sizes(sizes), offsets(offsets) {}
+
+  strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : 
+      parent(parent), sizes{size}, offsets{offset} {}
+
+  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
+    TIdx index_calculated = static_cast<TIdx>(index);
+    #pragma clang loop unroll(full)
+    for(std::size_t i = 0; i < NDim; i++){
+      index_calculated = index_calculated * sizes[i] + offsets[i];
+    }
+    return parent[index_calculated];
+  }
+};
+//deduction guides
+template<typename TParent, typename TIdx>
+strided_view(TParent, TIdx) -> strided_view<TParent, TIdx, 1>;
+template<typename TParent, typename TIdx>
+strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
+
 }  // namespace portfft::detail
 
 #endif  // PORTFFT_COMMON_MEMORY_VIEWS_HPP

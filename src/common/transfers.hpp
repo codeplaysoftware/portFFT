@@ -31,71 +31,9 @@
 
 namespace portfft {
 
-//NDim is std::size_t to match std::array
-template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset=Idx>
-struct md_view{
-  //using TParent = TParent_;
-  //static constexpr int NDim = NDim_;
-  TParent parent;
-  std::array<TStrides, NDim> strides;
-  TOffset offset;
-
-  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset=0) : 
-      parent(parent), strides(strides), offset(offset){}
-
-  md_view<NDim-1, TParent, TStrides, TOffset> inner(TStrides offset_arg){
-    std::array<TStrides, NDim-1> next_strides;
-    #pragma clang loop unroll(full)
-    for(std::size_t j = 0;j<NDim-1;j++){
-      next_strides[j] = strides[j+1];
-    }
-    return {parent, 
-            next_strides,
-            offset + static_cast<TOffset>(offset_arg) * strides[0]};
-  }
-
-  template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
-  PORTFFT_INLINE auto& operator[](Idx index){
-    return parent[offset + index];
-  }
-};
-
-//NDim is std::size_t to match std::array
-template<typename TParent, typename TIdx, std::size_t NDim>
-struct strided_view{
-  using element_type = detail::get_element_t<TParent>;
-  using reference = element_type&;
-  //using TParent = TParent_;
-  //static constexpr int NDim = NDim_;
-  TParent parent;
-  std::array<TIdx, NDim> sizes; // of the array, NOT the copy
-  std::array<TIdx, NDim> offsets;
-
-  strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) : 
-      parent(parent), sizes(sizes), offsets(offsets) {}
-
-  strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : 
-      parent(parent), sizes{size}, offsets{offset} {}
-
-  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
-    TIdx index_calculated = static_cast<TIdx>(index);
-    #pragma clang loop unroll(full)
-    for(std::size_t i = 0; i < NDim; i++){
-      index_calculated = index_calculated * sizes[i] + offsets[i];
-    }
-    return parent[index_calculated];
-  }
-};
-//deduction guides
-template<typename TParent, typename TIdx>
-strided_view(TParent, TIdx) -> strided_view<TParent, TIdx, 1>;
-template<typename TParent, typename TIdx>
-strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
-
 template<int VectorSize = 1, typename View1, typename View2, typename TIdx>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, TIdx size){
   using Scalar = detail::get_element_t<View2>;
-  //using Vec = sycl::vec<Scalar,VectorSize>;
   #pragma clang loop unroll(full)
   for(TIdx i = 0; i < size; i++){
     if constexpr(VectorSize == 1){
@@ -123,8 +61,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
 }
 
 template<typename TParent1, typename TParent2, std::size_t NDim>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, md_view<NDim, TParent1, Idx, Idx> src, 
-                              md_view<NDim, TParent2, Idx, Idx> dst, std::array<Idx, NDim> sizes){
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, TParent1, Idx, Idx> src, 
+                              detail::md_view<NDim, TParent2, Idx, Idx> dst, std::array<Idx, NDim> sizes){
   if constexpr(NDim == 0){
     dst[0] = src[0];
   } else{
@@ -143,8 +81,8 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, md_view<NDim
 template<typename TParent1, typename TStrides1, typename TOffset1, 
          typename TParent2, typename TStrides2, typename TOffset2, std::size_t NDim>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, 
-                              md_view<NDim, TParent1, TStrides1, TOffset1> src, 
-                              md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes){
+                              detail::md_view<NDim, TParent1, TStrides1, TOffset1> src, 
+                              detail::md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes){
   if constexpr(NDim == 2){
     #pragma clang loop unroll(full)
     for(Idx ij = local_id; ij < sizes[0] * sizes[1]; ij+=group_size){
@@ -555,8 +493,8 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx nu
     global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
   }
-  /*copy_wi(md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
-          md_view{priv, std::array<Idx, 1>{0}}, 
+  /*copy_wi(detail::md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
+          detail::md_view{priv, std::array<Idx, 1>{0}}, 
           std::array<Idx, 1>{NumElemsPerWI});*/
   //copy_wi(global_data, detail::offset_view{local, local_offset + local_id * stride}, priv, NumElemsPerWI);
   
@@ -661,8 +599,8 @@ PORTFFT_INLINE void private2local(detail::global_data_struct global_data, Idx nu
     global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
     local[local_offset + local_id * stride + i] = priv[i];
   }
-  /*copy_wi(md_view{priv, std::array<Idx, 1>{0}}, 
-          md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
+  /*copy_wi(detail::md_view{priv, std::array<Idx, 1>{0}}, 
+          detail::md_view{local, std::array<Idx, 1>{local_offset + local_id * stride}}, 
           std::array<Idx, 1>{NumElemsPerWI});*/
   //copy_wi(global_data, priv, detail::offset_view{local, local_offset + local_id * stride}, NumElemsPerWI);
 }

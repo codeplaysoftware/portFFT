@@ -181,8 +181,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data, input, loc_view, 2 * i, 2 * num_batches_in_local_mem, factor_wi * factor_sg, 2 * n_transforms,
           2 * max_num_batches_local_mem);*/
       copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
-              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
+              detail::md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
+              detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
               std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, n_reals_per_wi * factor_sg);
@@ -198,10 +198,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                                 1,                             0, 
                                                 2 * max_num_batches_local_mem, 2 * sub_batch, 
                                                 1,                             id_of_wi_in_fft * factor_wi);*/
-          copy_wi<2>(global_data, strided_view(loc_view, 
+          copy_wi<2>(global_data, detail::strided_view(loc_view, 
                               std::array{1, 2 * max_num_batches_local_mem},
                               std::array{id_of_wi_in_fft * factor_wi, 2 * sub_batch}
-                              ), strided_view(priv, 2), factor_wi);
+                              ), detail::strided_view(priv, 2), factor_wi);
           global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
         }
         if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -256,8 +256,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //store_transposed(global_data, 2 * factor_wi, priv, output, id_of_wi_in_fft, factor_sg,
               //               (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
             copy_wi<2>(global_data,
-                       strided_view(priv, 2), 
-                       strided_view(output, 
+                       detail::strided_view(priv, 2), 
+                       detail::strided_view(output, 
                                     static_cast<IdxGlobal>(factor_sg * 2), 
                                     (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft) + static_cast<IdxGlobal>(2 * id_of_wi_in_fft)
                                     ), 
@@ -272,8 +272,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //private2local_transposed(global_data, factor_wi, priv, loc_view, id_of_wi_in_fft, factor_sg, sub_batch,
               //                       max_num_batches_local_mem);
             copy_wi<2>(global_data, 
-                        strided_view(priv, 2), 
-                        strided_view(loc_view, 
+                        detail::strided_view(priv, 2), 
+                        detail::strided_view(loc_view, 
                                 std::array{factor_sg, 2 * max_num_batches_local_mem},
                                 std::array{id_of_wi_in_fft, 2 * sub_batch}
                                 ), factor_wi);
@@ -292,8 +292,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //                      max_num_batches_local_mem, loc_view, output, i * n_reals_per_fft);
           
           copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}},
-              md_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft}, 
+              detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}},
+              detail::md_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft}, 
               std::array{factor_wi * factor_sg, 2, num_batches_in_local_mem});
         } else {
           global_data.log_message_global(__func__,
@@ -303,8 +303,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //local_transposed2_global_transposed<detail::level::WORKGROUP>(
               //  global_data, output, loc_view, 2 * i, factor_wi * factor_sg, n_transforms, max_num_batches_local_mem);
             copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
-              md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
+              detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
+              detail::md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
               std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem}
             );
           //}
@@ -391,8 +391,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               i * static_cast<IdxGlobal>(n_reals_per_sg) + static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft));
             */  
           copy_wi<2>(global_data,
-                      strided_view(priv, 2), 
-                      strided_view(output, 
+                      detail::strided_view(priv, 2), 
+                      detail::strided_view(output, 
                                   static_cast<IdxGlobal>(factor_sg * 2), 
                                   i * static_cast<IdxGlobal>(n_reals_per_sg)
                                          + static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft)
@@ -409,8 +409,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
               2 * n_transforms, 2 * i, 
               static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(0), 
               factor_sg, id_of_wi_in_fft);*/
-          copy_wi<2>(global_data, strided_view(priv, 2), 
-                    strided_view(output, 
+          copy_wi<2>(global_data, detail::strided_view(priv, 2), 
+                    detail::strided_view(output, 
                                   std::array{static_cast<IdxGlobal>(factor_sg), 2 * n_transforms},
                                   std::array{static_cast<IdxGlobal>(id_of_wi_in_fft), 2 * i}
                                   ), factor_wi);
@@ -422,8 +422,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           //store_transposed(global_data, 2 * factor_wi, priv, loc_view, id_of_wi_in_fft, factor_sg,
             //               subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
           copy_wi<2>(global_data,
-                      strided_view(priv, 2), 
-                      strided_view(loc_view, 
+                      detail::strided_view(priv, 2), 
+                      detail::strided_view(loc_view, 
                                   factor_sg * 2, 
                                   subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft + 2 * id_of_wi_in_fft
                                   ), 
