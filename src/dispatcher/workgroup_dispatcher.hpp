@@ -105,6 +105,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
+  Idx local_id = static_cast<Idx>(global_data.it.get_local_id(0));
+  Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx num_workgroups = static_cast<Idx>(global_data.it.get_group_range(0));
   Idx wg_id = static_cast<Idx>(global_data.it.get_group(0));
   IdxGlobal max_global_offset = 2 * (n_transforms - 1) * fft_size;
@@ -139,7 +141,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       /*global_batchinter_2_local_batchinter<level::WORKGROUP>(global_data, input, loc_view, offset / fft_size,
                                                              2 * num_batches_in_local_mem, fft_size, 2 * n_transforms,
                                                              2 * max_num_batches_in_local_mem);*/
-      copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
+      copy_group(global_data, local_size, local_id,
               detail::md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, offset / fft_size}, 
               detail::md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}},
               std::array{fft_size, 2 * num_batches_in_local_mem});
@@ -159,7 +161,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
                                                                   2 * max_num_batches_in_local_mem, factor_n, factor_m,
                                                                   num_batches_in_local_mem);
         */
-        copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
+        copy_group(global_data, local_size, local_id,
               detail::md_view{loc_view, 
                       std::array{2, 
                                  1, 
@@ -175,7 +177,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         //local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
           //                                              2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
             //                                            num_batches_in_local_mem, factor_n, factor_m);
-        copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
+        copy_group(global_data, local_size, local_id,
               detail::md_view{loc_view,
                       std::array{2 * max_num_batches_in_local_mem, 
                                  2 * max_num_batches_in_local_mem * factor_m, 
@@ -203,7 +205,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       if (LayoutOut == detail::layout::PACKED) {
         local2global_transposed(global_data, factor_n, factor_m, factor_m, loc_view, output, offset);
         //TODO: performance regression on AMD
-        /*copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
+        /*copy_group(global_data, local_size, local_id,
             detail::md_view{loc_view, std::array{1, 2 * factor_m, 2}},
             detail::md_view{output, std::array{1, 2, 2 * factor_n}, offset}, 
             std::array{2, factor_n, factor_m});
@@ -214,7 +216,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         //localstrided_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch, fft_size,
           //                           factor_n, factor_m);
 
-        copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
+        copy_group(global_data, local_size, local_id,
             detail::md_view{loc_view, std::array{2, 1, 2 * factor_m}},
             detail::md_view{output, std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms}, 2 * current_batch}, 
             std::array{factor_m, 2, factor_n});

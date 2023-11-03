@@ -575,7 +575,7 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx nu
  * @param offset offset to the global memory pointer
  */
 template <typename LocalT, typename GlobalT>
-PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, IdxGlobal N, IdxGlobal M, IdxGlobal stride,
+PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, Idx N, Idx M, Idx stride,
                                             LocalT local, GlobalT global, IdxGlobal offset) {
   using real_t = detail::get_element_remove_cv_t<LocalT>;
   static_assert(std::is_same_v<real_t, detail::get_element_t<GlobalT>>, "Type mismatch between local and global views");
@@ -589,9 +589,7 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
     sycl::vec<real_t, 2> v{local[source_index], local[source_index + 1]};
     IdxGlobal global_idx = offset + static_cast<IdxGlobal>(2 * i);
     global_data.log_message(func_name, "from", source_index, "to", global_idx, "value", v);
-    //*reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
-    global[global_idx] = local[source_index];
-    global[global_idx+1] = local[source_index+1];
+    *reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
   }
 }
 

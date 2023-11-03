@@ -276,3 +276,4 @@ get_element_t<TView>* get_raw_pointer(TView arg){
 }  // namespace portfft::detail
 
 #endif  // PORTFFT_COMMON_MEMORY_VIEWS_HPP
+
