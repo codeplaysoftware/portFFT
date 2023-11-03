@@ -67,17 +67,17 @@ struct md_view{
       parent(parent), offsets(offsets), strides{1}, cumulative_offset(0) {}
 
   md_view<ParentT, TIdx, NDim-1> inner(TIdx offset_arg){
-    if constexpr (NDim == 1){
-      return {parent, 
-              std::array<TIdx, NDim-1>{}, 
-              std::array<TIdx, NDim-1>{}, 
-              cumulative_offset + offset_arg * strides[0] + offsets[0]};
-    } else {
-      return {parent, 
-              std::array<TIdx, NDim-1>{offsets.begin()+1, offsets.end()}, 
-              std::array<TIdx, NDim-1>{strides.begin()+1, strides.end()}, 
-              cumulative_offset + offset_arg * strides[0] + offsets[0]};
+    std::array<TIdx, NDim-1> next_offsets;
+    std::array<TIdx, NDim-1> next_strides;
+    #pragma clang loop unroll(full)
+    for(std::size_t j = 0;j<NDim-1;j++){
+      next_offsets[j] = offsets[j+1];
+      next_strides[j] = strides[j+1];
     }
+    return {parent, 
+            next_offsets, 
+            next_strides, 
+            cumulative_offset + offset_arg * strides[0] + offsets[0]};
   }
 
   template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
@@ -140,7 +140,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, V
 }
 
 template<typename View1, typename View2, typename TIdx>
-PORTFFT_INLINE void copy_group(Idx group_size, Idx local_id, View1 src, View2 dst, TIdx size){
+PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, View1 src, View2 dst, TIdx size){
   #pragma clang loop unroll(full)
   for(TIdx i = local_id; i < size; i+=group_size){
     dst[i] = src[i];
@@ -148,35 +148,49 @@ PORTFFT_INLINE void copy_group(Idx group_size, Idx local_id, View1 src, View2 ds
 }
 
 template<typename ParentT1, typename ParentT2, typename TIdx, std::size_t NDim>
-PORTFFT_INLINE void copy_wi(md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
   if constexpr(NDim == 0){
     dst[0] = src[0];
   } else{
+    std::array<TIdx, NDim-1> next_sizes;
+    #pragma clang loop unroll(full)
+    for(std::size_t j = 0;j<NDim-1;j++){
+      next_sizes[j] = sizes[j+1];
+    }
     #pragma clang loop unroll(full)
     for(TIdx i = 0; i < sizes[0]; i++){
-      if constexpr(NDim == 1){
-        copy_wi<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {});
-      } else{
-        copy_wi<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {sizes.begin()+1, sizes.end()});
-      }
+      copy_wi<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), next_sizes);
     }
   }
 }
 
 template<typename ParentT1, typename ParentT2, typename TIdx, std::size_t NDim>
-PORTFFT_INLINE void copy_group(Idx group_size, Idx local_id, md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
-  if constexpr(NDim == 0){
+PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, md_view<ParentT1, TIdx, NDim> src, md_view<ParentT2, TIdx, NDim> dst, std::array<TIdx, NDim> sizes){
+  if constexpr(NDim == 0){ //TODO do we still need this now that we have case for 1?
     dst[0] = src[0];
   } else{
-    if constexpr(NDim == 1){
+    if constexpr(NDim == 2){
+      #pragma clang loop unroll(full)
+      for(TIdx ij = local_id; ij < sizes[0] * sizes[1]; ij+=group_size){
+        TIdx i = ij / sizes[1];
+        TIdx j = ij % sizes[1];
+        //global_data.log_message("ij", i, j);
+        copy_group<ParentT1, ParentT2, TIdx, 0>(global_data, group_size, local_id, src.inner(i).inner(j), dst.inner(i).inner(j), {});
+      }
+    } else if constexpr(NDim == 1){
       #pragma clang loop unroll(full)
       for(TIdx i = local_id; i < sizes[0]; i+=group_size){
-        copy_group<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {});
-      } 
-    }else{
+        copy_group<ParentT1, ParentT2, TIdx, 0>(global_data, group_size, local_id, src.inner(i), dst.inner(i), {});
+      }
+    } else {
+      std::array<TIdx, NDim-1> next_sizes;
+      #pragma clang loop unroll(full)
+      for(std::size_t j = 0;j<NDim-1;j++){
+        next_sizes[j] = sizes[j+1];
+      }
       #pragma clang loop unroll(full)
       for(TIdx i = 0; i < sizes[0]; i++){
-        copy_group<ParentT1, ParentT2, TIdx, NDim-1>(src.inner(i), dst.inner(i), {sizes.begin()+1, sizes.end()});
+        copy_group<ParentT1, ParentT2, TIdx, NDim-1>(global_data, group_size, local_id, src.inner(i), dst.inner(i), next_sizes);
       }
     }
   }
@@ -590,7 +604,7 @@ PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx nu
  * @param offset offset to the global memory pointer
  */
 template <typename LocalT, typename GlobalT>
-PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, Idx N, Idx M, Idx stride,
+PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, IdxGlobal N, IdxGlobal M, IdxGlobal stride,
                                             LocalT local, GlobalT global, IdxGlobal offset) {
   using real_t = detail::get_element_remove_cv_t<LocalT>;
   static_assert(std::is_same_v<real_t, detail::get_element_t<GlobalT>>, "Type mismatch between local and global views");
@@ -604,7 +618,9 @@ PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_da
     sycl::vec<real_t, 2> v{local[source_index], local[source_index + 1]};
     IdxGlobal global_idx = offset + static_cast<IdxGlobal>(2 * i);
     global_data.log_message(func_name, "from", source_index, "to", global_idx, "value", v);
-    *reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
+    //*reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
+    global[global_idx] = local[source_index];
+    global[global_idx+1] = local[source_index+1];
   }
 }
 
@@ -947,6 +963,7 @@ PORTFFT_INLINE void localstrided_2global_strided(detail::global_data_struct glob
     Idx source_row = idx / N;
     Idx source_col = idx % N;
     Idx base_offset = 2 * source_col * M + 2 * source_row;
+    // idx = source_row * N + source_col
     IdxGlobal base_global_idx = static_cast<IdxGlobal>(idx) * global_stride + global_offset;
     global_data.log_message(__func__, "from (", base_offset, ",", base_offset, ") ", "to (", base_global_idx,
                             base_global_idx + 1, "values = (", local[base_offset], ",", local[base_offset + 1], ")");
@@ -988,10 +1005,10 @@ PORTFFT_INLINE void local_batchinter_batchinter_2_global_batchinter(detail::glob
   global_data.log_message_global(__func__, "transferring data with global_stride = ", global_stride,
                                  " global offset = ", global_offset, " local stride = ", local_stride);
   for (Idx idx = 0; idx < N * M; idx++) {
-    Idx local_stride_2 = (idx % N) * M + (idx / N);
+    Idx local_idx = (idx % N) * M + (idx / N);
     detail::impl::subrange_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, detail::level::WORKGROUP>(
         global_data, global, global_offset + static_cast<IdxGlobal>(idx) * global_stride, local,
-        local_stride_2 * local_stride, 2 * batch_size);
+        local_idx * local_stride, 2 * batch_size);
   }
 }
 
