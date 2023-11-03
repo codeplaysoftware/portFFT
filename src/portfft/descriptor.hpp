@@ -21,12 +21,6 @@
 #ifndef PORTFFT_DESCRIPTOR_HPP
 #define PORTFFT_DESCRIPTOR_HPP
 
-#include <common/exceptions.hpp>
-#include <common/subgroup.hpp>
-#include <defines.hpp>
-#include <enums.hpp>
-#include <utils.hpp>
-
 #include <sycl/sycl.hpp>
 
 #include <complex>
@@ -34,6 +28,12 @@
 #include <functional>
 #include <numeric>
 #include <vector>
+
+#include "common/exceptions.hpp"
+#include "common/subgroup.hpp"
+#include "defines.hpp"
+#include "enums.hpp"
+#include "utils.hpp"
 
 namespace portfft {
 

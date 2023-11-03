@@ -21,9 +21,10 @@
 #ifndef PORTFFT_COMMON_LOGGING_HPP
 #define PORTFFT_COMMON_LOGGING_HPP
 
-#include <defines.hpp>
-#include <enums.hpp>
 #include <sycl/sycl.hpp>
+
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
 
 namespace portfft::detail {
 

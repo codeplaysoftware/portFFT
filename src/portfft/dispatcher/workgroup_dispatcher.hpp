@@ -21,15 +21,15 @@
 #ifndef PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 
-#include <common/helpers.hpp>
-#include <common/logging.hpp>
-#include <common/memory_views.hpp>
-#include <common/transfers.hpp>
-#include <common/workgroup.hpp>
-#include <defines.hpp>
-#include <descriptor.hpp>
-#include <enums.hpp>
-#include <specialization_constant.hpp>
+#include "portfft/common/helpers.hpp"
+#include "portfft/common/logging.hpp"
+#include "portfft/common/memory_views.hpp"
+#include "portfft/common/transfers.hpp"
+#include "portfft/common/workgroup.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/descriptor.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {

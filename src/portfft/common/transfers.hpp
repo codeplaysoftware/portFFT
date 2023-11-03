@@ -21,13 +21,14 @@
 #ifndef PORTFFT_COMMON_TRANSFERS_HPP
 #define PORTFFT_COMMON_TRANSFERS_HPP
 
-#include <common/helpers.hpp>
-#include <common/logging.hpp>
-#include <common/memory_views.hpp>
-#include <defines.hpp>
-#include <enums.hpp>
 #include <sycl/sycl.hpp>
-#include <traits.hpp>
+
+#include "helpers.hpp"
+#include "logging.hpp"
+#include "memory_views.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/traits.hpp"
 
 namespace portfft {
 

@@ -29,10 +29,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include "enums.hpp"
-
 #ifdef PORTFFT_VERIFY_BENCHMARKS
-#include <reference_data_wrangler.hpp>
+#include "common/reference_data_wrangler.hpp"
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
 /**

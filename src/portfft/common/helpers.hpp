@@ -21,9 +21,11 @@
 #ifndef PORTFFT_COMMON_HELPERS_HPP
 #define PORTFFT_COMMON_HELPERS_HPP
 
-#include <defines.hpp>
 #include <sycl/sycl.hpp>
+
 #include <type_traits>
+
+#include "portfft/defines.hpp"
 
 namespace portfft::detail {
 

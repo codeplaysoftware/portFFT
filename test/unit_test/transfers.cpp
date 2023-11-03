@@ -18,11 +18,11 @@
  *
  **************************************************************************/
 
-#include "common/transfers.hpp"
-#include "common/memory_views.hpp"
-#include "fft_test_utils.hpp"
-
 #include <gtest/gtest.h>
+#include <portfft/common/memory_views.hpp>
+#include <portfft/common/transfers.hpp>
+
+#include "fft_test_utils.hpp"
 
 constexpr int N = 4;
 constexpr int sg_size = (PORTFFT_SUBGROUP_SIZES);  // turn the list into the last value using commma operator
