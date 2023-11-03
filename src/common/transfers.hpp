@@ -344,79 +344,6 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct globa
   return block_count * block_size;
 }
 
-/** Copy between index-contiguous global and local memory for n values, where n < group.get_local_range()[0].
- *  global[global_offset + i] <-> local[local_offset + i] for i in [0, n)
- *
- *  @tparam TransferDirection Direction of memory transfer
- *  @tparam Level Group type to use for copies.
- *  @tparam GlobalViewT The view of local memory
- *  @tparam LocalViewT The type of the local memory view
- *  @param global_data global data for the kernel
- *  @param global The global memory view to copy to/from. Expects to be real element type
- *  @param global_offset The offset into global memory to start copying at
- *  @param local The local memory view. Expects to be real element type
- *  @param local_offset The offset into local memory to start copying at
- *  @param n The number of reals to copy. Must be less than group.get_local_range()[0]
- *  @returns The number of reals copied
- */
-template <transfer_direction TransferDirection, level Level, typename GlobalViewT, typename LocalViewT>
-PORTFFT_INLINE Idx subrange_copy(detail::global_data_struct global_data, GlobalViewT global, IdxGlobal global_offset,
-                                 LocalViewT local, Idx local_offset, Idx n) {
-  auto group = global_data.get_group<Level>();
-  const char* func_name = __func__;
-  global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset,
-                                        "group_size", group.get_local_range()[0], "n", n);
-  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
-  if (local_id < n) {
-    if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-      local[local_offset + local_id] = global[global_offset + static_cast<IdxGlobal>(local_id)];
-    } else {  // LOCAL_TO_GLOBAL
-      global[global_offset + static_cast<IdxGlobal>(local_id)] = local[local_offset + local_id];
-    }
-  }
-  return n;
-}
-
-/** Copy between index-contiguous global and local memory for n values. No particular requirements for alignment.
- *  global[global_offset + i] <-> local[local_offset + i] for i in [0, n)
- *
- *  @tparam TransferDirection Direction of memory transfer
- *  @tparam Level Group type to use for copies.
- *  @tparam GlobalViewT The view of local memory
- *  @tparam LocalViewT The type of the local memory view
- *  @param global_data global data for the kernel
- *  @param group The sub-group or work-group
- *  @param global The global memory view to copy to/from. Expects to be real element type
- *  @param global_offset The offset into global memory to start copying at
- *  @param local The local memory view. Expects to be real element type
- *  @param local_offset The offset into local memory to start copying at
- *  @param n The number of reals to copy
- *  @returns The number of reals copied
- */
-template <transfer_direction TransferDirection, level Level, typename GlobalViewT, typename LocalViewT>
-PORTFFT_INLINE Idx naive_copy(detail::global_data_struct global_data, GlobalViewT global, IdxGlobal global_offset,
-                              LocalViewT local, Idx local_offset, Idx n) {
-  auto group = global_data.get_group<Level>();
-  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
-  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
-  Idx loop_iters = n / local_size;
-  const char* func_name = __func__;
-  global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset, "n",
-                                        n);
-  for (Idx j = 0; j < loop_iters; j++) {
-    Idx local_idx = local_offset + local_id + j * local_size;
-    if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-      local[local_idx] = global[global_offset + local_id + j * local_size];
-    } else {  // LOCAL_TO_GLOBAL
-      global[global_offset + local_id + j * local_size] = local[local_idx];
-    }
-  }
-  Idx loop_copies = loop_iters * local_size;
-  subrange_copy<TransferDirection, Level>(global_data, global, global_offset + loop_copies, local,
-                                          local_offset + loop_copies, n - loop_copies);
-  return n;
-}
-
 }  // namespace impl
 
 /**
@@ -447,6 +374,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
+  auto group = global_data.get_group<Level>();
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
+  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
+
 #ifdef PORTFFT_USE_SG_TRANSFERS
   Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize>(
       global_data, global, global_offset, local, local_offset, total_num_elems);
@@ -459,9 +390,12 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   const real_t* global_aligned_ptr = reinterpret_cast<const real_t*>(
       detail::round_up_to_multiple(reinterpret_cast<std::uintptr_t>(global_ptr), alignof(vec_t)));
   Idx unaligned_elements = static_cast<Idx>(global_aligned_ptr - global_ptr);
-  // Load the first few unaligned elements. Assumes group size > alignof(vec_t) / sizeof(vec_t).
-  impl::subrange_copy<TransferDirection, Level>(global_data, global, global_offset, local, local_offset,
-                                                unaligned_elements);
+  // Load the first few unaligned elements.
+  if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group(global_data, local_size, local_id, offset_view(global, global_offset), offset_view(local, local_offset), unaligned_elements);
+  } else {  // LOCAL_TO_GLOBAL
+    copy_group(global_data, local_size, local_id, offset_view(local, local_offset), offset_view(global, global_offset), unaligned_elements);
+  }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
   total_num_elems -= unaligned_elements;
@@ -474,7 +408,11 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   total_num_elems -= block_copied_elements;
 #endif
   // We cannot load fixed-size blocks of data anymore, so we use naive copies.
-  impl::naive_copy<TransferDirection, Level>(global_data, global, global_offset, local, local_offset, total_num_elems);
+  if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group(global_data, local_size, local_id, offset_view(global, global_offset), offset_view(local, local_offset), total_num_elems);
+  } else {  // LOCAL_TO_GLOBAL
+    copy_group(global_data, local_size, local_id, offset_view(local, local_offset), offset_view(global, global_offset), total_num_elems);
+  }
 }
 
 }  // namespace detail
