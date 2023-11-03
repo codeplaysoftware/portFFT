@@ -36,18 +36,13 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, V
   using Scalar = detail::get_element_t<View2>;
   #pragma clang loop unroll(full)
   for(TIdx i = 0; i < size; i++){
-    if constexpr(VectorSize == 1){
-      //TODO sensible logging
-      global_data.log_message(__func__, "from", &src[i] - &src[0], "to", &dst[i] - &dst[0], "value", src[i]);
-      dst[i] = src[i];
-    } else{
-      const Scalar* src_start = &src[i];
-      Scalar* dst_start = &dst[i];
-      #pragma clang loop unroll(full)
-      for(TIdx j = 0; j < VectorSize; j++){
-        global_data.log_message(__func__, "from", &src_start[j] - &src[0], "to", &dst_start[j] - &dst[0], "value", src_start[j]);
-        dst_start[j] = src_start[j];
-      }
+    const Scalar* src_start = &src[i];
+    Scalar* dst_start = &dst[i];
+    #pragma clang loop unroll(full)
+    for(TIdx j = 0; j < VectorSize; j++){
+      global_data.log_message(__func__, "from", &src_start[j] - detail::get_raw_pointer(src), "to", 
+                                                &dst_start[j] - detail::get_raw_pointer(dst), "value", src_start[j]);
+      dst_start[j] = src_start[j];
     }
   }
 }
@@ -57,6 +52,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
   #pragma clang loop unroll(full)
   for(Idx i = local_id; i < size; i+=group_size){
     dst[i] = src[i];
+    global_data.log_message(__func__, "from", &src[i] - detail::get_raw_pointer(src), "to", 
+                                              &dst[i] - detail::get_raw_pointer(dst), "value", src[i]);
   }
 }
 
@@ -64,6 +61,8 @@ template<typename TParent1, typename TParent2, std::size_t NDim>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, TParent1, Idx, Idx> src, 
                               detail::md_view<NDim, TParent2, Idx, Idx> dst, std::array<Idx, NDim> sizes){
   if constexpr(NDim == 0){
+    global_data.log_message(__func__, "from", &src[0] - detail::get_raw_pointer(src), "to", 
+                                              &dst[0] - detail::get_raw_pointer(dst), "value", src[0]);
     dst[0] = src[0];
   } else{
     std::array<Idx, NDim-1> next_sizes;
@@ -88,13 +87,20 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
     for(Idx ij = local_id; ij < sizes[0] * sizes[1]; ij+=group_size){
       Idx i = ij / sizes[1];
       Idx j = ij % sizes[1];
-      //global_data.log_message("ij", i, j);
-      dst.inner(i).inner(j)[0] = src.inner(i).inner(j)[0];
+      const auto& src_ref = src.inner(i).inner(j)[0];
+      auto& dst_ref = dst.inner(i).inner(j)[0];
+      global_data.log_message(__func__, "from", &src_ref - detail::get_raw_pointer(src), "to", 
+                                                &dst_ref - detail::get_raw_pointer(dst), "value", src_ref);
+      dst_ref = src_ref;
     }
   } else if constexpr(NDim == 1){
     #pragma clang loop unroll(full)
     for(Idx i = local_id; i < sizes[0]; i+=group_size){
-      dst.inner(i)[0] = src.inner(i)[0];
+      const auto& src_ref = src.inner(i)[0];
+      auto& dst_ref = dst.inner(i)[0];
+      global_data.log_message(__func__, "from", &src_ref - detail::get_raw_pointer(src), "to", 
+                                                &dst_ref - detail::get_raw_pointer(dst), "value", src_ref);
+      dst_ref = src_ref;
     }
   } else {
     std::array<Idx, NDim-1> next_sizes;

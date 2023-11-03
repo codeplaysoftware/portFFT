@@ -46,20 +46,20 @@ struct offset_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  ParentT data;
+  ParentT parent;
   OffsetT offset;
 
   /** Constructor.
    * @param parent The parent view
    * @param offset The offset to add to index look-ups.
    */
-  constexpr offset_view(ParentT parent, OffsetT offset) noexcept : data(parent), offset(offset){};
+  constexpr offset_view(ParentT parent, OffsetT offset) noexcept : parent(parent), offset(offset){};
 
   /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(data); }
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(parent); }
 
   // Index into the view.
-  PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return data[offset + i]; }
+  PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return parent[offset + i]; }
 };
 
 /**
@@ -93,24 +93,24 @@ struct padded_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  ParentT data;
+  ParentT parent;
   Idx bank_lines_per_pad;
 
   // Constructor: Create a view of a pointer or another view.
   constexpr padded_view(ParentT parent, Idx bank_lines_per_pad) noexcept
-      : data(parent), bank_lines_per_pad(bank_lines_per_pad){};
+      : parent(parent), bank_lines_per_pad(bank_lines_per_pad){};
 
   /// Is this view contiguous?
   PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return is_contiguous_view(data) && bank_lines_per_pad == 0;
+    return is_contiguous_view(parent) && bank_lines_per_pad == 0;
   }
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const {
     if (bank_lines_per_pad == 0) {
-      return data[i];
+      return parent[i];
     }
-    return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
+    return parent[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
   }
 };
 
@@ -124,11 +124,11 @@ struct remapping_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  ParentT data;
+  ParentT parent;
   RemapFuncT func;
 
   // Constructor: Create a view of a pointer or another view.
-  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
+  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : parent(parent), func(func){};
 
   /// Is this view contiguous?
   PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
@@ -136,14 +136,14 @@ struct remapping_view {
   }
 
   // Index into the view.
-  PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }
+  PORTFFT_INLINE constexpr reference operator[](Idx i) const { return parent[func(i)]; }
 };
 
 //NDim is std::size_t to match std::array
 template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset=Idx>
 struct md_view{
-  //using TParent = TParent_;
-  //static constexpr int NDim = NDim_;
+  using element_type = get_element_t<TParent>;
+
   TParent parent;
   std::array<TStrides, NDim> strides;
   TOffset offset;
@@ -171,7 +171,7 @@ struct md_view{
 //NDim is std::size_t to match std::array
 template<typename TParent, typename TIdx, std::size_t NDim>
 struct strided_view{
-  using element_type = detail::get_element_t<TParent>;
+  using element_type = get_element_t<TParent>;
   using reference = element_type&;
   //using TParent = TParent_;
   //static constexpr int NDim = NDim_;
@@ -199,6 +199,17 @@ template<typename TParent, typename TIdx>
 strided_view(TParent, TIdx) -> strided_view<TParent, TIdx, 1>;
 template<typename TParent, typename TIdx>
 strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
+
+template<typename T>
+T* get_raw_pointer(T* arg){
+  return arg;
+}
+
+template<typename TView>
+get_element_t<TView>* get_raw_pointer(TView arg){
+  return get_raw_pointer(arg.parent);
+}
+
 
 }  // namespace portfft::detail
 
