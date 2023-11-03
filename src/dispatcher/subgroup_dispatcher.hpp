@@ -181,8 +181,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data, input, loc_view, 2 * i, 2 * num_batches_in_local_mem, factor_wi * factor_sg, 2 * n_transforms,
           2 * max_num_batches_local_mem);*/
       copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{input, 2 * i, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
-              md_view{loc_view, 0, std::array{2 * max_num_batches_local_mem, 1}},
+              md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
+              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
               std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, n_reals_per_wi * factor_sg);
@@ -292,10 +292,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //                      max_num_batches_local_mem, loc_view, output, i * n_reals_per_fft);
           
           copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, 0, 
-                                std::array{2 * max_num_batches_local_mem, 1, 2}},
-              md_view{output, i * n_reals_per_fft, 
-                              std::array{2, 1, 2 * factor_wi * factor_sg}}, 
+              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}},
+              md_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft}, 
               std::array{factor_wi * factor_sg, 2, num_batches_in_local_mem});
         } else {
           global_data.log_message_global(__func__,
@@ -305,10 +303,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //local_transposed2_global_transposed<detail::level::WORKGROUP>(
               //  global_data, output, loc_view, 2 * i, factor_wi * factor_sg, n_transforms, max_num_batches_local_mem);
             copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, 0, 
-                                std::array{2 * max_num_batches_local_mem, 1}},
-              md_view{output, 2 * i, 
-                              std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
+              md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
+              md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
               std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem}
             );
           //}

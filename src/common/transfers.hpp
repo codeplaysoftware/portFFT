@@ -32,26 +32,26 @@
 namespace portfft {
 
 //NDim is std::size_t to match std::array
-template<std::size_t NDim, typename TParent, typename TOffset, typename TStrides=Idx>
+template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset=Idx>
 struct md_view{
   //using TParent = TParent_;
   //static constexpr int NDim = NDim_;
   TParent parent;
-  TOffset offset;
   std::array<TStrides, NDim> strides;
+  TOffset offset;
 
-  md_view(TParent parent, TOffset offset, const std::array<TStrides, NDim>& strides) : 
-      parent(parent), offset(offset), strides(strides){}
+  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset=0) : 
+      parent(parent), strides(strides), offset(offset){}
 
-  md_view<NDim-1, TParent, TOffset, TStrides> inner(TStrides offset_arg){
+  md_view<NDim-1, TParent, TStrides, TOffset> inner(TStrides offset_arg){
     std::array<TStrides, NDim-1> next_strides;
     #pragma clang loop unroll(full)
     for(std::size_t j = 0;j<NDim-1;j++){
       next_strides[j] = strides[j+1];
     }
     return {parent, 
-            offset + static_cast<TOffset>(offset_arg) * strides[0], 
-            next_strides};
+            next_strides,
+            offset + static_cast<TOffset>(offset_arg) * strides[0]};
   }
 
   template<typename T = int, std::enable_if_t<NDim==0 && std::is_same_v<T,T>>* = nullptr>
@@ -140,11 +140,11 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, md_view<NDim
   }
 }
 
-template<typename TParent1, typename TOffset1, typename TStrides1, 
-         typename TParent2, typename TOffset2, typename TStrides2, std::size_t NDim>
+template<typename TParent1, typename TStrides1, typename TOffset1, 
+         typename TParent2, typename TStrides2, typename TOffset2, std::size_t NDim>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, 
-                              md_view<NDim, TParent1, TOffset1, TStrides1> src, 
-                              md_view<NDim, TParent2, TOffset2, TStrides2> dst, std::array<Idx, NDim> sizes){
+                              md_view<NDim, TParent1, TStrides1, TOffset1> src, 
+                              md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes){
   if constexpr(NDim == 2){
     #pragma clang loop unroll(full)
     for(Idx ij = local_id; ij < sizes[0] * sizes[1]; ij+=group_size){
@@ -166,7 +166,7 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
     }
     #pragma clang loop unroll(full)
     for(Idx i = 0; i < sizes[0]; i++){
-      copy_group<TParent1, TOffset1, TStrides1, TParent2, TOffset2, TStrides2, NDim-1>(
+      copy_group<TParent1, TStrides1, TOffset1, TParent2, TStrides2, TOffset2, NDim-1>(
                 global_data, group_size, local_id, src.inner(i), dst.inner(i), next_sizes);
     }
   }
