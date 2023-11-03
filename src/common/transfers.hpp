@@ -31,15 +31,26 @@
 
 namespace portfft {
 
-template<int VectorSize = 1, typename View1, typename View2, typename TIdx>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, TIdx size){
+/**
+ * Copy data. Each workitem does the copy independently.
+ * 
+ * @tparam VectorSize Size of the vector to copy - number of consecutive elements. Warning: even if VectorSize > 1 is used elements and any indexing in the views is done in scalars, not vectors!
+ * @tparam View1 type of the source pointer or view
+ * @tparam View2 type of the destination pointer or view
+ * @param global_data global_data
+ * @param src source pointer or view
+ * @param dst destination pointer or view
+ * @param size number of consecutive elements to copy (use views for strides)
+ */
+template<int VectorSize = 1, typename View1, typename View2>
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, Idx size){
   using Scalar = detail::get_element_t<View2>;
   #pragma clang loop unroll(full)
-  for(TIdx i = 0; i < size; i++){
+  for(Idx i = 0; i < size; i++){
     const Scalar* src_start = &src[i];
     Scalar* dst_start = &dst[i];
     #pragma clang loop unroll(full)
-    for(TIdx j = 0; j < VectorSize; j++){
+    for(Idx j = 0; j < VectorSize; j++){
       global_data.log_message(__func__, "from", &src_start[j] - detail::get_raw_pointer(src), "to", 
                                                 &dst_start[j] - detail::get_raw_pointer(dst), "value", src_start[j]);
       dst_start[j] = src_start[j];
@@ -47,6 +58,18 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, V
   }
 }
 
+/**
+ * Copy data jointly by workitems in a group.
+ * 
+ * @tparam View1 type of the source pointer or view
+ * @tparam View2 type of the destination pointer or view
+ * @param global_data global_data
+ * @param group_size size of the group
+ * @param local_id id of workitem in the group
+ * @param src source pointer or view
+ * @param dst destination pointer or view
+ * @param size number of consecutive elements to copy (use views for strides)
+ */
 template<typename View1, typename View2>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, View1 src, View2 dst, Idx size){
   #pragma clang loop unroll(full)
@@ -57,13 +80,24 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
   }
 }
 
+/**
+ * Copy multidimensional data.
+ * 
+ * @tparam TParent1 type of the underlying pointer or view for source multidimensional view
+ * @tparam TParent2 type of the underlying pointer or view for destination multidimensional view
+ * @tparam NDim number of dimensions
+ * @param global_data global_data
+ * @param src source multidimensional view
+ * @param dst destination multidimensional view
+ * @param sizes sizes (for each dimension) of the data to copy
+ */
 template<typename TParent1, typename TParent2, std::size_t NDim>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, TParent1, Idx, Idx> src, 
                               detail::md_view<NDim, TParent2, Idx, Idx> dst, std::array<Idx, NDim> sizes){
   if constexpr(NDim == 0){
-    global_data.log_message(__func__, "from", &src[0] - detail::get_raw_pointer(src), "to", 
-                                              &dst[0] - detail::get_raw_pointer(dst), "value", src[0]);
-    dst[0] = src[0];
+    global_data.log_message(__func__, "from", &src.get() - detail::get_raw_pointer(src), "to", 
+                                              &dst.get() - detail::get_raw_pointer(dst), "value", src.get());
+    dst.get() = src.get();
   } else{
     std::array<Idx, NDim-1> next_sizes;
     #pragma clang loop unroll(full)
@@ -77,6 +111,23 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
   }
 }
 
+/**
+ * Copy multidimensional data jointly by a group. Work is distributed across workitem along the last two dimensions.
+ * 
+ * @tparam TParent1 type of the underlying pointer or view for source view
+ * @tparam TStrides1 integral type used for strides in the source view 
+ * @tparam TOffset1 integral type for offset in the source view 
+ * @tparam TParent2 type of the underlying pointer or view for destination view
+ * @tparam TStrides2 integral type used for strides in the destination view 
+ * @tparam TOffset2 integral type for offset in the destination view 
+ * @tparam NDim number of dimensions
+ * @param global_data global_data
+ * @param group_size size of the group
+ * @param local_id id of workitem in the group
+ * @param src source multidimensional view
+ * @param dst destination multidimensional view
+ * @param sizes sizes (for each dimension) of the data to copy
+ */
 template<typename TParent1, typename TStrides1, typename TOffset1, 
          typename TParent2, typename TStrides2, typename TOffset2, std::size_t NDim>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, 
@@ -87,8 +138,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
     for(Idx ij = local_id; ij < sizes[0] * sizes[1]; ij+=group_size){
       Idx i = ij / sizes[1];
       Idx j = ij % sizes[1];
-      const auto& src_ref = src.inner(i).inner(j)[0];
-      auto& dst_ref = dst.inner(i).inner(j)[0];
+      const auto& src_ref = src.inner(i).inner(j).get();
+      auto& dst_ref = dst.inner(i).inner(j).get();
       global_data.log_message(__func__, "from", &src_ref - detail::get_raw_pointer(src), "to", 
                                                 &dst_ref - detail::get_raw_pointer(dst), "value", src_ref);
       dst_ref = src_ref;
@@ -96,8 +147,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
   } else if constexpr(NDim == 1){
     #pragma clang loop unroll(full)
     for(Idx i = local_id; i < sizes[0]; i+=group_size){
-      const auto& src_ref = src.inner(i)[0];
-      auto& dst_ref = dst.inner(i)[0];
+      const auto& src_ref = src.inner(i).get();
+      auto& dst_ref = dst.inner(i).get();
       global_data.log_message(__func__, "from", &src_ref - detail::get_raw_pointer(src), "to", 
                                                 &dst_ref - detail::get_raw_pointer(dst), "value", src_ref);
       dst_ref = src_ref;
