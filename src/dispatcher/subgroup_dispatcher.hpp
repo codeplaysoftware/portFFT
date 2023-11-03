@@ -176,10 +176,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      // load / store in a transposed manner - lots of 2* because reals are being copied.
-      /*global_batchinter_2_local_batchinter<detail::level::WORKGROUP>(
-          global_data, input, loc_view, 2 * i, 2 * num_batches_in_local_mem, factor_wi * factor_sg, 2 * n_transforms,
-          2 * max_num_batches_local_mem);*/
+      // load / store in a transposed manner
       copy_group(global_data, local_size, local_id,
               detail::md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
               detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
@@ -192,12 +189,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working_inner) {
           global_data.log_message_global(__func__, "loading transposed data from local to private memory");
           // load from local memory in a transposed manner
-          //local2private_transposed(global_data, factor_wi, loc_view, priv, id_of_wi_in_fft, sub_batch,
-            //                       max_num_batches_local_mem);
-          /*transfer_strided<detail::transfer_direction::LOCAL_TO_PRIVATE, FactorWI>(global_data, loc_view, priv, 
-                                                1,                             0, 
-                                                2 * max_num_batches_local_mem, 2 * sub_batch, 
-                                                1,                             id_of_wi_in_fft * factor_wi);*/
           copy_wi<2>(global_data, detail::strided_view(loc_view, 
                               std::array{1, 2 * max_num_batches_local_mem},
                               std::array{id_of_wi_in_fft * factor_wi, 2 * sub_batch}
@@ -253,8 +244,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             global_data.log_message_global(
                 __func__, "storing transposed data from private to global memory (SubgroupSize == FactorSG)");
             // Store directly from registers for fully coalesced accesses
-            //store_transposed(global_data, 2 * factor_wi, priv, output, id_of_wi_in_fft, factor_sg,
-              //               (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(n_reals_per_fft));
             copy_wi<2>(global_data,
                        detail::strided_view(priv, 2), 
                        detail::strided_view(output, 
@@ -269,8 +258,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                            "storing transposed data from private to local memory (SubgroupSize != "
                                            "FactorSG or LayoutOut == detail::layout::BATCH_INTERLEAVED)");
             // Store back to local memory only
-            //private2local_transposed(global_data, factor_wi, priv, loc_view, id_of_wi_in_fft, factor_sg, sub_batch,
-              //                       max_num_batches_local_mem);
             copy_wi<2>(global_data, 
                         detail::strided_view(priv, 2), 
                         detail::strided_view(loc_view, 
@@ -288,9 +275,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from local to global memory (SubgroupSize != "
                                          "FactorSG) with LayoutOut = detail::layout::PACKED");
-          //local2global_transposed(global_data, factor_wi * factor_sg, num_batches_in_local_mem,
-            //                      max_num_batches_local_mem, loc_view, output, i * n_reals_per_fft);
-          
           copy_group(global_data, local_size, local_id,
               detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}},
               detail::md_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft}, 
@@ -299,15 +283,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
                                          "detail::layout::BATCH_INTERLEAVED");
-          //if (static_cast<Idx>(global_data.it.get_local_linear_id()) / 2 < num_batches_in_local_mem) {
-            //local_transposed2_global_transposed<detail::level::WORKGROUP>(
-              //  global_data, output, loc_view, 2 * i, factor_wi * factor_sg, n_transforms, max_num_batches_local_mem);
-            copy_group(global_data, local_size, local_id,
-              detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
-              detail::md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
-              std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem}
-            );
-          //}
+          copy_group(global_data, local_size, local_id,
+            detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
+            detail::md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i}, 
+            std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem}
+          );
         }
       }
       sycl::group_barrier(global_data.it.get_group());
@@ -334,8 +314,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.sg);
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        //local2private(global_data, 2 * factor_wi, loc_view, priv, subgroup_local_id, n_reals_per_wi,
-          //            subgroup_id * n_reals_per_sg);
         copy_wi(global_data, detail::offset_view{loc_view, subgroup_id * n_reals_per_sg + subgroup_local_id * n_reals_per_wi}, priv, n_reals_per_wi);
         global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
       }
@@ -386,10 +364,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from private to global memory (FactorSG == "
                                          "SubgroupSize) and LayoutOut == detail::level::PACKED");
-          /*store_transposed(
-              global_data, 2 * factor_wi, priv, output, id_of_wi_in_fft, factor_sg,
-              i * static_cast<IdxGlobal>(n_reals_per_sg) + static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft));
-            */  
           copy_wi<2>(global_data,
                       detail::strided_view(priv, 2), 
                       detail::strided_view(output, 
@@ -404,11 +378,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(
               __func__, "Storing data from private to Global with LayoutOut == detail::level::BATCH_INTERLEAVED");
-          /*transfer_strided<detail::transfer_direction::PRIVATE_TO_GLOBAL, IdxGlobal>(
-              global_data, factor_wi, priv, output, 
-              2 * n_transforms, 2 * i, 
-              static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(0), 
-              factor_sg, id_of_wi_in_fft);*/
           copy_wi<2>(global_data, detail::strided_view(priv, 2), 
                     detail::strided_view(output, 
                                   std::array{static_cast<IdxGlobal>(factor_sg), 2 * n_transforms},
@@ -419,8 +388,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
         if (working) {
           global_data.log_message_global(
               __func__, "storing transposed data from private to local memory (FactorSG != SubgroupSize)");
-          //store_transposed(global_data, 2 * factor_wi, priv, loc_view, id_of_wi_in_fft, factor_sg,
-            //               subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft);
           copy_wi<2>(global_data,
                       detail::strided_view(priv, 2), 
                       detail::strided_view(loc_view, 

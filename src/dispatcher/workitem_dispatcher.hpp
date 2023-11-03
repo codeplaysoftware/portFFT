@@ -165,18 +165,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        /*PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < static_cast<IdxGlobal>(fft_size); j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
-        }*/
         copy_wi<2>(global_data, 
                    detail::strided_view(input, 2 * n_transforms, i * 2), 
                    detail::strided_view(priv, 2), fft_size);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        //local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
         copy_wi(global_data, detail::offset_view{loc_view, local_offset + subgroup_local_id * n_reals}, priv, n_reals);
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
@@ -209,12 +202,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         //private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
         copy_wi(global_data, priv, detail::offset_view{loc_view, local_offset + subgroup_local_id * n_reals}, n_reals);
       } else {
-        /*PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < fft_size; j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
-        }*/
         copy_wi<2>(global_data, 
                    detail::strided_view(priv, 2), 
                    detail::strided_view(output, 2 * n_transforms, i * 2), 

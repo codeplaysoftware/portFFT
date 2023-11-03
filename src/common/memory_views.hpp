@@ -114,30 +114,6 @@ struct padded_view {
   }
 };
 
-/** A view of memory with a function to remap indices.
- *
- * @tparam RemapFuncT The remapping function type.
- * @tparam ParentT The underlying view or pointer type.
- */
-template <typename RemapFuncT, typename ParentT>
-struct remapping_view {
-  using element_type = get_element_t<ParentT>;
-  using reference = element_type&;
-
-  ParentT parent;
-  RemapFuncT func;
-
-  // Constructor: Create a view of a pointer or another view.
-  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : parent(parent), func(func){};
-
-  /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return false;  // No way to know if the RemapFuncT is contiguous.
-  }
-
-  // Index into the view.
-  PORTFFT_INLINE constexpr reference operator[](Idx i) const { return parent[func(i)]; }
-};
 /**
  * Multidimensional view.
  * 

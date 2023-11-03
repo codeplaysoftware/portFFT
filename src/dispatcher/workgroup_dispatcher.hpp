@@ -138,9 +138,6 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      /*global_batchinter_2_local_batchinter<level::WORKGROUP>(global_data, input, loc_view, offset / fft_size,
-                                                             2 * num_batches_in_local_mem, fft_size, 2 * n_transforms,
-                                                             2 * max_num_batches_in_local_mem);*/
       copy_group(global_data, local_size, local_id,
               detail::md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, offset / fft_size}, 
               detail::md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}},
@@ -155,12 +152,6 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
-        // local2global_transposed cannot be used over here. This is because the data in the local memory is also
-        // stored in a strided fashion.
-        /*local_batchinter_batchinter_2_global_packed<SubgroupSize>(global_data, loc_view, output, offset,
-                                                                  2 * max_num_batches_in_local_mem, factor_n, factor_m,
-                                                                  num_batches_in_local_mem);
-        */
         copy_group(global_data, local_size, local_id,
               detail::md_view{loc_view, 
                       std::array{2, 
@@ -174,9 +165,6 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
               std::array{num_batches_in_local_mem, 2, 
                          factor_m, factor_n});
       } else {
-        //local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
-          //                                              2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
-            //                                            num_batches_in_local_mem, factor_n, factor_m);
         copy_group(global_data, local_size, local_id,
               detail::md_view{loc_view,
                       std::array{2 * max_num_batches_in_local_mem, 
@@ -212,10 +200,6 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         */
       } else {
         IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
-
-        //localstrided_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch, fft_size,
-          //                           factor_n, factor_m);
-
         copy_group(global_data, local_size, local_id,
             detail::md_view{loc_view, std::array{2, 1, 2 * factor_m}},
             detail::md_view{output, std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms}, 2 * current_batch}, 
