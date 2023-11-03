@@ -26,12 +26,11 @@
 #include <type_traits>
 
 #include <benchmark/benchmark.h>
+#include <portfft/portfft.hpp>
 
-#include <portfft.hpp>
-
-#include "bench_utils.hpp"
-#include "device_number_generator.hpp"
-#include "ops_estimate.hpp"
+#include "utils/bench_utils.hpp"
+#include "utils/device_number_generator.hpp"
+#include "utils/ops_estimate.hpp"
 
 /**
  * Main function to run benchmarks and measure the time spent on the host.

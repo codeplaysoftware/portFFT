@@ -21,9 +21,10 @@
 #ifndef PORTFFT_SPECIALIZATION_CONSTANT_HPP
 #define PORTFFT_SPECIALIZATION_CONSTANT_HPP
 
-#include <defines.hpp>
-#include <enums.hpp>
 #include <sycl/sycl.hpp>
+
+#include "defines.hpp"
+#include "enums.hpp"
 
 namespace portfft {
 namespace detail {

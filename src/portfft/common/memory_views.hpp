@@ -23,9 +23,9 @@
 
 #include <cstdint>
 
-#include <defines.hpp>
-#include <enums.hpp>
-#include <traits.hpp>
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/traits.hpp"
 
 /*
 To describe the frequency of padding spaces in local memory, we have coined the term "bank line" to describe the chunk

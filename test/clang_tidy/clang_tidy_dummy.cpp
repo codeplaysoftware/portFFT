@@ -18,8 +18,9 @@
  *
  **************************************************************************/
 
-#include <portfft.hpp>
 #include <sycl/sycl.hpp>
+
+#include <portfft/portfft.hpp>
 
 int main() {
   portfft::descriptor<float, portfft::domain::COMPLEX> desc{{2}};

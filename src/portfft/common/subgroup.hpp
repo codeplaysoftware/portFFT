@@ -21,13 +21,14 @@
 #ifndef PORTFFT_COMMON_SUBGROUP_HPP
 #define PORTFFT_COMMON_SUBGROUP_HPP
 
-#include <common/helpers.hpp>
-#include <common/twiddle.hpp>
-#include <common/twiddle_calc.hpp>
-#include <common/workitem.hpp>
-#include <defines.hpp>
-#include <enums.hpp>
 #include <sycl/sycl.hpp>
+
+#include "helpers.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "twiddle.hpp"
+#include "twiddle_calc.hpp"
+#include "workitem.hpp"
 
 namespace portfft {
 namespace detail {

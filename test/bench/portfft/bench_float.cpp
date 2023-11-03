@@ -18,10 +18,10 @@
  *
  **************************************************************************/
 
-#include <traits.hpp>
+#include <portfft/traits.hpp>
 
 #include "launch_bench.hpp"
-#include "sycl_utils.hpp"
+#include "utils/sycl_utils.hpp"
 
 template <typename T>
 void bench_dft(sycl::queue q, sycl::queue profiling_q, const std::string& suffix,
