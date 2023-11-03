@@ -112,7 +112,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
 }
 
 /**
- * Copy multidimensional data jointly by a group. Work is distributed across workitem along the last two dimensions.
+ * Copy multidimensional data jointly by a group. Work is distributed across workitems along the last two dimensions.
  * 
  * @tparam TParent1 type of the underlying pointer or view for source view
  * @tparam TStrides1 integral type used for strides in the source view 

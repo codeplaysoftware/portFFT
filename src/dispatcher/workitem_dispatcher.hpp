@@ -199,7 +199,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if (LayoutOut == detail::layout::PACKED) {
-        //private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
         copy_wi(global_data, priv, detail::offset_view{loc_view, local_offset + subgroup_local_id * n_reals}, n_reals);
       } else {
         copy_wi<2>(global_data, 
