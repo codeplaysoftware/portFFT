@@ -97,6 +97,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   const Idx n_reals_per_wi = 2 * factor_wi;
 
   T priv[2 * MaxComplexPerWI];
+  Idx local_id = static_cast<Idx>(global_data.it.get_local_id(0));
+  Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx n_sgs_in_wg = static_cast<Idx>(global_data.it.get_local_range(0)) / SubgroupSize;
@@ -119,7 +121,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   IdxGlobal n_ffts_in_kernel;
   if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
     id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
-    n_ffts_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0) * global_data.it.get_local_range(0)) / 2;
+    n_ffts_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0)) * local_size / 2;
   } else {
     id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
     n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
@@ -154,8 +156,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       Idx id_of_fft_in_sub_batch = static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg + id_of_fft_in_sg;
       Idx max_num_batches_local_mem = n_sgs_in_wg * SubgroupSize / 2;
       Idx num_batches_in_local_mem = [=]() {
-        if (i + static_cast<IdxGlobal>(global_data.it.get_local_range(0)) / 2 < n_transforms) {
-          return static_cast<Idx>(global_data.it.get_local_range(0)) / 2;
+        if (i + static_cast<IdxGlobal>(local_size) / 2 < n_transforms) {
+          return local_size / 2;
         }
         return static_cast<Idx>(n_transforms - i);
       }();
@@ -179,9 +181,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data, input, loc_view, 2 * i, 2 * num_batches_in_local_mem, factor_wi * factor_sg, 2 * n_transforms,
           2 * max_num_batches_local_mem);*/
       copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{input, std::array{2 * i, static_cast<IdxGlobal>(0)}, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
-              md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, std::array{static_cast<IdxGlobal>(2 * max_num_batches_local_mem), static_cast<IdxGlobal>(1)}},
-              std::array{static_cast<IdxGlobal>(factor_wi * factor_sg), static_cast<IdxGlobal>(2 * num_batches_in_local_mem)});
+              md_view{input, 2 * i, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
+              md_view{loc_view, 0, std::array{2 * max_num_batches_local_mem, 1}},
+              std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view, n_reals_per_wi * factor_sg);
       for (Idx sub_batch = id_of_fft_in_sub_batch; sub_batch < rounded_up_sub_batches;
@@ -290,11 +292,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //                      max_num_batches_local_mem, loc_view, output, i * n_reals_per_fft);
           
           copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                                std::array{static_cast<IdxGlobal>(2 * max_num_batches_local_mem), static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2)}},
-              md_view{output, std::array{i * n_reals_per_fft, static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                              std::array{static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2 * factor_wi * factor_sg)}}, 
-              std::array{static_cast<IdxGlobal>(factor_wi * factor_sg), static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(num_batches_in_local_mem)});
+              md_view{loc_view, 0, 
+                                std::array{2 * max_num_batches_local_mem, 1, 2}},
+              md_view{output, i * n_reals_per_fft, 
+                              std::array{2, 1, 2 * factor_wi * factor_sg}}, 
+              std::array{factor_wi * factor_sg, 2, num_batches_in_local_mem});
         } else {
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
@@ -303,11 +305,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             //local_transposed2_global_transposed<detail::level::WORKGROUP>(
               //  global_data, output, loc_view, 2 * i, factor_wi * factor_sg, n_transforms, max_num_batches_local_mem);
             copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                                std::array{static_cast<IdxGlobal>(2 * max_num_batches_local_mem), static_cast<IdxGlobal>(1)}},
-              md_view{output, std::array{2 * i, static_cast<IdxGlobal>(0)}, 
-                              std::array{static_cast<IdxGlobal>(2 * n_transforms), static_cast<IdxGlobal>(1)}}, 
-              std::array{static_cast<IdxGlobal>(factor_wi * factor_sg), static_cast<IdxGlobal>(2 * num_batches_in_local_mem)}
+              md_view{loc_view, 0, 
+                                std::array{2 * max_num_batches_local_mem, 1}},
+              md_view{output, 2 * i, 
+                              std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
+              std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem}
             );
           //}
         }

@@ -140,9 +140,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
                                                              2 * num_batches_in_local_mem, fft_size, 2 * n_transforms,
                                                              2 * max_num_batches_in_local_mem);*/
       copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{input, std::array{offset / fft_size, static_cast<IdxGlobal>(0)}, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
-              md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, std::array{static_cast<IdxGlobal>(2 * max_num_batches_in_local_mem), static_cast<IdxGlobal>(1)}},
-              std::array{static_cast<IdxGlobal>(fft_size), static_cast<IdxGlobal>(2 * num_batches_in_local_mem)});
+              md_view{input, offset / fft_size, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}}, 
+              md_view{loc_view, 0, std::array{2 * max_num_batches_in_local_mem, 1}},
+              std::array{fft_size, 2 * num_batches_in_local_mem});
       sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
@@ -160,44 +160,33 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
                                                                   num_batches_in_local_mem);
         */
         copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, 
-                      std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0), 
-                                 static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                      std::array{static_cast<IdxGlobal>(2), 
-                                 static_cast<IdxGlobal>(1), 
-                                 static_cast<IdxGlobal>(2 * max_num_batches_in_local_mem), 
-                                 static_cast<IdxGlobal>(2 * max_num_batches_in_local_mem * factor_m)}},
-              md_view{output, 
-                      std::array{offset, static_cast<IdxGlobal>(0), 
-                                 static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                      std::array{static_cast<IdxGlobal>(2 * fft_size), static_cast<IdxGlobal>(1), 
-                                 static_cast<IdxGlobal>(2 * factor_n), static_cast<IdxGlobal>(2)}}, 
+              md_view{loc_view, 0, 
+                      std::array{2, 
+                                 1, 
+                                 2 * max_num_batches_in_local_mem, 
+                                 2 * max_num_batches_in_local_mem * factor_m}},
+              md_view{output, offset, 
+                      std::array{2 * fft_size, 1, 
+                                 2 * factor_n, 2}}, 
 
-              std::array{static_cast<IdxGlobal>(num_batches_in_local_mem), static_cast<IdxGlobal>(2), 
-                         static_cast<IdxGlobal>(factor_m), static_cast<IdxGlobal>(factor_n)});
+              std::array{num_batches_in_local_mem, 2, 
+                         factor_m, factor_n});
       } else {
         //local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
           //                                              2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
             //                                            num_batches_in_local_mem, factor_n, factor_m);
         copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-              md_view{loc_view, 
-                      std::array{static_cast<IdxGlobal>(0),
-                                 static_cast<IdxGlobal>(0), 
-                                 static_cast<IdxGlobal>(0)}, 
-                      std::array{static_cast<IdxGlobal>(2 * max_num_batches_in_local_mem), 
-                                 static_cast<IdxGlobal>(2 * max_num_batches_in_local_mem * factor_m), 
-                                 static_cast<IdxGlobal>(1)}},
-              md_view{output, 
-                      std::array{2 * batch_start_idx, 
-                                 static_cast<IdxGlobal>(0), 
-                                 static_cast<IdxGlobal>(0)}, 
-                      std::array{static_cast<IdxGlobal>(2 * n_transforms * factor_n),  
-                                 static_cast<IdxGlobal>(2 * n_transforms), 
+              md_view{loc_view, 0, 
+                      std::array{2 * max_num_batches_in_local_mem, 
+                                 2 * max_num_batches_in_local_mem * factor_m, 
+                                 1}},
+              md_view{output, 2 * batch_start_idx, 
+                      std::array{2 * n_transforms * factor_n,
+                                 2 * n_transforms, 
                                  static_cast<IdxGlobal>(1)}}, 
-                                 
-              std::array{static_cast<IdxGlobal>(factor_m), 
-                         static_cast<IdxGlobal>(factor_n),
-                         static_cast<IdxGlobal>(2 * num_batches_in_local_mem)});
+              std::array{factor_m, 
+                         factor_n,
+                         2 * num_batches_in_local_mem});
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
@@ -215,11 +204,11 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
         local2global_transposed(global_data, factor_n, factor_m, factor_m, loc_view, output, offset);
         //TODO: performance regression on AMD
         /*copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-            md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                              std::array{static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2 * factor_m), static_cast<IdxGlobal>(2)}},
-            md_view{output, std::array{offset, static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                            std::array{static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(2 * factor_n)}}, 
-            std::array{static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m)});
+            md_view{loc_view, 0, 
+                              std::array{1, 2 * factor_m, 2}},
+            md_view{output, offset, 
+                            std::array{1, 2, 2 * factor_n}}, 
+            std::array{2, factor_n, factor_m});
         */
       } else {
         IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
@@ -228,14 +217,11 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
           //                           factor_n, factor_m);
 
         copy_group(global_data, global_data.it.get_local_range(0), global_data.it.get_local_id(0),
-
-            md_view{loc_view, std::array{static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                              std::array{static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2 * factor_m)}},
-
-            md_view{output,   std::array{2 * current_batch, static_cast<IdxGlobal>(0), static_cast<IdxGlobal>(0)}, 
-                              std::array{static_cast<IdxGlobal>(2 * factor_n * n_transforms), static_cast<IdxGlobal>(1), static_cast<IdxGlobal>(2 * n_transforms)}}, 
-
-            std::array{static_cast<IdxGlobal>(factor_m), static_cast<IdxGlobal>(2), static_cast<IdxGlobal>(factor_n)});
+            md_view{loc_view, 0, 
+                              std::array{2, 1, 2 * factor_m}},
+            md_view{output, 2 * current_batch, 
+                              std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms}}, 
+            std::array{factor_m, 2, factor_n});
         
       }
       sycl::group_barrier(global_data.it.get_group());
