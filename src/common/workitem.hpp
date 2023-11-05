@@ -268,7 +268,7 @@ PORTFFT_INLINE void wi_dft_16(const T* in, T* out) {
   constexpr Idx factor_m = 4;
   constexpr Idx factor_n = 4;
   T privateScratch[4 * 8];
-  PORTFFT_UNROLL
+  /*PORTFFT_UNROLL
   for (Idx i = 0; i < factor_m; i++) {
     wi_dft_4<Dir, factor_m, 1>(in + 2 * i, privateScratch + 2 * i * factor_n);
     PORTFFT_UNROLL
@@ -288,7 +288,122 @@ PORTFFT_INLINE void wi_dft_16(const T* in, T* out) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_n; i++) {
     wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * i, out + 2 * i);
-  }
+  }*/
+  T re_multiplier, im_multiplier;
+  
+  // i = 0
+  wi_dft_4<Dir, factor_m, 1>(in + 2 * 0, privateScratch + 2 * 0 * factor_n);
+  // j = 0
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][0 * 0];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][0 * 0];
+  detail::multiply_complex(privateScratch[2 * 0 * factor_n + 2 * 0], privateScratch[2 * 0 * factor_n + 2 * 0 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 0 * factor_n + 2 * 0],
+                          privateScratch[2 * 0 * factor_n + 2 * 0 + 1]);
+  // j = 1
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][0 * 1];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][0 * 1];
+  detail::multiply_complex(privateScratch[2 * 0 * factor_n + 2 * 1], privateScratch[2 * 0 * factor_n + 2 * 1 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 0 * factor_n + 2 * 1],
+                          privateScratch[2 * 0 * factor_n + 2 * 1 + 1]);
+  // j = 2
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][0 * 2];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][0 * 2];
+  detail::multiply_complex(privateScratch[2 * 0 * factor_n + 2 * 2], privateScratch[2 * 0 * factor_n + 2 * 2 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 0 * factor_n + 2 * 2],
+                          privateScratch[2 * 0 * factor_n + 2 * 2 + 1]);
+  // j = 3
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][0 * 3];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][0 * 3];
+  detail::multiply_complex(privateScratch[2 * 0 * factor_n + 2 * 3], privateScratch[2 * 0 * factor_n + 2 * 3 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 0 * factor_n + 2 * 3],
+                          privateScratch[2 * 0 * factor_n + 2 * 3 + 1]);
+  // i = 1
+  wi_dft_4<Dir, factor_m, 1>(in + 2 * 1, privateScratch + 2 * 1 * factor_n);
+  // j = 0
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][1 * 0];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][1 * 0];
+  detail::multiply_complex(privateScratch[2 * 1 * factor_n + 2 * 0], privateScratch[2 * 1 * factor_n + 2 * 0 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 1 * factor_n + 2 * 0],
+                          privateScratch[2 * 1 * factor_n + 2 * 0 + 1]);
+  // j = 1
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][1 * 1];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][1 * 1];
+  detail::multiply_complex(privateScratch[2 * 1 * factor_n + 2 * 1], privateScratch[2 * 1 * factor_n + 2 * 1 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 1 * factor_n + 2 * 1],
+                          privateScratch[2 * 1 * factor_n + 2 * 1 + 1]);
+  // j = 2
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][1 * 2];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][1 * 2];
+  detail::multiply_complex(privateScratch[2 * 1 * factor_n + 2 * 2], privateScratch[2 * 1 * factor_n + 2 * 2 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 1 * factor_n + 2 * 2],
+                          privateScratch[2 * 1 * factor_n + 2 * 2 + 1]);
+  // j = 3
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][1 * 3];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][1 * 3];
+  detail::multiply_complex(privateScratch[2 * 1 * factor_n + 2 * 3], privateScratch[2 * 1 * factor_n + 2 * 3 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 1 * factor_n + 2 * 3],
+                          privateScratch[2 * 1 * factor_n + 2 * 3 + 1]);
+  // i = 2
+  wi_dft_4<Dir, factor_m, 1>(in + 2 * 2, privateScratch + 2 * 2 * factor_n);
+  // j = 0
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][2 * 0];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][2 * 0];
+  detail::multiply_complex(privateScratch[2 * 2 * factor_n + 2 * 0], privateScratch[2 * 2 * factor_n + 2 * 0 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 2 * factor_n + 2 * 0],
+                          privateScratch[2 * 2 * factor_n + 2 * 0 + 1]);
+  // j = 1
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][2 * 1];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][2 * 1];
+  detail::multiply_complex(privateScratch[2 * 2 * factor_n + 2 * 1], privateScratch[2 * 2 * factor_n + 2 * 1 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 2 * factor_n + 2 * 1],
+                          privateScratch[2 * 2 * factor_n + 2 * 1 + 1]);
+  // j = 2
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][2 * 2];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][2 * 2];
+  detail::multiply_complex(privateScratch[2 * 2 * factor_n + 2 * 2], privateScratch[2 * 2 * factor_n + 2 * 2 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 2 * factor_n + 2 * 2],
+                          privateScratch[2 * 2 * factor_n + 2 * 2 + 1]);
+  // j = 3
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][2 * 3];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][2 * 3];
+  detail::multiply_complex(privateScratch[2 * 2 * factor_n + 2 * 3], privateScratch[2 * 2 * factor_n + 2 * 3 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 2 * factor_n + 2 * 3],
+                          privateScratch[2 * 2 * factor_n + 2 * 3 + 1]);
+  // i = 3
+  wi_dft_4<Dir, factor_m, 1>(in + 2 * 3, privateScratch + 2 * 3 * factor_n);
+  // j = 0
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][3 * 0];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][3 * 0];
+  detail::multiply_complex(privateScratch[2 * 3 * factor_n + 2 * 0], privateScratch[2 * 3 * factor_n + 2 * 0 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 3 * factor_n + 2 * 0],
+                          privateScratch[2 * 3 * factor_n + 2 * 0 + 1]);
+  // j = 1
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][3 * 1];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][3 * 1];
+  detail::multiply_complex(privateScratch[2 * 3 * factor_n + 2 * 1], privateScratch[2 * 3 * factor_n + 2 * 1 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 3 * factor_n + 2 * 1],
+                          privateScratch[2 * 3 * factor_n + 2 * 1 + 1]);
+  // j = 2
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][3 * 2];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][3 * 2];
+  detail::multiply_complex(privateScratch[2 * 3 * factor_n + 2 * 2], privateScratch[2 * 3 * factor_n + 2 * 2 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 3 * factor_n + 2 * 2],
+                          privateScratch[2 * 3 * factor_n + 2 * 2 + 1]);
+  // j = 3
+  re_multiplier = twiddle<T>::Re[factor_n * factor_m][3 * 3];
+  im_multiplier = twiddle<T>::Im[factor_n * factor_m][3 * 3];
+  detail::multiply_complex(privateScratch[2 * 3 * factor_n + 2 * 3], privateScratch[2 * 3 * factor_n + 2 * 3 + 1],
+                          re_multiplier, im_multiplier, privateScratch[2 * 3 * factor_n + 2 * 3],
+                          privateScratch[2 * 3 * factor_n + 2 * 3 + 1]);
+
+  // i = 0
+  wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * 0, out + 2 * 0);
+  // i = 1
+  wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * 1, out + 2 * 1);
+  // i = 2
+  wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * 2, out + 2 * 2);
+  // i = 3
+  wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * 3, out + 2 * 3);
 }
 
 }  // namespace detail
