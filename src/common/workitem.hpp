@@ -31,7 +31,7 @@ namespace portfft {
 
 // forward declaration
 template <direction Dir, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
+PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* __restrict__ privateScratch);
 
 namespace detail {
 
@@ -62,7 +62,7 @@ strides.
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
 template <direction Dir, typename T>
-PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
+PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* __restrict__ privateScratch) {
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
     privateScratch[2 * idx_out + 0] = 0;
@@ -109,7 +109,7 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
  */
 template <direction Dir, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_m, Idx stride_in, Idx stride_out,
-                                     T* privateScratch) {
+                                     T* __restrict__ privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_m; i++) {
     wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n,
@@ -193,6 +193,69 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
   return n_complex * complex_size <= register_space;
 }
 
+
+template <direction Dir, Idx stride_in, Idx stride_out, typename T>
+PORTFFT_INLINE void wi_dft_2(const T* in, T* out) {
+    T a = in[0 * stride_in + 0] + in[2 * stride_in + 0];
+    T b = in[0 * stride_in + 1] + in[2 * stride_in + 1];
+    T c = in[0 * stride_in + 0] - in[2 * stride_in + 0];
+    out[2 * stride_out + 1] = in[0 * stride_in + 1] - in[2 * stride_in + 1];
+    out[0 * stride_out + 0] = a;
+    out[0 * stride_out + 1] = b;
+    out[2 * stride_out + 0] = c;
+}
+
+template <direction Dir, Idx stride_in, Idx stride_out, typename T>
+PORTFFT_INLINE void wi_dft_4(const T* in, T* out) {
+  constexpr Idx factor_m = 2;
+  constexpr Idx factor_n = 2;
+  T privateScratch[4 + 4];
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < factor_m; i++) {
+    wi_dft_2<Dir, factor_m * stride_in, 1>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n);
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_n; j++) {
+      auto re_multiplier = twiddle<T>::Re[factor_n * factor_m][i * j];
+      auto im_multiplier = twiddle<T>::Im[factor_n * factor_m][i * j];
+      detail::multiply_complex(privateScratch[2 * i * factor_n + 2 * j], privateScratch[2 * i * factor_n + 2 * j + 1],
+                              re_multiplier, im_multiplier, privateScratch[2 * i * factor_n + 2 * j],
+                              privateScratch[2 * i * factor_n + 2 * j + 1]);
+    }
+  }
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < factor_n; i++) {
+    wi_dft_2<Dir, factor_n, factor_n * stride_out>(privateScratch + 2 * i, out + 2 * i * stride_out);
+  }
+}
+
+template <direction Dir, typename T>
+PORTFFT_INLINE void wi_dft_16(const T* in, T* out) {
+  constexpr Idx factor_m = 4;
+  constexpr Idx factor_n = 4;
+  T privateScratch[4 * 8];
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < factor_m; i++) {
+    wi_dft_4<Dir, factor_m, 1>(in + 2 * i, privateScratch + 2 * i * factor_n);
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_n; j++) {
+      auto re_multiplier = twiddle<T>::Re[factor_n * factor_m][i * j];
+      auto im_multiplier = [&]() {
+        if constexpr (Dir == direction::FORWARD) {
+          return twiddle<T>::Im[factor_n * factor_m][i * j];
+        }
+        return -twiddle<T>::Im[factor_n * factor_m][i * j];
+      }();
+      detail::multiply_complex(privateScratch[2 * i * factor_n + 2 * j], privateScratch[2 * i * factor_n + 2 * j + 1],
+                              re_multiplier, im_multiplier, privateScratch[2 * i * factor_n + 2 * j],
+                              privateScratch[2 * i * factor_n + 2 * j + 1]);
+    }
+  }
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < factor_n; i++) {
+    wi_dft_4<Dir, factor_n, factor_n>(privateScratch + 2 * i, out + 2 * i);
+  }
+}
+
 }  // namespace detail
 
 /**
@@ -208,8 +271,8 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
  * @param privateScratch Scratch memory for this WI.
  */
 template <direction Dir, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
-  const Idx f0 = detail::factorize(fft_size);
+PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T*) {
+  /*const Idx f0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::int_log2(16) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (fft_size == 2) {
@@ -226,7 +289,9 @@ PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx
     } else {
       detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out, privateScratch);
     }
-  }
+  }*/
+
+  detail::wi_dft_16<Dir>(in, out);
 }
 
 }  // namespace portfft
