@@ -111,7 +111,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   const Idx n_reals = 2 * fft_size;
 
 #ifdef PORTFFT_USE_SCLA
-  T wi_private_scratch[2 * detail::wi_temps(16)];
+  //T wi_private_scratch_a[2 * detail::wi_temps(16)];
+  //T* __restrict__ wi_private_scratch = wi_private_scratch_a;
+  T* __restrict__ wi_private_scratch = nullptr;
   T priv_scla[2 * 16];
   // Decay the scla to T* to avoid assert when it is decayed to const T*
   T* priv = priv_scla;
