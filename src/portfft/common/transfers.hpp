@@ -49,6 +49,7 @@ namespace portfft {
  */
 template <Idx VectorSize = 1, typename ViewSrc, typename ViewDst>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
+  static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(), "This overload of copy_wi expects one-dimensional view arguments!");
   using Scalar = detail::get_element_t<ViewDst>;
   PORTFFT_UNROLL
   for (Idx i = 0; i < size; i++) {
@@ -79,8 +80,8 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
  */
 template <detail::level Level, typename ViewSrc, typename ViewDst>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
-  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
-                "Only subgroup and workgroup level supported");
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, "Only subgroup and workgroup level supported");
+  static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(), "This overload of copy_wi expects one-dimensional view arguments!");
   auto group = global_data.get_group<Level>();
   Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   Idx local_size = static_cast<Idx>(group.get_local_range()[0]);

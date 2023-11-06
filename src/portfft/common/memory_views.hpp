@@ -249,6 +249,45 @@ PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
   return get_raw_pointer(arg.parent);
 }
 
+/**
+ * Implementation of `is_view_multidimensional`.
+ * 
+ * @tparam T type of the view
+ */
+template<typename T>
+struct is_view_multidimensional_impl{
+  /**
+   * Check if a view is multidimensional.
+   * 
+   * @return number of dimensions
+   */
+  static constexpr std::size_t get(){
+    return false;
+  }
+};
+template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset>
+struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>>{
+  /**
+   * Check if a view is multidimensional.
+   * 
+   * @return number of dimensions
+   */
+  static constexpr std::size_t get(){
+    return true;
+  }
+};
+
+/**
+ * Check if a view is multidimensional.
+ * 
+ * @tparam T type of the view
+ * @return number of dimensions 
+ */
+template<typename T>
+constexpr std::size_t is_view_multidimensional(){
+  return is_view_multidimensional_impl<T>::get();
+}
+
 }  // namespace portfft::detail
 
 #endif  // PORTFFT_COMMON_MEMORY_VIEWS_HPP
