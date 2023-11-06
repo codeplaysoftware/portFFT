@@ -33,8 +33,8 @@
 namespace portfft {
 
 /**
- * Copy data. Each workitem does the copy independently. 
- * 
+ * Copy data. Each workitem does the copy independently.
+ *
  * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
  * @tparam VectorSize Size of the vector to copy - number of consecutive elements. Warning: even if VectorSize > 1 is
@@ -44,7 +44,8 @@ namespace portfft {
  * @param global_data global_data
  * @param src source pointer or view
  * @param dst destination pointer or view
- * @param size number of consecutive elements to copy (use views for strides). If VectorSize > 1, those elements are vectors of that size.
+ * @param size number of consecutive elements to copy (use views for strides). If VectorSize > 1, those elements are
+ * vectors of that size.
  */
 template <Idx VectorSize = 1, typename ViewSrc, typename ViewDst>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
@@ -64,8 +65,9 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
 
 /**
  * Copy data jointly by workitems in a group.
- * 
- * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each call `group_size`, `src`, `dst` and `size` must have the same value for all workitems in the group.
+ *
+ * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each
+ * call `group_size`, `src`, `dst` and `size` must have the same value for all workitems in the group.
  *
  * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
  * @tparam ViewSrc type of the source pointer or view
@@ -77,7 +79,8 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
  */
 template <detail::level Level, typename ViewSrc, typename ViewDst>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
-  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, "Only subgroup and workgroup level supported");
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
+                "Only subgroup and workgroup level supported");
   auto group = global_data.get_group<Level>();
   Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
@@ -91,7 +94,7 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc s
 
 /**
  * Copy multidimensional data.
- * 
+ *
  * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
  * @tparam TParent1 type of the underlying pointer or view for source multidimensional view
@@ -125,8 +128,9 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
 /**
  * Copy multidimensional data jointly by a group. Work is distributed across workitems along the last two dimensions.
  *
- * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each call `group_size`, `src`, `dst` and `sizes` must have the same value for all workitems in the group.
- * 
+ * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each
+ * call `group_size`, `src`, `dst` and `sizes` must have the same value for all workitems in the group.
+ *
  * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
  * @tparam TParent1 type of the underlying pointer or view for source view
  * @tparam TStrides1 integral type used for strides in the source view
@@ -140,12 +144,13 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
  * @param dst destination multidimensional view
  * @param sizes sizes (for each dimension) of the data to copy
  */
-template <detail::level Level, typename TParent1, typename TStrides1, typename TOffset1, typename TParent2, typename TStrides2,
-          typename TOffset2, std::size_t NDim>
+template <detail::level Level, typename TParent1, typename TStrides1, typename TOffset1, typename TParent2,
+          typename TStrides2, typename TOffset2, std::size_t NDim>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data,
                                detail::md_view<NDim, TParent1, TStrides1, TOffset1> src,
                                detail::md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes) {
-  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, "Only subgroup and workgroup level supported");
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
+                "Only subgroup and workgroup level supported");
   auto group = global_data.get_group<Level>();
   Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
   Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
@@ -405,10 +410,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   // Load the first few unaligned elements.
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     copy_group<Level>(global_data, offset_view(global, global_offset), offset_view(local, local_offset),
-               unaligned_elements);
+                      unaligned_elements);
   } else {  // LOCAL_TO_GLOBAL
     copy_group<Level>(global_data, offset_view(local, local_offset), offset_view(global, global_offset),
-               unaligned_elements);
+                      unaligned_elements);
   }
   local_offset += unaligned_elements;
   global_offset += unaligned_elements;
@@ -424,10 +429,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   // We cannot load fixed-size blocks of data anymore, so we use naive copies.
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     copy_group<Level>(global_data, offset_view(global, global_offset), offset_view(local, local_offset),
-               total_num_elems);
+                      total_num_elems);
   } else {  // LOCAL_TO_GLOBAL
     copy_group<Level>(global_data, offset_view(local, local_offset), offset_view(global, global_offset),
-               total_num_elems);
+                      total_num_elems);
   }
 }
 

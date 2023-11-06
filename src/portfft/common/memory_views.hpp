@@ -190,7 +190,8 @@ struct strided_view {
    * @param sizes sizes for each of the dimensions
    * @param offsets offsets into each of the dimensions
    */
-  constexpr strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) noexcept
+  constexpr strided_view(TParent parent, const std::array<TIdx, NDim>& sizes,
+                         const std::array<TIdx, NDim>& offsets) noexcept
       : parent(parent), sizes(sizes), offsets(offsets) {}
 
   /**
@@ -200,7 +201,8 @@ struct strided_view {
    * @param sizes size
    * @param offsets offset
    */
-  constexpr strided_view(TParent parent, const TIdx size, const TIdx offset = 0) noexcept : parent(parent), sizes{size}, offsets{offset} {}
+  constexpr strided_view(TParent parent, const TIdx size, const TIdx offset = 0) noexcept
+      : parent(parent), sizes{size}, offsets{offset} {}
 
   /**
    * Index into the view
