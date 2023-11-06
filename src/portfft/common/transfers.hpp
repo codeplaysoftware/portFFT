@@ -33,25 +33,27 @@
 namespace portfft {
 
 /**
- * Copy data. Each workitem does the copy independently.
+ * Copy data. Each workitem does the copy independently. 
+ * 
+ * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
  * @tparam VectorSize Size of the vector to copy - number of consecutive elements. Warning: even if VectorSize > 1 is
  * used elements and any indexing in the views is done in scalars, not vectors!
- * @tparam View1 type of the source pointer or view
- * @tparam View2 type of the destination pointer or view
+ * @tparam ViewSrc type of the source pointer or view
+ * @tparam ViewDst type of the destination pointer or view
  * @param global_data global_data
  * @param src source pointer or view
  * @param dst destination pointer or view
- * @param size number of consecutive elements to copy (use views for strides)
+ * @param size number of consecutive elements to copy (use views for strides). If VectorSize > 1, those elements are vectors of that size.
  */
-template <int VectorSize = 1, typename View1, typename View2>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, View2 dst, Idx size) {
-  using Scalar = detail::get_element_t<View2>;
-#pragma clang loop unroll(full)
+template <Idx VectorSize = 1, typename ViewSrc, typename ViewDst>
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
+  using Scalar = detail::get_element_t<ViewDst>;
+  PORTFFT_UNROLL
   for (Idx i = 0; i < size; i++) {
     const Scalar* src_start = &src[i];
     Scalar* dst_start = &dst[i];
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (Idx j = 0; j < VectorSize; j++) {
       global_data.log_message(__func__, "from", &src_start[j] - detail::get_raw_pointer(src), "to",
                               &dst_start[j] - detail::get_raw_pointer(dst), "value", src_start[j]);
@@ -62,21 +64,25 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, View1 src, V
 
 /**
  * Copy data jointly by workitems in a group.
+ * 
+ * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each call `group_size`, `src`, `dst` and `size` must have the same value for all workitems in the group.
  *
- * @tparam View1 type of the source pointer or view
- * @tparam View2 type of the destination pointer or view
+ * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
+ * @tparam ViewSrc type of the source pointer or view
+ * @tparam ViewDst type of the destination pointer or view
  * @param global_data global_data
- * @param group_size size of the group
- * @param local_id id of workitem in the group
  * @param src source pointer or view
  * @param dst destination pointer or view
  * @param size number of consecutive elements to copy (use views for strides)
  */
-template <typename View1, typename View2>
-PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id, View1 src,
-                               View2 dst, Idx size) {
-#pragma clang loop unroll(full)
-  for (Idx i = local_id; i < size; i += group_size) {
+template <detail::level Level, typename ViewSrc, typename ViewDst>
+PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, "Only subgroup and workgroup level supported");
+  auto group = global_data.get_group<Level>();
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
+  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
+  PORTFFT_UNROLL
+  for (Idx i = local_id; i < size; i += local_size) {
     dst[i] = src[i];
     global_data.log_message(__func__, "from", &src[i] - detail::get_raw_pointer(src), "to",
                             &dst[i] - detail::get_raw_pointer(dst), "value", src[i]);
@@ -85,6 +91,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
 
 /**
  * Copy multidimensional data.
+ * 
+ * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
  * @tparam TParent1 type of the underlying pointer or view for source multidimensional view
  * @tparam TParent2 type of the underlying pointer or view for destination multidimensional view
@@ -103,11 +111,11 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
     dst.get() = src.get();
   } else {
     std::array<Idx, NDim - 1> next_sizes;
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (std::size_t j = 0; j < NDim - 1; j++) {
       next_sizes[j] = sizes[j + 1];
     }
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (Idx i = 0; i < sizes[0]; i++) {
       copy_wi<TParent1, TParent2, NDim - 1>(src.inner(i), dst.inner(i), next_sizes);
     }
@@ -117,6 +125,9 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
 /**
  * Copy multidimensional data jointly by a group. Work is distributed across workitems along the last two dimensions.
  *
+ * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each call `group_size`, `src`, `dst` and `sizes` must have the same value for all workitems in the group.
+ * 
+ * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
  * @tparam TParent1 type of the underlying pointer or view for source view
  * @tparam TStrides1 integral type used for strides in the source view
  * @tparam TOffset1 integral type for offset in the source view
@@ -125,20 +136,22 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
  * @tparam TOffset2 integral type for offset in the destination view
  * @tparam NDim number of dimensions
  * @param global_data global_data
- * @param group_size size of the group
- * @param local_id id of workitem in the group
  * @param src source multidimensional view
  * @param dst destination multidimensional view
  * @param sizes sizes (for each dimension) of the data to copy
  */
-template <typename TParent1, typename TStrides1, typename TOffset1, typename TParent2, typename TStrides2,
+template <detail::level Level, typename TParent1, typename TStrides1, typename TOffset1, typename TParent2, typename TStrides2,
           typename TOffset2, std::size_t NDim>
-PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group_size, Idx local_id,
+PORTFFT_INLINE void copy_group(detail::global_data_struct global_data,
                                detail::md_view<NDim, TParent1, TStrides1, TOffset1> src,
                                detail::md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes) {
+  static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP, "Only subgroup and workgroup level supported");
+  auto group = global_data.get_group<Level>();
+  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
+  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
   if constexpr (NDim == 2) {
-#pragma clang loop unroll(full)
-    for (Idx ij = local_id; ij < sizes[0] * sizes[1]; ij += group_size) {
+    PORTFFT_UNROLL
+    for (Idx ij = local_id; ij < sizes[0] * sizes[1]; ij += local_size) {
       Idx i = ij / sizes[1];
       Idx j = ij % sizes[1];
       const auto& src_ref = src.inner(i).inner(j).get();
@@ -148,8 +161,8 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
       dst_ref = src_ref;
     }
   } else if constexpr (NDim == 1) {
-#pragma clang loop unroll(full)
-    for (Idx i = local_id; i < sizes[0]; i += group_size) {
+    PORTFFT_UNROLL
+    for (Idx i = local_id; i < sizes[0]; i += local_size) {
       const auto& src_ref = src.inner(i).get();
       auto& dst_ref = dst.inner(i).get();
       global_data.log_message(__func__, "from", &src_ref - detail::get_raw_pointer(src), "to",
@@ -158,14 +171,14 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, Idx group
     }
   } else {
     std::array<Idx, NDim - 1> next_sizes;
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (std::size_t j = 0; j < NDim - 1; j++) {
       next_sizes[j] = sizes[j + 1];
     }
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (Idx i = 0; i < sizes[0]; i++) {
-      copy_group<TParent1, TStrides1, TOffset1, TParent2, TStrides2, TOffset2, NDim - 1>(
-          global_data, group_size, local_id, src.inner(i), dst.inner(i), next_sizes);
+      copy_group<Level, TParent1, TStrides1, TOffset1, TParent2, TStrides2, TOffset2, NDim - 1>(
+          global_data, src.inner(i), dst.inner(i), next_sizes);
     }
   }
 }
@@ -377,10 +390,6 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
-  auto group = global_data.get_group<Level>();
-  Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
-  Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
-
 #ifdef PORTFFT_USE_SG_TRANSFERS
   Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize>(
       global_data, global, global_offset, local, local_offset, total_num_elems);
@@ -395,10 +404,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   Idx unaligned_elements = static_cast<Idx>(global_aligned_ptr - global_ptr);
   // Load the first few unaligned elements.
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-    copy_group(global_data, local_size, local_id, offset_view(global, global_offset), offset_view(local, local_offset),
+    copy_group<Level>(global_data, offset_view(global, global_offset), offset_view(local, local_offset),
                unaligned_elements);
   } else {  // LOCAL_TO_GLOBAL
-    copy_group(global_data, local_size, local_id, offset_view(local, local_offset), offset_view(global, global_offset),
+    copy_group<Level>(global_data, offset_view(local, local_offset), offset_view(global, global_offset),
                unaligned_elements);
   }
   local_offset += unaligned_elements;
@@ -414,10 +423,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
 #endif
   // We cannot load fixed-size blocks of data anymore, so we use naive copies.
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-    copy_group(global_data, local_size, local_id, offset_view(global, global_offset), offset_view(local, local_offset),
+    copy_group<Level>(global_data, offset_view(global, global_offset), offset_view(local, local_offset),
                total_num_elems);
   } else {  // LOCAL_TO_GLOBAL
-    copy_group(global_data, local_size, local_id, offset_view(local, local_offset), offset_view(global, global_offset),
+    copy_group<Level>(global_data, offset_view(local, local_offset), offset_view(global, global_offset),
                total_num_elems);
   }
 }

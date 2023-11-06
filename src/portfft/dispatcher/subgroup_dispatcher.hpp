@@ -97,7 +97,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
   const Idx n_reals_per_wi = 2 * factor_wi;
 
   T priv[2 * MaxComplexPerWI];
-  Idx local_id = static_cast<Idx>(global_data.it.get_local_id(0));
   Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
@@ -177,7 +176,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
       // load / store in a transposed manner
-      copy_group(global_data, local_size, local_id,
+      copy_group<level::WORKGROUP>(global_data,
                  detail::md_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i},
                  detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
                  std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
@@ -272,7 +271,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from local to global memory (SubgroupSize != "
                                          "FactorSG) with LayoutOut = detail::layout::PACKED");
-          copy_group(global_data, local_size, local_id,
+          copy_group<level::WORKGROUP>(global_data,
                      detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}},
                      detail::md_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft},
                      std::array{factor_wi * factor_sg, 2, num_batches_in_local_mem});
@@ -280,7 +279,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__,
                                          "storing transposed data from local memory to global memory with LayoutOut == "
                                          "detail::layout::BATCH_INTERLEAVED");
-          copy_group(global_data, local_size, local_id,
+          copy_group<level::WORKGROUP>(global_data,
                      detail::md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}},
                      detail::md_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i},
                      std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});

@@ -137,7 +137,7 @@ struct md_view {
    * @param strides strides for each of the dimensions
    * @param offset offset
    */
-  md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset = 0)
+  constexpr md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset = 0) noexcept
       : parent(parent), strides(strides), offset(offset) {}
 
   /**
@@ -146,9 +146,10 @@ struct md_view {
    * @param index index into the first dimension
    * @return view into remaining dimensions
    */
-  md_view<NDim - 1, TParent, TStrides, TOffset> inner(TStrides index) {
+  template <typename T = int, std::enable_if_t<NDim >= 1 && std::is_same_v<T, T>>* = nullptr>
+  PORTFFT_INLINE constexpr md_view<NDim - 1, TParent, TStrides, TOffset> inner(TStrides index) noexcept {
     std::array<TStrides, NDim - 1> next_strides;
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (std::size_t j = 0; j < NDim - 1; j++) {
       next_strides[j] = strides[j + 1];
     }
@@ -161,7 +162,7 @@ struct md_view {
    * @return a reference to the element
    */
   template <typename T = int, std::enable_if_t<NDim == 0 && std::is_same_v<T, T>>* = nullptr>
-  PORTFFT_INLINE auto& get() {
+  PORTFFT_INLINE constexpr PORTFFT_INLINE auto& get() const {
     return parent[offset];
   }
 };
@@ -189,7 +190,7 @@ struct strided_view {
    * @param sizes sizes for each of the dimensions
    * @param offsets offsets into each of the dimensions
    */
-  strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets)
+  constexpr strided_view(TParent parent, const std::array<TIdx, NDim>& sizes, const std::array<TIdx, NDim>& offsets) noexcept
       : parent(parent), sizes(sizes), offsets(offsets) {}
 
   /**
@@ -199,7 +200,7 @@ struct strided_view {
    * @param sizes size
    * @param offsets offset
    */
-  strided_view(TParent parent, const TIdx size, const TIdx offset = 0) : parent(parent), sizes{size}, offsets{offset} {}
+  constexpr strided_view(TParent parent, const TIdx size, const TIdx offset = 0) noexcept : parent(parent), sizes{size}, offsets{offset} {}
 
   /**
    * Index into the view
@@ -209,7 +210,7 @@ struct strided_view {
    */
   PORTFFT_INLINE constexpr reference operator[](Idx index) const {
     TIdx index_calculated = static_cast<TIdx>(index);
-#pragma clang loop unroll(full)
+    PORTFFT_UNROLL
     for (std::size_t i = 0; i < NDim; i++) {
       index_calculated = index_calculated * sizes[i] + offsets[i];
     }
@@ -230,7 +231,7 @@ strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
  * @return raw pointer
  */
 template <typename T>
-T* get_raw_pointer(T* arg) {
+PORTFFT_INLINE constexpr T* get_raw_pointer(T* arg) {
   return arg;
 }
 
@@ -242,7 +243,7 @@ T* get_raw_pointer(T* arg) {
  * @return raw pointer
  */
 template <typename TView>
-get_element_t<TView>* get_raw_pointer(TView arg) {
+PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
   return get_raw_pointer(arg.parent);
 }
 
