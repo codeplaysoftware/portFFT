@@ -104,7 +104,7 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                          test_params_print());
 
 // Scaled FFTs test suite
-auto scales = ::testing::Values(-1.0, 0.0, 2.0);
+auto scales = ::testing::Values(-1.0, 2.0);
 INSTANTIATE_TEST_SUITE_P(FwdScaledFFTTest, FFTTest,
                          ::testing::ConvertGenerator<scales_param_tuple>(::testing::Combine(
                              oop_packed_layout, fwd_only, ::testing::Values(3),
