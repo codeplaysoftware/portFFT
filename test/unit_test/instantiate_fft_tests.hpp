@@ -27,7 +27,8 @@
 
 #include "fft_test_utils.hpp"
 
-// Parameters: placement, layout, direction, batch, length
+// Mandatory parameters: placement, layout, direction, batch, lengths
+// Optional parameters: [forward_scale, backward_scale]
 class FFTTest : public ::testing::TestWithParam<test_params> {};
 
 using sizes_t = std::vector<std::size_t>;
