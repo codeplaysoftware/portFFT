@@ -57,6 +57,7 @@ using offsets_param_tuple =
 using scales_param_tuple =
     std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
                std::vector<std::size_t> /*lengths*/, double /*forward_scale*/, double /*backward_scale*/>;
+// More tuples can be added here to easily instantiate tests that will require different parameters
 
 struct test_params {
   placement placement;

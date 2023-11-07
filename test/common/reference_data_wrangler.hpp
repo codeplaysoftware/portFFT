@@ -221,10 +221,10 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     data_shape.back() = data_shape.back() / 2 + 1;
   }
 
-  // TODO: Update this to take into account offset, stride and distance.
+  // TODO: Update this to take into account stride and distance.
   std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
-  auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
 
+  auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
   for (std::size_t i = 0; i < dft_offset; ++i) {
     ASSERT_EQ(ref_output[i], actual_output[i]) << "Incorrectly written value in padding at " << i;
   }

@@ -62,8 +62,7 @@ auto bwd_only = ::testing::Values(direction::BACKWARD);
 auto both_directions = ::testing::Values(direction::FORWARD, direction::BACKWARD);
 
 // Pairs of offsets: {forward_offset, backward_offset}
-constexpr std::pair<std::size_t, std::size_t> matched_offset_values[] = {
-    {8, 8}, {67, 67}};  // Already tests with one_matched_offset by default.
+constexpr std::pair<std::size_t, std::size_t> matched_offset_values[] = {{8, 8}, {67, 67}};
 auto many_matched_offsets = ::testing::ValuesIn(matched_offset_values);
 constexpr std::pair<std::size_t, std::size_t> mismatched_offset_values[] = {{0, 2049}, {2049, 0}, {2047, 2049}};
 auto many_mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
