@@ -68,7 +68,7 @@ struct test_params {
 
   test_params() = default;
 
-  test_params(basic_param_tuple params) : test_params() {
+  explicit test_params(basic_param_tuple params) : test_params() {
     auto placement_layouts = std::get<0>(params);
     placement = placement_layouts.placement;
     input_layout = placement_layouts.input_layout;
