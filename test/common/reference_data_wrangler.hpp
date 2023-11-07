@@ -64,6 +64,7 @@ template <portfft::direction Dir, typename Scalar, portfft::domain Domain>
 auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
                       portfft::detail::layout layout_out) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
+  constexpr bool IsForward = Dir == portfft::direction::FORWARD;
 
   const auto batches = desc.number_of_transforms;
   const auto& dims = desc.lengths;
@@ -141,26 +142,39 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   // modify layout
   if (layout_in == portfft::detail::layout::BATCH_INTERLEAVED) {
-    if constexpr (Dir == portfft::direction::FORWARD) {
+    if constexpr (IsForward) {
       forward = transpose(forward, elements / batches, desc.number_of_transforms);
     } else {
       backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
     }
   }
   if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
-    if constexpr (Dir == portfft::direction::FORWARD) {
+    if constexpr (IsForward) {
       backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
     } else {
       forward = transpose(forward, elements / batches, desc.number_of_transforms);
     }
   }
 
-  // return in the expected order
-  if constexpr (Dir == portfft::direction::FORWARD) {
-    return std::make_pair(forward, backward);
-  } else {
-    return std::make_pair(backward, forward);
+  // Return a pair in the expected order
+  auto input_output_pair = [&]() {
+    if constexpr (IsForward) {
+      return std::make_pair(forward, backward);
+    } else {
+      return std::make_pair(backward, forward);
+    }
+  }();
+
+  // Apply scaling factor to the output
+  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
+  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
+  auto scaling_factor =
+      IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
+  for (auto& output_elem : input_output_pair.second) {
+    output_elem *= scaling_factor;
   }
+
+  return input_output_pair;
 }
 
 /** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.
@@ -186,29 +200,18 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     static_assert(std::is_same_v<ElemT, Scalar>, "Expected real data type for real backward dft verification.");
   }
 
-  auto data_shape = desc.lengths;
-
-  if constexpr (IsForward && Domain == portfft::domain::REAL) {
-    data_shape.back() = data_shape.back() / 2 + 1;
-  }
-
-  std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
-
-  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
-  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
-  auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
-
+  std::size_t dft_len = desc.get_flattened_length();
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
     const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
 
     for (std::size_t e = 0; e != dft_len; ++e) {
-      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e] * scaling);
+      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e]);
       if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
         // std::endl is used intentionally to flush the error message before google test exits the test.
         std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dft_len + e
-                  << ", does not match\nref " << this_batch_ref[e] * scaling << " vs " << this_batch_computed[e]
-                  << "\ndiff " << diff << ", tolerance " << comparison_tolerance << std::endl;
+                  << ", does not match\nref " << this_batch_ref[e] << " vs " << this_batch_computed[e] << "\ndiff "
+                  << diff << ", tolerance " << comparison_tolerance << std::endl;
         throw std::runtime_error("Verification Failed");
       }
     }
