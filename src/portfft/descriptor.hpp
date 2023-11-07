@@ -395,9 +395,10 @@ class committed_descriptor {
     const auto total_size = params.get_flattened_length();
     const bool forward_packed = params.forward_distance == total_size && params.forward_strides.back() == 1;
     const bool backward_packed = params.backward_distance == total_size && params.backward_strides.back() == 1;
-    const bool forward_batch_interleaved = params.forward_distance == 1 && params.forward_strides.back() == total_size;
+    const bool forward_batch_interleaved =
+        params.forward_distance == 1 && params.forward_strides.back() == params.number_of_transforms;
     const bool backward_batch_interleaved =
-        params.backward_distance == 1 && params.backward_strides.back() == total_size;
+        params.backward_distance == 1 && params.backward_strides.back() == params.number_of_transforms;
     if (params.lengths.size() > 1 && !(forward_packed && backward_packed)) {
       throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
     }
