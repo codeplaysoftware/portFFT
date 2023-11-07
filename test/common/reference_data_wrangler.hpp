@@ -120,6 +120,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   };
   std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
 
+  // Do not take into account the descriptor's stride, distance or offset to load data from Numpy.
   auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
   auto backward_elements =
       IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
@@ -200,7 +201,15 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     static_assert(std::is_same_v<ElemT, Scalar>, "Expected real data type for real backward dft verification.");
   }
 
-  std::size_t dft_len = desc.get_flattened_length();
+  auto data_shape = desc.lengths;
+
+  if constexpr (IsForward && Domain == portfft::domain::REAL) {
+    data_shape.back() = data_shape.back() / 2 + 1;
+  }
+
+  // TODO: Update this to take into account offset, stride and distance.
+  std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
+
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
     const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
