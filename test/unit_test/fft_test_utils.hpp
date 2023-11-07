@@ -166,7 +166,6 @@ auto get_descriptor(const test_params& params) {
   descriptor<FType, domain::COMPLEX> desc{params.lengths};
   desc.number_of_transforms = params.batch;
   desc.placement = params.placement;
-  ;
 
   auto apply_layout_for_dir = [&desc, &params](detail::layout layout, direction dir) {
     if (layout == detail::layout::PACKED) {
