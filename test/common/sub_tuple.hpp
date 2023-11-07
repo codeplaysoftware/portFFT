@@ -23,33 +23,14 @@
 
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
-template <int I, typename SubTupleT, typename TupleT>
-struct sub_tuple;
-
-/// Recursive struct to extract a sub-tuple.
-template <int I, typename T, typename... SubTupleTypes, typename TupleT>
-struct sub_tuple<I, std::tuple<T, SubTupleTypes...>, TupleT> {
-  static_assert(std::is_same_v<T, std::tuple_element_t<I, TupleT>>, "Mismatching sub-tuple types");
-  std::tuple<T, SubTupleTypes...> get(TupleT t) {
-    return std::tuple_cat(std::make_tuple(std::get<I>(t)),
-                          sub_tuple<I + 1, std::tuple<SubTupleTypes...>, TupleT>().get(t));
-  }
-};
-
-/// Terminating case.
-/// Workaround as std::tuple_cat cannot concatenate empty tuples.
-template <int I, typename T, typename TupleT>
-struct sub_tuple<I, std::tuple<T>, TupleT> {
-  static_assert(std::is_same_v<T, std::tuple_element_t<I, TupleT>>, "Mismatching sub-tuple types");
-  std::tuple<T> get(TupleT t) { return {std::get<I>(t)}; }
-};
-
-/// Extract empty sub-tuple.
-template <int I, typename TupleT>
-struct sub_tuple<I, std::tuple<>, TupleT> {
-  std::tuple<> get(TupleT) { return {}; }
-};
+/// Helper function, @see get_sub_tuple
+template <typename SubTupleT, typename TupleT, std::size_t... Idx>
+SubTupleT sub_tuple_impl(TupleT big, std::index_sequence<Idx...>) {
+  static_assert((std::is_same_v<std::tuple_element_t<Idx, SubTupleT>, std::tuple_element_t<Idx, TupleT>> && ...));
+  return std::make_tuple(std::get<Idx>(big)...);
+}
 
 /**
  * Return a sub-tuple from a given tuple.
@@ -58,11 +39,11 @@ struct sub_tuple<I, std::tuple<>, TupleT> {
  *
  * @tparam SubTupleT Returned tuple of type std::tuple<T0, ..., T_N>
  * @tparam TupleT Original tuple of type std::tuple<T0, ..., T_N, U_0, ..., U_N>
- * @param tuple Original tuple values
+ * @param bigger Original tuple values
  */
 template <typename SubTupleT, typename TupleT>
-SubTupleT get_sub_tuple(TupleT tuple) {
-  return sub_tuple<0, SubTupleT, TupleT>().get(tuple);
+SubTupleT get_sub_tuple(TupleT bigger) {
+  return sub_tuple_impl<SubTupleT>(bigger, std::make_index_sequence<std::tuple_size<SubTupleT>::value>{});
 }
 
 #endif
