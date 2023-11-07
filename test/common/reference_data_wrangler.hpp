@@ -194,9 +194,8 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
 
   std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
 
-  // Division by DFT len is required since the reference forward transform has
-  // scale factor 1, so inverting with also scale factor 1 would be out by a
-  // multiple of dft_len. This scaling is applied to the reference data.
+  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
+  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
   auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
