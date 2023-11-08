@@ -137,6 +137,13 @@ INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
                              all_valid_oop_placement_layouts, both_directions, ::testing::Values(33000),
                              ::testing::Values(sizes_t{8}), many_mismatched_offsets)),
                          test_params_print());
+INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             ::testing::Values(test_placement_layouts_params{
+                                 placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}),
+                             fwd_only, ::testing::Values(2), ::testing::Values(sizes_t{4, 4}),
+                             ::testing::Values(std::pair<std::size_t, std::size_t>({2, 0})))),
+                         test_params_print());
 
 // Scaled FFTs test suite
 auto scales = ::testing::Values(-1.0, 2.0);
