@@ -870,7 +870,7 @@ struct descriptor {
 
   /**
    * The lengths in elements of each dimension, ordered from most to least significant (i.e. contiguous dimension last).
-   * Only N-D transforms are supported. Must be specified.
+   * N-D transforms are supported. Must be specified.
    */
   std::vector<std::size_t> lengths;
   /**
