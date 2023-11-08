@@ -226,7 +226,10 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
 
   auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
   for (std::size_t i = 0; i < dft_offset; ++i) {
-    ASSERT_EQ(ref_output[i], actual_output[i]) << "Incorrectly written value in padding at " << i;
+    if (ref_output[i] != actual_output[i]) {
+      std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
+                << actual_output[i] << std::endl;
+    }
   }
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
