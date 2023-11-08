@@ -120,7 +120,7 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(OffsetsMatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
                              ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{1536}), many_matched_offsets)),
+                                                ::testing::Values(sizes_t{2048}), many_matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
@@ -130,7 +130,7 @@ INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(OffsetsMismatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
                              ::testing::Combine(all_valid_oop_placement_layouts, both_directions, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{1536}), many_mismatched_offsets)),
+                                                ::testing::Values(sizes_t{2048}), many_mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
