@@ -629,10 +629,12 @@ class committed_descriptor {
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
+
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    // TODO once we support strides, they should also be checked to be default here
-    const bool are_default_distances = total_size == input_distance && total_size == output_distance;
-    assert(n_dimensions == 1 || are_default_distances);
+    // TODO once we support strides, they should also be checked to be default here and in commit
+    assert(n_dimensions == 1 ||
+           /*distances are default for multi-dim*/ (total_size == input_distance && total_size == output_distance));
+
     // product of sizes of all dimension inner relative to the one we are currently working on
     std::size_t inner_size = 1;
     // product of sizes of all dimension outer relative to the one we are currently working on
