@@ -23,12 +23,15 @@
 
 #include <sycl/sycl.hpp>
 
+#include <optional>
+#include <string>
 #include <type_traits>
 
 #include <gtest/gtest.h>
 #include <portfft/portfft.hpp>
 
 #include "reference_data_wrangler.hpp"
+#include "sub_tuple.hpp"
 
 using namespace portfft;
 
@@ -48,6 +51,9 @@ struct test_placement_layouts_params {
 
 using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
                                      std::vector<std::size_t> /*lengths*/>;
+using scales_param_tuple =
+    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+               std::vector<std::size_t> /*lengths*/, double /*forward_scale*/, double /*backward_scale*/>;
 // More tuples can be added here to easily instantiate tests that will require different parameters
 
 struct test_params {
@@ -57,6 +63,8 @@ struct test_params {
   direction dir;
   std::size_t batch;
   std::vector<std::size_t> lengths;
+  std::optional<double> forward_scale;
+  std::optional<double> backward_scale;
 
   test_params() = default;
 
@@ -69,6 +77,11 @@ struct test_params {
     batch = std::get<2>(params);
     lengths = std::get<3>(params);
   }
+
+  explicit test_params(scales_param_tuple params) : test_params(get_sub_tuple<basic_param_tuple>(params)) {
+    forward_scale = std::get<4>(params);
+    backward_scale = std::get<5>(params);
+  }
 };
 
 /// Structure used by GTest to generate the test name
@@ -76,13 +89,6 @@ struct test_params_print {
   std::string operator()(const testing::TestParamInfo<test_params>& info) const {
     auto params = info.param;
     std::stringstream ss;
-    ss << "Placement_";
-    if (params.placement == placement::IN_PLACE) {
-      ss << "IP";
-    } else if (params.placement == placement::OUT_OF_PLACE) {
-      ss << "OOP";
-    }
-
     auto print_layout = [&ss](detail::layout layout) {
       if (layout == detail::layout::PACKED) {
         ss << "PACKED";
@@ -90,17 +96,36 @@ struct test_params_print {
         ss << "BATCH_INTERLEAVED";
       }
     };
+    auto print_double = [&](double d) {
+      std::string fp_str = std::to_string(d);
+      std::replace(fp_str.begin(), fp_str.end(), '-', 'm');
+      std::replace(fp_str.begin(), fp_str.end(), '.', '_');
+      ss << fp_str;
+    };
 
+    ss << "Placement_";
+    if (params.placement == placement::IN_PLACE) {
+      ss << "IP";
+    } else if (params.placement == placement::OUT_OF_PLACE) {
+      ss << "OOP";
+    }
     ss << "__LayoutIn_";
     print_layout(params.input_layout);
     ss << "__LayoutOut_";
     print_layout(params.output_layout);
-
     ss << "__Direction_" << (params.dir == direction::FORWARD ? "Fwd" : "Bwd");
     ss << "__Batch_" << params.batch;
     ss << "__Lengths";
     for (std::size_t length : params.lengths) {
       ss << "_" << length;
+    }
+    if (params.forward_scale) {
+      ss << "__FwdScale_";
+      print_double(*params.forward_scale);
+    }
+    if (params.backward_scale) {
+      ss << "__BwdScale_";
+      print_double(*params.backward_scale);
     }
     return ss.str();
   }
@@ -129,8 +154,10 @@ auto get_descriptor(const test_params& params) {
 
   auto apply_layout_for_dir = [&desc, &params](detail::layout layout, direction dir) {
     if (layout == detail::layout::PACKED) {
-      // Keep default strides and set default distance for the PACKED layout
-      desc.get_distance(dir) = desc.get_flattened_length();
+      // Keep default strides and set default distance for the PACKED layout if needed
+      if (desc.number_of_transforms > 1) {
+        desc.get_distance(dir) = desc.get_flattened_length();
+      }
     } else if (layout == detail::layout::BATCH_INTERLEAVED) {
       // Set default strides and distance for the batch interleaved layout
       desc.get_strides(dir) = {static_cast<std::size_t>(params.batch)};
@@ -142,6 +169,13 @@ auto get_descriptor(const test_params& params) {
   // First set input strides and distance if needed then output ones
   apply_layout_for_dir(params.input_layout, params.dir);
   apply_layout_for_dir(params.output_layout, inv(params.dir));
+
+  if (params.forward_scale) {
+    desc.forward_scale = static_cast<FType>(*params.forward_scale);
+  }
+  if (params.backward_scale) {
+    desc.backward_scale = static_cast<FType>(*params.backward_scale);
+  }
   return desc;
 }
 
