@@ -162,7 +162,7 @@ struct md_view {
    * @return a reference to the element
    */
   template <typename T = int, std::enable_if_t<NDim == 0 && std::is_same_v<T, T>>* = nullptr>
-  PORTFFT_INLINE constexpr PORTFFT_INLINE auto& get() const {
+  PORTFFT_INLINE constexpr auto& get() const {
     return parent[offset];
   }
 };
@@ -175,7 +175,7 @@ struct md_view {
  *
  */
 // NDim is std::size_t to match std::array
-template <typename TParent, typename TIdx, std::size_t NDim>
+template <typename TParent, typename TIdx, std::size_t NDim = 1>
 struct strided_view {
   using element_type = get_element_t<TParent>;
   using reference = element_type&;
@@ -205,25 +205,30 @@ struct strided_view {
       : parent(parent), sizes{size}, offsets{offset} {}
 
   /**
-   * Index into the view
-   *
-   * @param index index
-   * @return reference to the indexed element
+   * Calculates raw index (index into underlying pointer or view) from an index into this strided view.
+   * 
+   * @param index 
+   * @return PORTFFT_INLINE constexpr 
    */
-  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
+  PORTFFT_INLINE constexpr TIdx raw_index(Idx index) const {
     TIdx index_calculated = static_cast<TIdx>(index);
     PORTFFT_UNROLL
     for (std::size_t i = 0; i < NDim; i++) {
       index_calculated = index_calculated * sizes[i] + offsets[i];
     }
-    return parent[index_calculated];
+    return index_calculated;
+  }
+
+  /**
+   * Index into the view.
+   *
+   * @param index index
+   * @return reference to the indexed element
+   */
+  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
+    return parent[raw_index(index)];
   }
 };
-// deduction guides
-template <typename TParent, typename TIdx>
-strided_view(TParent, TIdx) -> strided_view<TParent, TIdx, 1>;
-template <typename TParent, typename TIdx>
-strided_view(TParent, TIdx, TIdx) -> strided_view<TParent, TIdx, 1>;
 
 /**
  * Get the raw pointer object. No-op for pointers
@@ -249,6 +254,28 @@ PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
   return get_raw_pointer(arg.parent);
 }
 
+template <typename T, typename TOffset>
+PORTFFT_INLINE constexpr T* get_nonstrided_view(T* arg, TOffset offset) {
+  return arg + offset;
+}
+
+template <typename TParent, typename TIdx, std::size_t NDim, typename TOffset>
+PORTFFT_INLINE constexpr auto get_nonstrided_view(strided_view<TParent,TIdx,NDim> arg, TOffset offset) {
+  //return offset_view<TParent,TIdx>(arg.parent, arg.raw_index(offset));
+  return get_nonstrided_view(arg.parent, arg.raw_index(offset));
+}
+
+template <typename TParent, typename TIdx, typename TOffset>
+PORTFFT_INLINE constexpr auto get_nonstrided_view(offset_view<TParent,TIdx> arg, TOffset offset) {
+  return get_nonstrided_view(arg.parent, offset + arg.offset);
+}
+
+template <typename TParent, typename TOffset>
+PORTFFT_INLINE constexpr offset_view<padded_view<TParent>,TOffset> get_nonstrided_view(padded_view<TParent> arg, TOffset offset) {
+  static_assert(std::is_pointer_v<TParent>, "Getting nonstrided view from a padded_view is only possible if the parent is a raw pointer!");
+  return {arg, offset};
+}
+
 /**
  * Implementation of `is_view_multidimensional`.
  * 
@@ -259,9 +286,9 @@ struct is_view_multidimensional_impl{
   /**
    * Check if a view is multidimensional.
    * 
-   * @return number of dimensions
+   * @return true if the view is multidimensional, false otherwise
    */
-  static constexpr std::size_t get(){
+  static constexpr bool get(){
     return false;
   }
 };
@@ -270,9 +297,9 @@ struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>>{
   /**
    * Check if a view is multidimensional.
    * 
-   * @return number of dimensions
+   * @return true if the view is multidimensional, false otherwise
    */
-  static constexpr std::size_t get(){
+  static constexpr bool get(){
     return true;
   }
 };
@@ -281,10 +308,10 @@ struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>>{
  * Check if a view is multidimensional.
  * 
  * @tparam T type of the view
- * @return number of dimensions 
+ * @return true if the view is multidimensional, false otherwise
  */
 template<typename T>
-constexpr std::size_t is_view_multidimensional(){
+constexpr bool is_view_multidimensional(){
   return is_view_multidimensional_impl<T>::get();
 }
 

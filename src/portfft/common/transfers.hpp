@@ -50,11 +50,10 @@ namespace portfft {
 template <Idx VectorSize = 1, typename ViewSrc, typename ViewDst>
 PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
   static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(), "This overload of copy_wi expects one-dimensional view arguments!");
-  using Scalar = detail::get_element_t<ViewDst>;
   PORTFFT_UNROLL
   for (Idx i = 0; i < size; i++) {
-    const Scalar* src_start = &src[i];
-    Scalar* dst_start = &dst[i];
+    auto src_start = detail::get_nonstrided_view(src, i);
+    auto dst_start = detail::get_nonstrided_view(dst, i);
     PORTFFT_UNROLL
     for (Idx j = 0; j < VectorSize; j++) {
       global_data.log_message(__func__, "from", &src_start[j] - detail::get_raw_pointer(src), "to",
@@ -68,7 +67,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
  * Copy data jointly by workitems in a group.
  *
  * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each
- * call `group_size`, `src`, `dst` and `size` must have the same value for all workitems in the group.
+ * call `src`, `dst` and `size` must have the same value for all workitems in the group.
  *
  * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
  * @tparam ViewSrc type of the source pointer or view
@@ -98,17 +97,17 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc s
  *
  * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
- * @tparam TParent1 type of the underlying pointer or view for source multidimensional view
- * @tparam TParent2 type of the underlying pointer or view for destination multidimensional view
+ * @tparam SrcParent type of the underlying pointer or view for source multidimensional view
+ * @tparam DstParent type of the underlying pointer or view for destination multidimensional view
  * @tparam NDim number of dimensions
  * @param global_data global_data
  * @param src source multidimensional view
  * @param dst destination multidimensional view
  * @param sizes sizes (for each dimension) of the data to copy
  */
-template <typename TParent1, typename TParent2, std::size_t NDim>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, TParent1, Idx, Idx> src,
-                            detail::md_view<NDim, TParent2, Idx, Idx> dst, std::array<Idx, NDim> sizes) {
+template <typename SrcParent, typename DstParent, std::size_t NDim>
+PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, SrcParent, Idx, Idx> src,
+                            detail::md_view<NDim, DstParent, Idx, Idx> dst, std::array<Idx, NDim> sizes) {
   if constexpr (NDim == 0) {
     global_data.log_message(__func__, "from", &src.get() - detail::get_raw_pointer(src), "to",
                             &dst.get() - detail::get_raw_pointer(dst), "value", src.get());
@@ -121,7 +120,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
     }
     PORTFFT_UNROLL
     for (Idx i = 0; i < sizes[0]; i++) {
-      copy_wi<TParent1, TParent2, NDim - 1>(src.inner(i), dst.inner(i), next_sizes);
+      copy_wi<SrcParent, DstParent, NDim - 1>(src.inner(i), dst.inner(i), next_sizes);
     }
   }
 }
@@ -130,26 +129,26 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
  * Copy multidimensional data jointly by a group. Work is distributed across workitems along the last two dimensions.
  *
  * Work is distributed between workitems in the group, so all workitems in the group must call the function and for each
- * call `group_size`, `src`, `dst` and `sizes` must have the same value for all workitems in the group.
+ * call `src`, `dst` and `sizes` must have the same value for all workitems in the group.
  *
  * @tparam Level Which group is to jointly execute the copy; subgroup or workgroup
- * @tparam TParent1 type of the underlying pointer or view for source view
- * @tparam TStrides1 integral type used for strides in the source view
- * @tparam TOffset1 integral type for offset in the source view
- * @tparam TParent2 type of the underlying pointer or view for destination view
- * @tparam TStrides2 integral type used for strides in the destination view
- * @tparam TOffset2 integral type for offset in the destination view
+ * @tparam SrcParent type of the underlying pointer or view for source view
+ * @tparam SrcStrides integral type used for strides in the source view
+ * @tparam SrcOffset integral type for offset in the source view
+ * @tparam DstParent type of the underlying pointer or view for destination view
+ * @tparam DstStrides integral type used for strides in the destination view
+ * @tparam DstOffset integral type for offset in the destination view
  * @tparam NDim number of dimensions
  * @param global_data global_data
  * @param src source multidimensional view
  * @param dst destination multidimensional view
  * @param sizes sizes (for each dimension) of the data to copy
  */
-template <detail::level Level, typename TParent1, typename TStrides1, typename TOffset1, typename TParent2,
-          typename TStrides2, typename TOffset2, std::size_t NDim>
+template <detail::level Level, typename SrcParent, typename SrcStrides, typename SrcOffset, typename DstParent,
+          typename DstStrides, typename DstOffset, std::size_t NDim>
 PORTFFT_INLINE void copy_group(detail::global_data_struct global_data,
-                               detail::md_view<NDim, TParent1, TStrides1, TOffset1> src,
-                               detail::md_view<NDim, TParent2, TStrides2, TOffset2> dst, std::array<Idx, NDim> sizes) {
+                               detail::md_view<NDim, SrcParent, SrcStrides, SrcOffset> src,
+                               detail::md_view<NDim, DstParent, DstStrides, DstOffset> dst, std::array<Idx, NDim> sizes) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only subgroup and workgroup level supported");
   auto group = global_data.get_group<Level>();
@@ -183,7 +182,7 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data,
     }
     PORTFFT_UNROLL
     for (Idx i = 0; i < sizes[0]; i++) {
-      copy_group<Level, TParent1, TStrides1, TOffset1, TParent2, TStrides2, TOffset2, NDim - 1>(
+      copy_group<Level, SrcParent, SrcStrides, SrcOffset, DstParent, DstStrides, DstOffset, NDim - 1>(
           global_data, src.inner(i), dst.inner(i), next_sizes);
     }
   }
