@@ -48,6 +48,50 @@ class subgroup_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workgroup_kernel;
 
+/**
+ * Return the default strides for a given dft size
+ *
+ * @param lengths the dimensions of the dft
+ */
+inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
+  std::vector<std::size_t> strides(lengths.size());
+  std::size_t total_size = 1;
+  for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
+    std::size_t i = i_plus1 - 1;
+    strides[i] = total_size;
+    total_size *= lengths[i];
+  }
+  return strides;
+}
+
+/**
+ * Return whether the given descriptor has default strides and distance for a given direction
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
+  const auto default_strides = get_default_strides(desc.lengths);
+  const auto default_distance = desc.get_flattened_length();
+  return desc.get_strides(dir) == default_strides && desc.get_distance(dir) == default_distance;
+}
+
+/**
+ * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
+ * Assumes a 1-D descriptor
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool is_batch_interleaved(const Descriptor& desc, direction dir) {
+  return desc.number_of_transforms > 1 && desc.get_distance(dir) == 1 && desc.get_strides(dir).size() == 1 &&
+         desc.get_strides(dir).back() == desc.number_of_transforms;
+}
+
 }  // namespace detail
 
 // forward declaration
@@ -392,21 +436,20 @@ class committed_descriptor {
         local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())) {
     // check it's suitable to run
 
-    const auto total_size = params.get_flattened_length();
-    const bool forward_packed = params.forward_distance == total_size && params.forward_strides.back() == 1;
-    const bool backward_packed = params.backward_distance == total_size && params.backward_strides.back() == 1;
-    const bool forward_batch_interleaved =
-        params.forward_distance == 1 && params.forward_strides.back() == params.number_of_transforms;
-    const bool backward_batch_interleaved =
-        params.backward_distance == 1 && params.backward_strides.back() == params.number_of_transforms;
-    if (params.lengths.size() > 1 && !(forward_packed && backward_packed)) {
-      throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
-    }
-
-    const bool supported_layout =
-        (forward_packed || forward_batch_interleaved) && (backward_packed || backward_batch_interleaved);
-    if (!supported_layout) {
-      throw unsupported_configuration("Arbitary strides are not supported");
+    const bool forward_packed = detail::has_default_strides_and_distance(params, direction::FORWARD);
+    const bool backward_packed = detail::has_default_strides_and_distance(params, direction::BACKWARD);
+    if (params.lengths.size() > 1) {
+      if (!(forward_packed && backward_packed)) {
+        throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
+      }
+    } else {
+      const bool forward_batch_interleaved = detail::is_batch_interleaved(params, direction::FORWARD);
+      const bool backward_batch_interleaved = detail::is_batch_interleaved(params, direction::BACKWARD);
+      const bool supported_layout =
+          (forward_packed || forward_batch_interleaved) && (backward_packed || backward_batch_interleaved);
+      if (!supported_layout) {
+        throw unsupported_configuration("Arbitary strides are not supported");
+      }
     }
 
     // compile the kernels and precalculate twiddles
@@ -631,9 +674,8 @@ class committed_descriptor {
     std::size_t total_size = params.get_flattened_length();
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    // TODO once we support strides, they should also be checked to be default here and in commit
-    if (n_dimensions == 1 ||
-        /*distances are default for multi-dim*/ (total_size == input_distance && total_size == output_distance)) {
+    if (n_dimensions != 1 && !(detail::has_default_strides_and_distance(params, direction::FORWARD) &&
+                               detail::has_default_strides_and_distance(params, direction::BACKWARD))) {
       throw internal_error("Only default layout is supported for multi-dimensional transforms");
     }
 
@@ -954,15 +996,9 @@ struct descriptor {
    * @param lengths size of the FFT transform
    */
   explicit descriptor(const std::vector<std::size_t>& lengths)
-      : lengths(lengths), forward_strides(lengths.size()), backward_strides(lengths.size()) {
+      : lengths(lengths), forward_strides(detail::get_default_strides(lengths)), backward_strides(forward_strides) {
     // TODO: properly set default values for distances for real transforms
-    std::size_t total_size = 1;
-    for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
-      std::size_t i = i_plus1 - 1;
-      forward_strides[i] = total_size;
-      backward_strides[i] = total_size;
-      total_size *= lengths[i];
-    }
+    std::size_t total_size = get_flattened_length();
     backward_scale = Scalar(1) / static_cast<Scalar>(total_size);
     forward_distance = total_size;
     backward_distance = total_size;
