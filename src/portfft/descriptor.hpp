@@ -146,7 +146,7 @@ class committed_descriptor {
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -161,7 +161,7 @@ class committed_descriptor {
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -179,7 +179,7 @@ class committed_descriptor {
             *this, args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -222,7 +222,7 @@ class committed_descriptor {
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
         detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
       if (n_idx_global == 1) {
-        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported!");
+        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
       }
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
@@ -369,7 +369,7 @@ class committed_descriptor {
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
       return build_w_spec_const<OtherSGSizes...>(kernel_num);
     }
@@ -400,13 +400,13 @@ class committed_descriptor {
     const bool backward_batch_interleaved =
         params.backward_distance == 1 && params.backward_strides.back() == params.number_of_transforms;
     if (params.lengths.size() > 1 && !(forward_packed && backward_packed)) {
-      throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
+      throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
     }
 
     const bool supported_layout =
         (forward_packed || forward_batch_interleaved) && (backward_packed || backward_batch_interleaved);
     if (!supported_layout) {
-      throw unsupported_configuration("Arbitary strides are not supported!");
+      throw unsupported_configuration("Arbitary strides are not supported");
     }
 
     // compile the kernels and precalculate twiddles
@@ -632,8 +632,10 @@ class committed_descriptor {
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
     // TODO once we support strides, they should also be checked to be default here and in commit
-    assert(n_dimensions == 1 ||
-           /*distances are default for multi-dim*/ (total_size == input_distance && total_size == output_distance));
+    if (n_dimensions == 1 ||
+        /*distances are default for multi-dim*/ (total_size == input_distance && total_size == output_distance)) {
+      throw internal_error("Only default layout is supported for multi-dimensional transforms");
+    }
 
     // product of sizes of all dimension inner relative to the one we are currently working on
     std::size_t inner_size = 1;
@@ -838,7 +840,7 @@ class committed_descriptor {
     // are called from different template instantiations.
     static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>,
                   "We do not differentiate kernel names between kernels with const and non-const USM inputs, so all "
-                  "should be const!");
+                  "should be const");
     // kernel names currently assume both are the same. Mixing them without adding TOut to kernel names would lead to
     // hard-to-debug linking errors
     static_assert(std::is_pointer_v<TIn> == std::is_pointer_v<TOut>,
