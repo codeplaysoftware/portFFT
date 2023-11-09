@@ -61,12 +61,6 @@ auto fwd_only = ::testing::Values(direction::FORWARD);
 auto bwd_only = ::testing::Values(direction::BACKWARD);
 auto both_directions = ::testing::Values(direction::FORWARD, direction::BACKWARD);
 
-// Pairs of offsets: {forward_offset, backward_offset}
-constexpr std::pair<std::size_t, std::size_t> matched_offset_values[] = {{8, 8}, {67, 67}};
-auto many_matched_offsets = ::testing::ValuesIn(matched_offset_values);
-constexpr std::pair<std::size_t, std::size_t> mismatched_offset_values[] = {{0, 2049}, {2049, 0}, {2047, 2049}};
-auto many_mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
-
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
@@ -116,26 +110,33 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
                          test_params_print());
 
-// Test offsets
+// Offset data test suite
+
+// Pairs of offsets: {forward_offset, backward_offset}
+constexpr std::pair<std::size_t, std::size_t> matched_offset_values[] = {{8, 8}, {67, 67}};
+auto matched_offsets = ::testing::ValuesIn(matched_offset_values);
+constexpr std::pair<std::size_t, std::size_t> mismatched_offset_values[] = {{0, 2049}, {2049, 0}, {2047, 2049}};
+auto mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
+
 INSTANTIATE_TEST_SUITE_P(OffsetsMatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
                              ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{2048}), many_matched_offsets)),
+                                                ::testing::Values(sizes_t{2048}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
                              ::testing::Combine(all_valid_multi_dim_placement_layouts, fwd_only, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{16, 512}), many_matched_offsets)),
+                                                ::testing::Values(sizes_t{16, 512}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMismatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
                              ::testing::Combine(all_valid_oop_placement_layouts, both_directions, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{2048}), many_mismatched_offsets)),
+                                                ::testing::Values(sizes_t{2048}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
                              all_valid_oop_placement_layouts, both_directions, ::testing::Values(33000),
-                             ::testing::Values(sizes_t{8}), many_mismatched_offsets)),
+                             ::testing::Values(sizes_t{8}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(

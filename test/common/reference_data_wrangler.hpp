@@ -159,7 +159,6 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     }
   }
 
-  // Insert offset
   auto insert_offset = [=](auto inputVec, std::size_t offset) {
     using InputT = decltype(inputVec);
     std::ptrdiff_t fill_sz = static_cast<std::ptrdiff_t>(offset);
