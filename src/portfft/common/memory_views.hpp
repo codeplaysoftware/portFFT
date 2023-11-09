@@ -254,22 +254,68 @@ PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
   return get_raw_pointer(arg.parent);
 }
 
+/**
+ * Get a nonstrided view at the specified offset.
+ * 
+ * For pointer it adds the offset to the pointer.
+ * 
+ * @tparam T type pointed to
+ * @tparam TOffset integral type of the offset
+ * @param arg pointer
+ * @param offset offset
+ * @return offset pointer 
+ */
 template <typename T, typename TOffset>
 PORTFFT_INLINE constexpr T* get_nonstrided_view(T* arg, TOffset offset) {
   return arg + offset;
 }
 
+/**
+ * Get a nonstrided view at the specified offset.
+ * 
+ * Replaces strided view with offset.
+ * 
+ * @tparam TParent parent type of the strided view
+ * @tparam TIdx integral ype of index in the strided view
+ * @tparam NDim number of dimensions of the strided view
+ * @tparam TOffset integral type of the offset
+ * @param arg the strided view
+ * @param offset offset
+ * @return nonstrided view or pointer to the element at the specified offset
+ */
 template <typename TParent, typename TIdx, std::size_t NDim, typename TOffset>
 PORTFFT_INLINE constexpr auto get_nonstrided_view(strided_view<TParent,TIdx,NDim> arg, TOffset offset) {
-  //return offset_view<TParent,TIdx>(arg.parent, arg.raw_index(offset));
   return get_nonstrided_view(arg.parent, arg.raw_index(offset));
 }
 
+/**
+ * Get a nonstrided view at the specified offset.
+ * 
+ * For offset views it increases the offset or gets the raw pointer depending on the parent.
+ * 
+ * @tparam TParent parent type of the offset view
+ * @tparam TIdx integral ype of index in the offset view
+ * @tparam TOffset integral type of the offset
+ * @param arg the offset view
+ * @param offset offset
+ * @return nonstrided view or pointer to the element at the specified offset
+ */
 template <typename TParent, typename TIdx, typename TOffset>
 PORTFFT_INLINE constexpr auto get_nonstrided_view(offset_view<TParent,TIdx> arg, TOffset offset) {
   return get_nonstrided_view(arg.parent, offset + arg.offset);
 }
 
+/**
+ * Get a nonstrided view at the specified offset.
+ * 
+ * For padded views it returns offset view encapsulating the argument. Only works if the parent of the padded view is a raw pointer.
+ * 
+ * @tparam TParent parent type of the padded view
+ * @tparam TOffset integral type of the offset
+ * @param arg the padded view
+ * @param offset offset
+ * @return offset view with the given offset
+ */
 template <typename TParent, typename TOffset>
 PORTFFT_INLINE constexpr offset_view<padded_view<TParent>,TOffset> get_nonstrided_view(padded_view<TParent> arg, TOffset offset) {
   static_assert(std::is_pointer_v<TParent>, "Getting nonstrided view from a padded_view is only possible if the parent is a raw pointer!");
