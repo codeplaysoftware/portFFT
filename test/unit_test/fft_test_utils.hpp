@@ -192,9 +192,6 @@ auto get_descriptor(const test_params& params) {
   if (params.backward_scale) {
     desc.backward_scale = static_cast<FType>(*params.backward_scale);
   }
-  if (params.backward_scale) {
-    desc.backward_scale = static_cast<FType>(*params.backward_scale);
-  }
   if (params.forward_offset) {
     desc.forward_offset = *params.forward_offset;
   }
