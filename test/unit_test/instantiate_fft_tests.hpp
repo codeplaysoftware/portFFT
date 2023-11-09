@@ -27,7 +27,8 @@
 
 #include "fft_test_utils.hpp"
 
-// Parameters: placement, layout, direction, batch, length
+// Mandatory parameters: placement, layout, direction, batch, lengths
+// Optional parameters: [forward_scale, backward_scale]
 class FFTTest : public ::testing::TestWithParam<test_params> {};
 
 using sizes_t = std::vector<std::size_t>;
@@ -45,6 +46,9 @@ constexpr test_placement_layouts_params valid_multi_dim_placement_layouts[] = {
     {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
 auto all_valid_multi_dim_placement_layouts = ::testing::ValuesIn(valid_multi_dim_placement_layouts);
+
+auto oop_packed_layout = ::testing::Values(
+    test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED});
 
 auto fwd_only = ::testing::Values(direction::FORWARD);
 auto bwd_only = ::testing::Values(direction::BACKWARD);
@@ -97,6 +101,23 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                              all_valid_multi_dim_placement_layouts, both_directions, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
+                         test_params_print());
+
+// Scaled FFTs test suite
+auto scales = ::testing::Values(-1.0, 2.0);
+INSTANTIATE_TEST_SUITE_P(FwdScaledFFTTest, FFTTest,
+                         ::testing::ConvertGenerator<scales_param_tuple>(
+                             ::testing::Combine(oop_packed_layout, fwd_only, ::testing::Values(3),
+                                                ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
+                                                                  sizes_t{4096}, sizes_t{16, 512}),
+                                                scales, ::testing::Values(1.0))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
+                         ::testing::ConvertGenerator<scales_param_tuple>(
+                             ::testing::Combine(oop_packed_layout, bwd_only, ::testing::Values(3),
+                                                ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
+                                                                  sizes_t{4096}, sizes_t{16, 512}),
+                                                ::testing::Values(1.0), scales)),
                          test_params_print());
 
 #define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                     \

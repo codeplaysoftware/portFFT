@@ -96,6 +96,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                  n_transforms);
   const Idx n_reals_per_wi = 2 * factor_wi;
 
+#ifdef PORTFFT_USE_SCLA
+  T wi_private_scratch[detail::SpecConstWIScratchSize];
+  T priv[detail::SpecConstNumRealsPerFFT];
+#else
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   T priv[2 * MaxComplexPerWI];
   Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
@@ -210,7 +215,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             }
           }
         }
-        T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
         sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
@@ -327,7 +331,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           }
         }
       }
-      T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
       sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
@@ -476,9 +479,12 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t /*length*/, const std::vector<Idx>& factors) {
+                      std::size_t length, const std::vector<Idx>& factors) {
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
+    const Idx casted_length = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
         detail::elementwise_multiply::NOT_APPLIED);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
