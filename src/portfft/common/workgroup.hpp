@@ -147,16 +147,16 @@ __attribute__((always_inline)) inline void dimension_dft(
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         copy_wi<2>(global_data,
                    detail::strided_view(
-                       loc, std::array{1, stride_within_dft, 2 * max_num_batches_in_local_mem},
-                       std::array{wi_id_in_fft * fact_wi, j_inner + j_outer * outer_stride, 2 * batch_num_in_local}),
-                   detail::strided_view(priv, 2), fact_wi);
+                       loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
+                       std::array{2 * wi_id_in_fft * fact_wi, 2 * j_inner + j_outer * outer_stride, 2 * batch_num_in_local}),
+                   priv, fact_wi);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
         copy_wi<2>(global_data,
-                   detail::strided_view(loc_start_view, std::array{1, 2 * stride_within_dft},
-                                        std::array{fact_wi * wi_id_in_fft, 2 * j_inner}),
-                   detail::strided_view(priv, 2), fact_wi);
+                   detail::strided_view(loc_start_view, std::array{1, stride_within_dft},
+                                        std::array{2 * fact_wi * wi_id_in_fft, 2 * j_inner}),
+                   priv, fact_wi);
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * fact_wi);
 
@@ -221,16 +221,16 @@ __attribute__((always_inline)) inline void dimension_dft(
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         copy_wi<2>(
-            global_data, detail::strided_view(priv, 2),
-            detail::strided_view(loc, std::array{fact_sg, stride_within_dft, 2 * max_num_batches_in_local_mem},
-                                 std::array{wi_id_in_fft, j_inner + j_outer * outer_stride, 2 * batch_num_in_local}),
+            global_data, priv,
+            detail::strided_view(loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
+                                 std::array{2 * wi_id_in_fft, 2 * j_inner + j_outer * outer_stride, 2 * batch_num_in_local}),
             fact_wi);
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        copy_wi<2>(global_data, detail::strided_view(priv, 2),
-                   detail::strided_view(loc, std::array{fact_sg, 2 * stride_within_dft},
-                                        std::array{wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride)}),
+        copy_wi<2>(global_data, priv,
+                   detail::strided_view(loc, std::array{fact_sg, stride_within_dft},
+                                        std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride)}),
                    fact_wi);
       }
     }

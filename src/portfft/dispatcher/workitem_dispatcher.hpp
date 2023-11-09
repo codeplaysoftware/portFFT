@@ -172,8 +172,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        copy_wi<2>(global_data, detail::strided_view(input, 2 * n_transforms, i * 2), detail::strided_view(priv, 2),
-                   fft_size);
+        copy_wi<2>(global_data, detail::strided_view(input, n_transforms, i * 2), priv, fft_size);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         copy_wi(global_data, detail::offset_view{loc_view, local_offset + subgroup_local_id * n_reals}, priv, n_reals);
@@ -207,8 +206,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       if (LayoutOut == detail::layout::PACKED) {
         copy_wi(global_data, priv, detail::offset_view{loc_view, local_offset + subgroup_local_id * n_reals}, n_reals);
       } else {
-        copy_wi<2>(global_data, detail::strided_view(priv, 2), detail::strided_view(output, 2 * n_transforms, i * 2),
-                   fft_size);
+        copy_wi<2>(global_data, priv, detail::strided_view(output, n_transforms, i * 2), fft_size);
       }
     }
     if (LayoutOut == detail::layout::PACKED) {

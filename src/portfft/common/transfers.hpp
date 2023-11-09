@@ -37,8 +37,8 @@ namespace portfft {
  *
  * There is no requirement that any of the arguments are the same between workitems in a workgroup/subgroup.
  *
- * @tparam VectorSize Size of the vector to copy - number of consecutive elements. Warning: even if VectorSize > 1 is
- * used elements and any indexing in the views is done in scalars, not vectors!
+ * @tparam VectorSize Size of the vector to copy - number of consecutive elements. Warning: if VectorSize > 1 is
+ * used, elements and any strides in the views is done in vectors. Offsets in views are still in scalars.
  * @tparam ViewSrc type of the source pointer or view
  * @tparam ViewDst type of the destination pointer or view
  * @param global_data global_data
@@ -52,8 +52,8 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
   static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(), "This overload of copy_wi expects one-dimensional view arguments!");
   PORTFFT_UNROLL
   for (Idx i = 0; i < size; i++) {
-    auto src_start = detail::get_nonstrided_view(src, i);
-    auto dst_start = detail::get_nonstrided_view(dst, i);
+    auto src_start = detail::get_nonstrided_view(src, i * VectorSize);
+    auto dst_start = detail::get_nonstrided_view(dst, i * VectorSize);
     PORTFFT_UNROLL
     for (Idx j = 0; j < VectorSize; j++) {
       global_data.log_message(__func__, "from", &src_start[j] - detail::get_raw_pointer(src), "to",
