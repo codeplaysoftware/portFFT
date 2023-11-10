@@ -87,7 +87,7 @@ bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
  */
 template <typename Descriptor>
 bool is_batch_interleaved(const Descriptor& desc, direction dir) {
-  return desc.lengths.size() == 1 && desc.number_of_transforms > 1 && desc.get_distance(dir) == 1 &&
+  return desc.lengths.size() == 1  && desc.get_distance(dir) == 1 &&
          desc.get_strides(dir).back() == desc.number_of_transforms;
 }
 
@@ -693,8 +693,10 @@ class committed_descriptor {
 
     const auto forward_layout = detail::get_layout(params, direction::FORWARD);
     const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
+
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    if (n_dimensions != 1 && (forward_layout != detail::layout::PACKED || backward_layout != detail::layout::PACKED)) {
+    const bool multi_dim_supported = forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+    if (n_dimensions != 1 && !multi_dim_supported) {
       throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
 
