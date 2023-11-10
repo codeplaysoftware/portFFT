@@ -185,16 +185,12 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
       if (LayoutOut == detail::layout::PACKED) {
-        local2global_transposed(global_data, factor_n, factor_m, factor_m, loc_view, output, offset);
-        // TODO: performance regression on AMD
-        /*
-        detail::md_view local_md_view2{loc_view, std::array{1, 2 * factor_m, 2}};
-        detail::md_view output_view{output, std::array{1, 2, 2 * factor_n}, offset};
+        detail::md_view local_md_view2{loc_view, std::array{1, 2, 2 * factor_m}};
+        detail::md_view output_view     {output, std::array{1, 2 * factor_n, 2}, offset};
         copy_group<level::WORKGROUP>(global_data,
             local_md_view2,
             output_view,
-            std::array{2, factor_n, factor_m});
-        */
+            std::array{2, factor_m, factor_n});
       } else {
         IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
         detail::md_view local_md_view2{loc_view, std::array{2, 1, 2 * factor_m}};

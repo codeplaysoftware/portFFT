@@ -482,42 +482,6 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
-/**
- * Stores data from the local memory to the global memory, in a transposed manner.
- * global[offset + 2 * i] = local[2 * (stride * (i % N) + (i / N))]
- * global[offset + 2 * i + 1] = local[2 * (stride * (i % N) + (i / N)) + 1]
- * for i in [0, N * M)
- *
- * @tparam LocalT The view type of local memory
- * @tparam GlobalT The view type of global memory
- *
- * @param global_data global data for the kernel
- * @param N Number of rows
- * @param M Number of Cols
- * @param stride Stride between two contiguous elements in global memory in local memory.
- * @param local View of local memory
- * @param global View of global memory
- * @param offset offset to the global memory pointer
- */
-template <typename LocalT, typename GlobalT>
-PORTFFT_INLINE void local2global_transposed(detail::global_data_struct global_data, Idx N, Idx M, Idx stride,
-                                            LocalT local, GlobalT global, IdxGlobal offset) {
-  using real_t = detail::get_element_remove_cv_t<LocalT>;
-  static_assert(std::is_same_v<real_t, detail::get_element_t<GlobalT>>, "Type mismatch between local and global views");
-  const char* func_name = __func__;
-  global_data.log_message_local(func_name, "N", N, "M", M, "stride", stride, "offset", offset);
-  Idx num_threads = static_cast<Idx>(global_data.it.get_local_range(0));
-  for (Idx i = static_cast<Idx>(global_data.it.get_local_linear_id()); i < N * M; i += num_threads) {
-    Idx source_row = i / N;
-    Idx source_col = i % N;
-    Idx source_index = 2 * (stride * source_col + source_row);
-    sycl::vec<real_t, 2> v{local[source_index], local[source_index + 1]};
-    IdxGlobal global_idx = offset + static_cast<IdxGlobal>(2 * i);
-    global_data.log_message(func_name, "from", source_index, "to", global_idx, "value", v);
-    *reinterpret_cast<sycl::vec<real_t, 2>*>(&global[global_idx]) = v;
-  }
-}
-
 }  // namespace portfft
 
 #endif
