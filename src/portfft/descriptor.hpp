@@ -647,7 +647,7 @@ class committed_descriptor {
         for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
           sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(
               out, out, previous_events, inner_size, inner_size, inner_size, 1, 1,
-              input_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels,
+              output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels,
               static_cast<Scalar>(1.0), dimensions[i]);
           next_events.push_back(e);
         }

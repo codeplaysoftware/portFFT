@@ -61,8 +61,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
   using vec_t = sycl::vec<real_t, ChunkSize>;
 
   // Is the local memory suitable for using Intel's subgroup copy extensions with?
-  // NB: This assumes any offset aligns with padding in a padded view
-  const bool is_sg_contiguous = PORTFFT_N_LOCAL_BANKS % SubgroupSize == 0 || is_contiguous_view(local);
+  const bool is_sg_contiguous = is_contiguous_view(local);
   const char* func_name = __func__;
   global_data.log_message_subgroup(func_name, "SgBlockCopyBlockSize", SgBlockCopyBlockSize, "global_offset",
                                    global_offset, "local_offset", local_offset, "is_sg_contiguous", is_sg_contiguous);
@@ -312,13 +311,6 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
   static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
 
-#ifdef PORTFFT_USE_SG_TRANSFERS
-  Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize>(
-      global_data, global, global_offset, local, local_offset, total_num_elems);
-  local_offset += copied_by_sg;
-  global_offset += copied_by_sg;
-  total_num_elems -= copied_by_sg;
-#else
   using vec_t = sycl::vec<real_t, ChunkSize>;
   const real_t* global_ptr = &global[global_offset];
   const real_t* global_aligned_ptr = reinterpret_cast<const real_t*>(
@@ -331,6 +323,14 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
   global_offset += unaligned_elements;
   total_num_elems -= unaligned_elements;
 
+#ifdef PORTFFT_USE_SG_TRANSFERS
+  // Unaligned subgroup copies cause issues when writing to buffers in some circumstances for unknown reasons.
+  Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize>(
+      global_data, global, global_offset, local, local_offset, total_num_elems);
+  local_offset += copied_by_sg;
+  global_offset += copied_by_sg;
+  total_num_elems -= copied_by_sg;
+#else
   // Each workitem loads a chunk of consecutive elements. Chunks loaded by a group are consecutive.
   Idx block_copied_elements = impl::vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize>(
       global_data, global, global_offset, local, local_offset, total_num_elems);

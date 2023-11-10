@@ -42,6 +42,13 @@ constexpr test_placement_layouts_params valid_placement_layouts[] = {
     {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED}};
 auto all_valid_placement_layouts = ::testing::ValuesIn(valid_placement_layouts);
 
+constexpr test_placement_layouts_params valid_oop_placement_layouts[] = {
+    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED},
+    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED},
+    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
+    {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED}};
+auto all_valid_oop_placement_layouts = ::testing::ValuesIn(valid_oop_placement_layouts);
+
 constexpr test_placement_layouts_params valid_multi_dim_placement_layouts[] = {
     {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
@@ -101,6 +108,42 @@ INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                              all_valid_multi_dim_placement_layouts, both_directions, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
+                         test_params_print());
+
+// Offset data test suite
+
+// Pairs of offsets: {forward_offset, backward_offset}
+constexpr std::pair<std::size_t, std::size_t> matched_offset_values[] = {{8, 8}, {67, 67}};
+auto matched_offsets = ::testing::ValuesIn(matched_offset_values);
+constexpr std::pair<std::size_t, std::size_t> mismatched_offset_values[] = {{0, 2049}, {2049, 0}, {2047, 2049}};
+auto mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
+
+INSTANTIATE_TEST_SUITE_P(OffsetsMatchedTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, ::testing::Values(33),
+                                                ::testing::Values(sizes_t{2048}), matched_offsets)),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(
+                             ::testing::Combine(all_valid_multi_dim_placement_layouts, fwd_only, ::testing::Values(33),
+                                                ::testing::Values(sizes_t{16, 512}), matched_offsets)),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(OffsetsMismatchedTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(
+                             ::testing::Combine(all_valid_oop_placement_layouts, both_directions, ::testing::Values(33),
+                                                ::testing::Values(sizes_t{2048}), mismatched_offsets)),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             all_valid_oop_placement_layouts, both_directions, ::testing::Values(33000),
+                             ::testing::Values(sizes_t{8}), mismatched_offsets)),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             ::testing::Values(test_placement_layouts_params{
+                                 placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}),
+                             fwd_only, ::testing::Values(2), ::testing::Values(sizes_t{4, 4}),
+                             ::testing::Values(std::pair<std::size_t, std::size_t>({2, 0})))),
                          test_params_print());
 
 // Scaled FFTs test suite
