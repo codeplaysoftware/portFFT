@@ -1020,7 +1020,6 @@ struct descriptor {
       : lengths(lengths), forward_strides(detail::get_default_strides(lengths)), backward_strides(forward_strides) {
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = get_flattened_length();
-    backward_scale = Scalar(1) / static_cast<Scalar>(total_size);
     forward_distance = total_size;
     backward_distance = total_size;
   }

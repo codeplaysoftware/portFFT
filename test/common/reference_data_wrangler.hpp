@@ -228,6 +228,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     if (ref_output[i] != actual_output[i]) {
       std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
                 << actual_output[i] << std::endl;
+        throw std::runtime_error("Verification Failed");
     }
   }
 
