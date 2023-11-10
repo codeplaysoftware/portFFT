@@ -94,6 +94,7 @@ portFFT is still in early development. The supported configurations are:
   * default values for strides and distances
   * size in each dimension must be supported by 1D transforms
 * Arbitrary forward and backward scales
+* Arbitrary forward and backward offsets
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.

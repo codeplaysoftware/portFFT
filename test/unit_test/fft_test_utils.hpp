@@ -51,6 +51,9 @@ struct test_placement_layouts_params {
 
 using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
                                      std::vector<std::size_t> /*lengths*/>;
+using offsets_param_tuple =
+    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+               std::vector<std::size_t> /*lengths*/, std::pair<std::size_t, std::size_t> /*offset pair*/>;
 using scales_param_tuple =
     std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
                std::vector<std::size_t> /*lengths*/, double /*forward_scale*/, double /*backward_scale*/>;
@@ -65,6 +68,8 @@ struct test_params {
   std::vector<std::size_t> lengths;
   std::optional<double> forward_scale;
   std::optional<double> backward_scale;
+  std::optional<std::size_t> forward_offset;
+  std::optional<std::size_t> backward_offset;
 
   test_params() = default;
 
@@ -76,6 +81,11 @@ struct test_params {
     dir = std::get<1>(params);
     batch = std::get<2>(params);
     lengths = std::get<3>(params);
+  }
+
+  explicit test_params(offsets_param_tuple params) : test_params(get_sub_tuple<basic_param_tuple>(params)) {
+    forward_offset = std::get<4>(params).first;
+    backward_offset = std::get<4>(params).second;
   }
 
   explicit test_params(scales_param_tuple params) : test_params(get_sub_tuple<basic_param_tuple>(params)) {
@@ -127,6 +137,12 @@ struct test_params_print {
       ss << "__BwdScale_";
       print_double(*params.backward_scale);
     }
+    if (params.forward_offset) {
+      ss << "__FwdOffset_" << *params.forward_offset;
+    }
+    if (params.backward_offset) {
+      ss << "__BwdOffset_" << *params.backward_offset;
+    }
     return ss.str();
   }
 };
@@ -176,6 +192,12 @@ auto get_descriptor(const test_params& params) {
   if (params.backward_scale) {
     desc.backward_scale = static_cast<FType>(*params.backward_scale);
   }
+  if (params.forward_offset) {
+    desc.forward_offset = *params.forward_offset;
+  }
+  if (params.backward_offset) {
+    desc.backward_offset = *params.backward_offset;
+  }
   return desc;
 }
 
@@ -206,11 +228,13 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, D
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
   auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
   OutputFType* device_output = nullptr;
+  sycl::event oop_init_event;
   if (is_oop) {
     device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
+    oop_init_event = queue.copy(host_output.data(), device_output, host_output.size());
   }
 
-  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
+  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size(), {oop_init_event});
 
   sycl::event fft_event = [&]() {
     if (is_oop) {
@@ -317,8 +341,10 @@ void run_test(const test_params& params) {
 
   auto desc = get_descriptor<FType>(params);
 
-  auto [host_input, host_reference_output] = gen_fourier_data<Dir>(desc, params.input_layout, params.output_layout);
-  decltype(host_reference_output) host_output(desc.get_output_count(params.dir));
+  float padding_value = -5.f;  // Value for memory that isn't written to.
+  auto [host_input, host_reference_output] =
+      gen_fourier_data<Dir>(desc, params.input_layout, params.output_layout, padding_value);
+  decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   double tolerance = 1e-3;
 
   try {

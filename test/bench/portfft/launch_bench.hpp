@@ -65,7 +65,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
 
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto [forward_data, backward_data] = gen_fourier_data<portfft::direction::FORWARD>(
-      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED);
+      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
   q.copy(forward_data.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
@@ -165,7 +165,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   q.wait();
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto [forward_data, backward_data] = gen_fourier_data<portfft::direction::FORWARD>(
-      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED);
+      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
   q.copy(forward_data.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 

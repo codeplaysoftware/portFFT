@@ -57,12 +57,14 @@ std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::siz
  * @tparam Dir The direction of the transform
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
+ * @tparam PaddingT type of the padding value
  * @param desc The description of the FFT
+ * @param padding_value The value to use in memory locations that are not expected to be read or written.
  * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
  **/
-template <portfft::direction Dir, typename Scalar, portfft::domain Domain>
+template <portfft::direction Dir, typename Scalar, portfft::domain Domain, typename PaddingT>
 auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
-                      portfft::detail::layout layout_out) {
+                      portfft::detail::layout layout_out, PaddingT padding_value) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
 
@@ -157,6 +159,17 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     }
   }
 
+  auto insert_offset = [=](auto inputVec, std::size_t offset) {
+    using InputT = decltype(inputVec);
+    std::ptrdiff_t fill_sz = static_cast<std::ptrdiff_t>(offset);
+    InputT outputVec(inputVec.size() + offset);
+    std::fill(outputVec.begin(), outputVec.begin() + fill_sz, static_cast<typename InputT::value_type>(padding_value));
+    std::copy(inputVec.cbegin(), inputVec.cend(), outputVec.begin() + fill_sz);
+    return outputVec;
+  };
+  forward = insert_offset(forward, desc.forward_offset);
+  backward = insert_offset(backward, desc.backward_offset);
+
   // Return a pair in the expected order
   auto input_output_pair = [&]() {
     if constexpr (IsForward) {
@@ -207,12 +220,20 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     data_shape.back() = data_shape.back() / 2 + 1;
   }
 
-  // TODO: Update this to take into account offset, stride and distance.
+  // TODO: Update this to take into account stride and distance.
   std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
 
+  auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
+  for (std::size_t i = 0; i < dft_offset; ++i) {
+    if (ref_output[i] != actual_output[i]) {
+      std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
+                << actual_output[i] << std::endl;
+    }
+  }
+
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
-    const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
-    const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
+    const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_computed = actual_output.data() + dft_len * t + dft_offset;
 
     for (std::size_t e = 0; e != dft_len; ++e) {
       const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e]);
