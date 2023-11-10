@@ -80,7 +80,6 @@ bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
 
 /**
  * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
- * Assumes a 1-D descriptor
  *
  * @tparam Descriptor Descriptor type
  * @param desc Descriptor to check
@@ -88,8 +87,26 @@ bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
  */
 template <typename Descriptor>
 bool is_batch_interleaved(const Descriptor& desc, direction dir) {
-  return desc.number_of_transforms > 1 && desc.get_distance(dir) == 1 && desc.get_strides(dir).size() == 1 &&
+  return desc.lengths.size() == 1 && desc.number_of_transforms > 1 && desc.get_distance(dir) == 1 &&
          desc.get_strides(dir).back() == desc.number_of_transforms;
+}
+
+/**
+ * Return an enum describing the layout of the data in the descriptor
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+detail::layout get_layout(const Descriptor& desc, direction dir) {
+  if (has_default_strides_and_distance(desc, dir)) {
+    return detail::layout::PACKED;
+  }
+  if (is_batch_interleaved(desc, dir)) {
+    return detail::layout::BATCH_INTERLEAVED;
+  }
+  return detail::layout::UNPACKED;
 }
 
 }  // namespace detail
@@ -436,17 +453,18 @@ class committed_descriptor {
         local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())) {
     // check it's suitable to run
 
-    const bool forward_packed = detail::has_default_strides_and_distance(params, direction::FORWARD);
-    const bool backward_packed = detail::has_default_strides_and_distance(params, direction::BACKWARD);
+    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
+    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
     if (params.lengths.size() > 1) {
-      if (!(forward_packed && backward_packed)) {
+      const bool supported_layout =
+          forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+      if (!supported_layout) {
         throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
       }
     } else {
-      const bool forward_batch_interleaved = detail::is_batch_interleaved(params, direction::FORWARD);
-      const bool backward_batch_interleaved = detail::is_batch_interleaved(params, direction::BACKWARD);
       const bool supported_layout =
-          (forward_packed || forward_batch_interleaved) && (backward_packed || backward_batch_interleaved);
+          (forward_layout == detail::layout::PACKED || forward_layout == detail::layout::BATCH_INTERLEAVED) &&
+          (backward_layout == detail::layout::PACKED || backward_layout == detail::layout::BATCH_INTERLEAVED);
       if (!supported_layout) {
         throw unsupported_configuration("Arbitary strides are not supported");
       }
@@ -673,10 +691,11 @@ class committed_descriptor {
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
 
+    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
+    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    if (n_dimensions != 1 && !(detail::has_default_strides_and_distance(params, direction::FORWARD) &&
-                               detail::has_default_strides_and_distance(params, direction::BACKWARD))) {
-      throw internal_error("Only default layout is supported for multi-dimensional transforms");
+    if (n_dimensions != 1 && (forward_layout != detail::layout::PACKED || backward_layout != detail::layout::PACKED)) {
+      throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
 
     // product of sizes of all dimension inner relative to the one we are currently working on
