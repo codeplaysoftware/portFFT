@@ -147,7 +147,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         detail::strided_view local_view{
             loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
-            std::array{2 * wi_id_in_fft * fact_wi, 2 * j_inner + j_outer * outer_stride, 2 * batch_num_in_local}};
+            std::array{2 * wi_id_in_fft * fact_wi, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
         copy_wi<2>(global_data, local_view, priv, fact_wi);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
@@ -220,7 +220,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         detail::strided_view local_view{
             loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
-            std::array{2 * wi_id_in_fft, 2 * j_inner + j_outer * outer_stride, 2 * batch_num_in_local}};
+            std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
         copy_wi<2>(global_data, priv, local_view, fact_wi);
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
