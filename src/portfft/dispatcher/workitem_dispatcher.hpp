@@ -172,15 +172,12 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < static_cast<IdxGlobal>(fft_size); j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
-        }
+        detail::strided_view input_view{input, n_transforms, i * 2};
+        copy_wi<2>(global_data, input_view, priv, fft_size);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
+        detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
+        copy_wi(global_data, offset_local_view, priv, n_reals);
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -209,14 +206,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if (LayoutOut == detail::layout::PACKED) {
-        private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
+        detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
+        copy_wi(global_data, priv, offset_local_view, n_reals);
       } else {
-        PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < fft_size; j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
-        }
+        detail::strided_view output_view{output, n_transforms, i * 2};
+        copy_wi<2>(global_data, priv, output_view, fft_size);
       }
     }
     if (LayoutOut == detail::layout::PACKED) {

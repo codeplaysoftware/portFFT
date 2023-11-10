@@ -46,20 +46,20 @@ struct offset_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  ParentT data;
+  ParentT parent;
   OffsetT offset;
 
   /** Constructor.
    * @param parent The parent view
    * @param offset The offset to add to index look-ups.
    */
-  constexpr offset_view(ParentT parent, OffsetT offset) noexcept : data(parent), offset(offset){};
+  constexpr offset_view(ParentT parent, OffsetT offset) noexcept : parent(parent), offset(offset){};
 
   /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(data); }
+  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept { return is_contiguous_view(parent); }
 
   // Index into the view.
-  PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return data[offset + i]; }
+  PORTFFT_INLINE constexpr reference operator[](OffsetT i) const { return parent[offset + i]; }
 };
 
 /**
@@ -93,51 +93,199 @@ struct padded_view {
   using element_type = get_element_t<ParentT>;
   using reference = element_type&;
 
-  ParentT data;
+  ParentT parent;
   Idx bank_lines_per_pad;
 
   // Constructor: Create a view of a pointer or another view.
   constexpr padded_view(ParentT parent, Idx bank_lines_per_pad) noexcept
-      : data(parent), bank_lines_per_pad(bank_lines_per_pad){};
+      : parent(parent), bank_lines_per_pad(bank_lines_per_pad){};
 
   /// Is this view contiguous?
   PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return is_contiguous_view(data) && bank_lines_per_pad == 0;
+    return is_contiguous_view(parent) && bank_lines_per_pad == 0;
   }
 
   // Index into the view.
   PORTFFT_INLINE constexpr reference operator[](Idx i) const {
     if (bank_lines_per_pad == 0) {
-      return data[i];
+      return parent[i];
     }
-    return data[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
+    return parent[pad_local<pad::DO_PAD>(i, bank_lines_per_pad)];
   }
 };
 
-/** A view of memory with a function to remap indices.
+/**
+ * Multidimensional view.
  *
- * @tparam RemapFuncT The remapping function type.
- * @tparam ParentT The underlying view or pointer type.
+ * @tparam NDim number of dimensions
+ * @tparam TParent type of the underlying view or pointer
+ * @tparam TStrides integral type used for strides
+ * @tparam TOffset integral type for offset. Needs to be big enough for the raw index into underlying view.
  */
-template <typename RemapFuncT, typename ParentT>
-struct remapping_view {
-  using element_type = get_element_t<ParentT>;
-  using reference = element_type&;
+// NDim is std::size_t to match std::array
+template <std::size_t NDim, typename TParent, typename TStrides, typename TOffset = Idx>
+struct md_view {
+  using element_type = get_element_t<TParent>;
 
-  ParentT data;
-  RemapFuncT func;
+  TParent parent;
+  std::array<TStrides, NDim> strides;
+  TOffset offset;
+  /**
+   * Constructor
+   *
+   * @param parent underlying view or pointer
+   * @param strides strides for each of the dimensions
+   * @param offset offset
+   */
+  constexpr md_view(TParent parent, const std::array<TStrides, NDim>& strides, TOffset offset = 0) noexcept
+      : parent(parent), strides(strides), offset(offset) {}
 
-  // Constructor: Create a view of a pointer or another view.
-  constexpr remapping_view(ParentT parent, RemapFuncT&& func) noexcept : data(parent), func(func){};
-
-  /// Is this view contiguous?
-  PORTFFT_INLINE constexpr bool is_contiguous() const noexcept {
-    return false;  // No way to know if the RemapFuncT is contiguous.
+  /**
+   * Return a view into remaining dimensions after indexing into the first one.
+   *
+   * @param index index into the first dimension
+   * @return view into remaining dimensions
+   */
+  template <typename T = int, std::enable_if_t<NDim >= 1 && std::is_same_v<T, T>>* = nullptr>
+  PORTFFT_INLINE constexpr md_view<NDim - 1, TParent, TStrides, TOffset> inner(TStrides index) noexcept {
+    std::array<TStrides, NDim - 1> next_strides;
+    PORTFFT_UNROLL
+    for (std::size_t j = 0; j < NDim - 1; j++) {
+      next_strides[j] = strides[j + 1];
+    }
+    return {parent, next_strides, offset + static_cast<TOffset>(index) * strides[0]};
   }
 
-  // Index into the view.
-  PORTFFT_INLINE constexpr reference operator[](Idx i) const { return data[func(i)]; }
+  /**
+   * Only available on 0-dimensional view. Gets the element the view points to.
+   *
+   * @return a reference to the element
+   */
+  template <typename T = int, std::enable_if_t<NDim == 0 && std::is_same_v<T, T>>* = nullptr>
+  PORTFFT_INLINE constexpr auto& get() const {
+    return parent[offset];
+  }
 };
+
+/**
+ * View with multidimensional strides and offsets
+ * @tparam TParent type of the underlying view or pointer
+ * @tparam TIdx integral type used strides and offsets
+ * @tparam NDim number of dimensions
+ *
+ */
+// NDim is std::size_t to match std::array
+template <typename TParent, typename TIdx, std::size_t NDim = 1>
+struct strided_view {
+  using element_type = get_element_t<TParent>;
+  using reference = element_type&;
+  TParent parent;
+  std::array<TIdx, NDim> sizes;
+  std::array<TIdx, NDim> offsets;
+
+  /**
+   * Constructor.
+   *
+   * @param parent underlying view or pointer
+   * @param sizes sizes for each of the dimensions
+   * @param offsets offsets into each of the dimensions
+   */
+  constexpr strided_view(TParent parent, const std::array<TIdx, NDim>& sizes,
+                         const std::array<TIdx, NDim>& offsets) noexcept
+      : parent(parent), sizes(sizes), offsets(offsets) {}
+
+  /**
+   * Constructor for 1-dimensional stride and offset.
+   *
+   * @param parent underlying view or pointer
+   * @param sizes size
+   * @param offsets offset
+   */
+  constexpr strided_view(TParent parent, const TIdx size, const TIdx offset = 0) noexcept
+      : parent(parent), sizes{size}, offsets{offset} {}
+
+  /**
+   * Calculates raw index (index into underlying pointer or view) from an index into this strided view.
+   *
+   * @param index
+   * @return PORTFFT_INLINE constexpr
+   */
+  PORTFFT_INLINE constexpr TIdx raw_index(Idx index) const {
+    TIdx index_calculated = static_cast<TIdx>(index);
+    PORTFFT_UNROLL
+    for (std::size_t i = 0; i < NDim; i++) {
+      index_calculated = index_calculated * sizes[i] + offsets[i];
+    }
+    return index_calculated;
+  }
+
+  /**
+   * Index into the view.
+   *
+   * @param index index
+   * @return reference to the indexed element
+   */
+  PORTFFT_INLINE constexpr reference operator[](Idx index) const { return parent[raw_index(index)]; }
+};
+
+/**
+ * Get the raw pointer object. No-op for pointers
+ *
+ * @tparam T type pointed to
+ * @param arg pointer or view to get the raw pointer from
+ * @return raw pointer
+ */
+template <typename T>
+PORTFFT_INLINE constexpr T* get_raw_pointer(T* arg) {
+  return arg;
+}
+
+/**
+ * Get the raw pointer object from a view.
+ *
+ * @tparam TView type of the view
+ * @param arg pointer or view to get the raw pointer from
+ * @return raw pointer
+ */
+template <typename TView>
+PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
+  return get_raw_pointer(arg.parent);
+}
+
+/**
+ * Implementation of `is_view_multidimensional`.
+ *
+ * @tparam T type of the view
+ */
+template <typename T>
+struct is_view_multidimensional_impl {
+  /**
+   * Check if a view is multidimensional.
+   *
+   * @return true if the view is multidimensional, false otherwise
+   */
+  static constexpr bool get() { return false; }
+};
+template <std::size_t NDim, typename TParent, typename TStrides, typename TOffset>
+struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>> {
+  /**
+   * Check if a view is multidimensional.
+   *
+   * @return true if the view is multidimensional, false otherwise
+   */
+  static constexpr bool get() { return true; }
+};
+
+/**
+ * Check if a view is multidimensional.
+ *
+ * @tparam T type of the view
+ * @return true if the view is multidimensional, false otherwise
+ */
+template <typename T>
+constexpr bool is_view_multidimensional() {
+  return is_view_multidimensional_impl<T>::get();
+}
 
 }  // namespace portfft::detail
 
