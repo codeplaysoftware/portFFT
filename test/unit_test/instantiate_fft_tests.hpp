@@ -30,6 +30,7 @@
 // Mandatory parameters: placement, layout, direction, batch, lengths
 // Optional parameters: [forward_scale, backward_scale]
 class FFTTest : public ::testing::TestWithParam<test_params> {};
+class InvalidFFTTest : public ::testing::TestWithParam<test_params> {};
 
 using sizes_t = std::vector<std::size_t>;
 
@@ -64,9 +65,17 @@ auto ip_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED});
 auto ip_batch_interleaved_layout = ::testing::Values(test_placement_layouts_params{
     placement::IN_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED});
+auto ip_unpacked_unpacked_layout = ::testing::Values(
+    test_placement_layouts_params{placement::IN_PLACE, detail::layout::UNPACKED, detail::layout::UNPACKED});
 
-auto oop_packed_layout = ::testing::Values(
+auto oop_packed_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED});
+auto oop_unpacked_unpacked_layout = ::testing::Values(
+    test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::UNPACKED, detail::layout::UNPACKED});
+
+auto all_unpacked_unpacked_layout = ::testing::Values(
+    test_placement_layouts_params{placement::IN_PLACE, detail::layout::UNPACKED, detail::layout::UNPACKED},
+    test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::UNPACKED, detail::layout::UNPACKED});
 
 constexpr test_placement_layouts_params valid_global_layouts[] = {
 #ifdef PORTFFT_ENABLE_OOP_BUILDS
@@ -211,18 +220,108 @@ INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
 // Scaled FFTs test suite
 auto scales = ::testing::Values(-1.0, 2.0);
 INSTANTIATE_TEST_SUITE_P(FwdScaledFFTTest, FFTTest,
-                         ::testing::ConvertGenerator<scales_param_tuple>(
-                             ::testing::Combine(oop_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
-                                                ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
-                                                                  sizes_t{4096}, sizes_t{16, 512}),
-                                                scales, ::testing::Values(1.0))),
+                         ::testing::ConvertGenerator<scales_param_tuple>(::testing::Combine(
+                             oop_packed_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
+                             ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512}, sizes_t{4096},
+                                               sizes_t{16, 512}),
+                             scales, ::testing::Values(1.0))),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
-                         ::testing::ConvertGenerator<scales_param_tuple>(
-                             ::testing::Combine(oop_packed_layout, bwd_only, interleaved_storage, ::testing::Values(3),
-                                                ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
-                                                                  sizes_t{4096}, sizes_t{16, 512}),
-                                                ::testing::Values(1.0), scales)),
+                         ::testing::ConvertGenerator<scales_param_tuple>(::testing::Combine(
+                             oop_packed_packed_layout, bwd_only, interleaved_storage, ::testing::Values(3),
+                             ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512}, sizes_t{4096},
+                                               sizes_t{16, 512}),
+                             ::testing::Values(1.0), scales)),
+                         test_params_print());
+
+INSTANTIATE_TEST_SUITE_P(workItemStridedOOPInOrder, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages,
+                             ::testing::Values(1, 3, 33000ul),
+                             ::testing::Values(layout_params{{3}, {4}, {7}}, layout_params{{8}, {11}, {2}},
+                                               layout_params{{9}, {3}, {4}, 30, 40}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(workItemStridedOOPLikeBatchInterleaved, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(
+                             ::testing::Combine(oop_unpacked_unpacked_layout, both_directions, complex_storages,
+                                                // keep batches below 33
+                                                ::testing::Values(1, 10, 33),
+                                                ::testing::Values(layout_params{{8}, {33}, {99}, 1, 3},
+                                                                  layout_params{{8}, {33}, {2}, 1, 16},
+                                                                  layout_params{{8}, {2}, {66}, 16, 2}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(workItemStridedIP, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             ip_unpacked_unpacked_layout, both_directions, complex_storages,
+                             ::testing::Values(1, 3, 33000ul),
+                             ::testing::Values(layout_params{{3}, {4}, {4}}, layout_params{{9}, {3}, {3}, 25, 25}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(
+    workItemStridedLikeBatchInterleaved, FFTTest,
+    ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+        ip_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33),
+        ::testing::Values(layout_params{{3}, {66}, {66}, 2, 2}, layout_params{{6}, {40}, {40}, 1, 1}))),
+    test_params_print());
+
+// clang-format off
+// Arbitrary interleaved FFT test suites
+// The strides and distances are set so that no elements overlap but there are no single continuous dimension in memory either.
+// This configuration is impractical but technically valid. For instance for n_batches=4, fft_size=4, stride=4, distance=3:
+// Index in memory:     0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15   16   17   18   19   20   21
+// Batch and FFT index: b0i0           b1i0 b0i1      b2i0 b1i1 b0i2 b3i0 b2i1 b1i2 b0i3 b3i1 b2i2 b1i3      b3i2 b2i3           b3i3
+// clang-format on
+INSTANTIATE_TEST_SUITE_P(workItemStridedArbitraryInterleaved, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             all_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(4),
+                             ::testing::Values(layout_params{{4}, {4}, {4}, 3, 3}))),
+                         test_params_print());
+
+// Invalid configurations test suite
+INSTANTIATE_TEST_SUITE_P(InvalidLength, InvalidFFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, both_directions, complex_storages,
+                                                ::testing::Values(1), ::testing::Values(0))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidBatch, InvalidFFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_placement_layouts, both_directions, complex_storages,
+                                                ::testing::Values(0), ::testing::Values(1))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidDistance, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(2),
+                             ::testing::Values(layout_params{{5}, {5}, {1}, 0, 5},
+                                               layout_params{{5}, {1}, {5}, 5, 0}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidNonPositiveStrides, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1),
+                             ::testing::Values(layout_params{{5}, {0}, {1}}, layout_params{{5}, {1}, {0}},
+                                               layout_params{{5, 12}, {12, 1}, {12, 0}}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidShortDistance, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(2),
+                             ::testing::Values(layout_params{{8}, {1}, {1}, 7, 8},
+                                               layout_params{{8, 4}, {8, 2}, {4, 1}, 24, 24}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidIPNotMatchingStridesDistance, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             ip_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(2),
+                             ::testing::Values(layout_params{{8}, {2}, {1}, 16, 8},
+                                               layout_params{{8, 4}, {8, 2}, {8, 2}, 48, 50}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidOverlap, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(3),
+                             ::testing::Values(layout_params{{4}, {1}, {1}, 1, 4},
+                                               layout_params{{4}, {1}, {2}, 4, 3}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidOverlapLarge, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(
+                             ::testing::Combine(oop_unpacked_unpacked_layout, both_directions, complex_storages,
+                                                ::testing::Values(3333334),
+                                                ::testing::Values(layout_params{{8}, {3333333}, {3333333}, 1, 1}))),
                          test_params_print());
 
 #define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                                                        \
@@ -254,5 +353,13 @@ INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
 #else
 #define INSTANTIATE_TESTS(TYPE) INSTANTIATE_TESTS_FULL(TYPE, usm)
 #endif
+
+// The result of this test should not be dependent on scalar type or memory type
+TEST_P(InvalidFFTTest, Test) {
+  auto params = GetParam();
+  sycl::queue queue;
+  auto desc = get_descriptor<float>(params);
+  EXPECT_THROW(desc.commit(queue), portfft::invalid_configuration);
+}
 
 #endif

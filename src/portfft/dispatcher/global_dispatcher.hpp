@@ -256,10 +256,9 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
+                      Idx length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                       Idx num_factors) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    Idx length_idx = static_cast<Idx>(length);
     PORTFFT_LOG_TRACE("GlobalSubImplSpecConst:", level);
     in_bundle.template set_specialization_constant<detail::GlobalSubImplSpecConst>(level);
     PORTFFT_LOG_TRACE("GlobalSpecConstNumFactors:", num_factors);
@@ -267,8 +266,8 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
     PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", factor_num);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
     if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
-      PORTFFT_LOG_TRACE("SpecConstFftSize:", length_idx);
-      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
+      PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
+      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
     } else if (level == detail::level::SUBGROUP) {
       PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);

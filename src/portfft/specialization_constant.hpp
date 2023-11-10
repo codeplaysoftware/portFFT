@@ -26,12 +26,17 @@
 #include "defines.hpp"
 #include "enums.hpp"
 
-namespace portfft {
-namespace detail {
+namespace portfft::detail {
 
 constexpr static sycl::specialization_id<Idx> SpecConstFftSize{};
 constexpr static sycl::specialization_id<Idx> SpecConstNumRealsPerFFT{};
 constexpr static sycl::specialization_id<Idx> SpecConstWIScratchSize{};
+
+constexpr static sycl::specialization_id<IdxGlobal> SpecConstInputStride{};
+constexpr static sycl::specialization_id<IdxGlobal> SpecConstOutputStride{};
+constexpr static sycl::specialization_id<IdxGlobal> SpecConstInputDistance{};
+constexpr static sycl::specialization_id<IdxGlobal> SpecConstOutputDistance{};
+
 constexpr static sycl::specialization_id<complex_storage> SpecConstComplexStorage{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnLoad{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnStore{};
@@ -51,6 +56,5 @@ constexpr static sycl::specialization_id<detail::complex_conjugate> SpecConstCon
 constexpr static sycl::specialization_id<float> SpecConstScaleFactorFloat{};
 constexpr static sycl::specialization_id<double> SpecConstScaleFactorDouble{};
 
-}  // namespace detail
-}  // namespace portfft
+}  // namespace portfft::detail
 #endif

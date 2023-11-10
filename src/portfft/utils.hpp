@@ -29,6 +29,7 @@
 #include "common/logging.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
+#include "specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {
@@ -191,6 +192,69 @@ PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constan
   } else {
     return detail::SpecConstScaleFactorDouble;
   }
+}
+
+/**
+ * Return the default strides for a given dft size
+ *
+ * @param lengths the dimensions of the dft
+ */
+inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
+  std::vector<std::size_t> strides(lengths.size());
+  std::size_t total_size = 1;
+  for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
+    std::size_t i = i_plus1 - 1;
+    strides[i] = total_size;
+    total_size *= lengths[i];
+  }
+  PORTFFT_LOG_TRACE("Default strides:", strides);
+  return strides;
+}
+
+/**
+ * Return whether the given descriptor has default strides and distance for a given direction
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
+  const auto default_strides = get_default_strides(desc.lengths);
+  const auto default_distance = desc.get_flattened_length();
+  return desc.get_strides(dir) == default_strides && desc.get_distance(dir) == default_distance;
+}
+
+/**
+ * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool is_batch_interleaved(const Descriptor& desc, direction dir) {
+  return desc.lengths.size() == 1 && desc.get_distance(dir) == 1 &&
+         desc.get_strides(dir).back() == desc.number_of_transforms;
+}
+
+/**
+ * Return an enum describing the layout of the data in the descriptor
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+detail::layout get_layout(const Descriptor& desc, direction dir) {
+  if (has_default_strides_and_distance(desc, dir)) {
+    return detail::layout::PACKED;
+  }
+  if (is_batch_interleaved(desc, dir)) {
+    return detail::layout::BATCH_INTERLEAVED;
+  }
+  return detail::layout::UNPACKED;
 }
 
 }  // namespace detail
