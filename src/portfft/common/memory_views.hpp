@@ -206,9 +206,9 @@ struct strided_view {
 
   /**
    * Calculates raw index (index into underlying pointer or view) from an index into this strided view.
-   * 
-   * @param index 
-   * @return PORTFFT_INLINE constexpr 
+   *
+   * @param index
+   * @return PORTFFT_INLINE constexpr
    */
   PORTFFT_INLINE constexpr TIdx raw_index(Idx index) const {
     TIdx index_calculated = static_cast<TIdx>(index);
@@ -225,9 +225,7 @@ struct strided_view {
    * @param index index
    * @return reference to the indexed element
    */
-  PORTFFT_INLINE constexpr reference operator[](Idx index) const {
-    return parent[raw_index(index)];
-  }
+  PORTFFT_INLINE constexpr reference operator[](Idx index) const { return parent[raw_index(index)]; }
 };
 
 /**
@@ -256,40 +254,36 @@ PORTFFT_INLINE constexpr get_element_t<TView>* get_raw_pointer(TView arg) {
 
 /**
  * Implementation of `is_view_multidimensional`.
- * 
+ *
  * @tparam T type of the view
  */
-template<typename T>
-struct is_view_multidimensional_impl{
+template <typename T>
+struct is_view_multidimensional_impl {
   /**
    * Check if a view is multidimensional.
-   * 
+   *
    * @return true if the view is multidimensional, false otherwise
    */
-  static constexpr bool get(){
-    return false;
-  }
+  static constexpr bool get() { return false; }
 };
-template<std::size_t NDim, typename TParent, typename TStrides, typename TOffset>
-struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>>{
+template <std::size_t NDim, typename TParent, typename TStrides, typename TOffset>
+struct is_view_multidimensional_impl<md_view<NDim, TParent, TStrides, TOffset>> {
   /**
    * Check if a view is multidimensional.
-   * 
+   *
    * @return true if the view is multidimensional, false otherwise
    */
-  static constexpr bool get(){
-    return true;
-  }
+  static constexpr bool get() { return true; }
 };
 
 /**
  * Check if a view is multidimensional.
- * 
+ *
  * @tparam T type of the view
  * @return true if the view is multidimensional, false otherwise
  */
-template<typename T>
-constexpr bool is_view_multidimensional(){
+template <typename T>
+constexpr bool is_view_multidimensional() {
   return is_view_multidimensional_impl<T>::get();
 }
 
