@@ -28,15 +28,18 @@
 
 namespace portfft {
 namespace detail {
+
 constexpr static sycl::specialization_id<Idx> SpecConstFftSize{};
 constexpr static sycl::specialization_id<Idx> SpecConstNumRealsPerFFT{};
 constexpr static sycl::specialization_id<Idx> SpecConstWIScratchSize{};
+constexpr static sycl::specialization_id<complex_storage> SpecConstStorage{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnLoad{};
 constexpr static sycl::specialization_id<detail::elementwise_multiply> SpecConstMultiplyOnStore{};
 constexpr static sycl::specialization_id<detail::apply_scale_factor> SpecConstApplyScaleFactor{};
 
 constexpr static sycl::specialization_id<Idx> SubgroupFactorWISpecConst{};
 constexpr static sycl::specialization_id<Idx> SubgroupFactorSGSpecConst{};
+
 }  // namespace detail
 }  // namespace portfft
 #endif

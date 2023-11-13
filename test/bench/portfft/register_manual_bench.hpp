@@ -192,10 +192,10 @@ void fill_descriptor(arg_map_t& arg_map, portfft::descriptor<FType, Domain>& des
   }
 
   arg = get_arg(arg_map, STORAGE);
-  if (arg == "complex" || arg == "cpx") {
-    desc.complex_storage = portfft::complex_storage::COMPLEX;
-  } else if (arg == "real_real" || arg == "rr") {
-    desc.complex_storage = portfft::complex_storage::REAL_REAL;
+  if (arg == "complex" || arg == "cpx" || arg == "interleaved" || arg == "int") {
+    desc.complex_storage = portfft::complex_storage::INTERLEAVED_COMPLEX;
+  } else if (arg == "real_real" || arg == "rr" || arg == "split" || arg == "sp") {
+    desc.complex_storage = portfft::complex_storage::SPLIT_COMPLEX;
   } else if (!arg.empty()) {
     throw invalid_value{"storage", arg};
   }

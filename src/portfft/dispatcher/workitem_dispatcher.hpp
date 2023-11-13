@@ -97,13 +97,15 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, LocalT loc_modi
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
-PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n_transforms, T scaling_factor,
+PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc, IdxGlobal n_transforms, T scaling_factor,
                                   global_data_struct global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+  complex_storage storage = kh.get_specialization_constant<detail::SpecConstStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  (void)input_imag; (void)output_imag; (void)storage;
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
@@ -232,7 +234,7 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, 
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
@@ -248,6 +250,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
       auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
       auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
+      auto in_imag_acc_or_usm = detail::get_access<const Scalar>(in_imag, cgh);
+      auto out_imag_acc_or_usm = detail::get_access<Scalar>(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
@@ -262,7 +266,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 it};
             global_data.log_message_global("Running workitem kernel");
             detail::workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0], n_transforms,
+                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, 
+                &in_imag_acc_or_usm[0] + 2 * input_offset, &out_imag_acc_or_usm[0] + 2 * output_offset, 
+                &loc[0], n_transforms,
                 scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workitem kernel");
           });

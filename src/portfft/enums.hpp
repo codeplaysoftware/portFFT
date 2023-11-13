@@ -25,7 +25,7 @@ namespace portfft {
 
 enum class domain { REAL, COMPLEX };
 
-enum class complex_storage { COMPLEX, REAL_REAL };
+enum class complex_storage { INTERLEAVED_COMPLEX, SPLIT_COMPLEX };
 
 enum class placement { IN_PLACE, OUT_OF_PLACE };
 
