@@ -52,8 +52,8 @@ function(add_benchmark target source_file)
   get_target_property(PORTFFT_INCLUDES portfft INTERFACE_INCLUDE_DIRECTORIES)
 
   target_include_directories(${target} PRIVATE
-      ${PROJECT_SOURCE_DIR}/test/common
-      ${PROJECT_SOURCE_DIR}/test/bench/utils
+      ${PROJECT_SOURCE_DIR}/test
+      ${PROJECT_SOURCE_DIR}/test/bench
       ${PORTFFT_INCLUDES}
   )
 

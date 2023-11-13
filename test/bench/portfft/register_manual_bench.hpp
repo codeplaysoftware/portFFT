@@ -31,7 +31,7 @@
 #include <utility>
 
 #include "launch_bench.hpp"
-#include "sycl_utils.hpp"
+#include "utils/sycl_utils.hpp"
 
 static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},    {"lengths", "n"},   {"batch", "b"},  {"fwd_strides", "fs"}, {"bwd_strides", "bs"},

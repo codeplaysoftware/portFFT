@@ -21,9 +21,9 @@
 #ifndef PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
 #define PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
 
-#include <benchmark/benchmark.h>
-
 #include <sycl/sycl.hpp>
+
+#include <benchmark/benchmark.h>
 
 void print_device(sycl::queue queue) {
   namespace info = sycl::info::device;

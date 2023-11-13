@@ -18,11 +18,11 @@
  *
  **************************************************************************/
 
-#include "common/transfers.hpp"
-#include "common/memory_views.hpp"
-#include "fft_test_utils.hpp"
-
 #include <gtest/gtest.h>
+#include <portfft/common/memory_views.hpp>
+#include <portfft/common/transfers.hpp>
+
+#include "fft_test_utils.hpp"
 
 constexpr int N = 4;
 constexpr int sg_size = (PORTFFT_SUBGROUP_SIZES);  // turn the list into the last value using commma operator
@@ -94,8 +94,8 @@ void test() {
           group_barrier(it.get_group());
           portfft::global2local<detail::level::WORKGROUP, sg_size>(global_data, a_dev_work, loc1_view, N * wg_size);
           group_barrier(it.get_group());
-          portfft::local2private(global_data, N, loc1_view, priv, local_id, N);
-          portfft::private2local(global_data, N, priv, loc2_view, local_id, N);
+          copy_wi(global_data, detail::offset_view{loc1_view, local_id * N}, priv, N);
+          copy_wi(global_data, priv, detail::offset_view{loc2_view, local_id * N}, N);
           group_barrier(it.get_group());
           portfft::local2global<detail::level::WORKGROUP, sg_size>(global_data, loc2_view, b_dev_work, N * wg_size);
           group_barrier(it.get_group());

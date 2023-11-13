@@ -21,13 +21,13 @@
 #ifndef PORTFFT_UTILS_HPP
 #define PORTFFT_UTILS_HPP
 
-#include <defines.hpp>
-#include <enums.hpp>
-
 #include <sycl/sycl.hpp>
 
 #include <limits>
 #include <vector>
+
+#include "defines.hpp"
+#include "enums.hpp"
 
 namespace portfft {
 namespace detail {

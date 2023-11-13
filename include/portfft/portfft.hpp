@@ -21,15 +21,15 @@
 #ifndef PORTFFT_HPP
 #define PORTFFT_HPP
 
-#include "common/exceptions.hpp"
-#include "common/transfers.hpp"
-#include "common/workitem.hpp"
-#include "descriptor.hpp"
-#include "dispatcher/global_dispatcher.hpp"
-#include "dispatcher/subgroup_dispatcher.hpp"
-#include "dispatcher/workgroup_dispatcher.hpp"
-#include "dispatcher/workitem_dispatcher.hpp"
-#include "enums.hpp"
-#include "traits.hpp"
+#include "portfft/common/exceptions.hpp"
+#include "portfft/common/transfers.hpp"
+#include "portfft/common/workitem.hpp"
+#include "portfft/descriptor.hpp"
+#include "portfft/dispatcher/global_dispatcher.hpp"
+#include "portfft/dispatcher/subgroup_dispatcher.hpp"
+#include "portfft/dispatcher/workgroup_dispatcher.hpp"
+#include "portfft/dispatcher/workitem_dispatcher.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/traits.hpp"
 
 #endif

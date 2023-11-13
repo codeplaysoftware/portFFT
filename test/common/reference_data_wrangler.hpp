@@ -21,9 +21,6 @@
 #ifndef PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 #define PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
-#include <descriptor.hpp>
-#include <enums.hpp>
-
 #include <complex>
 #include <cstdio>
 #include <exception>
@@ -33,6 +30,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <portfft/descriptor.hpp>
+#include <portfft/enums.hpp>
 
 /**
  * Runs Out of place transpose
@@ -57,13 +57,16 @@ std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::siz
  * @tparam Dir The direction of the transform
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
+ * @tparam PaddingT type of the padding value
  * @param desc The description of the FFT
+ * @param padding_value The value to use in memory locations that are not expected to be read or written.
  * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
  **/
-template <portfft::direction Dir, typename Scalar, portfft::domain Domain>
+template <portfft::direction Dir, typename Scalar, portfft::domain Domain, typename PaddingT>
 auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
-                      portfft::detail::layout layout_out) {
+                      portfft::detail::layout layout_out, PaddingT padding_value) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
+  constexpr bool IsForward = Dir == portfft::direction::FORWARD;
 
   const auto batches = desc.number_of_transforms;
   const auto& dims = desc.lengths;
@@ -119,6 +122,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   };
   std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
 
+  // Do not take into account the descriptor's stride, distance or offset to load data from Numpy.
   auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
   auto backward_elements =
       IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
@@ -141,26 +145,50 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   // modify layout
   if (layout_in == portfft::detail::layout::BATCH_INTERLEAVED) {
-    if constexpr (Dir == portfft::direction::FORWARD) {
+    if constexpr (IsForward) {
       forward = transpose(forward, elements / batches, desc.number_of_transforms);
     } else {
       backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
     }
   }
   if (layout_out == portfft::detail::layout::BATCH_INTERLEAVED) {
-    if constexpr (Dir == portfft::direction::FORWARD) {
+    if constexpr (IsForward) {
       backward = transpose(backward, backward_elements / batches, desc.number_of_transforms);
     } else {
       forward = transpose(forward, elements / batches, desc.number_of_transforms);
     }
   }
 
-  // return in the expected order
-  if constexpr (Dir == portfft::direction::FORWARD) {
-    return std::make_pair(forward, backward);
-  } else {
-    return std::make_pair(backward, forward);
+  auto insert_offset = [=](auto inputVec, std::size_t offset) {
+    using InputT = decltype(inputVec);
+    std::ptrdiff_t fill_sz = static_cast<std::ptrdiff_t>(offset);
+    InputT outputVec(inputVec.size() + offset);
+    std::fill(outputVec.begin(), outputVec.begin() + fill_sz, static_cast<typename InputT::value_type>(padding_value));
+    std::copy(inputVec.cbegin(), inputVec.cend(), outputVec.begin() + fill_sz);
+    return outputVec;
+  };
+  forward = insert_offset(forward, desc.forward_offset);
+  backward = insert_offset(backward, desc.backward_offset);
+
+  // Return a pair in the expected order
+  auto input_output_pair = [&]() {
+    if constexpr (IsForward) {
+      return std::make_pair(forward, backward);
+    } else {
+      return std::make_pair(backward, forward);
+    }
+  }();
+
+  // Apply scaling factor to the output
+  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
+  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
+  auto scaling_factor =
+      IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
+  for (auto& output_elem : input_output_pair.second) {
+    output_elem *= scaling_factor;
   }
+
+  return input_output_pair;
 }
 
 /** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.
@@ -192,24 +220,28 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     data_shape.back() = data_shape.back() / 2 + 1;
   }
 
+  // TODO: Update this to take into account stride and distance.
   std::size_t dft_len = std::accumulate(data_shape.cbegin(), data_shape.cend(), std::size_t(1), std::multiplies<>());
 
-  // Division by DFT len is required since the reference forward transform has
-  // scale factor 1, so inverting with also scale factor 1 would be out by a
-  // multiple of dft_len. This scaling is applied to the reference data.
-  auto scaling = IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(dft_len);
+  auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
+  for (std::size_t i = 0; i < dft_offset; ++i) {
+    if (ref_output[i] != actual_output[i]) {
+      std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
+                << actual_output[i] << std::endl;
+    }
+  }
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
-    const ElemT* this_batch_ref = ref_output.data() + dft_len * t;
-    const ElemT* this_batch_computed = actual_output.data() + dft_len * t;
+    const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_computed = actual_output.data() + dft_len * t + dft_offset;
 
     for (std::size_t e = 0; e != dft_len; ++e) {
-      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e] * scaling);
+      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e]);
       if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
         // std::endl is used intentionally to flush the error message before google test exits the test.
         std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dft_len + e
-                  << ", does not match\nref " << this_batch_ref[e] * scaling << " vs " << this_batch_computed[e]
-                  << "\ndiff " << diff << ", tolerance " << comparison_tolerance << std::endl;
+                  << ", does not match\nref " << this_batch_ref[e] << " vs " << this_batch_computed[e] << "\ndiff "
+                  << diff << ", tolerance " << comparison_tolerance << std::endl;
         throw std::runtime_error("Verification Failed");
       }
     }

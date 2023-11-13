@@ -26,12 +26,11 @@
 #include <type_traits>
 
 #include <benchmark/benchmark.h>
+#include <portfft/portfft.hpp>
 
-#include <portfft.hpp>
-
-#include "bench_utils.hpp"
-#include "device_number_generator.hpp"
-#include "ops_estimate.hpp"
+#include "utils/bench_utils.hpp"
+#include "utils/device_number_generator.hpp"
+#include "utils/ops_estimate.hpp"
 
 /**
  * Main function to run benchmarks and measure the time spent on the host.
@@ -66,7 +65,7 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
 
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto [forward_data, backward_data] = gen_fourier_data<portfft::direction::FORWARD>(
-      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED);
+      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
   q.copy(forward_data.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
@@ -166,7 +165,7 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   q.wait();
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   auto [forward_data, backward_data] = gen_fourier_data<portfft::direction::FORWARD>(
-      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED);
+      desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
   q.copy(forward_data.data(), in_dev, num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 

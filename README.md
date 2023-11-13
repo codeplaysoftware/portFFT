@@ -93,6 +93,8 @@ portFFT is still in early development. The supported configurations are:
 * multi-dimensional transforms with the following restrictions:
   * default values for strides and distances
   * size in each dimension must be supported by 1D transforms
+* Arbitrary forward and backward scales
+* Arbitrary forward and backward offsets
 
 The supported sizes depend on the CMake flags used which can be constrained by the device used.
 `PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.
@@ -106,9 +108,11 @@ By default the library assumes subgroup size of 32 is used. If that is not suppo
 
 ## Known issues
 
-* Specialization constants are currently emulated on Nvidia and AMD backends. portFFT relies on this feature on Nvidia devices in particular so the performance is not optimal on these devices.
+* portFFT relies on SYCL specialization constants which have some limitations currently:
+  * Some optimizations seem to be missing at JIT compile time. We are working to improve this.
+  * Specialization constants are currently emulated on Nvidia and AMD backends which prevents some optimizations.
 
-We are investigating other performance issues that affect all the backends.
+Overall the work of optimizing portFFT is still in progress.
 
 ## Troubleshooting
 

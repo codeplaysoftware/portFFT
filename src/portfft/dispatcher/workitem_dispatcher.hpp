@@ -21,15 +21,15 @@
 #ifndef PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
 
-#include <common/helpers.hpp>
-#include <common/logging.hpp>
-#include <common/memory_views.hpp>
-#include <common/transfers.hpp>
-#include <common/workitem.hpp>
-#include <defines.hpp>
-#include <descriptor.hpp>
-#include <enums.hpp>
-#include <specialization_constant.hpp>
+#include "portfft/common/helpers.hpp"
+#include "portfft/common/logging.hpp"
+#include "portfft/common/memory_views.hpp"
+#include "portfft/common/transfers.hpp"
+#include "portfft/common/workitem.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/descriptor.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {
@@ -110,8 +110,15 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   const Idx n_reals = 2 * fft_size;
 
+#ifdef PORTFFT_USE_SCLA
+  T wi_private_scratch[detail::SpecConstWIScratchSize];
+  T priv_scla[detail::SpecConstNumRealsPerFFT];
+  // Decay the scla to T* to avoid assert when it is decayed to const T*
+  T* priv = priv_scla;
+#else
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   T priv[2 * MaxComplexPerWI];
-  T wi_priv_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+#endif
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
@@ -165,15 +172,12 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
         // Load directly into registers from global memory as all loads will be fully coalesced.
         // No need of going through local memory either as it is an unnecessary extra write step.
-        PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < static_cast<IdxGlobal>(fft_size); j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->load(0, detail::get_global_multi_ptr(&input[i * 2 + 2 * j * n_transforms]));
-        }
+        detail::strided_view input_view{input, n_transforms, i * 2};
+        copy_wi<2>(global_data, input_view, priv, fft_size);
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
-        local2private(global_data, n_reals, loc_view, priv, subgroup_local_id, n_reals, local_offset);
+        detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
+        copy_wi(global_data, offset_local_view, priv, n_reals);
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
@@ -183,7 +187,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         detail::apply_modifier(fft_size, priv, loc_load_modifier_view,
                                static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_priv_scratch);
+      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
@@ -202,14 +206,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
       global_data.log_message_global(__func__, "loading data from private to local memory");
       if (LayoutOut == detail::layout::PACKED) {
-        private2local(global_data, n_reals, priv, loc_view, subgroup_local_id, n_reals, local_offset);
+        detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
+        copy_wi(global_data, priv, offset_local_view, n_reals);
       } else {
-        PORTFFT_UNROLL
-        for (IdxGlobal j = 0; j < fft_size; j++) {
-          using T_vec = sycl::vec<T, 2>;
-          reinterpret_cast<T_vec*>(&priv[2 * j])
-              ->store(0, detail::get_global_multi_ptr(&output[i * 2 + 2 * j * n_transforms]));
-        }
+        detail::strided_view output_view{output, n_transforms, i * 2};
+        copy_wi<2>(global_data, priv, output_view, fft_size);
       }
     }
     if (LayoutOut == detail::layout::PACKED) {

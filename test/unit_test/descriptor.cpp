@@ -19,8 +19,7 @@
  **************************************************************************/
 
 #include <gtest/gtest.h>
-
-#include "descriptor.hpp"
+#include <portfft/descriptor.hpp>
 
 #include "fft_test_utils.hpp"
 

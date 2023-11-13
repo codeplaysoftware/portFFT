@@ -21,15 +21,15 @@
 #ifndef PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 
-#include <common/helpers.hpp>
-#include <common/logging.hpp>
-#include <common/memory_views.hpp>
-#include <common/transfers.hpp>
-#include <common/workgroup.hpp>
-#include <defines.hpp>
-#include <descriptor.hpp>
-#include <enums.hpp>
-#include <specialization_constant.hpp>
+#include "portfft/common/helpers.hpp"
+#include "portfft/common/logging.hpp"
+#include "portfft/common/memory_views.hpp"
+#include "portfft/common/transfers.hpp"
+#include "portfft/common/workgroup.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/descriptor.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {
@@ -136,9 +136,10 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      global_batchinter_2_local_batchinter<level::WORKGROUP>(global_data, input, loc_view, offset / fft_size,
-                                                             2 * num_batches_in_local_mem, fft_size, 2 * n_transforms,
-                                                             2 * max_num_batches_in_local_mem);
+      detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, offset / fft_size};
+      detail::md_view loc_md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}};
+      copy_group<level::WORKGROUP>(global_data, input_view, loc_md_view,
+                                   std::array{fft_size, 2 * num_batches_in_local_mem});
       sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
@@ -149,15 +150,19 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
-        // local2global_transposed cannot be used over here. This is because the data in the local memory is also
-        // stored in a strided fashion.
-        local_batchinter_batchinter_2_global_packed<SubgroupSize>(global_data, loc_view, output, offset,
-                                                                  2 * max_num_batches_in_local_mem, factor_n, factor_m,
-                                                                  num_batches_in_local_mem);
+        detail::md_view loc_md_view2{
+            loc_view, std::array{2, 1, 2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m}};
+        detail::md_view output_view{output, std::array{2 * fft_size, 1, 2 * factor_n, 2}, offset};
+        copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
+                                     std::array{num_batches_in_local_mem, 2, factor_m, factor_n});
       } else {
-        local_batchinter_batchinter_2_global_batchinter(global_data, output, loc_view, 2 * n_transforms,
-                                                        2 * batch_start_idx, 2 * max_num_batches_in_local_mem,
-                                                        num_batches_in_local_mem, factor_n, factor_m);
+        detail::md_view loc_md_view2{
+            loc_view, std::array{2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m, 1}};
+        detail::md_view output_view{
+            output, std::array{2 * n_transforms * factor_n, 2 * n_transforms, static_cast<IdxGlobal>(1)},
+            2 * batch_start_idx};
+        copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
+                                     std::array{factor_m, factor_n, 2 * num_batches_in_local_mem});
       }
       sycl::group_barrier(global_data.it.get_group());
     } else {
@@ -172,11 +177,16 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twi
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
       if (LayoutOut == detail::layout::PACKED) {
-        local2global_transposed(global_data, factor_n, factor_m, factor_m, loc_view, output, offset);
+        detail::md_view local_md_view2{loc_view, std::array{1, 2, 2 * factor_m}};
+        detail::md_view output_view{output, std::array{1, 2 * factor_n, 2}, offset};
+        copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{2, factor_m, factor_n});
       } else {
         IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
-        localstrided_2global_strided(global_data, output, loc_view, 2 * n_transforms, 2 * current_batch, fft_size,
-                                     factor_n, factor_m);
+        detail::md_view local_md_view2{loc_view, std::array{2, 1, 2 * factor_m}};
+        detail::md_view output_view{
+            output, std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms},
+            2 * current_batch};
+        copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{factor_m, 2, factor_n});
       }
       sycl::group_barrier(global_data.it.get_group());
     }
