@@ -136,7 +136,7 @@ export(EXPORT portfft
 )
 
 add_library(portfft_warnings INTERFACE)
-target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
+target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic -Wno-intel-compat)
 
 if(${PORTFFT_BUILD_TESTS})
   enable_testing()

@@ -343,7 +343,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
     transpose_events.push_back(queue.submit([&](sycl::handler& cgh) {
       auto out_acc_or_usm = detail::get_access<Scalar>(output, cgh);
       sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
-      if (events.size() < num_batches_in_l2) {
+      if (static_cast<Idx>(events.size()) < num_batches_in_l2) {
         cgh.depends_on(events);
       } else {
         cgh.depends_on(events.at(static_cast<std::size_t>(batch_in_l2)));
@@ -436,7 +436,7 @@ std::vector<sycl::event> compute_level(
       sycl::local_accessor<Scalar, 1> loc_for_modifier(local_mem_for_store_modifier, cgh);
       auto in_acc_or_usm = detail::get_access<const Scalar>(input, cgh);
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
-      if (dependencies.size() < num_batches_in_l2) {
+      if (static_cast<Idx>(dependencies.size()) < num_batches_in_l2) {
         cgh.depends_on(dependencies);
       } else {
         cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
