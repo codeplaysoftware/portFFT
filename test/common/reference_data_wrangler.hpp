@@ -123,10 +123,8 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
 
   // Do not take into account the descriptor's stride, distance or offset to load data from Numpy.
-  auto elements = std::accumulate(dims.cbegin(), dims.cend(), batches, std::multiplies<>());
-  auto backward_elements =
-      IsRealDomain ? std::accumulate(dims.cbegin(), dims.cend() - 1, batches * dims.back() / 2 + 1, std::multiplies<>())
-                   : elements;
+  auto elements = desc.get_flattened_length() * batches;
+  auto backward_elements = IsRealDomain ? (elements / dims.back()) * (dims.back() / 2 + 1) : elements;
 
   using FwdType = typename std::conditional_t<IsRealDomain, Scalar, std::complex<Scalar>>;
   using BwdType = std::complex<Scalar>;
@@ -159,6 +157,18 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     }
   }
 
+  // Apply scaling factor to the output
+  // Do this before adding offset to avoid scaling the offsets
+  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
+  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
+  if (IsForward) {
+    auto scaling_factor = desc.forward_scale;
+    std::for_each(backward.begin(), backward.end(), [scaling_factor](auto& x) { x *= scaling_factor; });
+  } else {
+    auto scaling_factor = desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
+    std::for_each(forward.begin(), forward.end(), [scaling_factor](auto& x) { x *= scaling_factor; });
+  }
+
   auto insert_offset = [=](auto inputVec, std::size_t offset) {
     using InputT = decltype(inputVec);
     std::ptrdiff_t fill_sz = static_cast<std::ptrdiff_t>(offset);
@@ -167,29 +177,16 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     std::copy(inputVec.cbegin(), inputVec.cend(), outputVec.begin() + fill_sz);
     return outputVec;
   };
+
   forward = insert_offset(forward, desc.forward_offset);
   backward = insert_offset(backward, desc.backward_offset);
 
   // Return a pair in the expected order
-  auto input_output_pair = [&]() {
-    if constexpr (IsForward) {
-      return std::make_pair(forward, backward);
-    } else {
-      return std::make_pair(backward, forward);
-    }
-  }();
-
-  // Apply scaling factor to the output
-  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
-  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
-  auto scaling_factor =
-      IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
-  auto output_offset = IsForward ? desc.backward_offset : desc.forward_offset;
-  auto start = input_output_pair.second.begin() + static_cast<std::ptrdiff_t>(output_offset);
-  auto end = input_output_pair.second.end();
-  std::for_each(start, end, [scaling_factor](auto& x) { x *= scaling_factor; });
-
-  return input_output_pair;
+  if constexpr (IsForward) {
+    return std::make_pair(forward, backward);
+  } else {
+    return std::make_pair(backward, forward);
+  }
 }
 
 /** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.

@@ -943,8 +943,7 @@ struct descriptor {
    */
   Scalar forward_scale = 1;
   /**
-   * A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
-   * product of the lengths.
+   * A scaling factor applied to the output of backward transforms. Default value is 1.
    * NB a forward transform followed by a backward transform with both forward_scale and
    * backward_scale set to 1 will result in the data being scaled by the product of the lengths.
    */
