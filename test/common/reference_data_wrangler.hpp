@@ -184,9 +184,10 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
   auto scaling_factor =
       IsForward ? desc.forward_scale : desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
-  for (auto& output_elem : input_output_pair.second) {
-    output_elem *= scaling_factor;
-  }
+  auto output_offset = IsForward ? desc.backward_offset : desc.forward_offset;
+  auto start = input_output_pair.second.begin() + static_cast<std::ptrdiff_t>(output_offset);
+  auto end = input_output_pair.second.end();
+  std::for_each(start, end, [scaling_factor](auto& x) { x *= scaling_factor; });
 
   return input_output_pair;
 }
@@ -228,7 +229,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     if (ref_output[i] != actual_output[i]) {
       std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
                 << actual_output[i] << std::endl;
-        throw std::runtime_error("Verification Failed");
+      throw std::runtime_error("Verification Failed");
     }
   }
 
