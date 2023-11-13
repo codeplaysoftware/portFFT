@@ -159,12 +159,12 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   // Apply scaling factor to the output
   // Do this before adding offset to avoid scaling the offsets
-  // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
-  // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
   if (IsForward) {
     auto scaling_factor = desc.forward_scale;
     std::for_each(backward.begin(), backward.end(), [scaling_factor](auto& x) { x *= scaling_factor; });
   } else {
+    // Numpy scales the output by `1/dft_len` for the backward direction and does not support arbitrary scales.
+    // We need to multiply by `dft_len` to get an unscaled reference and apply an arbitrary scale to it.
     auto scaling_factor = desc.backward_scale * static_cast<Scalar>(desc.get_flattened_length());
     std::for_each(forward.begin(), forward.end(), [scaling_factor](auto& x) { x *= scaling_factor; });
   }
