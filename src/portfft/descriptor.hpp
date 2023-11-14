@@ -562,7 +562,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    dispatch_direction<direction::FORWARD, complex_storage::INTERLEAVED_COMPLEX>(in, out, in, out);
+    dispatch_direction<direction::FORWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX);
   }
 
   /**
@@ -573,7 +573,7 @@ class committed_descriptor {
    */
   void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
-    dispatch_direction<direction::FORWARD, complex_storage::SPLIT_COMPLEX>(in_real, out_real, in_imag, out_imag);
+    dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
   /**
@@ -593,7 +593,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_backward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    dispatch_direction<direction::BACKWARD, complex_storage::INTERLEAVED_COMPLEX>(in, out, in, out);
+    dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX);
   }
 
   /**
@@ -604,7 +604,7 @@ class committed_descriptor {
    */
   void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
-    dispatch_direction<direction::BACKWARD, complex_storage::SPLIT_COMPLEX>(in_real, out_real, in_imag, out_imag);
+    dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
   /**
@@ -630,7 +630,7 @@ class committed_descriptor {
   sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag, const std::vector<sycl::event>& dependencies = {}) {
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
-    return compute_forward(inout_real, inout_imag, dependencies);
+    return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
   }
 
   /**
@@ -678,7 +678,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const complex_type* in, complex_type* out,
                               const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::FORWARD, complex_storage::INTERLEAVED_COMPLEX>(in, out, in, out, dependencies);
+    return dispatch_direction<direction::FORWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, dependencies);
   }
 
   /**
@@ -692,7 +692,7 @@ class committed_descriptor {
   sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, 
                               scalar_type* out_real, scalar_type* out_imag,
                               const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::FORWARD, complex_storage::SPLIT_COMPLEX>(in_real, out_real, in_imag, out_imag, dependencies);
+    return dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, dependencies);
   }
 
   /**
@@ -719,7 +719,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const complex_type* in, complex_type* out,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::BACKWARD, complex_storage::INTERLEAVED_COMPLEX>(in, out, in, out, dependencies);
+    return dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, dependencies);
   }
 
   /**
@@ -733,7 +733,7 @@ class committed_descriptor {
   sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, 
                                scalar_type* out_real, scalar_type* out_imag,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::BACKWARD, complex_storage::SPLIT_COMPLEX>(in_real, out_real, in_imag, out_imag, dependencies);
+    return dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, dependencies);
   }
 
  private:
@@ -741,20 +741,20 @@ class committed_descriptor {
    * Dispatches to the implementation for the appropriate direction.
    *
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
-   * @tparam Storage how components of a complex value are stored - either split or interleaved
    * @tparam TIn Type of the input buffer or USM pointer
    * @tparam TOut Type of the output buffer or USM pointer
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `Storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `Storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `Storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `Storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @tparam used_storage how components of a complex value are stored - either split or interleaved
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
-  template <direction Dir, complex_storage Storage, typename TIn, typename TOut>
-  sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, const std::vector<sycl::event>& dependencies = {}) {
-    if(Storage != params.complex_storage){
-      if(Storage == complex_storage::SPLIT_COMPLEX){
+  template <direction Dir, typename TIn, typename TOut>
+  sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
+    if(used_storage != params.complex_storage){
+      if(used_storage == complex_storage::SPLIT_COMPLEX){
         throw invalid_configuration("To use interface with split real and imaginary memory, descriptor.complex_storage must be set to SPLIT_COMPLEX!");
       } 
       throw invalid_configuration("To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to INTERLEAVED_COMPLEX!");
