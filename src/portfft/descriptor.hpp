@@ -943,8 +943,7 @@ struct descriptor {
    */
   Scalar forward_scale = 1;
   /**
-   * A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
-   * product of the lengths.
+   * A scaling factor applied to the output of backward transforms. Default value is 1.
    * NB a forward transform followed by a backward transform with both forward_scale and
    * backward_scale set to 1 will result in the data being scaled by the product of the lengths.
    */
@@ -1020,7 +1019,6 @@ struct descriptor {
       : lengths(lengths), forward_strides(detail::get_default_strides(lengths)), backward_strides(forward_strides) {
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = get_flattened_length();
-    backward_scale = Scalar(1) / static_cast<Scalar>(total_size);
     forward_distance = total_size;
     backward_distance = total_size;
   }
