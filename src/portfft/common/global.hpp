@@ -21,29 +21,30 @@
 #ifndef PORTFFT_COMMON_GLOBAL_HPP
 #define PORTFFT_COMMON_GLOBAL_HPP
 
-#include <common/helpers.hpp>
-#include <defines.hpp>
-#include <descriptor.hpp>
-#include <dispatcher/subgroup_dispatcher.hpp>
-#include <dispatcher/workgroup_dispatcher.hpp>
-#include <dispatcher/workitem_dispatcher.hpp>
-
 #include <sycl/sycl.hpp>
+
+#include "portfft/common/helpers.hpp"
+#include "portfft/common/transpose.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/descriptor.hpp"
+#include "portfft/dispatcher/subgroup_dispatcher.hpp"
+#include "portfft/dispatcher/workgroup_dispatcher.hpp"
+#include "portfft/dispatcher/workitem_dispatcher.hpp"
 
 namespace portfft {
 namespace detail {
 
 /**
- * Gets the inclusive scan of the factors at a particular index.
+ * Gets the precomputed inclusive scan of the factors at a particular index.
  *
  * @tparam KernelID  Recursion Level
  * @param device_factors device array containing, factors, and their inclusive scan
  * @param num_factors Number of factors
  * @return Outer batch product
  */
-
 PORTFFT_INLINE IdxGlobal get_outer_batch_product(const IdxGlobal* device_factors, Idx num_factors, Idx level_num) {
-  if (level_num == 0) {
+  // Edge case to handle 2 factor  case, in which it should equivalent to the Bailey 4 step method
+  if (level_num == 0 || (level_num == 1 && (level_num == num_factors - 1))) {
     return static_cast<std::size_t>(1);
   }
   if (level_num == num_factors - 1 && level_num != 1) {
@@ -56,11 +57,16 @@ PORTFFT_INLINE IdxGlobal get_outer_batch_product(const IdxGlobal* device_factors
  * Calculate the n-1'th dimensional array offset where N = KernelID, where
  * offset = dim_1 * stride_1 + ..... dim_{n-1} * stride_{n-1}
  *
- * @tparam KernelID Recursion Level
+ * In the multi-factor algorithm, the input can be assumed as an n-dimensional tensor,
+ * and computing the mth factor is equivalent to computing FFTs along the mth dimension.
+ * To calculate the offset require to get to the start of mth dimension, this implementation function flattens the
+ * required m-dimensional loop into the single loop (global.hpp:132), and this function calculates the offset.
+ * Precomputed inclusive scans are used to further reduce the number of calculations required.
+ *
  * @param device_factors device_factors device array containing, factors, and their inclusive scan
  * @param num_factors Number of factors
  * @param iter_value Current iterator value of the flattened n-dimensional loop
- * @param outer_batch_product Inclusive Scan of factors at position KernelID-1
+ * @param outer_batch_product Inclusive Scan of factors at position level_num-1
  * @return
  */
 PORTFFT_INLINE IdxGlobal get_outer_batch_offset(const IdxGlobal* device_factors, Idx num_factors, Idx level_num,
@@ -78,7 +84,8 @@ PORTFFT_INLINE IdxGlobal get_outer_batch_offset(const IdxGlobal* device_factors,
     }
     return outer_batch_offset;
   };
-  if (level_num == 0) {
+  // Edge case when there are only two factors;
+  if (level_num == 0 || (level_num == 1 && (level_num == num_factors - 1))) {
     return static_cast<std::size_t>(0);
   }
   if (level_num == 1) {
@@ -139,6 +146,7 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
           input + outer_batch_offset, output + outer_batch_offset, input_loc, twiddles_loc, batch_size,
           implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr), store_modifier_data);
     }
+    sycl::group_barrier(global_data.it.get_group());
   }
 }
 
@@ -354,13 +362,14 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                                                      ld_output, ld_input, cgh);
     }));
   }
+  queue.wait_and_throw();
   if (factor_num != 0) {
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(transpose_events);
       cgh.host_task([&]() { ptr1.swap(ptr2); });
     });
-  } else
-    return queue.submit([&](sycl::handler& cgh) { cgh.depends_on(transpose_events); });
+  }
+  return queue.submit([&](sycl::handler& cgh) { cgh.depends_on(transpose_events); });
   ;
 }
 
@@ -400,15 +409,15 @@ std::vector<sycl::event> compute_level(
     const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
     IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
     IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue) {
+    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
   std::size_t local_mem_for_store_modifier = [&]() {
     if (factor_id < total_factors - 1) {
-      if (kd_struct.level == detail::level::WORKITEM) {
-        return 2 * kd_struct.length * static_cast<std::size_t>(local_range);
+      if (kd_struct.level == detail::level::WORKITEM || kd_struct.level == detail::level::WORKGROUP) {
+        return std::size_t(1);
       }
       if (kd_struct.level == detail::level::SUBGROUP) {
         return 2 * kd_struct.length * static_cast<std::size_t>(local_range / 2);
@@ -417,15 +426,14 @@ std::vector<sycl::event> compute_level(
     return std::size_t(1);
   }();
   std::size_t loc_mem_for_twiddles = [&]() {
-    if (factor_id < total_factors - 1) {
-      if (kd_struct.level == detail::level::WORKITEM) {
-        return std::size_t(1);
-      }
-      if (kd_struct.level == detail::level::SUBGROUP) {
-        return 2 * kd_struct.length;
-      }
+    if (kd_struct.level == detail::level::WORKITEM) {
+      return std::size_t(1);
+    } else if (kd_struct.level == detail::level::SUBGROUP) {
+      return 2 * kd_struct.length;
+    } else if (kd_struct.level == detail::level::WORKGROUP) {
+      return std::size_t(1);
     }
-    return std::size_t(1);
+    throw std::logic_error("illegal level encountered");
   }();
   std::vector<sycl::event> events;
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && ((batch_in_l2 + batch_start) < n_transforms);
@@ -449,6 +457,7 @@ std::vector<sycl::event> compute_level(
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
     }));
+    queue.wait_and_throw();
   }
   return events;
 }

@@ -52,26 +52,28 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
   IdxGlobal n_wgs_we_can_utilize = divide_ceil(n_transforms, static_cast<IdxGlobal>(wg_size));
   return static_cast<IdxGlobal>(wg_size) * sycl::min(static_cast<IdxGlobal>(maximum_n_wgs), n_wgs_we_can_utilize);
 }
+
 /**
- * Utility function for applying load/store modifiers for workitem impl
+ * Utility function for applying load/store modifiers in workitem impl
  *
+ * @tparam Dir Direction of the FFT
  * @tparam PrivT Private view type
- * @tparam LocalT Local view type
- * @param num_elements the number of complex values to modify
- * @param priv pointer to private memory
- * @param loc_modifier Pointer to local memory in which modifier data is stored
- * @param id_of_wi_in_wg workitem id in workgroup
- * @param num_batches_in_local_mem number of batches in local memory
- * @return void
+ * @tparam T Type of pointer for load/store modifier global array
+ * @param num_elements Num complex values per workitem
+ * @param priv private memory array
+ * @param modifier_data global modifier data pointer
+ *
  */
-template <typename PrivT, typename LocalT>
-PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, LocalT loc_modifier, Idx id_of_wi_in_wg,
-                                   Idx num_batches_in_local_mem) {
+template <direction Dir, typename PrivT, typename T>
+PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifier_data, IdxGlobal offset) {
   PORTFFT_UNROLL
   for (Idx j = 0; j < num_elements; j++) {
-    Idx base_offset = 2 * num_batches_in_local_mem * j + 2 * id_of_wi_in_wg;
-    multiply_complex(priv[2 * j], priv[2 * j + 1], loc_modifier[base_offset], loc_modifier[base_offset + 1],
-                     priv[2 * j], priv[2 * j + 1]);
+    sycl::vec<T, 2> modifier_vec;
+    modifier_vec.load(0, detail::get_global_multi_ptr(&modifier_data[offset + 2 * j]));
+    if (Dir == direction::BACKWARD) {
+      modifier_vec[1] *= -1;
+    }
+    multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j], priv[2 * j + 1]);
   }
 }
 
@@ -145,26 +147,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
       global_data.log_dump_local("input data loaded in local memory:", loc, n_reals * n_working);
     }
 
-    if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-      global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
-                                                  n_reals * n_working, global_offset, local_offset);
-#ifdef PORTFFT_LOG
-      sycl::group_barrier(global_data.sg);
-#endif
-      global_data.log_dump_local("Load Modifier data in local Memory:", loc_load_modifier, n_reals * n_working);
-    }
-
-    if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-      global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
-      global2local<level::SUBGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
-                                                  n_reals * n_working, global_offset, local_offset);
-#ifdef PORTFFT_LOG
-      sycl::group_barrier(global_data.sg);
-#endif
-      global_data.log_dump_local("Store Modifier data in local Memory:", loc_store_modifier, n_reals * n_working);
-    }
-
     sycl::group_barrier(global_data.sg);
 
     if (working) {
@@ -184,8 +166,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         // Assumes load modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
-        detail::apply_modifier(fft_size, priv, loc_load_modifier_view,
-                               static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
+        detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, i * n_reals);
       }
       wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
@@ -193,8 +174,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
-        detail::apply_modifier(fft_size, priv, loc_store_modifier_view,
-                               static_cast<Idx>(global_data.it.get_local_linear_id()), n_reals * n_working / 2);
+        detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, i * n_reals);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL

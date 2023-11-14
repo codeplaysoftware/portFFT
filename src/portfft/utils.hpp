@@ -87,11 +87,19 @@ constexpr bool can_cast_safely(const InputType& x) {
   return (static_cast<InputType>(x_converted) == x);
 }
 
+/**
+ * Function which handles factorizing a size till it can be dispatched to one of the existing implementations
+ * @tparam F Decltype of function being passed
+ * @param factor_size Lenght of the factor
+ * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
+ * implementations
+ * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
+ * @return
+ */
 template <typename F>
 IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
-    std::cout << fact_1 << std::endl;
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
@@ -100,10 +108,16 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
   do {
     fact_1 = detail::factorize(fact_1);
   } while (!check_and_select_target_level(fact_1));
-  std::cout << fact_1 << std::endl;
   return fact_1;
 }
 
+/**
+ * Driver function to factorize large inputs for global implementation
+ * @tparam F Decltype of the function being passed
+ * @param input_size committed_size
+ * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
+ * implementations
+ */
 template <typename F>
 void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
   if (detail::factorize(input_size) == 1) {

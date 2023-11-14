@@ -101,8 +101,9 @@ PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx strid
     T res_real = 0;
     T res_imag = 0;
 
-    PORTFFT_UNROLL  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
-        for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
+    // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+    PORTFFT_UNROLL
+    for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       T multi_re = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
       T multi_im = twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
       if constexpr (Dir == direction::BACKWARD) {

@@ -21,15 +21,15 @@
 #ifndef PORTFFT_DISPATCHER_GLOBAL_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_GLOBAL_DISPATCHER_HPP
 
-#include <common/global.hpp>
-#include <common/subgroup.hpp>
-#include <defines.hpp>
-#include <descriptor.hpp>
-#include <enums.hpp>
-#include <specialization_constant.hpp>
 #include <sycl/sycl.hpp>
 
 #include <cstring>
+
+#include "portfft/common/global.hpp"
+#include "portfft/common/subgroup.hpp"
+#include "portfft/defines.hpp"
+#include "portfft/enums.hpp"
+#include "portfft/specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {
@@ -90,11 +90,12 @@ void complex_transpose(T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_e
 IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) {
   if (level == detail::level::SUBGROUP) {
     return static_cast<IdxGlobal>(2 * factor_size);
-  } else {
+  } else if (level == detail::level::WORKGROUP) {
     Idx n = detail::factorize(factor_size);
     Idx m = factor_size / n;
     return static_cast<IdxGlobal>(2 * (factor_size + m + n));
   }
+  return 0;
 }
 
 }  // namespace detail
@@ -160,8 +161,17 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     counter = 0;
     for (const auto& kernel_data : desc.dimensions.back().kernels) {
       if (kernel_data.level == detail::level::SUBGROUP) {
-        calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(0)),
-                           static_cast<IdxGlobal>(kernel_data.factors.at(1)), offset, host_memory);
+        for (int i = 0; i < kernel_data.factors.at(0); i++) {
+          for (int j = 0; j < kernel_data.factors.at(1); j++) {
+            double theta = -2 * M_PI * static_cast<double>(i * j) /
+                           static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
+            auto twiddle =
+                std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
+            host_memory[offset + j * kernel_data.factors.at(0) + i] = twiddle.real();
+            host_memory[offset + (j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i] = twiddle.imag();
+          }
+        }
+        offset += 2 * kernel_data.factors.at(0) * kernel_data.factors.at(1);
       } else if (kernel_data.level == detail::level::WORKGROUP) {
         Idx factor_n = kernel_data.factors.at(0) * kernel_data.factors.at(1);
         Idx factor_m = kernel_data.factors.at(2) * kernel_data.factors.at(3);
@@ -182,12 +192,10 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     // Rearrage the twiddles between factors for optimal access patters in shared memory
     // Also take this opportunity to populate local memory size, and batch size, and launch params and local memory
     // usage Note, global impl only uses store modifiers
+    // TODO: there is a heap corruption in workitem's access of loaded modifiers, hence loading from global directly for
+    // now.
     counter = 0;
     for (auto& kernel_data : desc.dimensions.back().kernels) {
-      IdxGlobal host_ptr_base_offset = 0;
-      for (std::size_t i = 0; i < counter; i++) {
-        host_ptr_base_offset += 2 * sub_batches.at(i) * factors_idxGlobal.at(counter);
-      }
       kernel_data.batch_size = sub_batches.at(counter);
       kernel_data.length = static_cast<std::size_t>(factors_idxGlobal.at(counter));
       if (kernel_data.level == detail::level::WORKITEM) {
@@ -198,22 +206,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         kernel_data.global_range = global_range;
         kernel_data.local_range = local_range;
         if (counter < desc.dimensions.back().kernels.size() - 1) {
-          IdxGlobal n_batches_per_wg = local_range;
-          for (IdxGlobal j = 0; j < sub_batches.at(counter); j += n_batches_per_wg) {
-            auto host_ptr_offset = host_ptr_base_offset + 2 * j * factors_idxGlobal.at(counter);
-            IdxGlobal n_batches_to_transpose = [&]() {
-              if ((j + local_range) < sub_batches.at(counter))
-                return static_cast<IdxGlobal>(local_range);
-              else
-                return sub_batches.at(counter) - j;
-            }();
-            detail::complex_transpose(host_memory + host_ptr_offset, scratch_space, factors_idxGlobal.at(counter),
-                                      n_batches_to_transpose, factors_idxGlobal.at(counter) * n_batches_to_transpose);
-            std::memcpy(
-                host_memory + host_ptr_offset, scratch_space,
-                static_cast<std::size_t>(2 * factors_idxGlobal.at(counter) * n_batches_to_transpose) * sizeof(Scalar));
-          }
-          kernel_data.local_mem_required = 1;
+          kernel_data.local_mem_required = static_cast<std::size_t>(1);
         } else {
           kernel_data.local_mem_required = 2 * static_cast<std::size_t>(local_range * factors_idxGlobal.at(counter));
         }
@@ -260,11 +253,11 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(num_factors);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
-    if (level == detail::level::WORKITEM) {
+    if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factors.at(0));
     } else if (level == detail::level::SUBGROUP) {
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
     }
   }
 };
@@ -290,7 +283,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
-    Scalar* scratch_output = desc.scratch_ptr_1.get();
     const Scalar* twiddles_ptr = static_cast<const Scalar*>(kernel_data.at(0).twiddles_forward.get());
     const IdxGlobal* factors_and_scan = static_cast<const IdxGlobal*>(desc.dimensions.at(0).factors_and_scan.get());
     std::size_t num_batches = desc.params.number_of_transforms;
@@ -300,7 +292,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     IdxGlobal committed_size = static_cast<IdxGlobal>(desc.params.lengths[0]);
     Idx num_transposes = num_factors - 1;
     std::vector<sycl::event> l2_events;
-    sycl::event event;
+    sycl::event event = desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(dependencies);
+      cgh.host_task([&]() {});
+    });
     for (std::size_t i = 0; i < static_cast<std::size_t>(num_factors - 1); i++) {
       initial_impl_twiddle_offset += 2 * desc.dimensions.at(0).kernels.at(i).batch_size *
                                      static_cast<IdxGlobal>(desc.dimensions.at(0).kernels.at(i).length);
@@ -310,11 +305,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                         detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-          desc.dimensions.at(0).kernels.at(0), in, scratch_output, twiddles_ptr, factors_and_scan, scale_factor,
-          intermediate_twiddles_offset, impl_twiddle_offset,
+          desc.dimensions.at(0).kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan,
+          scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
           2 * (static_cast<IdxGlobal>(i) + input_offset) * committed_size, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
-          desc.dimensions.at(0).num_factors, dependencies, desc.queue);
+          desc.dimensions.at(0).num_factors, {event}, desc.queue);
       intermediate_twiddles_offset += 2 * desc.dimensions.at(0).kernels.at(0).batch_size *
                                       static_cast<IdxGlobal>(desc.dimensions.at(0).kernels.at(0).length);
       impl_twiddle_offset += detail::increment_twiddle_offset(
@@ -324,19 +319,19 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         if (static_cast<Idx>(factor_num) == desc.dimensions.at(0).num_factors - 1) {
           l2_events =
               detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-                  desc.dimensions.at(0).kernels.at(factor_num), static_cast<const Scalar*>(scratch_output),
-                  scratch_output, twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
+                  desc.dimensions.at(0).kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
+                  desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
                   impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
                   static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
                   desc.dimensions.at(0).num_factors, l2_events, desc.queue);
         } else {
           l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                             detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-              desc.dimensions.at(0).kernels.at(factor_num), static_cast<const Scalar*>(scratch_output), scratch_output,
-              twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,
-              committed_size, static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
-              static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), desc.dimensions.at(0).num_factors, l2_events,
-              desc.queue);
+              desc.dimensions.at(0).kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
+              desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
+              impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
+              static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
+              desc.dimensions.at(0).num_factors, l2_events, desc.queue);
           intermediate_twiddles_offset += 2 * desc.dimensions.at(0).kernels.at(factor_num).batch_size *
                                           static_cast<IdxGlobal>(desc.dimensions.at(0).kernels.at(factor_num).length);
           impl_twiddle_offset +=
@@ -344,12 +339,17 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                                static_cast<Idx>(desc.dimensions.at(0).kernels.at(factor_num).length));
         }
       }
+      event = desc.queue.submit([&](sycl::handler& cgh) {
+        cgh.depends_on(l2_events);
+        cgh.host_task([&]() {});
+      });
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
         event = detail::transpose_level<Scalar, Domain>(
             desc.dimensions.at(0).kernels.at(static_cast<std::size_t>(num_transpose + num_factors)),
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
             0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});
+        desc.queue.wait();
       }
       event = detail::transpose_level<Scalar, Domain>(
           desc.dimensions.at(0).kernels.at(static_cast<std::size_t>(num_factors)),

@@ -49,7 +49,7 @@ constexpr T bank_lines_per_pad_wg(T row_size) {
   }
   // There is room for improvement here. E.G if row_size was half of BankLineSize then maybe you would still want 1
   // pad every bank group.
-  return 0;
+  return 1;
 }
 
 namespace detail {

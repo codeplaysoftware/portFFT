@@ -47,7 +47,7 @@ std::vector<sycl::event> compute_level(
     const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
     IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
     IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue);
+    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
@@ -141,7 +141,7 @@ class committed_descriptor {
       Scalar* output, const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
       IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
       IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-      Idx total_factors, const std::vector<sycl::event> dependencies, sycl::queue& queue);
+      Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
@@ -741,6 +741,7 @@ class committed_descriptor {
     COPY(local_memory_size)
     COPY(dimensions)
     COPY(scratch_space_required)
+    COPY(l2_cache_size)
 
 #undef COPY
     bool is_scratch_required = false;

@@ -173,6 +173,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                                              n_reals_per_fft * num_batches_in_local_mem,
                                                              i * n_reals_per_fft);
       }
+      // TODO: Replace this with Async DMA where the hardware supports it.
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
@@ -226,9 +227,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           if (working_inner) {
             PORTFFT_UNROLL
             for (Idx j = 0; j < factor_wi; j++) {
+              sycl::vec<T, 2> modifier_priv;
               Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
-                               loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+              if (Dir == direction::BACKWARD) {
+                modifier_priv[1] *= -1;
+              }
+              multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+                               priv[2 * j + 1]);
             }
           }
         }
@@ -239,6 +245,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             priv[2 * idx + 1] *= scaling_factor;
           }
         }
+        // Async DMA can start here for the next set of load/store modifiers.
         if (working_inner) {
           global_data.log_dump_private("data in registers after scaling:", priv, n_reals_per_wi);
         }
@@ -338,10 +345,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           PORTFFT_UNROLL
           for (Idx j = 0; j < factor_wi; j++) {
+            sycl::vec<T, 2> modifier_priv;
             Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
-                             loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+            modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+            if (Dir == direction::BACKWARD) {
+              modifier_priv[1] *= -1;
+            }
+            multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+                             priv[2 * j + 1]);
           }
         }
       }
