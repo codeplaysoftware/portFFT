@@ -545,6 +545,11 @@ class committed_descriptor {
         num_global_level_dimensions++;
       }
     }
+    if (num_global_level_dimensions) {
+      if (params.get_distance(direction::FORWARD) == 1 || params.get_distance(direction::BACKWARD) == 1) {
+        throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
+      }
+    }
 
     if (is_scratch_required) {
       if (num_global_level_dimensions == 1) {
