@@ -8,7 +8,7 @@ portFFT is in early stages of development and will support more options and opti
 ## Pre-requisites
 
 * [DPC++] oneAPI release 2023.2.0
-  * Nightly releases should work but are not tested
+  * Nightly releases from [intel/llvm] should work but are not tested
   * Other SYCL implementations are not tested
 * [Level Zero] drivers
   * OpenCL drivers are not supported
@@ -132,6 +132,7 @@ welcome! If you have an idea for a new feature or a fix, please get in
 contact.
 
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
+[intel/llvm]: https://github.com/intel/llvm/releases
 [Level Zero]: https://dgpu-docs.intel.com/technologies/level-zero.html
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
