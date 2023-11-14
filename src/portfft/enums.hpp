@@ -49,8 +49,7 @@ enum class layout {
   /// dftInput[Idx, BatchId] = ptr[Idx + InputSize * BatchId]
   PACKED,
   /// Unpacked layout represents arbitrary strides or distance.
-  // TODO: Add UNPACKED once stride and distance are supported
-  // UNPACKED,
+  UNPACKED,
   /// Batch interleaved is a special case of unpacked with distance=1 stride=[0, batch_size] which can be better
   /// optimized than the general case.
   /// dftInput[Idx, BatchId] = ptr[Idx * BatchCount + BatchId]
