@@ -110,7 +110,7 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
 INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
                              ::testing::Combine(all_valid_global_placement_layouts, fwd_only, ::testing::Values(1, 3),
-                                                ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{460800}))),
+                                                ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
                          test_params_print());
 
 // Backward FFT test suite
@@ -118,7 +118,14 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
                              ::testing::Combine(all_valid_placement_layouts, bwd_only, ::testing::Values(1, 3),
                                                 ::testing::Values(sizes_t{8}, sizes_t{9}, sizes_t{16}, sizes_t{32},
-                                                                  sizes_t{64}, sizes_t{4096}, sizes_t{32768}))),
+                                                                  sizes_t{64}, sizes_t{4096}))),
+                         test_params_print());
+
+// Backward FFT test suite
+INSTANTIATE_TEST_SUITE_P(BackwardGlobalTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(all_valid_global_placement_layouts, bwd_only, ::testing::Values(1, 3),
+                                                ::testing::Values(sizes_t{32768}, sizes_t{65536}))),
                          test_params_print());
 
 // Multidimensional FFT test suite

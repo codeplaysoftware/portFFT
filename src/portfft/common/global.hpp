@@ -433,7 +433,7 @@ std::vector<sycl::event> compute_level(
     } else if (kd_struct.level == detail::level::WORKGROUP) {
       return std::size_t(1);
     }
-    throw std::logic_error("illegal level encountered");
+    throw internal_error("illegal level encountered");
   }();
   std::vector<sycl::event> events;
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && ((batch_in_l2 + batch_start) < n_transforms);

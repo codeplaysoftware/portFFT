@@ -31,6 +31,9 @@
 
 namespace portfft {
 namespace detail {
+template <typename Scalar, detail::memory>
+class transpose_kernel;
+
 /**
  * Get kernel ids for the implementation used.
  *
@@ -130,6 +133,26 @@ void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
       break;
     }
   }
+}
+
+/**
+ * Obtains kernel ids for transpose kernels
+ * @tparam Scalar Scalar type
+ * @return vector containing sycl::kernel_ids
+ */
+template <typename Scalar>
+std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
+  std::vector<sycl::kernel_id> ids;
+#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                             \
+  try {                                                                     \
+    ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, MEMORY>>()); \
+  } catch (...) {                                                           \
+  }
+
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::USM)
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
+#undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
+  return ids;
 }
 
 }  // namespace detail

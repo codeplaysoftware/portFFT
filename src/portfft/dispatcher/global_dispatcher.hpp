@@ -38,7 +38,7 @@ namespace detail {
  * Helper function to obtain the launch configuration per factor
  * @param fft_size length of the factor
  * @param num_batches number of corresposing batches
- * @param level The sub implementation for the factor
+ * @param level The implementation for the factor
  * @param n_compute_units compute_units available
  * @param subgroup_size Subgroup size chosen
  * @return std::pair containing global and local range
@@ -61,7 +61,7 @@ std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, IdxGlobal 
   if (level == detail::level::WORKGROUP) {
     return std::make_pair(std::min(num_batches * wg_size, n_available_sgs), wg_size);
   }
-  throw std::logic_error("illegal level encountered");
+  throw internal_error("illegal level encountered");
 }
 
 /**
@@ -70,20 +70,20 @@ std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, IdxGlobal 
  * @param b Input pointer b
  * @param lda leading dimension A
  * @param ldb leading Dimension B
- * @param num_elements Num elements
+ * @param num_elements Total number of complex values in the matrix
  */
 template <typename T>
 void complex_transpose(T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_elements) {
-  for (int i = 0; i < num_elements; i++) {
-    int j = i / ldb;
-    int k = i % ldb;
+  for (IdxGlobal i = 0; i < num_elements; i++) {
+    IdxGlobal j = i / ldb;
+    IdxGlobal k = i % ldb;
     b[2 * i] = a[2 * k * lda + 2 * j];
     b[2 * i + 1] = a[2 * k * lda + 2 * j + 1];
   }
 }
 /**
- * Helper function to increment the twiddle pointer between factors
- * @param level Corresponding subimplementation for the previous factor
+ * Helper function to determine the increment of twiddle pointer between factors
+ * @param level Corresponding implementation for the previous factor
  * @param factor_size length of the factor
  * @return value to increment the pointer by
  */
@@ -136,8 +136,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       }
       counter++;
     }
-    Scalar* host_memory = (Scalar*)malloc(static_cast<std::size_t>(mem_required_for_twiddles) * sizeof(Scalar));
-    Scalar* scratch_space = (Scalar*)malloc(static_cast<std::size_t>(mem_required_for_twiddles) * sizeof(Scalar));
+    std::vector<Scalar> host_memory(mem_required_for_twiddles);
+    std::vector<Scalar> scratch_space(mem_required_for_twiddles);
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
@@ -155,7 +155,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     IdxGlobal offset = 0;
     // calculate twiddles to be multiplied between factors
     for (std::size_t i = 0; i < factors_idxGlobal.size() - 1; i++) {
-      calculate_twiddles(sub_batches.at(i), factors_idxGlobal.at(i), offset, host_memory);
+      calculate_twiddles(sub_batches.at(i), factors_idxGlobal.at(i), offset, host_memory.data());
     }
     // Now calculate per twiddles.
     counter = 0;
@@ -176,14 +176,15 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         Idx factor_n = kernel_data.factors.at(0) * kernel_data.factors.at(1);
         Idx factor_m = kernel_data.factors.at(2) * kernel_data.factors.at(3);
         calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(0)),
-                           static_cast<IdxGlobal>(kernel_data.factors.at(1)), offset, host_memory);
+                           static_cast<IdxGlobal>(kernel_data.factors.at(1)), offset, host_memory.data());
         calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(2)),
-                           static_cast<IdxGlobal>(kernel_data.factors.at(3)), offset, host_memory);
+                           static_cast<IdxGlobal>(kernel_data.factors.at(3)), offset, host_memory.data());
         // Calculate wg twiddles and transpose them
-        calculate_twiddles(static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m), offset, host_memory);
+        calculate_twiddles(static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m), offset,
+                           host_memory.data());
         for (Idx j = 0; j < factor_n; j++) {
-          detail::complex_transpose(host_memory + offset + 2 * j * factor_n, scratch_space, factor_m, factor_n,
-                                    factor_n * factor_m);
+          detail::complex_transpose(host_memory.data() + offset + 2 * j * factor_n, scratch_space.data(), factor_m,
+                                    factor_n, factor_n * factor_m);
         }
       }
       counter++;
@@ -232,9 +233,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       }
       counter++;
     }
-    desc.queue.copy(host_memory, device_twiddles, static_cast<std::size_t>(mem_required_for_twiddles)).wait();
-    free(host_memory);
-    free(scratch_space);
+    desc.queue.copy(host_memory.data(), device_twiddles, static_cast<std::size_t>(mem_required_for_twiddles)).wait();
     return device_twiddles;
   }
 };

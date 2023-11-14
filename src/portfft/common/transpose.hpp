@@ -28,7 +28,8 @@
 namespace portfft {
 
 /**
- * Implements Tiled transpose for complex inputs. Assumes the input in INTERLEAVED_COMPLEX storage
+ * Implements Tiled transpose for complex inputs of arbitrary size in global memory.
+ *  Assumes the input in INTERLEAVED_COMPLEX storage. Works out of place
  *
  * @tparam T Input type
  * @param N Number of input rows
@@ -36,7 +37,7 @@ namespace portfft {
  * @param tile_size Tile Size
  * @param input Input pointer
  * @param output Output Pointer
- * @param loc 2D local memory accessor
+ * @param loc 2D local memory accessor of size {tile_size, 2 * tile_size}
  * @param it Associated nd_item
  */
 template <typename T>

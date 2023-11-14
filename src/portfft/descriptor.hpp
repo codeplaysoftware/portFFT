@@ -69,26 +69,6 @@ class global_kernel;
 template <typename Scalar, detail::memory>
 class transpose_kernel;
 
-/**
- * Obtains kernel ids for transpose kernels
- * @tparam Scalar Scalar type
- * @return vector containing sycl::kernel_ids
- */
-template <typename Scalar>
-std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
-  std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                                     \
-  try {                                                                             \
-    ids.push_back(sycl::get_kernel_id<detail::transpose_kernel<Scalar, MEMORY>>()); \
-  } catch (...) {                                                                   \
-  }
-
-  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::USM)
-  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
-#undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
-  return ids;
-}
-
 }  // namespace detail
 
 // forward declaration
@@ -157,7 +137,7 @@ class committed_descriptor {
   Idx n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
   Idx local_memory_size;
-  IdxGlobal l2_cache_size;
+  IdxGlobal llc_size;
   std::shared_ptr<Scalar> scratch_ptr_1;
   std::shared_ptr<Scalar> scratch_ptr_2;
   std::size_t scratch_space_required;
@@ -534,8 +514,7 @@ class committed_descriptor {
         n_compute_units(static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>())),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())),
-        l2_cache_size(
-            static_cast<IdxGlobal>(queue.get_device().get_info<sycl::info::device::global_mem_cache_size>())) {
+        llc_size(static_cast<IdxGlobal>(queue.get_device().get_info<sycl::info::device::global_mem_cache_size>())) {
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
@@ -589,8 +568,7 @@ class committed_descriptor {
           sub_batches.push_back(kernel_data.batch_size);
         }
         dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
-        std::size_t cache_space_left_for_batches =
-            static_cast<std::size_t>(l2_cache_size) - cache_required_for_twiddles;
+        std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
         // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
         dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
             params.number_of_transforms,
@@ -731,19 +709,19 @@ class committed_descriptor {
    * @param desc committed_descriptor of which the copy is to be made
    */
   void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
-#define COPY(x) this->x = desc.x;
-    COPY(params)
-    COPY(queue)
-    COPY(dev)
-    COPY(ctx)
-    COPY(n_compute_units)
-    COPY(supported_sg_sizes)
-    COPY(local_memory_size)
-    COPY(dimensions)
-    COPY(scratch_space_required)
-    COPY(l2_cache_size)
+#define PORTFFT_COPY(x) this->x = desc.x;
+    PORTFFT_COPY(params)
+    PORTFFT_COPY(queue)
+    PORTFFT_COPY(dev)
+    PORTFFT_COPY(ctx)
+    PORTFFT_COPY(n_compute_units)
+    PORTFFT_COPY(supported_sg_sizes)
+    PORTFFT_COPY(local_memory_size)
+    PORTFFT_COPY(dimensions)
+    PORTFFT_COPY(scratch_space_required)
+    PORTFFT_COPY(llc_size)
 
-#undef COPY
+#undef PORTFFT_COPY
     bool is_scratch_required = false;
     for (std::size_t i = 0; i < desc.dimensions.size(); i++) {
       if (desc.dimensions.at(i).level == detail::level::GLOBAL) {
