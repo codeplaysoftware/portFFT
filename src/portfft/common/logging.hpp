@@ -31,11 +31,12 @@ namespace portfft::detail {
 /**
  * Struct containing objects that are used in almost all functions.
  */
+template <Idx Dim = 1>
 struct global_data_struct {
 #ifdef PORTFFT_LOG
   sycl::stream s;
 #endif
-  sycl::nd_item<1> it;
+  sycl::nd_item<Dim> it;
   sycl::sub_group sg;
 
   /**

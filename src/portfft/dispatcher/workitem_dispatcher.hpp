@@ -100,7 +100,7 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  */
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n_transforms, T scaling_factor,
-                                  global_data_struct global_data, sycl::kernel_handler& kh,
+                                  global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();

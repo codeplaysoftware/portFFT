@@ -95,7 +95,7 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  */
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
-                                   const T* twiddles, T scaling_factor, global_data_struct global_data,
+                                   const T* twiddles, T scaling_factor, global_data_struct<1> global_data,
                                    sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
                                    const T* store_modifier_data = nullptr) {
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();

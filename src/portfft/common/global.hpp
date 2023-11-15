@@ -133,7 +133,7 @@ template <direction Dir, typename Scalar, detail::layout LayoutIn, detail::layou
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
                                    Scalar* store_modifier_loc, const IdxGlobal* factors_triple, IdxGlobal batch_size,
-                                   Scalar scale_factor, detail::global_data_struct global_data,
+                                   Scalar scale_factor, detail::global_data_struct<1> global_data,
                                    sycl::kernel_handler& kh) {
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
@@ -286,6 +286,14 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
                          detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
       [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+#ifdef PORTFFT_LOG
+        sycl::stream s{1024 * 16, 1024, cgh};
+#endif
+        detail::global_data_struct global_data{
+#ifdef PORTFFT_LOG
+            s,
+#endif
+            it};
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(factors_triple, num_factors, level_num);
@@ -293,7 +301,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(factors_triple, num_factors, level_num, iter_value, outer_batch_product);
           generic_transpose(lda, ldb, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset,
-                            loc, it);
+                            loc, global_data);
         }
       });
 }

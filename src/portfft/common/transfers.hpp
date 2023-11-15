@@ -50,7 +50,7 @@ namespace portfft {
  * vectors of that size.
  */
 template <Idx VectorSize = 1, typename ViewSrc, typename ViewDst>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
+PORTFFT_INLINE void copy_wi(detail::global_data_struct<1> global_data, ViewSrc src, ViewDst dst, Idx size) {
   static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(),
                 "This overload of copy_wi expects one-dimensional view arguments!");
   PORTFFT_UNROLL
@@ -81,7 +81,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, ViewSrc src,
  * @param size number of consecutive elements to copy (use views for strides)
  */
 template <detail::level Level, typename ViewSrc, typename ViewDst>
-PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc src, ViewDst dst, Idx size) {
+PORTFFT_INLINE void copy_group(detail::global_data_struct<1> global_data, ViewSrc src, ViewDst dst, Idx size) {
   static_assert(Level == detail::level::SUBGROUP || Level == detail::level::WORKGROUP,
                 "Only subgroup and workgroup level supported");
   static_assert(!detail::is_view_multidimensional<ViewSrc>() && !detail::is_view_multidimensional<ViewDst>(),
@@ -111,7 +111,7 @@ PORTFFT_INLINE void copy_group(detail::global_data_struct global_data, ViewSrc s
  * @param sizes sizes (for each dimension) of the data to copy
  */
 template <typename SrcParent, typename DstParent, std::size_t NDim>
-PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_view<NDim, SrcParent, Idx, Idx> src,
+PORTFFT_INLINE void copy_wi(detail::global_data_struct<1> global_data, detail::md_view<NDim, SrcParent, Idx, Idx> src,
                             detail::md_view<NDim, DstParent, Idx, Idx> dst, std::array<Idx, NDim> sizes) {
   if constexpr (NDim == 0) {
     global_data.log_message(__func__, "from", &src.get() - detail::get_raw_pointer(src), "to",
@@ -151,7 +151,7 @@ PORTFFT_INLINE void copy_wi(detail::global_data_struct global_data, detail::md_v
  */
 template <detail::level Level, typename SrcParent, typename SrcStrides, typename SrcOffset, typename DstParent,
           typename DstStrides, typename DstOffset, std::size_t NDim>
-PORTFFT_INLINE void copy_group(detail::global_data_struct global_data,
+PORTFFT_INLINE void copy_group(detail::global_data_struct<1> global_data,
                                detail::md_view<NDim, SrcParent, SrcStrides, SrcOffset> src,
                                detail::md_view<NDim, DstParent, DstStrides, DstOffset> dst,
                                std::array<Idx, NDim> sizes) {
@@ -216,7 +216,7 @@ namespace impl {
  */
 template <transfer_direction TransferDirection, Idx SubgroupSize, Idx ChunkSize, typename GlobalViewT,
           typename LocalViewT>
-PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                               IdxGlobal global_offset, LocalViewT local, Idx local_offset) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   constexpr Idx SgBlockCopyBlockSize = ChunkSize * SubgroupSize;
@@ -280,7 +280,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, typename GlobalViewT,
           typename LocalViewT>
-PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                        IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   using real_t = get_element_remove_cv_t<GlobalViewT>;
@@ -332,7 +332,7 @@ PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, G
  *  @returns The number of reals copied - may be less than n
  */
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, typename GlobalViewT, typename LocalViewT>
-PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct global_data, GlobalViewT global,
+PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                                 IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   using vec_t = sycl::vec<real_t, ChunkSize>;
@@ -389,7 +389,7 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct globa
  */
 template <transfer_direction TransferDirection, level Level, Idx SubgroupSize, typename GlobalViewT,
           typename LocalViewT>
-PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct global_data, GlobalViewT global,
+PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                                  LocalViewT local, Idx total_num_elems, IdxGlobal global_offset = 0,
                                                  Idx local_offset = 0) {
   using real_t = get_element_remove_cv_t<GlobalViewT>;
@@ -460,7 +460,7 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct glob
  * @param local_offset offset to the local pointer
  */
 template <detail::level Level, Idx SubgroupSize, typename GlobalViewT, typename LocalViewT>
-PORTFFT_INLINE void global2local(detail::global_data_struct global_data, GlobalViewT global, LocalViewT local,
+PORTFFT_INLINE void global2local(detail::global_data_struct<1> global_data, GlobalViewT global, LocalViewT local,
                                  Idx total_num_elems, IdxGlobal global_offset = 0, Idx local_offset = 0) {
   detail::global_local_contiguous_copy<detail::transfer_direction::GLOBAL_TO_LOCAL, Level, SubgroupSize>(
       global_data, global, local, total_num_elems, global_offset, local_offset);
@@ -482,7 +482,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct global_data, GlobalV
  * @param global_offset offset to the global pointer
  */
 template <detail::level Level, Idx SubgroupSize, typename LocalViewT, typename GlobalViewT>
-PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalViewT local, GlobalViewT global,
+PORTFFT_INLINE void local2global(detail::global_data_struct<1> global_data, LocalViewT local, GlobalViewT global,
                                  Idx total_num_elems, Idx local_offset = 0, IdxGlobal global_offset = 0) {
   detail::global_local_contiguous_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, Level, SubgroupSize>(
       global_data, global, local, total_num_elems, global_offset, local_offset);

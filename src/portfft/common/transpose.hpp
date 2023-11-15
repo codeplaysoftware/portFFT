@@ -42,18 +42,18 @@ namespace portfft {
  */
 template <typename T>
 PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_size, const T* input, T* output,
-                                             const sycl::local_accessor<T, 2>& loc, sycl::nd_item<2> it) {
+                                             const sycl::local_accessor<T, 2>& loc, global_data_struct<2> global_data) {
   using T_vec = sycl::vec<T, 2>;
   T_vec priv;
   IdxGlobal rounded_up_n = detail::round_up_to_multiple(N, static_cast<IdxGlobal>(tile_size));
   IdxGlobal rounded_up_m = detail::round_up_to_multiple(M, static_cast<IdxGlobal>(tile_size));
 
-  IdxGlobal start_y = static_cast<IdxGlobal>(it.get_group(1));
-  IdxGlobal y_increment = static_cast<IdxGlobal>(it.get_group_range(1));
-  IdxGlobal start_x = static_cast<IdxGlobal>(it.get_group(0));
-  IdxGlobal x_increment = static_cast<IdxGlobal>(it.get_group_range(0));
-  IdxGlobal tid_y = static_cast<IdxGlobal>(it.get_local_id(1));
-  IdxGlobal tid_x = static_cast<IdxGlobal>(it.get_local_id(0));
+  IdxGlobal start_y = static_cast<IdxGlobal>(global_data.it.get_group(1));
+  IdxGlobal y_increment = static_cast<IdxGlobal>(global_data.it.get_group_range(1));
+  IdxGlobal start_x = static_cast<IdxGlobal>(global_data.it.get_group(0));
+  IdxGlobal x_increment = static_cast<IdxGlobal>(global_data.it.get_group_range(0));
+  IdxGlobal tid_y = static_cast<IdxGlobal>(global_data.it.get_local_id(1));
+  IdxGlobal tid_x = static_cast<IdxGlobal>(global_data.it.get_local_id(0));
 
   for (IdxGlobal tile_y = start_y; tile_y < rounded_up_n; tile_y += y_increment) {
     for (IdxGlobal tile_x = start_x; tile_x < rounded_up_m; tile_x += x_increment) {
@@ -65,8 +65,8 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
 
       if (i < N && j < M) {
         priv.load(0, detail::get_global_multi_ptr(&input[2 * i * M + 2 * j]));
-        loc[it.get_local_id(0)][2 * it.get_local_id(1)] = priv[0];
-        loc[it.get_local_id(0)][2 * it.get_local_id(1) + 1] = priv[1];
+        loc[global_data.it.get_local_id(0)][2 * global_data.it.get_local_id(1)] = priv[0];
+        loc[global_data.it.get_local_id(0)][2 * global_data.it.get_local_id(1) + 1] = priv[1];
       }
       sycl::group_barrier(it.get_group());
 
@@ -74,8 +74,8 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
       IdxGlobal j_transposed = tile_id_y + tid_x;
 
       if (j_transposed < N && i_transposed < M) {
-        priv[0] = loc[it.get_local_id(1)][2 * it.get_local_id(0)];
-        priv[1] = loc[it.get_local_id(1)][2 * it.get_local_id(0) + 1];
+        priv[0] = loc[global_data.it.get_local_id(1)][2 * global_data.it.get_local_id(0)];
+        priv[1] = loc[global_data.it.get_local_id(1)][2 * global_data.it.get_local_id(0) + 1];
         priv.store(0, detail::get_global_multi_ptr(&output[2 * i_transposed * N + 2 * j_transposed]));
       }
       sycl::group_barrier(it.get_group());  // TODO: This barrier should not required, use double buffering

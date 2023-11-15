@@ -85,7 +85,7 @@ __attribute__((always_inline)) inline void dimension_dft(
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
     Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, detail::layout layout_in,
     detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-    detail::apply_scale_factor apply_scale_factor, global_data_struct global_data) {
+    detail::apply_scale_factor apply_scale_factor, global_data_struct<1> global_data) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
@@ -267,7 +267,7 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
                            detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
-                           detail::apply_scale_factor apply_scale_factor, detail::global_data_struct global_data) {
+                           detail::apply_scale_factor apply_scale_factor, detail::global_data_struct<1> global_data) {
   global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
