@@ -51,7 +51,8 @@ namespace detail {
  * @param num_factors Number of factors
  * @return Outer batch product
  */
-PORTFFT_INLINE IdxGlobal get_outer_batch_product(const IdxGlobal* factors_triple, Idx num_factors, Idx level_num) {
+PORTFFT_INLINE inline IdxGlobal get_outer_batch_product(const IdxGlobal* factors_triple, Idx num_factors,
+                                                        Idx level_num) {
   // Edge case to handle 2 factor  case, in which it should equivalent to the Bailey 4 step method
   if (level_num == 0 || (level_num == 1 && (level_num == num_factors - 1))) {
     return static_cast<std::size_t>(1);
@@ -79,8 +80,8 @@ PORTFFT_INLINE IdxGlobal get_outer_batch_product(const IdxGlobal* factors_triple
  * @param outer_batch_product Inclusive Scan of factors at position level_num-1
  * @return
  */
-PORTFFT_INLINE IdxGlobal get_outer_batch_offset(const IdxGlobal* factors_triple, Idx num_factors, Idx level_num,
-                                                IdxGlobal iter_value, IdxGlobal outer_batch_product) {
+PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors_triple, Idx num_factors, Idx level_num,
+                                                       IdxGlobal iter_value, IdxGlobal outer_batch_product) {
   auto get_outer_batch_offset_impl = [&](Idx N) -> IdxGlobal {
     IdxGlobal outer_batch_offset = 0;
     for (Idx j = 0; j < N; j++) {
@@ -455,9 +456,11 @@ std::vector<sycl::event> compute_level(
   std::size_t loc_mem_for_twiddles = [&]() {
     if (kd_struct.level == detail::level::WORKITEM) {
       return std::size_t(1);
-    } else if (kd_struct.level == detail::level::SUBGROUP) {
+    }
+    if (kd_struct.level == detail::level::SUBGROUP) {
       return 2 * kd_struct.length;
-    } else if (kd_struct.level == detail::level::WORKGROUP) {
+    }
+    if (kd_struct.level == detail::level::WORKGROUP) {
       return std::size_t(1);
     }
     throw internal_error("illegal level encountered");

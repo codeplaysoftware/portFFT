@@ -143,10 +143,10 @@ void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
 template <typename Scalar>
 std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
   std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                             \
-  try {                                                                     \
-    ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, MEMORY>>()); \
-  } catch (...) {                                                           \
+#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                               \
+  try {                                                                       \
+    ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, (MEMORY)>>()); \
+  } catch (...) {                                                             \
   }
 
   PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::USM)

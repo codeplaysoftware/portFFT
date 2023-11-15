@@ -43,15 +43,15 @@ namespace detail {
 template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(
-    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
-    const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
+    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
+    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
     IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
     IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
     Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
-                            const Scalar* input, TOut output, const IdxGlobal* device_factors, IdxGlobal committed_size,
+                            const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
                             IdxGlobal output_offset, sycl::queue& queue, std::shared_ptr<Scalar>& ptr1,
                             std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
@@ -117,8 +117,8 @@ class committed_descriptor {
   template <typename Scalar1, domain Domain1, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
             Idx SubgroupSize, typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
-      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const TIn input,
-      Scalar* output, const Scalar* twiddles_ptr, const IdxGlobal* factors_and_scans, Scalar scale_factor,
+      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
+      const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
       IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
       IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
       Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
@@ -126,7 +126,7 @@ class committed_descriptor {
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar* input,
-      TOut output, const IdxGlobal* device_factors, IdxGlobal committed_size, Idx num_batches_in_l2,
+      TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
       IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, IdxGlobal output_offset, sycl::queue& queue,
       std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
 
@@ -548,7 +548,7 @@ class committed_descriptor {
         num_global_level_dimensions++;
       }
     }
-    if (num_global_level_dimensions) {
+    if (num_global_level_dimensions != 0) {
       if (params.lengths.size() > 1) {
         throw unsupported_configuration("Only 1D FFTs that do not fit in local memory are supported");
       }

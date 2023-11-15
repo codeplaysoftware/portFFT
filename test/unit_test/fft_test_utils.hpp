@@ -351,7 +351,9 @@ void run_test(const test_params& params) {
     check_fft<TestMemory, Dir>(queue, desc, host_input, host_output, host_reference_output, tolerance);
   } catch (out_of_local_memory_error& e) {
     GTEST_SKIP() << e.what();
-  } catch (unsupported_configuration& e) {
+  } catch (unsupported_configuration&
+               e) {  // TODO: this is added to catch unsupported configurations thrown when sizes from workgroup tests
+                     // suite get dispatched to global impl, when the data layout is not PACKED
     GTEST_SKIP() << e.what();
   }
 }
