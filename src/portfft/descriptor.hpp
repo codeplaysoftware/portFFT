@@ -549,11 +549,12 @@ class committed_descriptor {
       }
     }
     if (num_global_level_dimensions) {
-      if (params.get_distance(direction::FORWARD) == 1 || params.get_distance(direction::BACKWARD) == 1) {
-        throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
-      }
       if (params.lengths.size() > 1) {
         throw unsupported_configuration("Only 1D FFTs that do not fit in local memory are supported");
+      }
+      if (params.get_distance(direction::FORWARD) != params.lengths[0] ||
+          params.get_distance(direction::BACKWARD) != params.lengths[0]) {
+        throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
       }
     }
 
