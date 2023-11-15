@@ -1024,9 +1024,12 @@ class committed_descriptor {
     // hard-to-debug linking errors
     static_assert(std::is_pointer_v<TIn> == std::is_pointer_v<TOut>,
                   "Both input and output to the kernels should be the same - either buffers or USM");
-    return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn, TOut>>(
-        dimension_data.level, in, out, in_imag, out_imag, dependencies, static_cast<IdxGlobal>(n_transforms),
-        static_cast<IdxGlobal>(input_offset), static_cast<IdxGlobal>(output_offset), scale_factor,
+    using TInReinterpret = decltype(detail::reinterpret<const Scalar>(in));
+    using TOutReinterpret = decltype(detail::reinterpret<Scalar>(out));
+    return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TInReinterpret, TOutReinterpret>>(
+        dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out), 
+        detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies, static_cast<IdxGlobal>(n_transforms),
+        static_cast<IdxGlobal>(2 * input_offset), static_cast<IdxGlobal>(2 * output_offset), scale_factor,
         dimension_data.kernels);
   }
 };

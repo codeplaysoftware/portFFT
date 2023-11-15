@@ -447,10 +447,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
-      auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
-      auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-      auto in_imag_acc_or_usm = detail::get_access<const Scalar>(in_imag, cgh);
-      auto out_imag_acc_or_usm = detail::get_access<Scalar>(out_imag, cgh);
+      auto in_acc_or_usm = detail::get_access(in, cgh);
+      auto out_acc_or_usm = detail::get_access(out, cgh);
+      auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
+      auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
 #ifdef PORTFFT_LOG
@@ -466,8 +466,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 it};
             global_data.log_message_global("Running subgroup kernel");
             detail::subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, 
-                &in_imag_acc_or_usm[0] + 2 * input_offset, &out_imag_acc_or_usm[0] + 2 * output_offset, 
+                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, 
+                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, 
                 &loc[0], &loc_twiddles[0],
                 n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting subgroup kernel");

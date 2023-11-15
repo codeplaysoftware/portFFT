@@ -96,19 +96,30 @@ inline auto get_local_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
+template <typename T>
+T* get_access(T* ptr, sycl::handler&) {
+  return ptr;
+}
+
+template <typename T, std::enable_if_t<std::is_const<T>::value>* = nullptr>
+auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
+  return buf.template get_access<sycl::access::mode::read>(cgh);
+}
+
+template <typename T, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
+auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
+  return buf.template get_access<sycl::access::mode::write>(cgh);
+}
+
 template <typename T, typename TSrc>
-T* get_access(TSrc* ptr, sycl::handler&) {
+T* reinterpret(TSrc* ptr) {
   return reinterpret_cast<T*>(ptr);
 }
 
-template <typename T, typename TSrc, std::enable_if_t<std::is_const<T>::value>* = nullptr>
-auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
-  return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::read>(cgh);
-}
-
-template <typename T, typename TSrc, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
-auto get_access(const sycl::buffer<TSrc, 1>& buf, sycl::handler& cgh) {
-  return buf.template reinterpret<T, 1>(2 * buf.size()).template get_access<sycl::access::mode::write>(cgh);
+template <typename T, typename TSrc>
+auto reinterpret(const sycl::buffer<TSrc, 1>& buf) {
+  static_assert(sizeof(TSrc) % sizeof(T) == 0, "Can only reinterpret from a type, size of which is a multiple of size of the target type!");
+  return buf.template reinterpret<T, 1>(sizeof(TSrc) / sizeof(T) * buf.size());
 }
 
 /**

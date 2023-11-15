@@ -235,20 +235,27 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, D
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
   auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
   OutputFType* device_output = nullptr;
-  auto device_input_imag = sycl::malloc_device<RealFType>(host_input_imag.size(), queue);
+  RealFType* device_input_imag = nullptr;
   RealFType* device_output_imag = nullptr;
   sycl::event oop_init_event;
   sycl::event oop_imag_init_event;
+  sycl::event copy_event2;
+  
+  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
+  if constexpr(Storage == complex_storage::SPLIT_COMPLEX){
+    device_input_imag = sycl::malloc_device<RealFType>(host_input_imag.size(), queue);
+    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag, host_input_imag.size());
+  }
   if (is_oop) {
     device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
     oop_init_event = queue.copy(host_output.data(), device_output, host_output.size());
-    device_output_imag = sycl::malloc_device<RealFType>(host_output_imag.size(), queue);
-    oop_imag_init_event = queue.copy(host_output.data(), device_output, host_output.size());
+    if constexpr(Storage == complex_storage::SPLIT_COMPLEX){
+      device_output_imag = sycl::malloc_device<RealFType>(host_output_imag.size(), queue);
+      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag, host_output_imag.size());
+    }
   }
 
-  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size(), {oop_init_event});
-  auto copy_event2 = queue.copy(host_input_imag.data(), device_input_imag, host_input_imag.size(), {oop_imag_init_event});
-  std::vector<sycl::event> dependencies{copy_event, copy_event2};
+  std::vector<sycl::event> dependencies{copy_event, copy_event2, oop_init_event, oop_imag_init_event};
 
   sycl::event fft_event = [&]() {
     if (is_oop) {
@@ -293,10 +300,14 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, D
   }
 
   sycl::free(device_input, queue);
-  sycl::free(device_input_imag, queue);
+  if constexpr(Storage == complex_storage::SPLIT_COMPLEX){
+    sycl::free(device_input_imag, queue);
+  }
   if (is_oop) {
     sycl::free(device_output, queue);
-    sycl::free(device_output_imag, queue);
+    if constexpr(Storage == complex_storage::SPLIT_COMPLEX){
+      sycl::free(device_output_imag, queue);
+    }
   }
 }
 
@@ -412,6 +423,15 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
   double tolerance = 1e-3;
+
+  /*std::cout << "host_input: ";
+  for (std::size_t t = 0; t < host_input.size(); ++t) {
+    std::cout << host_input[t] << ", ";
+  }
+  std::cout << "host_input_imag: ";
+  for (std::size_t t = 0; t < host_input_imag.size(); ++t) {
+    std::cout << host_input_imag[t] << ", ";
+  }*/
 
   try {
     check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag, host_output_imag, host_reference_output_imag, tolerance);

@@ -127,6 +127,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
   Idx local_offset = n_io_reals * SubgroupSize * subgroup_id;
+  Idx local_modifier_offset = n_reals * SubgroupSize * subgroup_id;
   Idx local_imag_offset = fft_size * SubgroupSize;
   constexpr Idx BankLinesPerPad = 1;
   auto loc_view = detail::padded_view(loc, BankLinesPerPad);
@@ -139,14 +140,17 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
     Idx n_working = sycl::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
 
     IdxGlobal global_offset = static_cast<IdxGlobal>(n_io_reals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
+    IdxGlobal global_modifier_offset = static_cast<IdxGlobal>(n_reals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if (LayoutIn == detail::layout::PACKED) {
-      global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
       if(storage == complex_storage::INTERLEAVED_COMPLEX){
+        global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
         global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, n_reals * n_working, global_offset,
                                                     local_offset);
       } else{
+        global_data.log_message_global(__func__, "loading non-transposed real data from global to local memory");
         global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, fft_size * n_working, global_offset,
                                                     local_offset);
+        global_data.log_message_global(__func__, "loading non-transposed imaginary data from global to local memory");
         global2local<level::SUBGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size * n_working, global_offset,
                                                     local_offset + local_imag_offset);
       }
@@ -159,7 +163,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
     if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading load modifier data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
-                                                  n_reals * n_working, global_offset, local_offset);
+                                                  n_reals * n_working, global_modifier_offset, local_modifier_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -169,7 +173,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
     if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
       global_data.log_message_global(__func__, "loading store modifier data from global to local memory");
       global2local<level::SUBGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
-                                                  n_reals * n_working, global_offset, local_offset);
+                                                  n_reals * n_working, global_modifier_offset, local_modifier_offset);
 #ifdef PORTFFT_LOG
       sycl::group_barrier(global_data.sg);
 #endif
@@ -195,8 +199,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
           detail::offset_view local_imag_view{loc_view, local_offset + subgroup_local_id * fft_size + local_imag_offset};
           detail::strided_view priv_real_view{priv, 2};
           detail::strided_view priv_imag_view{priv, 2, 1};
-          copy_wi(global_data, local_real_view, priv_real_view, n_reals);
-          copy_wi(global_data, local_imag_view, priv_imag_view, n_reals);
+          copy_wi(global_data, local_real_view, priv_real_view, fft_size);
+          copy_wi(global_data, local_imag_view, priv_imag_view, fft_size);
         }
       }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
@@ -234,8 +238,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
           detail::strided_view priv_imag_view{priv, 2, 1};
           detail::offset_view local_real_view{loc_view, local_offset + subgroup_local_id * fft_size};
           detail::offset_view local_imag_view{loc_view, local_offset + subgroup_local_id * fft_size + local_imag_offset};
-          copy_wi(global_data, priv_real_view, local_real_view, n_reals);
-          copy_wi(global_data, priv_imag_view, local_imag_view, n_reals);
+          copy_wi(global_data, priv_real_view, local_real_view, fft_size);
+          copy_wi(global_data, priv_imag_view, local_imag_view, fft_size);
         }
       } else {
         detail::strided_view output_view{output, n_transforms, i * 2};
@@ -282,10 +286,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
-      auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
-      auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
-      auto in_imag_acc_or_usm = detail::get_access<const Scalar>(in_imag, cgh);
-      auto out_imag_acc_or_usm = detail::get_access<Scalar>(out_imag, cgh);
+      auto in_acc_or_usm = detail::get_access(in, cgh);
+      auto out_acc_or_usm = detail::get_access(out, cgh);
+      auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
+      auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
@@ -300,8 +304,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 it};
             global_data.log_message_global("Running workitem kernel");
             detail::workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, 
-                &in_imag_acc_or_usm[0] + 2 * input_offset, &out_imag_acc_or_usm[0] + 2 * output_offset, 
+                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, 
+                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, 
                 &loc[0], n_transforms,
                 scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workitem kernel");
