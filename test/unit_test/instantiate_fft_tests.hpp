@@ -122,6 +122,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          test_params_print());
 
 // Backward FFT test suite
+// TODO: move these into the BackwardTest once the global impl supports strided layout
 INSTANTIATE_TEST_SUITE_P(BackwardGlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
                              ::testing::Combine(all_valid_global_placement_layouts, bwd_only, ::testing::Values(1, 3),

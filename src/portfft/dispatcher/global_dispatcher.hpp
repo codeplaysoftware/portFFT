@@ -242,10 +242,13 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t /*length*/, const std::vector<Idx>& factors,
+                      std::size_t length, const std::vector<Idx>& factors,
                       detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                       detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num,
                       Idx num_factors) {
+    Idx casted_length = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
     in_bundle.template set_specialization_constant<detail::GlobalSubImplSpecConst>(level);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
@@ -253,7 +256,7 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(num_factors);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
     if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
-      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(factors.at(0));
+      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
     } else if (level == detail::level::SUBGROUP) {
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);

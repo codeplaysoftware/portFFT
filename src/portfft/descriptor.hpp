@@ -460,15 +460,19 @@ class committed_descriptor {
           auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
           if (top_level == detail::level::GLOBAL) {
             if (counter == prepared_vec.size() - 1) {
-              set_spec_constants(detail::level::GLOBAL, in_bundle, params.lengths[kernel_num], factors,
-                                 detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                                 detail::apply_scale_factor::APPLIED, level, static_cast<Idx>(counter),
-                                 static_cast<Idx>(prepared_vec.size()));
+              set_spec_constants(detail::level::GLOBAL, in_bundle,
+                                 static_cast<std::size_t>(
+                                     std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+                                 factors, detail::elementwise_multiply::NOT_APPLIED,
+                                 detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, level,
+                                 static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
             } else {
-              set_spec_constants(detail::level::GLOBAL, in_bundle, params.lengths[kernel_num], factors,
-                                 detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-                                 detail::apply_scale_factor::NOT_APPLIED, level, static_cast<Idx>(counter),
-                                 static_cast<Idx>(prepared_vec.size()));
+              set_spec_constants(detail::level::GLOBAL, in_bundle,
+                                 static_cast<std::size_t>(
+                                     std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+                                 factors, detail::elementwise_multiply::NOT_APPLIED,
+                                 detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED, level,
+                                 static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
             }
           } else {
             set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,

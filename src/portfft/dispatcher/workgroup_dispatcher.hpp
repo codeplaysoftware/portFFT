@@ -259,7 +259,10 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
                       detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                       detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
                       Idx /*num_factors*/) {
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(static_cast<Idx>(length));
+    const Idx casted_length = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);

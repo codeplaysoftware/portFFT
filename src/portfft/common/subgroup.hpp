@@ -281,8 +281,9 @@ template <direction Dir, Idx SubgroupSize, typename T>
 PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx factor_sg, const T* sg_twiddles,
                            T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % factor_sg;
-  PORTFFT_UNROLL  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
-      for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < factor_wi; idx_of_element_in_wi++) {
+  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+  PORTFFT_UNROLL
+  for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < factor_wi; idx_of_element_in_wi++) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 

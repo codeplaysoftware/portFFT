@@ -104,6 +104,8 @@ FFT sizes that are a product of a supported workitem FFT size and the subgroup s
 
 Any batch size is supported as long as the input and output data fits in global memory.
 
+Any 1D arbitrarily large input size is supported, with a restriction that large input size should not have large prime factors.
+
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `PORTFFT_SUBGROUP_SIZES`.
 
 ## Known issues
