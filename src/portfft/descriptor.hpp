@@ -257,7 +257,6 @@ class committed_descriptor {
     std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
-
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
@@ -363,7 +362,7 @@ class committed_descriptor {
   };
 
   /**
-   * free function to set spec constants
+   * Sets the implementation dependant specialization constant value
    * @param top_level implementation to dispatch to
    * @param in_bundle input kernel bundle to set spec constants for
    * @param length length of the fft
@@ -548,6 +547,9 @@ class committed_descriptor {
     if (num_global_level_dimensions) {
       if (params.get_distance(direction::FORWARD) == 1 || params.get_distance(direction::BACKWARD) == 1) {
         throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
+      }
+      if (params.lengths.size() > 1) {
+        throw unsupported_configuration("Only 1D FFTs that do not fit in local memory are supported");
       }
     }
 

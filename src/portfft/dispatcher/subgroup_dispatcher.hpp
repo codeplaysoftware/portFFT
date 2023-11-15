@@ -229,7 +229,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             for (Idx j = 0; j < factor_wi; j++) {
               sycl::vec<T, 2> modifier_priv;
               Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-              modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+              // TODO: this leads to compilation error on AMD. Revert back to this once it is resolved
+              // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+              modifier_priv[0] = loc_store_modifier_view[base_offset];
+              modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
               if (Dir == direction::BACKWARD) {
                 modifier_priv[1] *= -1;
               }
@@ -348,7 +351,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
             sycl::vec<T, 2> modifier_priv;
             Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-            modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+            // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+            modifier_priv[0] = loc_store_modifier_view[base_offset];
+            modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
             if (Dir == direction::BACKWARD) {
               modifier_priv[1] *= -1;
             }

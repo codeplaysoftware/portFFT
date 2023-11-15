@@ -207,8 +207,8 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut Output layout
  * @tparam SubgroupSize Subgroup size
- * @param input input of type sycl::accessor
- * @param output USM output pointer
+ * @param input input pointer
+ * @param output output pointer
  * @param loc_for_input local memory for input
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
@@ -249,10 +249,10 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
 }
 
 /**
- * Utility function to launch the transpose kernel, when the input is a buffer
+ * Utility function to launch the transpose kernel, when the output is a buffer
  * @tparam Scalar Scalar type
- * @param input input accessor
- * @param output output pointer
+ * @param input input pointer
+ * @param output output accessor
  * @param loc 2D local memory
  * @param device_factors global pointer containing factors and scan of factors
  * @param output_offset offset to output pointer
@@ -283,9 +283,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
 }
 
 /**
- * Utility function to launch the transpose kernel, when the input is a buffer
+ * Utility function to launch the transpose kernel, when the output is a buffer
  * @tparam Scalar Scalar type
- * @param input input accessor
+ * @param input input pointer
  * @param output output pointer
  * @param loc 2D local memory
  * @param device_factors global pointer containing factors and scan of factors
@@ -436,7 +436,7 @@ std::vector<sycl::event> compute_level(
     throw internal_error("illegal level encountered");
   }();
   std::vector<sycl::event> events;
-  for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && ((batch_in_l2 + batch_start) < n_transforms);
+  for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
     events.push_back(queue.submit([&](sycl::handler& cgh) {
       sycl::local_accessor<Scalar, 1> loc_for_input(local_memory_for_input, cgh);

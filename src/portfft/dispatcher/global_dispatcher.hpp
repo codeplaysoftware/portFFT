@@ -35,7 +35,7 @@ namespace portfft {
 namespace detail {
 
 /**
- * Helper function to obtain the launch configuration per factor
+ * Helper function to obtain the global and local range for kernel corresponding to the factor
  * @param fft_size length of the factor
  * @param num_batches number of corresposing batches
  * @param level The implementation for the factor
@@ -306,7 +306,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                         detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
           desc.dimensions.at(0).kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan,
           scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
-          2 * (static_cast<IdxGlobal>(i) + input_offset) * committed_size, committed_size,
+          2 * static_cast<IdxGlobal>(i) * committed_size + 2 * input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
           desc.dimensions.at(0).num_factors, {event}, desc.queue);
       intermediate_twiddles_offset += 2 * desc.dimensions.at(0).kernels.at(0).batch_size *
@@ -354,7 +354,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           desc.dimensions.at(0).kernels.at(static_cast<std::size_t>(num_factors)),
           static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out, factors_and_scan, committed_size,
           static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), 0,
-          2 * (static_cast<IdxGlobal>(i) + output_offset) * committed_size, desc.queue, desc.scratch_ptr_1,
+          2 * static_cast<IdxGlobal>(i) * committed_size + 2 * output_offset, desc.queue, desc.scratch_ptr_1,
           desc.scratch_ptr_2, {event});
     }
     return event;
