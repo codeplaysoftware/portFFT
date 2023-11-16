@@ -126,7 +126,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   IdxGlobal global_id = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   IdxGlobal global_size = static_cast<IdxGlobal>(global_data.it.get_global_range(0));
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
-  Idx local_offset = n_io_reals * SubgroupSize * subgroup_id;
+  Idx local_offset = n_reals * SubgroupSize * subgroup_id;
   Idx local_modifier_offset = n_reals * SubgroupSize * subgroup_id;
   Idx local_imag_offset = fft_size * SubgroupSize;
   constexpr Idx BankLinesPerPad = 1;
@@ -310,7 +310,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024 * 16, 1024, cgh};
+      sycl::stream s{1024 * 16 * 8, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
