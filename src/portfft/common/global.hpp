@@ -36,19 +36,19 @@ namespace detail {
 
 /**
  * inner batches refers to the batches associated per factor which will be computed in a single implementation call
- * corresposing to that factor. Optimization note: currently the factors_triple pointer is in global memory, however
+ * corresponding to that factor. Optimization note: currently the factors_triple pointer is in global memory, however
  * since all threads in the subgroup will access the same address, at least on Nvidia, this will turn into an optimal
  * broadcast operation. If such behaviour is not observed on other vendors, use constant memory once there is support
- * for in SYCL
+ * for it in SYCL
  */
 
 /**
  * Gets the precomputed inclusive scan of the factors at a particular index.
  *
- * @tparam KernelID  Recursion Level
  * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors
  * @param num_factors Number of factors
+ * @param level_num factor number
  * @return Outer batch product
  */
 PORTFFT_INLINE inline IdxGlobal get_outer_batch_product(const IdxGlobal* factors_triple, Idx num_factors,
@@ -78,7 +78,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_product(const IdxGlobal* factors
  * @param num_factors Number of factors
  * @param iter_value Current iterator value of the flattened n-dimensional loop
  * @param outer_batch_product Inclusive Scan of factors at position level_num-1
- * @return
+ * @return outer batch offset to be applied for the current iteration
  */
 PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors_triple, Idx num_factors, Idx level_num,
                                                        IdxGlobal iter_value, IdxGlobal outer_batch_product) {
@@ -125,7 +125,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors_
  * @param store_modifier_loc local memory for store modifier data
  * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors
- * @param batch_size Batch size for th corresponding input
+ * @param batch_size Batch size for the corresponding input
  * @param scale_factor scale_factor
  * @param global_data global data
  * @param kh kernel handler
@@ -301,8 +301,8 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(factors_triple, num_factors, level_num, iter_value, outer_batch_product);
-          generic_transpose(lda, ldb, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset,
-                            loc, global_data);
+          detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
+                                    &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
       });
 }
@@ -335,8 +335,8 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(factors_triple, num_factors, level_num, iter_value, outer_batch_product);
-          generic_transpose(lda, ldb, 16, input + outer_batch_offset, &output[0] + outer_batch_offset + output_offset,
-                            loc, it);
+          detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
+                                    &output[0] + outer_batch_offset + output_offset, loc, it);
         }
       });
 }
@@ -344,8 +344,8 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
 /**
  * Prepares the launch of transposition at a particular level
  * @tparam Scalar Scalar type
- * @tparam TOut Output type
  * @tparam Domain Domain of the FFT
+ * @tparam TOut Output type
  * @param kd_struct kernel data struct
  * @param input input pointer
  * @param output output usm/buffer
@@ -361,7 +361,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
  * @param ptr1 shared_ptr for the first scratch pointer
  * @param ptr2 shared_ptr for the second scratch pointer
  * @param events event dependencies
- * @return sycl::even
+ * @return sycl::event
  */
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
@@ -389,26 +389,27 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                                                      ld_output, ld_input, cgh);
     }));
   }
-  queue.wait_and_throw();
   if (factor_num != 0) {
     return queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(transpose_events);
       cgh.host_task([&]() { ptr1.swap(ptr2); });
     });
   }
-  return queue.submit([&](sycl::handler& cgh) { cgh.depends_on(transpose_events); });
-  ;
+  return queue.submit([&](sycl::handler& cgh) {
+    cgh.depends_on(transpose_events);
+    cgh.host_task([&]() {});
+  });
 }
 
 /**
  * Prepares the launch of fft compute at a particular level
  * @tparam Scalar Scalar type
- * @tparam TIn input type
  * @tparam Domain Domain of FFT
  * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut output layout
  * @tparam SubgroupSize subgroup size
+ * @tparam TIn input type
  * @param kd_struct associated kernel data struct with the factor
  * @param input input usm/buffer
  * @param output output pointer
@@ -487,7 +488,6 @@ std::vector<sycl::event> compute_level(
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
     }));
-    queue.wait_and_throw();
   }
   return events;
 }

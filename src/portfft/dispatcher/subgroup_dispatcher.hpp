@@ -180,7 +180,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, T* loc, T* loc_twid
                                                              n_reals_per_fft * num_batches_in_local_mem,
                                                              i * n_reals_per_fft);
       }
-      sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
       // load / store in a transposed manner
       detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i};

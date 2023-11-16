@@ -26,19 +26,19 @@
 #include "portfft/defines.hpp"
 
 namespace portfft {
-
+namespace detail {
 /**
  * Implements Tiled transpose for complex inputs of arbitrary size in global memory.
- *  Assumes the input in INTERLEAVED_COMPLEX storage. Works out of place
+ * Assumes the input in INTERLEAVED_COMPLEX storage. Works out of place
  *
- * @tparam T Input type
+ * @tparam T Scalar input type
  * @param N Number of input rows
  * @param M Number of input columns
  * @param tile_size Tile Size
  * @param input Input pointer
  * @param output Output Pointer
  * @param loc 2D local memory accessor of size {tile_size, 2 * tile_size}
- * @param it Associated nd_item
+ * @param global_data global data for the kernel
  */
 template <typename T>
 PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_size, const T* input, T* output,
@@ -83,11 +83,11 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
             __func__, "loaded data from global index: ", 2 * i * M + 2 * j,
             " and storing it to global index: ", 2 * i_transposed * N + 2 * j_transposed);
       }
-      sycl::group_barrier(
-          global_data.it
-              .get_group());  // TODO: This barrier should not required, use double buffering. Preferably use portBLAS
+      // TODO: This barrier should not required, use double buffering. Preferably use portBLAS
+      sycl::group_barrier(global_data.it.get_group());
     }
   }
 }
+}  // namespace detail
 }  // namespace portfft
 #endif

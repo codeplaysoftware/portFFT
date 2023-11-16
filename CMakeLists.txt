@@ -51,6 +51,7 @@ set(PORTFFT_REGISTERS_PER_WI 128 CACHE STRING "How many 32b registers can be all
 set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
 set(PORTFFT_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
 set(PORTFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
+set(PORTFFT_MAX_CONCURRENT_KERNELS 16 CACHE STRING "Maximum number of resident kernels possible on the hardware")
 set(PORTFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 set(PORTFFT_CLANG_OPTIMIZATION_REMARKS_REGEX "" CACHE STRING "Use -fsave-optimization-record -Rpass-missed=<regex> -Rpass=<regex> -Rpass-analysis=<regex> to obtain optimization pass remarks. See https://llvm.org/docs/Passes.html for passes.")
 
@@ -97,6 +98,9 @@ if(${PORTFFT_LOG_TRACE})
 endif()
 if(${PORTFFT_LOG})
   target_compile_definitions(portfft INTERFACE PORTFFT_LOG)
+endif()
+if(${PORTFFT_MAX_CONCURRENT_KERNELS})
+  target_compile_definitions(portfft INTERFACE PORTFFT_MAX_CONCURRENT_KERNELS)
 endif()
 
 target_compile_options(portfft INTERFACE -fgpu-inline-threshold=1000000)

@@ -73,7 +73,7 @@ inline std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, Idx
  * @param num_elements Total number of complex values in the matrix
  */
 template <typename T>
-void complex_transpose(T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_elements) {
+void complex_transpose(const T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_elements) {
   for (IdxGlobal i = 0; i < num_elements; i++) {
     IdxGlobal j = i / ldb;
     IdxGlobal k = i % ldb;
@@ -81,6 +81,7 @@ void complex_transpose(T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_e
     b[2 * i + 1] = a[2 * k * lda + 2 * j + 1];
   }
 }
+
 /**
  * Helper function to determine the increment of twiddle pointer between factors
  * @param level Corresponding implementation for the previous factor

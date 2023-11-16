@@ -583,9 +583,10 @@ class committed_descriptor {
         std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
         // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
         dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
-            params.number_of_transforms,
-            std::max(std::size_t(1),
-                     cache_space_left_for_batches / (2 * dimensions.at(global_dimension).length * sizeof(Scalar)))));
+            static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
+            std::min(params.number_of_transforms,
+                     std::max(std::size_t(1), cache_space_left_for_batches /
+                                                  (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
         scratch_space_required = 2 * dimensions.at(global_dimension).length *
                                  static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
         scratch_ptr_1 = std::shared_ptr<Scalar>(

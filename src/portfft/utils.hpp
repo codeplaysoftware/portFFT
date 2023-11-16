@@ -93,7 +93,7 @@ constexpr bool can_cast_safely(const InputType& x) {
 /**
  * Function which handles factorizing a size till it can be dispatched to one of the existing implementations
  * @tparam F Decltype of function being passed
- * @param factor_size Lenght of the factor
+ * @param factor_size Length of the factor
  * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
  * implementations
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
@@ -110,6 +110,9 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
   }
   do {
     fact_1 = detail::factorize(fact_1);
+    if (fact_1 == 1) {
+      throw internal_error("Factorization Failed !");
+    }
   } while (!check_and_select_target_level(fact_1));
   return fact_1;
 }

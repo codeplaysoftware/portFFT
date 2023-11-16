@@ -62,7 +62,7 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  * @param num_elements Num complex values per workitem
  * @param priv private memory array
  * @param modifier_data global modifier data pointer
- *
+ * @param offset offset for the global modifier data pointer
  */
 template <direction Dir, typename PrivT, typename T>
 PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifier_data, IdxGlobal offset) {
