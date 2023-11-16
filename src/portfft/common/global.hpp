@@ -282,14 +282,14 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
                                            sycl::accessor<Scalar, 1, sycl::access::mode::write>& output,
                                            sycl::local_accessor<Scalar, 2>& loc, const IdxGlobal* factors_triple,
                                            IdxGlobal output_offset, IdxGlobal lda, IdxGlobal ldb, sycl::handler& cgh) {
+#ifdef PORTFFT_LOG
+  sycl::stream s{1024 * 16, 1024, cgh};
+#endif
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::BUFFER>>(
       sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
                          detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
       [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
-#ifdef PORTFFT_LOG
-        sycl::stream s{1024 * 16, 1024, cgh};
-#endif
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
@@ -324,11 +324,19 @@ template <typename Scalar>
 static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 2>& loc,
                                            const IdxGlobal* factors_triple, IdxGlobal output_offset, IdxGlobal lda,
                                            IdxGlobal ldb, sycl::handler& cgh) {
+#ifdef PORTFFT_LOG
+  sycl::stream s{1024 * 16, 1024, cgh};
+#endif
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::USM>>(
       sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
                          detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
       [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+        detail::global_data_struct global_data{
+#ifdef PORTFFT_LOG
+            s,
+#endif
+            it};
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(factors_triple, num_factors, level_num);
@@ -336,7 +344,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
           IdxGlobal outer_batch_offset =
               get_outer_batch_offset(factors_triple, num_factors, level_num, iter_value, outer_batch_product);
           detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
-                                    &output[0] + outer_batch_offset + output_offset, loc, it);
+                                    &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
       });
 }
