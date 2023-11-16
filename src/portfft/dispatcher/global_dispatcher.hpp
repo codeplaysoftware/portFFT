@@ -357,7 +357,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
             0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});
-        desc.queue.wait();
+        event.wait();
       }
       event = detail::transpose_level<Scalar, Domain>(
           desc.dimensions.at(0).kernels.at(static_cast<std::size_t>(num_factors)),

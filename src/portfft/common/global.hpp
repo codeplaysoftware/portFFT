@@ -443,10 +443,10 @@ std::vector<sycl::event> compute_level(
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
-  std::size_t local_mem_for_store_modifier = [&]() {
+  std::size_t local_mem_for_store_modifier = [&]() -> std::size_t {
     if (factor_id < total_factors - 1) {
       if (kd_struct.level == detail::level::WORKITEM || kd_struct.level == detail::level::WORKGROUP) {
-        return std::size_t(1);
+        return 1;
       }
       if (kd_struct.level == detail::level::SUBGROUP) {
         return 2 * kd_struct.length * static_cast<std::size_t>(local_range / 2);
