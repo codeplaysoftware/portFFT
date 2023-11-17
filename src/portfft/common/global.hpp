@@ -358,6 +358,8 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
       });
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wintel-compat"
 /**
  * Prepares the launch of transposition at a particular level
  * @tparam Scalar Scalar type
@@ -515,6 +517,7 @@ std::vector<sycl::event> compute_level(
   }
   return events;
 }
+#pragma clang diagnostic pop
 }  // namespace detail
 }  // namespace portfft
 
