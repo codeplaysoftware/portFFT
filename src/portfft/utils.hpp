@@ -96,6 +96,8 @@ constexpr bool can_cast_safely(const InputType& x) {
  * @param factor_size Length of the factor
  * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
  * implementations
+ * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
+ * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
  * @return
  */
@@ -122,7 +124,9 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  * @tparam F Decltype of the function being passed
  * @param input_size committed_size
  * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
- * implementations
+ * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
+ * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
+ * implementation.
  */
 template <typename F>
 void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {

@@ -404,6 +404,8 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
       if (static_cast<Idx>(events.size()) < num_batches_in_l2) {
         cgh.depends_on(events);
       } else {
+        // If events is a vector, the order of events is assumed to correspond to the order batches present in last
+        // level cache.
         cgh.depends_on(events.at(static_cast<std::size_t>(batch_in_l2)));
       }
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
@@ -503,6 +505,8 @@ std::vector<sycl::event> compute_level(
       if (static_cast<Idx>(dependencies.size()) < num_batches_in_l2) {
         cgh.depends_on(dependencies);
       } else {
+        // If events is a vector, the order of events is assumed to correspond to the order batches present in last
+        // level cache.
         cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
       }
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
