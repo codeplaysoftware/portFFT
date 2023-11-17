@@ -356,13 +356,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                              static_cast<std::size_t>(num_factors)),
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
-            0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});
+            num_factors, 0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});
         event.wait();
       }
       event = detail::transpose_level<Scalar, Domain>(
           desc.dimensions.at(0).kernels.at(static_cast<std::size_t>(num_factors)),
           static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out, factors_and_scan, committed_size,
-          static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), 0,
+          static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), 0, num_factors,
           2 * static_cast<IdxGlobal>(i) * committed_size + 2 * output_offset, desc.queue, desc.scratch_ptr_1,
           desc.scratch_ptr_2, {event});
     }

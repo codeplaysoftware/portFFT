@@ -53,8 +53,9 @@ template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
                             const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
-                            IdxGlobal output_offset, sycl::queue& queue, std::shared_ptr<Scalar>& ptr1,
-                            std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
+                            Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
+                            std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
+                            const std::vector<sycl::event>& events);
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -127,8 +128,9 @@ class committed_descriptor {
   friend sycl::event detail::transpose_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar* input,
       TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
-      IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, IdxGlobal output_offset, sycl::queue& queue,
-      std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2, const std::vector<sycl::event>& events);
+      IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, Idx total_factors, IdxGlobal output_offset,
+      sycl::queue& queue, std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
+      const std::vector<sycl::event>& events);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
