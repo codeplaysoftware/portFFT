@@ -505,6 +505,134 @@ class committed_descriptor {
   }
 
   /**
+   * Function which calculates the amount of scratch space required, and also pre computes the necessary scans required.
+   * @param num_global_level_dimensions number of global level dimensions in the committed size
+   */
+  void allocate_scratch_and_precompute_scan(Idx num_global_level_dimensions) {
+    std::size_t n_kernels = params.lengths.size();
+    if (num_global_level_dimensions == 1) {
+      std::size_t global_dimension = 0;
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          global_dimension = i;
+          break;
+        }
+      }
+      std::vector<IdxGlobal> factors;
+      std::vector<IdxGlobal> sub_batches;
+      std::vector<IdxGlobal> inclusive_scan;
+      std::size_t cache_required_for_twiddles = 0;
+      for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
+        IdxGlobal factor_size = static_cast<IdxGlobal>(
+            std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
+        cache_required_for_twiddles +=
+            static_cast<std::size_t>(2 * factor_size * kernel_data.batch_size) * sizeof(Scalar);
+        factors.push_back(factor_size);
+        sub_batches.push_back(kernel_data.batch_size);
+      }
+      dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
+      std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
+      // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
+      dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
+          static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
+          std::min(params.number_of_transforms,
+                   std::max(std::size_t(1), cache_space_left_for_batches /
+                                                (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
+      scratch_space_required = 2 * dimensions.at(global_dimension).length *
+                               static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
+      scratch_ptr_1 =
+          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
+                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
+                                      queue);
+      scratch_ptr_2 =
+          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
+                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
+                                      queue);
+      inclusive_scan.push_back(factors.at(0));
+      for (std::size_t i = 1; i < factors.size(); i++) {
+        inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
+      }
+      dimensions.at(global_dimension).factors_and_scan =
+          detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
+      queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
+      queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
+                 sub_batches.size());
+      queue.copy(inclusive_scan.data(),
+                 dimensions.at(global_dimension).factors_and_scan.get() + factors.size() + sub_batches.size(),
+                 inclusive_scan.size());
+      queue.wait();
+      // build transpose kernels
+      std::size_t num_transposes_required = factors.size() - 1;
+      for (std::size_t i = 0; i < num_transposes_required; i++) {
+        std::vector<sycl::kernel_id> ids;
+        auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
+                                                                            detail::get_transpose_kernel_ids<Scalar>());
+        in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+        in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+            static_cast<Idx>(factors.size()));
+        dimensions.at(global_dimension)
+            .kernels.emplace_back(
+                sycl::build(in_bundle),
+                std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
+                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+      }
+    } else {
+      std::size_t max_encountered_global_size = 0;
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          max_encountered_global_size = max_encountered_global_size > dimensions.at(i).length
+                                            ? max_encountered_global_size
+                                            : dimensions.at(i).length;
+        }
+      }
+      // TODO: max_scratch_size should be max(global_size_1 * corresponding_batches_in_l2, global_size_1 *
+      // corresponding_batches_in_l2), in the case of multi-dim global FFTs.
+      scratch_space_required = 2 * max_encountered_global_size * params.number_of_transforms;
+      scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
+      scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          std::vector<IdxGlobal> factors;
+          std::vector<IdxGlobal> sub_batches;
+          std::vector<IdxGlobal> inclusive_scan;
+          for (const auto& kernel_data : dimensions.at(i).kernels) {
+            IdxGlobal factor_size = static_cast<IdxGlobal>(
+                std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
+            factors.push_back(factor_size);
+            sub_batches.push_back(kernel_data.batch_size);
+          }
+          inclusive_scan.push_back(factors.at(0));
+          for (std::size_t j = 1; j < factors.size(); j++) {
+            inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
+          }
+          dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
+          dimensions.at(i).factors_and_scan =
+              detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
+          queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
+          queue.copy(sub_batches.data(), dimensions.at(i).factors_and_scan.get() + factors.size(), sub_batches.size());
+          queue.copy(inclusive_scan.data(),
+                     dimensions.at(i).factors_and_scan.get() + factors.size() + sub_batches.size(),
+                     inclusive_scan.size());
+          queue.wait();
+          // build transpose kernels
+          std::size_t num_transposes_required = factors.size() - 1;
+          for (std::size_t j = 0; j < num_transposes_required; j++) {
+            auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+                queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
+            in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+            in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+                static_cast<Idx>(factors.size()));
+            dimensions.at(i).kernels.emplace_back(
+                sycl::build(in_bundle),
+                std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
+                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Constructor.
    *
    * @param params descriptor this is created from
@@ -561,127 +689,7 @@ class committed_descriptor {
     }
 
     if (is_scratch_required) {
-      if (num_global_level_dimensions == 1) {
-        std::size_t global_dimension = 0;
-        for (std::size_t i = 0; i < n_kernels; i++) {
-          if (dimensions.at(i).level == detail::level::GLOBAL) {
-            global_dimension = i;
-            break;
-          }
-        }
-        std::vector<IdxGlobal> factors;
-        std::vector<IdxGlobal> sub_batches;
-        std::vector<IdxGlobal> inclusive_scan;
-        std::size_t cache_required_for_twiddles = 0;
-        for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
-          IdxGlobal factor_size = static_cast<IdxGlobal>(
-              std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
-          cache_required_for_twiddles +=
-              static_cast<std::size_t>(2 * factor_size * kernel_data.batch_size) * sizeof(Scalar);
-          factors.push_back(factor_size);
-          sub_batches.push_back(kernel_data.batch_size);
-        }
-        dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
-        std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
-        // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
-        dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
-            static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
-            std::min(params.number_of_transforms,
-                     std::max(std::size_t(1), cache_space_left_for_batches /
-                                                  (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
-        scratch_space_required = 2 * dimensions.at(global_dimension).length *
-                                 static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
-        scratch_ptr_1 =
-            detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
-                                            static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                        queue);
-        scratch_ptr_2 =
-            detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
-                                            static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                        queue);
-        inclusive_scan.push_back(factors.at(0));
-        for (std::size_t i = 1; i < factors.size(); i++) {
-          inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
-        }
-        dimensions.at(global_dimension).factors_and_scan =
-            detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
-        queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
-        queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
-                   sub_batches.size());
-        queue.copy(inclusive_scan.data(),
-                   dimensions.at(global_dimension).factors_and_scan.get() + factors.size() + sub_batches.size(),
-                   inclusive_scan.size());
-        queue.wait();
-        // build transpose kernels
-        std::size_t num_transposes_required = factors.size() - 1;
-        for (std::size_t i = 0; i < num_transposes_required; i++) {
-          std::vector<sycl::kernel_id> ids;
-          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-              queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
-          in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
-          in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
-              static_cast<Idx>(factors.size()));
-          dimensions.at(global_dimension)
-              .kernels.emplace_back(
-                  sycl::build(in_bundle),
-                  std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
-                  std::shared_ptr<Scalar>(), detail::level::GLOBAL);
-        }
-      } else {
-        std::size_t max_encountered_global_size = 0;
-        for (std::size_t i = 0; i < n_kernels; i++) {
-          if (dimensions.at(i).level == detail::level::GLOBAL) {
-            max_encountered_global_size = max_encountered_global_size > dimensions.at(i).length
-                                              ? max_encountered_global_size
-                                              : dimensions.at(i).length;
-          }
-        }
-        // TODO: max_scratch_size should be max(global_size_1 * corresponding_batches_in_l2, global_size_1 *
-        // corresponding_batches_in_l2), in the case of multi-dim global FFTs.
-        scratch_space_required = 2 * max_encountered_global_size * params.number_of_transforms;
-        scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
-        scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
-        for (std::size_t i = 0; i < n_kernels; i++) {
-          if (dimensions.at(i).level == detail::level::GLOBAL) {
-            std::vector<IdxGlobal> factors;
-            std::vector<IdxGlobal> sub_batches;
-            std::vector<IdxGlobal> inclusive_scan;
-            for (const auto& kernel_data : dimensions.at(i).kernels) {
-              IdxGlobal factor_size = static_cast<IdxGlobal>(
-                  std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
-              factors.push_back(factor_size);
-              sub_batches.push_back(kernel_data.batch_size);
-            }
-            inclusive_scan.push_back(factors.at(0));
-            for (std::size_t j = 1; j < factors.size(); j++) {
-              inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
-            }
-            dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
-            dimensions.at(i).factors_and_scan =
-                detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
-            queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
-            queue.copy(sub_batches.data(), dimensions.at(i).factors_and_scan.get() + factors.size(),
-                       sub_batches.size());
-            queue.copy(inclusive_scan.data(),
-                       dimensions.at(i).factors_and_scan.get() + factors.size() + sub_batches.size(),
-                       inclusive_scan.size());
-            queue.wait();
-            // build transpose kernels
-            std::size_t num_transposes_required = factors.size() - 1;
-            for (std::size_t j = 0; j < num_transposes_required; j++) {
-              auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-                  queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
-              in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
-              in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
-                  static_cast<Idx>(factors.size()));
-              dimensions.at(i).kernels.emplace_back(
-                  sycl::build(in_bundle),
-                  std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
-                  std::shared_ptr<Scalar>(), detail::level::GLOBAL);
-            }
-          }
-        }
-      }
+      allocate_scratch_and_precompute_scan(num_global_level_dimensions);
     }
   }
 
