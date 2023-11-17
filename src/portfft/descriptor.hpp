@@ -591,35 +591,20 @@ class committed_descriptor {
                                                   (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
         scratch_space_required = 2 * dimensions.at(global_dimension).length *
                                  static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
-        scratch_ptr_1 = std::shared_ptr<Scalar>(
-            sycl::malloc_device<Scalar>(2 * dimensions.at(global_dimension).length *
+        scratch_ptr_1 =
+            detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
                                             static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                        queue),
-            [queue](Scalar* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
-        scratch_ptr_2 = std::shared_ptr<Scalar>(
-            sycl::malloc_device<Scalar>(2 * dimensions.at(global_dimension).length *
+                                        queue);
+        scratch_ptr_2 =
+            detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
                                             static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                        queue),
-            [queue](Scalar* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
+                                        queue);
         inclusive_scan.push_back(factors.at(0));
         for (std::size_t i = 1; i < factors.size(); i++) {
           inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
         }
-        dimensions.at(global_dimension).factors_and_scan = std::shared_ptr<IdxGlobal>(
-            sycl::malloc_device<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue),
-            [queue](IdxGlobal* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
+        dimensions.at(global_dimension).factors_and_scan =
+            detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
         queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
         queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
                    sub_batches.size());
@@ -654,22 +639,8 @@ class committed_descriptor {
         // TODO: max_scratch_size should be max(global_size_1 * corresponding_batches_in_l2, global_size_1 *
         // corresponding_batches_in_l2), in the case of multi-dim global FFTs.
         scratch_space_required = 2 * max_encountered_global_size * params.number_of_transforms;
-        scratch_ptr_1 = std::shared_ptr<Scalar>(
-            sycl::malloc_device<Scalar>(2 * max_encountered_global_size * params.number_of_transforms * sizeof(Scalar),
-                                        queue),
-            [queue](Scalar* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
-        scratch_ptr_2 = std::shared_ptr<Scalar>(
-            sycl::malloc_device<Scalar>(2 * max_encountered_global_size * params.number_of_transforms * sizeof(Scalar),
-                                        queue),
-            [queue](Scalar* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
+        scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
+        scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
         for (std::size_t i = 0; i < n_kernels; i++) {
           if (dimensions.at(i).level == detail::level::GLOBAL) {
             std::vector<IdxGlobal> factors;
@@ -686,13 +657,8 @@ class committed_descriptor {
               inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
             }
             dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
-            dimensions.at(i).factors_and_scan = std::shared_ptr<IdxGlobal>(
-                sycl::malloc_device<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue),
-                [queue](IdxGlobal* ptr) {
-                  if (ptr != nullptr) {
-                    sycl::free(ptr, queue);
-                  }
-                });
+            dimensions.at(i).factors_and_scan =
+                detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
             queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
             queue.copy(sub_batches.data(), dimensions.at(i).factors_and_scan.get() + factors.size(),
                        sub_batches.size());
@@ -745,18 +711,10 @@ class committed_descriptor {
       }
     }
     if (is_scratch_required) {
-      this->scratch_ptr_1 = std::shared_ptr(sycl::malloc<Scalar>(desc.scratch_space_required, this->queue),
-                                            [captured_queue = this->queue](Scalar* ptr) {
-                                              if (ptr != nullptr) {
-                                                sycl::free(ptr, captured_queue);
-                                              }
-                                            });
-      this->scratch_ptr_1 = std::shared_ptr(sycl::malloc<Scalar>(desc.scratch_space_required, this->queue),
-                                            [captured_queue = this->queue](Scalar* ptr) {
-                                              if (ptr != nullptr) {
-                                                sycl::free(ptr, captured_queue);
-                                              }
-                                            });
+      this->scratch_ptr_1 =
+          detail::make_shared<Scalar>(static_cast<std::size_t>(desc.scratch_space_required), this->queue);
+      this->scratch_ptr_2 =
+          detail::make_shared<Scalar>(static_cast<std::size_t>(desc.scratch_space_required), this->queue);
     }
   }
 

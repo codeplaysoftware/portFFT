@@ -130,11 +130,8 @@ void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
     throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
   }
   IdxGlobal temp = 1;
-  while (true) {
+  while (input_size / temp != 1) {
     temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
-    if (input_size / temp == 1) {
-      break;
-    }
   }
 }
 
@@ -156,6 +153,22 @@ std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
   PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
 #undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
   return ids;
+}
+
+/**
+ * Utility function to create a shared pointer, with memory allocated on device
+ * @tparam T Type of the memory being allocated
+ * @param size Number of elements to allocate.
+ * @param queue Associated queue
+ * @return std::shared_ptr<T>
+ */
+template <typename T>
+inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
+  return std::shared_ptr<T>(sycl::malloc_device<T>(size, queue), [captured_queue = queue](T* ptr) {
+    if (ptr != nullptr) {
+      sycl::free(ptr, captured_queue);
+    }
+  });
 }
 
 }  // namespace detail
