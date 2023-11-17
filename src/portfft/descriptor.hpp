@@ -70,6 +70,67 @@ class global_kernel;
 template <typename Scalar, detail::memory>
 class transpose_kernel;
 
+/**
+ * Return the default strides for a given dft size
+ *
+ * @param lengths the dimensions of the dft
+ */
+inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
+  std::vector<std::size_t> strides(lengths.size());
+  std::size_t total_size = 1;
+  for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
+    std::size_t i = i_plus1 - 1;
+    strides[i] = total_size;
+    total_size *= lengths[i];
+  }
+  return strides;
+}
+
+/**
+ * Return whether the given descriptor has default strides and distance for a given direction
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
+  const auto default_strides = get_default_strides(desc.lengths);
+  const auto default_distance = desc.get_flattened_length();
+  return desc.get_strides(dir) == default_strides && desc.get_distance(dir) == default_distance;
+}
+
+/**
+ * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool is_batch_interleaved(const Descriptor& desc, direction dir) {
+  return desc.lengths.size() == 1 && desc.get_distance(dir) == 1 &&
+         desc.get_strides(dir).back() == desc.number_of_transforms;
+}
+
+/**
+ * Return an enum describing the layout of the data in the descriptor
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+detail::layout get_layout(const Descriptor& desc, direction dir) {
+  if (has_default_strides_and_distance(desc, dir)) {
+    return detail::layout::PACKED;
+  }
+  if (is_batch_interleaved(desc, dir)) {
+    return detail::layout::BATCH_INTERLEAVED;
+  }
+  return detail::layout::UNPACKED;
+}
+
 }  // namespace detail
 
 // forward declaration
@@ -197,7 +258,7 @@ class committed_descriptor {
         return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -214,7 +275,7 @@ class committed_descriptor {
         return Impl::template inner<detail::level::GLOBAL, LayoutIn, void>::execute(*this, args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -235,7 +296,7 @@ class committed_descriptor {
                                                                                                              args...);
       default:
         // This should be unreachable
-        throw unsupported_configuration("Unimplemented!");
+        throw unsupported_configuration("Unimplemented");
     }
   }
 
@@ -277,7 +338,7 @@ class committed_descriptor {
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
         detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
       if (n_idx_global == 1) {
-        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported!");
+        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
       }
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
@@ -498,7 +559,7 @@ class committed_descriptor {
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
+      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
       return build_w_spec_const<OtherSGSizes...>(kernel_num);
     }
@@ -648,6 +709,25 @@ class committed_descriptor {
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())),
         llc_size(static_cast<IdxGlobal>(queue.get_device().get_info<sycl::info::device::global_mem_cache_size>())) {
+    // check it's suitable to run
+
+    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
+    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
+    if (params.lengths.size() > 1) {
+      const bool supported_layout =
+          forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+      if (!supported_layout) {
+        throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
+      }
+    } else {
+      const bool supported_layout =
+          (forward_layout == detail::layout::PACKED || forward_layout == detail::layout::BATCH_INTERLEAVED) &&
+          (backward_layout == detail::layout::PACKED || backward_layout == detail::layout::BATCH_INTERLEAVED);
+      if (!supported_layout) {
+        throw unsupported_configuration("Arbitary strides are not supported");
+      }
+    }
+
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
@@ -934,55 +1014,59 @@ class committed_descriptor {
                                   Scalar scale_factor) {
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
-    std::size_t total_size =
-        std::accumulate(params.lengths.cbegin(), params.lengths.cend(), 1UL, std::multiplies<std::size_t>());
-    // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    // TODO once we support strides, they should also be checked to be default here
-    const bool are_default_distances = total_size == input_distance && total_size == output_distance;
-    if (n_dimensions == 1 || are_default_distances) {
-      // product of sizes of all dimension inner relative to the one we are currently working on
-      std::size_t inner_size = 1;
-      // product of sizes of all dimension outer relative to the one we are currently working on
-      std::size_t outer_size = total_size / params.lengths.back();
-      std::size_t input_stride_0 = input_strides.back();
-      std::size_t output_stride_0 = output_strides.back();
-      // distances are currently used just in the first dimension - these changes are meant for that one
-      // TODO fix this to support non-default layouts
-      if (input_stride_0 < input_distance) {  // for example: batch interleaved input
-        input_distance = params.lengths.back();
-      }
-      if (output_stride_0 < output_distance) {  // for example: batch interleaved output
-        output_distance = params.lengths.back();
-      }
+    std::size_t total_size = params.get_flattened_length();
 
-      sycl::event previous_event = dispatch_kernel_1d<Dir>(
-          in, out, dependencies, params.number_of_transforms * outer_size, input_stride_0, output_stride_0,
-          input_distance, output_distance, input_offset, output_offset, scale_factor, dimensions.back());
-      if (n_dimensions == 1) {
-        return previous_event;
-      }
-      std::vector<sycl::event> previous_events{previous_event};
-      std::vector<sycl::event> next_events;
-      inner_size *= params.lengths.back();
-      for (std::size_t i = n_dimensions - 2; i != static_cast<std::size_t>(-1); i--) {
-        outer_size /= params.lengths[i];
-        // TODO do everything from the next loop in a single kernel once we support more than one distance in the
-        // kernels.
-        std::size_t stride_between_kernels = inner_size * params.lengths[i];
-        for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
-          sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(
-              out, out, previous_events, inner_size, inner_size, inner_size, 1, 1,
-              output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels,
-              static_cast<Scalar>(1.0), dimensions[i]);
-          next_events.push_back(e);
-        }
-        inner_size *= params.lengths[i];
-        std::swap(previous_events, next_events);
-        next_events.clear();
-      }
-      return queue.single_task(previous_events, []() {});  // just to get an event that depends on all previous ones
+    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
+    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
+
+    // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
+    const bool multi_dim_supported =
+        forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+    if (n_dimensions != 1 && !multi_dim_supported) {
+      throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
-    throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout!");
+
+    // product of sizes of all dimension inner relative to the one we are currently working on
+    std::size_t inner_size = 1;
+    // product of sizes of all dimension outer relative to the one we are currently working on
+    std::size_t outer_size = total_size / params.lengths.back();
+    std::size_t input_stride_0 = input_strides.back();
+    std::size_t output_stride_0 = output_strides.back();
+    // distances are currently used just in the first dimension - these changes are meant for that one
+    // TODO fix this to support non-default layouts
+    if (input_stride_0 < input_distance) {  // for example: batch interleaved input
+      input_distance = params.lengths.back();
+    }
+    if (output_stride_0 < output_distance) {  // for example: batch interleaved output
+      output_distance = params.lengths.back();
+    }
+
+    sycl::event previous_event = dispatch_kernel_1d<Dir>(
+        in, out, dependencies, params.number_of_transforms * outer_size, input_stride_0, output_stride_0,
+        input_distance, output_distance, input_offset, output_offset, scale_factor, dimensions.back());
+    if (n_dimensions == 1) {
+      return previous_event;
+    }
+    std::vector<sycl::event> previous_events{previous_event};
+    std::vector<sycl::event> next_events;
+    inner_size *= params.lengths.back();
+    for (std::size_t i = n_dimensions - 2; i != static_cast<std::size_t>(-1); i--) {
+      outer_size /= params.lengths[i];
+      // TODO do everything from the next loop in a single kernel once we support more than one distance in the
+      // kernels.
+      std::size_t stride_between_kernels = inner_size * params.lengths[i];
+      for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
+        sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(
+            out, out, previous_events, inner_size, inner_size, inner_size, 1, 1,
+            output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels,
+            static_cast<Scalar>(1.0), dimensions[i]);
+        next_events.push_back(e);
+      }
+      inner_size *= params.lengths[i];
+      std::swap(previous_events, next_events);
+      next_events.clear();
+    }
+    return queue.single_task(previous_events, []() {});  // just to get an event that depends on all previous ones
   }
 
   /**
@@ -1140,7 +1224,7 @@ class committed_descriptor {
     // are called from different template instantiations.
     static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>,
                   "We do not differentiate kernel names between kernels with const and non-const USM inputs, so all "
-                  "should be const!");
+                  "should be const");
     // kernel names currently assume both are the same. Mixing them without adding TOut to kernel names would lead to
     // hard-to-debug linking errors
     static_assert(std::is_pointer_v<TIn> == std::is_pointer_v<TOut>,
@@ -1171,7 +1255,8 @@ struct descriptor {
   static constexpr domain Domain = DescDomain;
 
   /**
-   * The lengths in elements of each dimension. Only 1D transforms are supported. Must be specified.
+   * The lengths in elements of each dimension, ordered from most to least significant (i.e. contiguous dimension last).
+   * N-D transforms are supported. Must be specified.
    */
   std::vector<std::size_t> lengths;
   /**
@@ -1179,8 +1264,7 @@ struct descriptor {
    */
   Scalar forward_scale = 1;
   /**
-   * A scaling factor applied to the output of backward transforms. Default value is the reciprocal of the
-   * product of the lengths.
+   * A scaling factor applied to the output of backward transforms. Default value is 1.
    * NB a forward transform followed by a backward transform with both forward_scale and
    * backward_scale set to 1 will result in the data being scaled by the product of the lengths.
    */
@@ -1205,25 +1289,34 @@ struct descriptor {
    */
   placement placement = placement::OUT_OF_PLACE;
   /**
-   * The strides of the data in the forward domain in elements. The default value is {1}. Only {1} or
-   * {number_of_transforms} is supported. Exactly one of `forward_strides` and `forward_distance` must be 1.
-   * Strides do not include the offset.
+   * The strides of the data in the forward domain in elements.
+   * For offset s0 and distance m, for strides[s1,s2,...,sd] the element in batch b at index [i1,i2,...,id] is located
+   * at elems[s0 + m*b + s1*i1 + s2*i2 + ... + sd*id]. The default value for a d-dimensional transform is
+   * {prod(lengths[0..d-1]), prod(lengths[0..d-2]), ..., lengths[0]*lengths[1], lengths[0], 1}, where prod is the
+   * product. Only the default value is supported for transforms with more than one dimension. Strides do not include
+   * the offset.
    */
   std::vector<std::size_t> forward_strides;
   /**
-   * The strides of the data in the backward domain in elements. The default value is {1}. Must be the same as
-   * forward_strides.
-   * Strides do not include the offset.
+   * The strides of the data in the backward domain in elements.
+   * For offset s0 and distance m, for strides[s1,s2,...,sd] the element in batch b at index [i1,i2,...,id] is located
+   * at elems[s0 + m*b + s1*i1 + s2*i2 + ... + sd*id]. The default value for a d-dimensional transform is
+   * {prod(lengths[0..d-1]), prod(lengths[0..d-2]), ..., lengths[0]*lengths[1], lengths[0], 1}, where prod is the
+   * product. Only the default value is supported for transforms with more than one dimension. Strides do not include
+   * the offset.
    */
   std::vector<std::size_t> backward_strides;
   /**
    * The number of elements between the first value of each transform in the forward domain. The default value is
-   * lengths[0]. Must be either 1 or lengths[0]. Exactly one of `forward_strides` and `forward_distance` must be 1.
+   * the product of the lengths. Must be either 1 or the product of the lengths.
+   * Only the default value is supported for transforms with more than one dimension.
+   * For a d-dimensional transform, exactly one of `forward_strides[d-1]` and `forward_distance` must be 1.
    */
   std::size_t forward_distance = 1;
   /**
    * The number of elements between the first value of each transform in the backward domain. The default value
-   * is lengths[0]. Must be the same as forward_distance.
+   * is the product of the lengths. Must be the same as forward_distance.
+   * Only the default value is supported for transforms with more than one dimension.
    */
   std::size_t backward_distance = 1;
   /**
@@ -1244,16 +1337,9 @@ struct descriptor {
    * @param lengths size of the FFT transform
    */
   explicit descriptor(const std::vector<std::size_t>& lengths)
-      : lengths(lengths), forward_strides(lengths.size()), backward_strides(lengths.size()) {
+      : lengths(lengths), forward_strides(detail::get_default_strides(lengths)), backward_strides(forward_strides) {
     // TODO: properly set default values for distances for real transforms
-    std::size_t total_size = 1;
-    for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
-      std::size_t i = i_plus1 - 1;
-      forward_strides[i] = total_size;
-      backward_strides[i] = total_size;
-      total_size *= lengths[i];
-    }
-    backward_scale = Scalar(1) / static_cast<Scalar>(total_size);
+    std::size_t total_size = get_flattened_length();
     forward_distance = total_size;
     backward_distance = total_size;
   }
