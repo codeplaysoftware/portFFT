@@ -96,7 +96,7 @@ portFFT is still in early development. The supported configurations are:
 * Arbitrary forward and backward scales
 * Arbitrary forward and backward offsets
 
-Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors. Prime factor if any, should not use more than `PORTFFT_REGS_PER_WI` times the first supported size listed in `PORTFFT_SUBGROUP_SIZES` registers. 
+Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors. Prime factor if any, should not use more than `PORTFFT_REGS_PER_WI` times the first supported size listed in `PORTFFT_SUBGROUP_SIZES` registers. Sizes which use more than the aforementioned registers are not supported.
 portFFT may allocate upto `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scratch memory, depending on the configuration passed.
 
 Any batch size is supported as long as the input and output data fits in global memory.
