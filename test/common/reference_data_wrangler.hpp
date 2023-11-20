@@ -267,16 +267,6 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
       throw std::runtime_error("Verification Failed");
     }
   }
-  /*std::cout << "ref_output: ";
-  for (std::size_t t = 0; t < ref_output.size(); ++t) {
-    std::cout << ref_output[t] << ", ";
-  }
-  std::cout << std::endl;
-  std::cout << "actual_output: ";
-  for (std::size_t t = 0; t < actual_output.size(); ++t) {
-    std::cout << actual_output[t] << ", ";
-  }
-  std::cout << std::endl;*/
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;
