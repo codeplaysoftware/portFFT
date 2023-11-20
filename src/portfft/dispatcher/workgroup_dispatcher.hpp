@@ -102,6 +102,9 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  (void)storage;
+  (void)input_imag;
+  (void)output_imag;
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
