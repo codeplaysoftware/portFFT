@@ -531,8 +531,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             detail::strided_view local_imag_view{
                 loc_view, factor_sg,
                 subgroup_id * n_cplx_per_sg + id_of_fft_in_sg * fft_size + id_of_wi_in_fft + local_imag_offset};
-            copy_wi<2>(global_data, priv_real_view, local_real_view, factor_wi);
-            copy_wi<2>(global_data, priv_imag_view, local_imag_view, factor_wi);
+            copy_wi(global_data, priv_real_view, local_real_view, factor_wi);
+            copy_wi(global_data, priv_imag_view, local_imag_view, factor_wi);
           }
         }
         sycl::group_barrier(global_data.sg);
@@ -548,7 +548,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               global_data, loc_view, output, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
           local2global<level::SUBGROUP, SubgroupSize>(
-              global_data, loc_view, output_imag, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg,
+              global_data, loc_view, output_imag, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg + local_imag_offset,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
         }
         sycl::group_barrier(global_data.sg);
