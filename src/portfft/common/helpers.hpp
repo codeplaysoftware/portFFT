@@ -118,7 +118,8 @@ T* reinterpret(TSrc* ptr) {
 
 template <typename T, typename TSrc>
 auto reinterpret(const sycl::buffer<TSrc, 1>& buf) {
-  static_assert(sizeof(TSrc) % sizeof(T) == 0, "Can only reinterpret from a type, size of which is a multiple of size of the target type!");
+  static_assert(sizeof(TSrc) % sizeof(T) == 0,
+                "Can only reinterpret from a type, size of which is a multiple of size of the target type!");
   return buf.template reinterpret<T, 1>(sizeof(TSrc) / sizeof(T) * buf.size());
 }
 

@@ -94,15 +94,14 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
-PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
-                                   const T* twiddles, T scaling_factor, global_data_struct global_data,
-                                   sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
-                                   const T* store_modifier_data = nullptr) {
+PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
+                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
+                                   global_data_struct global_data, sycl::kernel_handler& kh,
+                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  (void)input_imag; (void)output_imag; (void)storage;
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
@@ -272,7 +271,7 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, 
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
@@ -316,9 +315,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 it};
             global_data.log_message_global("Running workgroup kernel");
             detail::workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset, 
-                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, 
-                &loc[0],
+                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
+                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0],
                 &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });

@@ -62,7 +62,8 @@ std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::siz
  * @param padding_value The value to use in memory locations that are not expected to be read or written.
  * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
  **/
-template <portfft::direction Dir, portfft::complex_storage Storage, typename Scalar, portfft::domain Domain, typename PaddingT>
+template <portfft::direction Dir, portfft::complex_storage Storage, typename Scalar, portfft::domain Domain,
+          typename PaddingT>
 auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
                       portfft::detail::layout layout_out, PaddingT padding_value) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
@@ -187,37 +188,37 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   std::vector<Scalar> forward_imag;
   std::vector<Scalar> backward_imag;
 
-  if constexpr (!IsInterleaved){
-    if(!IsRealDomain){
+  if constexpr (!IsInterleaved) {
+    if (!IsRealDomain) {
       forward_real.reserve(forward.size());
       forward_imag.reserve(forward.size());
-      for(auto el : forward){
+      for (auto el : forward) {
         forward_real.push_back(el.real());
         forward_imag.push_back(el.imag());
       }
     }
     backward_real.reserve(backward.size());
     backward_imag.reserve(backward.size());
-    for(auto el : backward){
+    for (auto el : backward) {
       backward_real.push_back(el.real());
       backward_imag.push_back(el.imag());
     }
   }
 
   // Return a tuple in the expected order
-    if constexpr (IsForward) {
-      if constexpr (IsInterleaved){
-        return std::make_tuple(forward, backward, forward_imag, backward_imag);
-      } else {
-        return std::make_tuple(forward_real, backward_real, forward_imag, backward_imag);
-      }
+  if constexpr (IsForward) {
+    if constexpr (IsInterleaved) {
+      return std::make_tuple(forward, backward, forward_imag, backward_imag);
     } else {
-      if constexpr (IsInterleaved){
-        return std::make_tuple(backward, forward, backward_imag, forward_imag);
-      } else{
-        return std::make_tuple(backward_real, forward_real, backward_imag, forward_imag);
-      }
+      return std::make_tuple(forward_real, backward_real, forward_imag, backward_imag);
     }
+  } else {
+    if constexpr (IsInterleaved) {
+      return std::make_tuple(backward, forward, backward_imag, forward_imag);
+    } else {
+      return std::make_tuple(backward_real, forward_real, backward_imag, forward_imag);
+    }
+  }
 }
 
 /** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.
@@ -229,7 +230,8 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
  * @param actual_output The actual result of the computation
  * @param comparison_tolerance An absolute and relative allowed error in the calculation
  **/
-template <portfft::direction Dir, portfft::complex_storage Storage, typename ElemT, typename Scalar, portfft::domain Domain>
+template <portfft::direction Dir, portfft::complex_storage Storage, typename ElemT, typename Scalar,
+          portfft::domain Domain>
 void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT> ref_output,
                 const std::vector<ElemT>& actual_output, const double comparison_tolerance, const char* elem_name) {
   constexpr bool IsComplex = Domain == portfft::domain::COMPLEX;
@@ -241,7 +243,8 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
   if constexpr ((IsForward || IsComplex) && IsInterleaved) {
     static_assert(std::is_same_v<ElemT, BwdType>, "Expected complex data dft verification.");
   } else {
-    static_assert(std::is_same_v<ElemT, Scalar>, "Expected real data type for real backward / split complex dft verification.");
+    static_assert(std::is_same_v<ElemT, Scalar>,
+                  "Expected real data type for real backward / split complex dft verification.");
   }
 
   auto data_shape = desc.lengths;
@@ -256,7 +259,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
   auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
   for (std::size_t i = 0; i < dft_offset; ++i) {
     if (ref_output[i] != actual_output[i]) {
-      if constexpr(!IsInterleaved){
+      if constexpr (!IsInterleaved) {
         std::cerr << elem_name << " part:";
       }
       std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
@@ -282,7 +285,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
     for (std::size_t e = 0; e != dft_len; ++e) {
       const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e]);
       if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
-        if constexpr(!IsInterleaved){
+        if constexpr (!IsInterleaved) {
           std::cerr << elem_name << " part:";
         }
         // std::endl is used intentionally to flush the error message before google test exits the test.
