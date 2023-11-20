@@ -428,10 +428,12 @@ void run_test(const test_params& params) {
   for (std::size_t t = 0; t < host_input.size(); ++t) {
     std::cout << host_input[t] << ", ";
   }
+  std::cout << std::endl;
   std::cout << "host_input_imag: ";
   for (std::size_t t = 0; t < host_input_imag.size(); ++t) {
     std::cout << host_input_imag[t] << ", ";
-  }*/
+  }
+  std::cout << std::endl;*/
 
   try {
     check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag, host_output_imag, host_reference_output_imag, tolerance);
