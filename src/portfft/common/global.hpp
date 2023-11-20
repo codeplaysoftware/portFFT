@@ -184,7 +184,7 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @param n_transforms batch size corresposding to the factor
  * @param scale_factor scale factor
  * @param input_batch_offset offset for the input pointer
- * @param launch_params launch configuration
+ * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
  */
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
@@ -237,7 +237,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @param n_transforms batch size corresposding to the factor
  * @param scale_factor scale factor
  * @param input_batch_offset offset for the input pointer
- * @param launch_params launch configuration
+ * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
  */
 template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
