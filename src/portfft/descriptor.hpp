@@ -338,7 +338,7 @@ class committed_descriptor {
   void set_spec_constants(detail::level level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors) {
     // This spec constant is used in all implementations, so we set it here
-    in_bundle.template set_specialization_constant<detail::SpecConstStorage>(params.complex_storage);
+    in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
     dispatch<set_spec_constants_struct>(level, in_bundle, length, factors);
   }
 

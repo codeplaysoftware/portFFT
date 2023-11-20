@@ -64,8 +64,10 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data
- * @param output accessor or pointer to global memory for output data
+ * @param input accessor or pointer to global memory containing input data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param output accessor or pointer to global memory for output data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param loc local accessor. Must have enough space for 2*FactorWI*FactorSG*SubgroupSize
  * values
  * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*FactorSG
@@ -86,7 +88,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                   global_data_struct global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
-  complex_storage storage = kh.get_specialization_constant<detail::SpecConstStorage>();
+  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();

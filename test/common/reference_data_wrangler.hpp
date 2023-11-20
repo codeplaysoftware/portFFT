@@ -55,12 +55,16 @@ std::vector<T> transpose(const std::vector<T>& in, std::size_t dft_len, std::siz
 
 /** Generate input and output reference data to test an FFT against
  * @tparam Dir The direction of the transform
+ * @tparam Storage complex storage to use
  * @tparam Scalar type of the scalar used for computations
  * @tparam Domain domain of the FFT
  * @tparam PaddingT type of the padding value
  * @param desc The description of the FFT
  * @param padding_value The value to use in memory locations that are not expected to be read or written.
- * @return a pair of vectors containing potential input and output data for a problem with the given descriptor
+ * @param layout_in layout (PACKED/BATCH_INTERLEAVED) of the input data
+ * @param layout_out layout (PACKED/BATCH_INTERLEAVED) of the output data
+ * @return a tuple of vectors containing input and output data for a problem with the given descriptor. If `Storage` is interleaved the first two tuple values contain vectors of input and output data and the last two vectors are empty. 
+ * If `Storage` is split, first two values contain input and output real part and the last two input and output imaginary part of the data.
  **/
 template <portfft::direction Dir, portfft::complex_storage Storage, typename Scalar, portfft::domain Domain,
           typename PaddingT>
@@ -229,11 +233,12 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
  * @param ref_output The reference data to compare the result with before any transpose is applied
  * @param actual_output The actual result of the computation
  * @param comparison_tolerance An absolute and relative allowed error in the calculation
+ * @param elem_name Name of the component (real/complex) this call is checking. Only used in error messages and only when `ElemT` is real - `SPLIT_COMPLEX` storage is used.
  **/
 template <portfft::direction Dir, portfft::complex_storage Storage, typename ElemT, typename Scalar,
           portfft::domain Domain>
 void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT> ref_output,
-                const std::vector<ElemT>& actual_output, const double comparison_tolerance, const char* elem_name) {
+                const std::vector<ElemT>& actual_output, const double comparison_tolerance, const char* elem_name = "") {
   constexpr bool IsComplex = Domain == portfft::domain::COMPLEX;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
   constexpr bool IsInterleaved = Storage == portfft::complex_storage::INTERLEAVED_COMPLEX;

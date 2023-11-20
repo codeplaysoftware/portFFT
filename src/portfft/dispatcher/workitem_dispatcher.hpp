@@ -83,8 +83,10 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, LocalT loc_modi
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data
- * @param output accessor or pointer to global memory for output data
+ * @param input accessor or pointer to global memory containing input data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param output accessor or pointer to global memory for output data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param loc local memory pointer. Must have enough space for 2*fft_size*SubgroupSize
  * values
  * @param n_transforms number of FT transforms to do in one call
@@ -102,7 +104,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
                                   sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
                                   const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
                                   T* loc_store_modifier = nullptr) {
-  complex_storage storage = kh.get_specialization_constant<detail::SpecConstStorage>();
+  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
