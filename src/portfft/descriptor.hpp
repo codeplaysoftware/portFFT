@@ -523,9 +523,10 @@ class committed_descriptor {
   }
 
     /**
-   * Computes in-place forward FFT, working on a buffer.
+   * Computes in-place forward FFT, working on buffers.
    *
-   * @param inout buffer containing input and output data
+   * @param inout_real buffer containing real part of the input and output data
+   * @param inout_imag buffer containing imaginary part of the input and output data
    */
   void compute_forward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
     // For now we can just call out-of-place implementation.
@@ -545,9 +546,10 @@ class committed_descriptor {
   }
 
   /**
-   * Computes in-place backward FFT, working on a buffer.
+   * Computes in-place backward FFT, working on buffers.
    *
-   * @param inout buffer containing input and output data
+   * @param inout_real buffer containing real part of the input and output data
+   * @param inout_imag buffer containing imaginary part of the input and output data
    */
   void compute_backward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
     // For now we can just call out-of-place implementation.
@@ -568,8 +570,10 @@ class committed_descriptor {
   /**
    * Computes out-of-place forward FFT, working on buffers.
    *
-   * @param in buffer containing input data
-   * @param out buffer containing output data
+   * @param in_real buffer containing real part of the input data
+   * @param in_imag buffer containing imaginary part of the input data
+   * @param out_real buffer containing real part of the output data
+   * @param out_imag buffer containing imaginary part of the output data
    */
   void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
@@ -599,8 +603,10 @@ class committed_descriptor {
   /**
    * Compute out of place backward FFT, working on buffers
    *
-   * @param in buffer containing input data
-   * @param out buffer containing output data
+   * @param in_real buffer containing real part of the input data
+   * @param in_imag buffer containing imaginary part of the input data
+   * @param out_real buffer containing real part of the output data
+   * @param out_imag buffer containing imaginary part of the output data
    */
   void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
@@ -623,7 +629,8 @@ class committed_descriptor {
   /**
    * Computes in-place forward FFT, working on USM memory.
    *
-   * @param inout USM pointer to memory containing input and output data
+   * @param inout_real USM pointer to memory containing real part of the input and output data
+   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
@@ -660,7 +667,8 @@ class committed_descriptor {
   /**
    * Computes in-place backward FFT, working on USM memory.
    *
-   * @param inout USM pointer to memory containing input and output data
+   * @param inout_real USM pointer to memory containing real part of the input and output data
+   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
@@ -684,8 +692,10 @@ class committed_descriptor {
   /**
    * Computes out-of-place forward FFT, working on USM memory.
    *
-   * @param in USM pointer to memory containing input data
-   * @param out USM pointer to memory containing output data
+   * @param in_real USM pointer to memory containing real part of the input data
+   * @param in_imag USM pointer to memory containing imaginary part of the input data
+   * @param out_real USM pointer to memory containing real part of the output data
+   * @param out_imag USM pointer to memory containing imaginary part of the output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
@@ -725,8 +735,10 @@ class committed_descriptor {
   /**
    * Computes out-of-place backward FFT, working on USM memory.
    *
-   * @param in USM pointer to memory containing input data
-   * @param out USM pointer to memory containing output data
+   * @param in_real USM pointer to memory containing real part of the input data
+   * @param in_imag USM pointer to memory containing imaginary part of the input data
+   * @param out_real USM pointer to memory containing real part of the output data
+   * @param out_imag USM pointer to memory containing imaginary part of the output data
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */

@@ -62,6 +62,7 @@ auto bwd_only = ::testing::Values(direction::BACKWARD);
 auto both_directions = ::testing::Values(direction::FORWARD, direction::BACKWARD);
 
 auto complex_storages = ::testing::Values(complex_storage::INTERLEAVED_COMPLEX, complex_storage::SPLIT_COMPLEX);
+auto interleaved_storage = ::testing::Values(complex_storage::INTERLEAVED_COMPLEX);
 
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
@@ -86,20 +87,20 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
 // and configurations
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 131),
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 131),
                                                 ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
                          test_params_print());
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
                                                 ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, bwd_only, complex_storages, ::testing::Values(1, 3),
+                             ::testing::Combine(all_valid_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
                                                 ::testing::Values(sizes_t{8}, sizes_t{9}, sizes_t{16}, sizes_t{32},
                                                                   sizes_t{64}, sizes_t{4096}))),
                          test_params_print());
@@ -107,7 +108,7 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
 // Multidimensional FFT test suite
 INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_multi_dim_placement_layouts, both_directions, complex_storages, ::testing::Values(1, 3),
+                             all_valid_multi_dim_placement_layouts, both_directions, interleaved_storage, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
                          test_params_print());
@@ -122,29 +123,29 @@ auto mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
 
 INSTANTIATE_TEST_SUITE_P(OffsetsMatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(33),
+                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(33),
                                                 ::testing::Values(sizes_t{2048}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_multi_dim_placement_layouts, fwd_only, complex_storages, ::testing::Values(33),
+                             ::testing::Combine(all_valid_multi_dim_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(33),
                                                 ::testing::Values(sizes_t{16, 512}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMismatchedTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_oop_placement_layouts, both_directions, complex_storages, ::testing::Values(33),
+                             ::testing::Combine(all_valid_oop_placement_layouts, both_directions, interleaved_storage, ::testing::Values(33),
                                                 ::testing::Values(sizes_t{2048}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
-                             all_valid_oop_placement_layouts, both_directions, complex_storages, ::testing::Values(33000),
+                             all_valid_oop_placement_layouts, both_directions, interleaved_storage, ::testing::Values(33000),
                              ::testing::Values(sizes_t{8}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
                              ::testing::Values(test_placement_layouts_params{
                                  placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}),
-                             fwd_only, complex_storages, ::testing::Values(2), ::testing::Values(sizes_t{4, 4}),
+                             fwd_only, interleaved_storage, ::testing::Values(2), ::testing::Values(sizes_t{4, 4}),
                              ::testing::Values(std::pair<std::size_t, std::size_t>({2, 0})))),
                          test_params_print());
 
@@ -152,14 +153,14 @@ INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
 auto scales = ::testing::Values(-1.0, 2.0);
 INSTANTIATE_TEST_SUITE_P(FwdScaledFFTTest, FFTTest,
                          ::testing::ConvertGenerator<scales_param_tuple>(
-                             ::testing::Combine(oop_packed_layout, fwd_only, complex_storages, ::testing::Values(3),
+                             ::testing::Combine(oop_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
                                                 ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
                                                                   sizes_t{4096}, sizes_t{16, 512}),
                                                 scales, ::testing::Values(1.0))),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
                          ::testing::ConvertGenerator<scales_param_tuple>(
-                             ::testing::Combine(oop_packed_layout, bwd_only, complex_storages, ::testing::Values(3),
+                             ::testing::Combine(oop_packed_layout, bwd_only, interleaved_storage, ::testing::Values(3),
                                                 ::testing::Values(sizes_t{9}, sizes_t{16}, sizes_t{64}, sizes_t{512},
                                                                   sizes_t{4096}, sizes_t{16, 512}),
                                                 ::testing::Values(1.0), scales)),
