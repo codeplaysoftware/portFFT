@@ -73,42 +73,43 @@ INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
 // sizes that might use workitem or subgroup implementation depending on device
 // and configurations
 INSTANTIATE_TEST_SUITE_P(workItemOrSubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 555),
-                                                ::testing::Values(sizes_t{16}, sizes_t{32}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 555),
+                             ::testing::Values(sizes_t{16}, sizes_t{32}))),
                          test_params_print());
 // sizes that use subgroup implementation
 INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 555),
-                                                ::testing::Values(sizes_t{64}, sizes_t{96}, sizes_t{128}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 555),
+                             ::testing::Values(sizes_t{64}, sizes_t{96}, sizes_t{128}))),
                          test_params_print());
 // sizes that might use subgroup or workgroup implementation depending on device
 // and configurations
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 131),
-                                                ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 131),
+                             ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
                          test_params_print());
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
-                                                ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
-                                                ::testing::Values(sizes_t{8}, sizes_t{9}, sizes_t{16}, sizes_t{32},
-                                                                  sizes_t{64}, sizes_t{4096}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             ::testing::Values(sizes_t{8}, sizes_t{9}, sizes_t{16}, sizes_t{32}, sizes_t{64},
+                                               sizes_t{4096}))),
                          test_params_print());
 
 // Multidimensional FFT test suite
 INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_multi_dim_placement_layouts, both_directions, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_multi_dim_placement_layouts, both_directions, interleaved_storage,
+                             ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),
                          test_params_print());
@@ -122,24 +123,24 @@ constexpr std::pair<std::size_t, std::size_t> mismatched_offset_values[] = {{0, 
 auto mismatched_offsets = ::testing::ValuesIn(mismatched_offset_values);
 
 INSTANTIATE_TEST_SUITE_P(OffsetsMatchedTest, FFTTest,
-                         ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{2048}), matched_offsets)),
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(33),
+                             ::testing::Values(sizes_t{2048}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMultiDimensionalTest, FFTTest,
-                         ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_multi_dim_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{16, 512}), matched_offsets)),
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             all_valid_multi_dim_placement_layouts, fwd_only, interleaved_storage,
+                             ::testing::Values(33), ::testing::Values(sizes_t{16, 512}), matched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMismatchedTest, FFTTest,
-                         ::testing::ConvertGenerator<offsets_param_tuple>(
-                             ::testing::Combine(all_valid_oop_placement_layouts, both_directions, interleaved_storage, ::testing::Values(33),
-                                                ::testing::Values(sizes_t{2048}), mismatched_offsets)),
+                         ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
+                             all_valid_oop_placement_layouts, both_directions, interleaved_storage,
+                             ::testing::Values(33), ::testing::Values(sizes_t{2048}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsWIErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
-                             all_valid_oop_placement_layouts, both_directions, interleaved_storage, ::testing::Values(33000),
-                             ::testing::Values(sizes_t{8}), mismatched_offsets)),
+                             all_valid_oop_placement_layouts, both_directions, interleaved_storage,
+                             ::testing::Values(33000), ::testing::Values(sizes_t{8}), mismatched_offsets)),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(OffsetsMDErrorRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<offsets_param_tuple>(::testing::Combine(
@@ -166,22 +167,26 @@ INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
                                                 ::testing::Values(1.0), scales)),
                          test_params_print());
 
-#define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                     \
-  TEST_P(FFTTest, TYPE##_##MEMORY##_C2C) {                                       \
-    auto params = GetParam();                                                    \
-    if (params.dir == portfft::direction::FORWARD) {                             \
-      if(params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {      \
-        run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(params); \
-      } else{                                                                    \
-        run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD, portfft::complex_storage::SPLIT_COMPLEX>(params); \
-      }                                                                          \
-    } else {                                                                     \
-      if(params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {      \
-        run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(params); \
-      } else{                                                                    \
-        run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD, portfft::complex_storage::SPLIT_COMPLEX>(params); \
-      }                                                                          \
-    }                                                                            \
+#define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                                                        \
+  TEST_P(FFTTest, TYPE##_##MEMORY##_C2C) {                                                                          \
+    auto params = GetParam();                                                                                       \
+    if (params.dir == portfft::direction::FORWARD) {                                                                \
+      if (params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {                                        \
+        run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD,                                            \
+                 portfft::complex_storage::INTERLEAVED_COMPLEX>(params);                                            \
+      } else {                                                                                                      \
+        run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD, portfft::complex_storage::SPLIT_COMPLEX>(  \
+            params);                                                                                                \
+      }                                                                                                             \
+    } else {                                                                                                        \
+      if (params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {                                        \
+        run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD,                                           \
+                 portfft::complex_storage::INTERLEAVED_COMPLEX>(params);                                            \
+      } else {                                                                                                      \
+        run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD, portfft::complex_storage::SPLIT_COMPLEX>( \
+            params);                                                                                                \
+      }                                                                                                             \
+    }                                                                                                               \
   }
 
 #define INSTANTIATE_TESTS(TYPE)     \

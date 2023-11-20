@@ -522,7 +522,7 @@ class committed_descriptor {
     compute_forward(inout, inout);
   }
 
-    /**
+  /**
    * Computes in-place forward FFT, working on buffers.
    *
    * @param inout_real buffer containing real part of the input and output data
@@ -575,8 +575,8 @@ class committed_descriptor {
    * @param out_real buffer containing real part of the output data
    * @param out_imag buffer containing imaginary part of the output data
    */
-  void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
-                        sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+  void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
+                       sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
     dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
@@ -608,7 +608,7 @@ class committed_descriptor {
    * @param out_real buffer containing real part of the output data
    * @param out_imag buffer containing imaginary part of the output data
    */
-  void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag, 
+  void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
     dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
@@ -634,7 +634,8 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
-  sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag, const std::vector<sycl::event>& dependencies = {}) {
+  sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag,
+                              const std::vector<sycl::event>& dependencies = {}) {
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
@@ -672,7 +673,8 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
-  sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag, const std::vector<sycl::event>& dependencies = {}) {
+  sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
+                               const std::vector<sycl::event>& dependencies = {}) {
     return compute_backward(inout_real, inout_real, inout_imag, inout_imag, dependencies);
   }
 
@@ -699,10 +701,10 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
-  sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, 
-                              scalar_type* out_real, scalar_type* out_imag,
-                              const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, dependencies);
+  sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
+                              scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    return dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
+                                                  dependencies);
   }
 
   /**
@@ -729,7 +731,8 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const complex_type* in, complex_type* out,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, dependencies);
+    return dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX,
+                                                   dependencies);
   }
 
   /**
@@ -742,10 +745,10 @@ class committed_descriptor {
    * @param dependencies events that must complete before the computation
    * @return sycl::event associated with this computation
    */
-  sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, 
-                               scalar_type* out_real, scalar_type* out_imag,
-                               const std::vector<sycl::event>& dependencies = {}) {
-    return dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, dependencies);
+  sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
+                               scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    return dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
+                                                   dependencies);
   }
 
  private:
@@ -755,30 +758,39 @@ class committed_descriptor {
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TIn Type of the input buffer or USM pointer
    * @tparam TOut Type of the output buffer or USM pointer
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
    * @tparam used_storage how components of a complex value are stored - either split or interleaved
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
-    if(used_storage != params.complex_storage){
-      if(used_storage == complex_storage::SPLIT_COMPLEX){
-        throw invalid_configuration("To use interface with split real and imaginary memory, descriptor.complex_storage must be set to SPLIT_COMPLEX!");
-      } 
-      throw invalid_configuration("To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to INTERLEAVED_COMPLEX!");
+  sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
+                                 complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
+    if (used_storage != params.complex_storage) {
+      if (used_storage == complex_storage::SPLIT_COMPLEX) {
+        throw invalid_configuration(
+            "To use interface with split real and imaginary memory, descriptor.complex_storage must be set to "
+            "SPLIT_COMPLEX!");
+      }
+      throw invalid_configuration(
+          "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
+          "INTERLEAVED_COMPLEX!");
     }
     if constexpr (Dir == direction::FORWARD) {
-      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.forward_strides, params.backward_strides,
-                                      params.forward_distance, params.backward_distance, params.forward_offset,
-                                      params.backward_offset, params.forward_scale);
+      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.forward_strides,
+                                      params.backward_strides, params.forward_distance, params.backward_distance,
+                                      params.forward_offset, params.backward_offset, params.forward_scale);
     } else {
-      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.backward_strides, params.forward_strides,
-                                      params.backward_distance, params.forward_distance, params.backward_offset,
-                                      params.forward_offset, params.backward_scale);
+      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.backward_strides,
+                                      params.forward_strides, params.backward_distance, params.forward_distance,
+                                      params.backward_offset, params.forward_offset, params.backward_scale);
     }
   }
 
@@ -788,10 +800,14 @@ class committed_descriptor {
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TIn Type of the input buffer or USM pointer
    * @tparam TOut Type of the output buffer or USM pointer
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param input_strides strides between input elements for each dimension of one FFT
    * @param output_strides strides between output elements for each dimension of one FFT
@@ -804,7 +820,8 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_dimensions(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, const std::vector<sycl::event>& dependencies,
+  sycl::event dispatch_dimensions(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
+                                  const std::vector<sycl::event>& dependencies,
                                   const std::vector<std::size_t>& input_strides,
                                   const std::vector<std::size_t>& output_strides, std::size_t input_distance,
                                   std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
@@ -838,8 +855,8 @@ class committed_descriptor {
     }
 
     sycl::event previous_event = dispatch_kernel_1d<Dir>(
-        in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size, input_stride_0, output_stride_0,
-        input_distance, output_distance, input_offset, output_offset, scale_factor, dimensions.back());
+        in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size, input_stride_0,
+        output_stride_0, input_distance, output_distance, input_offset, output_offset, scale_factor, dimensions.back());
     if (n_dimensions == 1) {
       return previous_event;
     }
@@ -871,10 +888,14 @@ class committed_descriptor {
    * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
    * @tparam TIn Type of the input buffer or USM pointer
    * @tparam TOut Type of the output buffer or USM pointer
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
    * @param input_stride stride between input elements of one FFT
@@ -888,13 +909,14 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut>
-  sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, const std::vector<sycl::event>& dependencies,
-                                 std::size_t n_transforms, std::size_t input_stride, std::size_t output_stride,
-                                 std::size_t input_distance, std::size_t output_distance, std::size_t input_offset,
-                                 std::size_t output_offset, Scalar scale_factor, dimension_struct& dimension_data) {
+  sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
+                                 const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
+                                 std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
+                                 std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
+                                 Scalar scale_factor, dimension_struct& dimension_data) {
     return dispatch_kernel_1d_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
-        in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance, output_distance, input_offset,
-        output_offset, scale_factor, dimension_data);
+        in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
+        output_distance, input_offset, output_offset, scale_factor, dimension_data);
   }
 
   /**
@@ -905,10 +927,14 @@ class committed_descriptor {
    * @tparam TOut Type of the output buffer or USM pointer
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
    * @param input_stride stride between input elements of one FFT
@@ -922,10 +948,11 @@ class committed_descriptor {
    * @return sycl::event
    */
   template <direction Dir, typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
-  sycl::event dispatch_kernel_1d_helper(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, const std::vector<sycl::event>& dependencies,
-                                        std::size_t n_transforms, std::size_t input_stride, std::size_t output_stride,
-                                        std::size_t input_distance, std::size_t output_distance,
-                                        std::size_t input_offset, std::size_t output_offset, Scalar scale_factor,
+  sycl::event dispatch_kernel_1d_helper(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
+                                        const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
+                                        std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
+                                        std::size_t output_distance, std::size_t input_offset,
+                                        std::size_t output_offset, Scalar scale_factor,
                                         dimension_struct& dimension_data) {
     if (SubgroupSize == dimension_data.used_sg_size) {
       const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
@@ -953,19 +980,23 @@ class committed_descriptor {
       }
       if (input_packed && output_packed) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor, dimension_data);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
+            dimension_data);
       }
       if (input_batch_interleaved && output_packed && in != out) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor, dimension_data);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
+            dimension_data);
       }
       if (input_packed && output_batch_interleaved && in != out) {
         return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor, dimension_data);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
+            dimension_data);
       }
       if (input_batch_interleaved && output_batch_interleaved) {
         return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor, dimension_data);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
+            dimension_data);
       }
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
@@ -973,8 +1004,8 @@ class committed_descriptor {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return dispatch_kernel_1d_helper<Dir, TIn, TOut, OtherSGSizes...>(
-          in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance, output_distance,
-          input_offset, output_offset, scale_factor, dimension_data);
+          in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
+          output_distance, input_offset, output_offset, scale_factor, dimension_data);
     }
   }
 
@@ -994,8 +1025,8 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, 
-                                 const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
+      static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag,
+                                 TOut& out_imag, const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t forward_offset, std::size_t backward_offset, Scalar scale_factor,
                                  std::vector<kernel_data_struct>& kernels);
     };
@@ -1010,10 +1041,14 @@ class committed_descriptor {
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
-   * @param in buffer or USM pointer to memory containing input data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param out buffer or USM pointer to memory containing output data. Real part of input data if `descriptor.complex_storage` is split.
-   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if `descriptor.complex_storage` is interleaved.
-   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if `descriptor.complex_storage` is interleaved.
+   * @param in buffer or USM pointer to memory containing input data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param out buffer or USM pointer to memory containing output data. Real part of input data if
+   * `descriptor.complex_storage` is split.
+   * @param in_imag buffer or USM pointer to memory containing imaginary part of the input data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
+   * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
+   * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
    * @param input_offset offset into input allocation where the data for FFTs start
@@ -1024,9 +1059,10 @@ class committed_descriptor {
    */
   template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
             typename TOut>
-  sycl::event run_kernel(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag, const std::vector<sycl::event>& dependencies,
-                         std::size_t n_transforms, std::size_t input_offset, std::size_t output_offset,
-                         Scalar scale_factor, dimension_struct& dimension_data) {
+  sycl::event run_kernel(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
+                         const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
+                         std::size_t input_offset, std::size_t output_offset, Scalar scale_factor,
+                         dimension_struct& dimension_data) {
     // mixing const and non-const inputs leads to hard-to-debug linking errors, as both use the same kernel name, but
     // are called from different template instantiations.
     static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>,
@@ -1039,10 +1075,10 @@ class committed_descriptor {
     using TInReinterpret = decltype(detail::reinterpret<const Scalar>(in));
     using TOutReinterpret = decltype(detail::reinterpret<Scalar>(out));
     return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TInReinterpret, TOutReinterpret>>(
-        dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out), 
-        detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies, static_cast<IdxGlobal>(n_transforms),
-        static_cast<IdxGlobal>(2 * input_offset), static_cast<IdxGlobal>(2 * output_offset), scale_factor,
-        dimension_data.kernels);
+        dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out),
+        detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
+        static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(2 * input_offset),
+        static_cast<IdxGlobal>(2 * output_offset), scale_factor, dimension_data.kernels);
   }
 };
 
@@ -1085,10 +1121,10 @@ struct descriptor {
    */
   std::size_t number_of_transforms = 1;
   /**
-   * The data layout of complex values. Default value is complex_storage::INTERLEAVED_COMPLEX. complex_storage::INTERLEAVED_COMPLEX
-   * indicates that the real and imaginary part of a complex number is contiguous i.e an Array of Structures.
-   * complex_storage::SPLIT_COMPLEX indicates that all the real values are contiguous and all the imaginary values are
-   * contiguous i.e. a Structure of Arrays.
+   * The data layout of complex values. Default value is complex_storage::INTERLEAVED_COMPLEX.
+   * complex_storage::INTERLEAVED_COMPLEX indicates that the real and imaginary part of a complex number is contiguous
+   * i.e an Array of Structures. complex_storage::SPLIT_COMPLEX indicates that all the real values are contiguous and
+   * all the imaginary values are contiguous i.e. a Structure of Arrays.
    */
   complex_storage complex_storage = complex_storage::INTERLEAVED_COMPLEX;
   /**
