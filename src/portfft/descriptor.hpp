@@ -33,11 +33,29 @@
 #include "common/subgroup.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
+#include "specialization_constant.hpp"
 #include "utils.hpp"
 
 namespace portfft {
-
+template <typename Scalar, domain Domain>
+class committed_descriptor;
 namespace detail {
+template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
+          Idx SubgroupSize, typename TIn>
+std::vector<sycl::event> compute_level(
+    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
+    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
+    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
+    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
+    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+
+template <typename Scalar, domain Domain, typename TOut>
+sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
+                            const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
+                            Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
+                            Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
+                            std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
+                            const std::vector<sycl::event>& events);
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -47,6 +65,10 @@ template <typename Scalar, domain, direction, detail::memory, detail::layout, de
 class subgroup_kernel;
 template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
 class workgroup_kernel;
+template <typename Scalar, domain, direction, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
+class global_kernel;
+template <typename Scalar, detail::memory>
+class transpose_kernel;
 
 /**
  * Return the default strides for a given dft size
@@ -87,7 +109,7 @@ bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
  */
 template <typename Descriptor>
 bool is_batch_interleaved(const Descriptor& desc, direction dir) {
-  return desc.lengths.size() == 1  && desc.get_distance(dir) == 1 &&
+  return desc.lengths.size() == 1 && desc.get_distance(dir) == 1 &&
          desc.get_strides(dir).back() == desc.number_of_transforms;
 }
 
@@ -154,6 +176,22 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
+  template <typename Scalar1, domain Domain1, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
+            Idx SubgroupSize, typename TIn>
+  friend std::vector<sycl::event> detail::compute_level(
+      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
+      const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
+      IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
+      IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
+      Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+
+  template <typename Scalar1, domain Domain1, typename TOut>
+  friend sycl::event detail::transpose_level(
+      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar* input,
+      TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
+      IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, Idx total_factors, IdxGlobal output_offset,
+      sycl::queue& queue, std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
+      const std::vector<sycl::event>& events);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -162,6 +200,10 @@ class committed_descriptor {
   Idx n_compute_units;
   std::vector<std::size_t> supported_sg_sizes;
   Idx local_memory_size;
+  IdxGlobal llc_size;
+  std::shared_ptr<Scalar> scratch_ptr_1;
+  std::shared_ptr<Scalar> scratch_ptr_2;
+  std::size_t scratch_space_required;
 
   struct kernel_data_struct {
     sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
@@ -171,6 +213,10 @@ class committed_descriptor {
     Idx num_sgs_per_wg;
     std::shared_ptr<Scalar> twiddles_forward;
     detail::level level;
+    IdxGlobal batch_size;
+    std::size_t local_mem_required;
+    IdxGlobal global_range;
+    IdxGlobal local_range;
 
     kernel_data_struct(sycl::kernel_bundle<sycl::bundle_state::executable>&& exec_bundle,
                        const std::vector<Idx>& factors, std::size_t length, Idx used_sg_size, Idx num_sgs_per_wg,
@@ -186,9 +232,12 @@ class committed_descriptor {
 
   struct dimension_struct {
     std::vector<kernel_data_struct> kernels;
+    std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
     std::size_t length;
     Idx used_sg_size;
+    Idx num_batches_in_l2;
+    Idx num_factors;
 
     dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size)
         : kernels(kernels), level(level), length(length), used_sg_size(used_sg_size) {}
@@ -205,6 +254,8 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
+      case detail::level::GLOBAL:
+        return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -220,6 +271,8 @@ class committed_descriptor {
         return Impl::template inner<detail::level::SUBGROUP, LayoutIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
+      case detail::level::GLOBAL:
+        return Impl::template inner<detail::level::GLOBAL, LayoutIn, void>::execute(*this, args...);
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -238,6 +291,9 @@ class committed_descriptor {
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, LayoutOut, SubgroupSize, void>::execute(
             *this, args...);
+      case detail::level::GLOBAL:
+        return Impl::template inner<detail::level::GLOBAL, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
+                                                                                                             args...);
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -264,7 +320,6 @@ class committed_descriptor {
     std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
-
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
@@ -310,8 +365,51 @@ class committed_descriptor {
         return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
-    // TODO global
-    throw out_of_local_memory_error("FFT size ", fft_size, " is not supported due to insufficient local memory");
+    std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
+    auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
+      if (detail::fits_in_wi<Scalar>(factor_size)) {
+        param_vec.emplace_back(detail::level::WORKITEM,
+                               detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
+                               std::vector<Idx>{static_cast<Idx>(factor_size)});
+
+        return true;
+      }
+      bool fits_in_local_memory_subgroup = [&]() {
+        Idx temp_num_sgs_in_wg;
+        IdxGlobal factor_sg = detail::factorize_sg<IdxGlobal>(factor_size, SubgroupSize);
+        IdxGlobal factor_wi = factor_size / factor_sg;
+        if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
+          if (batch_interleaved_layout) {
+            return (2 *
+                        num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
+                            detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
+                            {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
+                        sizeof(Scalar) +
+                    2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                   static_cast<std::size_t>(local_memory_size);
+          }
+          return (num_scalars_in_local_mem<detail::layout::PACKED>(
+                      detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
+                      {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
+                      sizeof(Scalar) +
+                  2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                 static_cast<std::size_t>(local_memory_size);
+        }
+        return false;
+      }();
+      if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup &&
+          !PORTFFT_SLOW_SG_SHUFFLES) {
+        param_vec.emplace_back(detail::level::SUBGROUP,
+                               detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
+                               std::vector<Idx>{detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize),
+                                                static_cast<Idx>(factor_size) /
+                                                    detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize)});
+        return true;
+      }
+      return false;
+    };
+    detail::factorize_input(fft_size, check_and_select_target_level);
+    return {detail::level::GLOBAL, param_vec};
   }
 
   /**
@@ -327,16 +425,25 @@ class committed_descriptor {
   };
 
   /**
-   * Sets the implementation dependant specialization constant values.
-   *
-   * @param level the implementation that will be used
-   * @param in_bundle kernel bundle to set the specialization constants on
-   * @param length length of the FFT the kernel will execute
-   * @param factors factorization of the FFT size the kernel will use
+   * Sets the implementation dependant specialization constant value
+   * @param top_level implementation to dispatch to
+   * @param in_bundle input kernel bundle to set spec constants for
+   * @param length length of the fft
+   * @param factors factors of the corresponsing length
+   * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
+   * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
+   * @param scale_factor_applied whether or not to multiply scale factor
+   * @param level sub implementation to run which will be set as a spec constant.
+   * @param factor_num factor number which is set as a spec constant
+   * @param num_factors total number of factors of the committed size, set as a spec constant.
    */
-  void set_spec_constants(detail::level level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                          std::size_t length, const std::vector<Idx>& factors) {
-    dispatch<set_spec_constants_struct>(level, in_bundle, length, factors);
+  void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+                          std::size_t length, const std::vector<Idx>& factors,
+                          detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
+                          detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num = 0,
+                          Idx num_factors = 0) {
+    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, multiply_on_load, multiply_on_store,
+                                        scale_factor_applied, level, factor_num, num_factors);
   }
 
   /**
@@ -411,9 +518,30 @@ class committed_descriptor {
       }
       std::vector<kernel_data_struct> result;
       if (is_compatible) {
+        std::size_t counter = 0;
         for (auto [level, ids, factors] : prepared_vec) {
           auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-          set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors);
+          if (top_level == detail::level::GLOBAL) {
+            if (counter == prepared_vec.size() - 1) {
+              set_spec_constants(detail::level::GLOBAL, in_bundle,
+                                 static_cast<std::size_t>(
+                                     std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+                                 factors, detail::elementwise_multiply::NOT_APPLIED,
+                                 detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, level,
+                                 static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+            } else {
+              set_spec_constants(detail::level::GLOBAL, in_bundle,
+                                 static_cast<std::size_t>(
+                                     std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+                                 factors, detail::elementwise_multiply::NOT_APPLIED,
+                                 detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED, level,
+                                 static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+            }
+          } else {
+            set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
+                               detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
+                               detail::apply_scale_factor::APPLIED, level);
+          }
           try {
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
                                 PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
@@ -423,6 +551,7 @@ class committed_descriptor {
             is_compatible = false;
             break;
           }
+          counter++;
         }
         if (is_compatible) {
           return {result, top_level, params.lengths[kernel_num], SubgroupSize};
@@ -433,6 +562,134 @@ class committed_descriptor {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
       return build_w_spec_const<OtherSGSizes...>(kernel_num);
+    }
+  }
+
+  /**
+   * Function which calculates the amount of scratch space required, and also pre computes the necessary scans required.
+   * @param num_global_level_dimensions number of global level dimensions in the committed size
+   */
+  void allocate_scratch_and_precompute_scan(Idx num_global_level_dimensions) {
+    std::size_t n_kernels = params.lengths.size();
+    if (num_global_level_dimensions == 1) {
+      std::size_t global_dimension = 0;
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          global_dimension = i;
+          break;
+        }
+      }
+      std::vector<IdxGlobal> factors;
+      std::vector<IdxGlobal> sub_batches;
+      std::vector<IdxGlobal> inclusive_scan;
+      std::size_t cache_required_for_twiddles = 0;
+      for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
+        IdxGlobal factor_size = static_cast<IdxGlobal>(
+            std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
+        cache_required_for_twiddles +=
+            static_cast<std::size_t>(2 * factor_size * kernel_data.batch_size) * sizeof(Scalar);
+        factors.push_back(factor_size);
+        sub_batches.push_back(kernel_data.batch_size);
+      }
+      dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
+      std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
+      // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
+      dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
+          static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
+          std::min(params.number_of_transforms,
+                   std::max(std::size_t(1), cache_space_left_for_batches /
+                                                (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
+      scratch_space_required = 2 * dimensions.at(global_dimension).length *
+                               static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
+      scratch_ptr_1 =
+          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
+                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
+                                      queue);
+      scratch_ptr_2 =
+          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
+                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
+                                      queue);
+      inclusive_scan.push_back(factors.at(0));
+      for (std::size_t i = 1; i < factors.size(); i++) {
+        inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
+      }
+      dimensions.at(global_dimension).factors_and_scan =
+          detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
+      queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
+      queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
+                 sub_batches.size());
+      queue.copy(inclusive_scan.data(),
+                 dimensions.at(global_dimension).factors_and_scan.get() + factors.size() + sub_batches.size(),
+                 inclusive_scan.size());
+      queue.wait();
+      // build transpose kernels
+      std::size_t num_transposes_required = factors.size() - 1;
+      for (std::size_t i = 0; i < num_transposes_required; i++) {
+        std::vector<sycl::kernel_id> ids;
+        auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
+                                                                            detail::get_transpose_kernel_ids<Scalar>());
+        in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+        in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+            static_cast<Idx>(factors.size()));
+        dimensions.at(global_dimension)
+            .kernels.emplace_back(
+                sycl::build(in_bundle),
+                std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
+                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+      }
+    } else {
+      std::size_t max_encountered_global_size = 0;
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          max_encountered_global_size = max_encountered_global_size > dimensions.at(i).length
+                                            ? max_encountered_global_size
+                                            : dimensions.at(i).length;
+        }
+      }
+      // TODO: max_scratch_size should be max(global_size_1 * corresponding_batches_in_l2, global_size_1 *
+      // corresponding_batches_in_l2), in the case of multi-dim global FFTs.
+      scratch_space_required = 2 * max_encountered_global_size * params.number_of_transforms;
+      scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
+      scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
+      for (std::size_t i = 0; i < n_kernels; i++) {
+        if (dimensions.at(i).level == detail::level::GLOBAL) {
+          std::vector<IdxGlobal> factors;
+          std::vector<IdxGlobal> sub_batches;
+          std::vector<IdxGlobal> inclusive_scan;
+          for (const auto& kernel_data : dimensions.at(i).kernels) {
+            IdxGlobal factor_size = static_cast<IdxGlobal>(
+                std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
+            factors.push_back(factor_size);
+            sub_batches.push_back(kernel_data.batch_size);
+          }
+          inclusive_scan.push_back(factors.at(0));
+          for (std::size_t j = 1; j < factors.size(); j++) {
+            inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
+          }
+          dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
+          dimensions.at(i).factors_and_scan =
+              detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
+          queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
+          queue.copy(sub_batches.data(), dimensions.at(i).factors_and_scan.get() + factors.size(), sub_batches.size());
+          queue.copy(inclusive_scan.data(),
+                     dimensions.at(i).factors_and_scan.get() + factors.size() + sub_batches.size(),
+                     inclusive_scan.size());
+          queue.wait();
+          // build transpose kernels
+          std::size_t num_transposes_required = factors.size() - 1;
+          for (std::size_t j = 0; j < num_transposes_required; j++) {
+            auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+                queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
+            in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+            in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+                static_cast<Idx>(factors.size()));
+            dimensions.at(i).kernels.emplace_back(
+                sycl::build(in_bundle),
+                std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
+                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+          }
+        }
+      }
     }
   }
 
@@ -450,7 +707,8 @@ class committed_descriptor {
         // get some properties we will use for tunning
         n_compute_units(static_cast<Idx>(dev.get_info<sycl::info::device::max_compute_units>())),
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
-        local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())) {
+        local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())),
+        llc_size(static_cast<IdxGlobal>(queue.get_device().get_info<sycl::info::device::global_mem_cache_size>())) {
     // check it's suitable to run
 
     const auto forward_layout = detail::get_layout(params, direction::FORWARD);
@@ -474,17 +732,88 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
-      for (kernel_data_struct& kernel : dimensions.back().kernels) {
-        kernel.twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernel), [queue](Scalar* ptr) {
-          if (ptr != nullptr) {
-            sycl::free(ptr, queue);
-          }
-        });
+      if (dimensions.at(i).level == detail::level::GLOBAL) {
+        dimensions.back().kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
+            dispatch<calculate_twiddles_struct>(detail::level::GLOBAL, dimensions.back().kernels.at(0)),
+            [queue](Scalar* ptr) {
+              if (ptr != nullptr) {
+                sycl::free(ptr, queue);
+              }
+            });
+      } else {
+        for (kernel_data_struct& kernel : dimensions.back().kernels) {
+          kernel.twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernel), [queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, queue);
+            }
+          });
+        }
       }
+    }
+    bool is_scratch_required = false;
+    Idx num_global_level_dimensions = 0;
+    for (std::size_t i = 0; i < n_kernels; i++) {
+      if (dimensions.at(i).level == detail::level::GLOBAL) {
+        is_scratch_required = true;
+        num_global_level_dimensions++;
+      }
+    }
+    if (num_global_level_dimensions != 0) {
+      if (params.lengths.size() > 1) {
+        throw unsupported_configuration("Only 1D FFTs that do not fit in local memory are supported");
+      }
+      if (params.get_distance(direction::FORWARD) != params.lengths[0] ||
+          params.get_distance(direction::BACKWARD) != params.lengths[0]) {
+        throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
+      }
+    }
+
+    if (is_scratch_required) {
+      allocate_scratch_and_precompute_scan(num_global_level_dimensions);
+    }
+  }
+
+  /**
+   * Utility function fo copy constructor and copy assignment operator
+   * @param desc committed_descriptor of which the copy is to be made
+   */
+  void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
+#define PORTFFT_COPY(x) this->x = desc.x;
+    PORTFFT_COPY(params)
+    PORTFFT_COPY(queue)
+    PORTFFT_COPY(dev)
+    PORTFFT_COPY(ctx)
+    PORTFFT_COPY(n_compute_units)
+    PORTFFT_COPY(supported_sg_sizes)
+    PORTFFT_COPY(local_memory_size)
+    PORTFFT_COPY(dimensions)
+    PORTFFT_COPY(scratch_space_required)
+    PORTFFT_COPY(llc_size)
+
+#undef PORTFFT_COPY
+    bool is_scratch_required = false;
+    for (std::size_t i = 0; i < desc.dimensions.size(); i++) {
+      if (desc.dimensions.at(i).level == detail::level::GLOBAL) {
+        is_scratch_required = true;
+        break;
+      }
+    }
+    if (is_scratch_required) {
+      this->scratch_ptr_1 =
+          detail::make_shared<Scalar>(static_cast<std::size_t>(desc.scratch_space_required), this->queue);
+      this->scratch_ptr_2 =
+          detail::make_shared<Scalar>(static_cast<std::size_t>(desc.scratch_space_required), this->queue);
     }
   }
 
  public:
+  committed_descriptor(const committed_descriptor& desc) : params(desc.params) { create_copy(desc); }
+  committed_descriptor& operator=(const committed_descriptor& desc) {
+    if (this != &desc) {
+      create_copy(desc);
+    }
+    return *this;
+  }
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
   /**
@@ -500,10 +829,6 @@ class committed_descriptor {
    * Destructor
    */
   ~committed_descriptor() { queue.wait(); }
-
-  // rule of three
-  committed_descriptor(const committed_descriptor& other) = default;
-  committed_descriptor& operator=(const committed_descriptor& other) = default;
 
   // default construction is not appropriate
   committed_descriptor() = delete;
@@ -695,7 +1020,8 @@ class committed_descriptor {
     const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    const bool multi_dim_supported = forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+    const bool multi_dim_supported =
+        forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
     if (n_dimensions != 1 && !multi_dim_supported) {
       throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
@@ -813,16 +1139,11 @@ class committed_descriptor {
                                            kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
                                            kernel_data.num_sgs_per_wg) *
                                        sizeof(Scalar);
-        } else {
-          minimum_local_mem_required =
-              num_scalars_in_local_mem<detail::layout::PACKED>(kernel_data.level, kernel_data.length, SubgroupSize,
-                                                               kernel_data.factors, kernel_data.num_sgs_per_wg) *
-              sizeof(Scalar);
-        }
-        if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
-          throw out_of_local_memory_error(
-              "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
-              "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+          if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
+            throw out_of_local_memory_error(
+                "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
+                "B. Required: " + std::to_string(minimum_local_mem_required) + "B.");
+          }
         }
       }
       if (input_packed && output_packed) {

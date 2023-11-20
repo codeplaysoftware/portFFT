@@ -31,6 +31,9 @@
 
 namespace portfft {
 namespace detail {
+template <typename Scalar, detail::memory>
+class transpose_kernel;
+
 /**
  * Get kernel ids for the implementation used.
  *
@@ -86,6 +89,92 @@ constexpr bool can_cast_safely(const InputType& x) {
   OutputType x_converted = static_cast<OutputType>(x);
   return (static_cast<InputType>(x_converted) == x);
 }
+
+/**
+ * Function which handles factorizing a size till it can be dispatched to one of the existing implementations
+ * @tparam F Decltype of function being passed
+ * @param factor_size Length of the factor
+ * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
+ * implementations
+ * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
+ * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
+ * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
+ * @return
+ */
+template <typename F>
+IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+  IdxGlobal fact_1 = factor_size;
+  if (check_and_select_target_level(fact_1, transposed)) {
+    return fact_1;
+  }
+  if ((detail::factorize(fact_1) == 1)) {
+    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
+  }
+  do {
+    fact_1 = detail::factorize(fact_1);
+    if (fact_1 == 1) {
+      throw internal_error("Factorization Failed !");
+    }
+  } while (!check_and_select_target_level(fact_1));
+  return fact_1;
+}
+
+/**
+ * Driver function to factorize large inputs for global implementation
+ * @tparam F Decltype of the function being passed
+ * @param input_size committed_size
+ * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
+ * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
+ * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
+ * implementation.
+ */
+template <typename F>
+void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+  if (detail::factorize(input_size) == 1) {
+    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
+  }
+  IdxGlobal temp = 1;
+  while (input_size / temp != 1) {
+    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+  }
+}
+
+/**
+ * Obtains kernel ids for transpose kernels
+ * @tparam Scalar Scalar type
+ * @return vector containing sycl::kernel_ids
+ */
+template <typename Scalar>
+std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
+  std::vector<sycl::kernel_id> ids;
+#define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                               \
+  try {                                                                       \
+    ids.push_back(sycl::get_kernel_id<transpose_kernel<Scalar, (MEMORY)>>()); \
+  } catch (...) {                                                             \
+  }
+
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::USM)
+  PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
+#undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
+  return ids;
+}
+
+/**
+ * Utility function to create a shared pointer, with memory allocated on device
+ * @tparam T Type of the memory being allocated
+ * @param size Number of elements to allocate.
+ * @param queue Associated queue
+ * @return std::shared_ptr<T>
+ */
+template <typename T>
+inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
+  return std::shared_ptr<T>(sycl::malloc_device<T>(size, queue), [captured_queue = queue](T* ptr) {
+    if (ptr != nullptr) {
+      sycl::free(ptr, captured_queue);
+    }
+  });
+}
+
 }  // namespace detail
 }  // namespace portfft
 #endif
