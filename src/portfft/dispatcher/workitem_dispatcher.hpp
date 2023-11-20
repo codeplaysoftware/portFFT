@@ -154,7 +154,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         global2local<level::SUBGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size * n_working, global_offset,
                                                     local_offset + local_imag_offset);
       }
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_LOG_DUMPS
       sycl::group_barrier(global_data.sg);
 #endif
       global_data.log_dump_local("input data loaded in local memory:", loc, n_reals * n_working);
