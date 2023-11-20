@@ -97,8 +97,8 @@ portFFT is still in early development. The supported configurations are:
 * Arbitrary forward and backward offsets
 
 Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors.
-The largest prime factor depend on the device and the values set by `PORTFFT_REGS_PER_WI` and `PORTFFT_SUBGROUP_SIZES`.
-For instance with `PORTFFT_REGS_PER_WI` set to `128` (resp. `256`) and `PORTFFT_SUBGROUP_SIZES` set to `32` the largest prime factor cannot exceed `27*32=864` (resp. `56*32=1792`).
+The largest prime factor depend on the device and the values set by `PORTFFT_REGISTERS_PER_WI` and `PORTFFT_SUBGROUP_SIZES`.
+For instance with `PORTFFT_REGISTERS_PER_WI` set to `128` (resp. `256`) and `PORTFFT_SUBGROUP_SIZES` set to `32` the largest prime factor cannot exceed `27*32=864` (resp. `56*32=1792`).
 portFFT may allocate up to `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scratch memory, depending on the configuration passed.
 
 Any batch size is supported as long as the input and output data fits in global memory.
