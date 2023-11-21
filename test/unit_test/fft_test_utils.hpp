@@ -49,13 +49,13 @@ struct test_placement_layouts_params {
   detail::layout output_layout;
 };
 
-using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
-                                     std::vector<std::size_t> /*lengths*/>;
+using basic_param_tuple = std::tuple<test_placement_layouts_params, direction, complex_storage,
+                                     std::size_t /*batch_size*/, std::vector<std::size_t> /*lengths*/>;
 using offsets_param_tuple =
-    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+    std::tuple<test_placement_layouts_params, direction, complex_storage, std::size_t /*batch_size*/,
                std::vector<std::size_t> /*lengths*/, std::pair<std::size_t, std::size_t> /*offset pair*/>;
 using scales_param_tuple =
-    std::tuple<test_placement_layouts_params, direction, std::size_t /*batch_size*/,
+    std::tuple<test_placement_layouts_params, direction, complex_storage, std::size_t /*batch_size*/,
                std::vector<std::size_t> /*lengths*/, double /*forward_scale*/, double /*backward_scale*/>;
 // More tuples can be added here to easily instantiate tests that will require different parameters
 
@@ -64,6 +64,7 @@ struct test_params {
   detail::layout input_layout;
   detail::layout output_layout;
   direction dir;
+  complex_storage storage;
   std::size_t batch;
   std::vector<std::size_t> lengths;
   std::optional<double> forward_scale;
@@ -79,18 +80,19 @@ struct test_params {
     input_layout = placement_layouts.input_layout;
     output_layout = placement_layouts.output_layout;
     dir = std::get<1>(params);
-    batch = std::get<2>(params);
-    lengths = std::get<3>(params);
+    storage = std::get<2>(params);
+    batch = std::get<3>(params);
+    lengths = std::get<4>(params);
   }
 
   explicit test_params(offsets_param_tuple params) : test_params(get_sub_tuple<basic_param_tuple>(params)) {
-    forward_offset = std::get<4>(params).first;
-    backward_offset = std::get<4>(params).second;
+    forward_offset = std::get<5>(params).first;
+    backward_offset = std::get<5>(params).second;
   }
 
   explicit test_params(scales_param_tuple params) : test_params(get_sub_tuple<basic_param_tuple>(params)) {
-    forward_scale = std::get<4>(params);
-    backward_scale = std::get<5>(params);
+    forward_scale = std::get<5>(params);
+    backward_scale = std::get<6>(params);
   }
 };
 
@@ -124,6 +126,7 @@ struct test_params_print {
     ss << "__LayoutOut_";
     print_layout(params.output_layout);
     ss << "__Direction_" << (params.dir == direction::FORWARD ? "Fwd" : "Bwd");
+    ss << "__Storage_" << (params.storage == complex_storage::INTERLEAVED_COMPLEX ? "Interleaved" : "Split");
     ss << "__Batch_" << params.batch;
     ss << "__Lengths";
     for (std::size_t length : params.lengths) {
@@ -167,6 +170,7 @@ auto get_descriptor(const test_params& params) {
   descriptor<FType, domain::COMPLEX> desc{params.lengths};
   desc.number_of_transforms = params.batch;
   desc.placement = params.placement;
+  desc.complex_storage = params.storage;
 
   auto apply_layout_for_dir = [&desc, &params](detail::layout layout, direction dir) {
     if (layout == detail::layout::PACKED) {
@@ -206,9 +210,11 @@ auto get_descriptor(const test_params& params) {
  *
  * @tparam TestMemory Whether to run the test using USM or buffers
  * @tparam Dir FFT direction
+ * @tparam Storage complex storage to check
  * @tparam DescType Descriptor type
  * @tparam InputFType FFT input type, domain and precision
  * @tparam OutputFType FFT output type, domain and precision
+ * @tparam RealFType real type used in complex values - either `float` or `double`
  * @param queue Associated queue
  * @param desc Descriptor matching the test parameters
  * @param host_input FFT input
@@ -217,48 +223,94 @@ auto get_descriptor(const test_params& params) {
  * @param host_reference_output Reference output
  * @param tolerance Test tolerance
  */
-template <test_memory TestMemory, direction Dir, typename DescType, typename InputFType, typename OutputFType>
-std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, DescType desc,
-                                                           const std::vector<InputFType>& host_input,
-                                                           std::vector<OutputFType>& host_output,
-                                                           const std::vector<OutputFType>& host_reference_output,
-                                                           double tolerance) {
+template <test_memory TestMemory, direction Dir, complex_storage Storage, typename DescType, typename InputFType,
+          typename OutputFType, typename RealFType>
+std::enable_if_t<TestMemory == test_memory::usm> check_fft(
+    sycl::queue& queue, DescType desc, const std::vector<InputFType>& host_input, std::vector<OutputFType>& host_output,
+    const std::vector<OutputFType>& host_reference_output, const std::vector<RealFType>& host_input_imag,
+    std::vector<RealFType>& host_output_imag, const std::vector<RealFType>& host_reference_output_imag,
+    double tolerance) {
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
   auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
   OutputFType* device_output = nullptr;
+  RealFType* device_input_imag = nullptr;
+  RealFType* device_output_imag = nullptr;
   sycl::event oop_init_event;
+  sycl::event oop_imag_init_event;
+  sycl::event copy_event2;
+
+  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
+  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+    device_input_imag = sycl::malloc_device<RealFType>(host_input_imag.size(), queue);
+    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag, host_input_imag.size());
+  }
   if (is_oop) {
     device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
     oop_init_event = queue.copy(host_output.data(), device_output, host_output.size());
+    if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+      device_output_imag = sycl::malloc_device<RealFType>(host_output_imag.size(), queue);
+      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag, host_output_imag.size());
+    }
   }
 
-  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size(), {oop_init_event});
+  std::vector<sycl::event> dependencies{copy_event, copy_event2, oop_init_event, oop_imag_init_event};
 
   sycl::event fft_event = [&]() {
     if (is_oop) {
       if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, device_output, {copy_event});
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          return committed_descriptor.compute_forward(device_input, device_output, dependencies);
+        } else {
+          return committed_descriptor.compute_forward(device_input, device_input_imag, device_output,
+                                                      device_output_imag, dependencies);
+        }
       } else {
-        return committed_descriptor.compute_backward(device_input, device_output, {copy_event});
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          return committed_descriptor.compute_backward(device_input, device_output, dependencies);
+        } else {
+          return committed_descriptor.compute_backward(device_input, device_input_imag, device_output,
+                                                       device_output_imag, dependencies);
+        }
       }
     } else {
       if constexpr (Dir == direction::FORWARD) {
-        return committed_descriptor.compute_forward(device_input, {copy_event});
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          return committed_descriptor.compute_forward(device_input, dependencies);
+        } else {
+          return committed_descriptor.compute_forward(device_input, device_input_imag, dependencies);
+        }
       } else {
-        return committed_descriptor.compute_backward(device_input, {copy_event});
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          return committed_descriptor.compute_backward(device_input, dependencies);
+        } else {
+          return committed_descriptor.compute_backward(device_input, device_input_imag, dependencies);
+        }
       }
     }
   }();
 
   queue.copy(is_oop ? device_output : device_input, host_output.data(), host_output.size(), {fft_event});
+  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+    queue.copy(is_oop ? device_output_imag : device_input_imag, host_output_imag.data(), host_output_imag.size(),
+               {fft_event});
+  }
   queue.wait_and_throw();
-  verify_dft<Dir>(desc, host_reference_output, host_output, tolerance);
+  verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, "real");
+  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+    verify_dft<Dir, Storage>(desc, host_reference_output_imag, host_output_imag, tolerance, "imaginary");
+  }
 
   sycl::free(device_input, queue);
+  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+    sycl::free(device_input_imag, queue);
+  }
   if (is_oop) {
     sycl::free(device_output, queue);
+    if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+      sycl::free(device_output_imag, queue);
+    }
   }
 }
 
@@ -277,12 +329,13 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(sycl::queue& queue, D
  * @param host_reference_output Reference output
  * @param tolerance Test tolerance
  */
-template <test_memory TestMemory, direction Dir, typename DescType, typename InputFType, typename OutputFType>
-std::enable_if_t<TestMemory == test_memory::buffer> check_fft(sycl::queue& queue, DescType desc,
-                                                              std::vector<InputFType>& host_input,
-                                                              std::vector<OutputFType>& host_output,
-                                                              const std::vector<OutputFType>& host_reference_output,
-                                                              double tolerance) {
+template <test_memory TestMemory, direction Dir, complex_storage Storage, typename DescType, typename InputFType,
+          typename OutputFType, typename RealFType>
+std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
+    sycl::queue& queue, DescType desc, std::vector<InputFType>& host_input, std::vector<OutputFType>& host_output,
+    const std::vector<OutputFType>& host_reference_output, std::vector<RealFType>& host_input_imag,
+    std::vector<RealFType>& host_output_imag, const std::vector<RealFType>& host_reference_output_imag,
+    double tolerance) {
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
@@ -290,27 +343,51 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(sycl::queue& queue
   {
     sycl::buffer<InputFType, 1> input_buffer(host_input);
     sycl::buffer<OutputFType, 1> output_buffer(nullptr, 0);
+    sycl::buffer<RealFType, 1> input_buffer_imag(host_input_imag);
+    sycl::buffer<RealFType, 1> output_buffer_imag(nullptr, 0);
     if (is_oop) {
       // Do not copy back the input to the host
       input_buffer.set_final_data(nullptr);
       output_buffer = sycl::buffer<OutputFType, 1>(host_output);
+      input_buffer_imag.set_final_data(nullptr);
+      output_buffer_imag = sycl::buffer<RealFType, 1>(host_output_imag);
     }
 
     if (is_oop) {
       if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer, output_buffer);
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          committed_descriptor.compute_forward(input_buffer, output_buffer);
+        } else {
+          committed_descriptor.compute_forward(input_buffer, input_buffer_imag, output_buffer, output_buffer_imag);
+        }
       } else {
-        committed_descriptor.compute_backward(input_buffer, output_buffer);
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          committed_descriptor.compute_backward(input_buffer, output_buffer);
+        } else {
+          committed_descriptor.compute_backward(input_buffer, input_buffer_imag, output_buffer, output_buffer_imag);
+        }
       }
     } else {
       if constexpr (Dir == direction::FORWARD) {
-        committed_descriptor.compute_forward(input_buffer);
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          committed_descriptor.compute_forward(input_buffer);
+        } else {
+          committed_descriptor.compute_forward(input_buffer, input_buffer_imag);
+        }
       } else {
-        committed_descriptor.compute_backward(input_buffer);
+        if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
+          committed_descriptor.compute_backward(input_buffer);
+        } else {
+          committed_descriptor.compute_backward(input_buffer, input_buffer_imag);
+        }
       }
     }
   }
-  verify_dft<Dir>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance);
+  verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance, "real");
+  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
+    verify_dft<Dir, Storage>(desc, host_reference_output_imag, is_oop ? host_output_imag : host_input_imag, tolerance,
+                             "imaginary");
+  }
 }
 
 /**
@@ -320,9 +397,10 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(sycl::queue& queue
  * @tparam TestMemory Whether to run the test using USM or buffers
  * @tparam FType Scalar type Float / Double
  * @tparam Dir FFT direction
+ * @tparam Storage complex storage
  * @param params Test parameters
  */
-template <test_memory TestMemory, typename FType, direction Dir>
+template <test_memory TestMemory, typename FType, direction Dir, complex_storage Storage>
 void run_test(const test_params& params) {
   std::vector<sycl::aspect> queue_aspects;
   if constexpr (std::is_same_v<FType, double>) {
@@ -342,13 +420,16 @@ void run_test(const test_params& params) {
   auto desc = get_descriptor<FType>(params);
 
   float padding_value = -5.f;  // Value for memory that isn't written to.
-  auto [host_input, host_reference_output] =
-      gen_fourier_data<Dir>(desc, params.input_layout, params.output_layout, padding_value);
+  auto [host_input, host_reference_output, host_input_imag, host_reference_output_imag] =
+      gen_fourier_data<Dir, Storage>(desc, params.input_layout, params.output_layout, padding_value);
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
+  decltype(host_reference_output_imag) host_output_imag(
+      Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
   double tolerance = 1e-3;
 
   try {
-    check_fft<TestMemory, Dir>(queue, desc, host_input, host_output, host_reference_output, tolerance);
+    check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag,
+                                        host_output_imag, host_reference_output_imag, tolerance);
   } catch (out_of_local_memory_error& e) {
     GTEST_SKIP() << e.what();
   } catch (unsupported_configuration& e) {  // TODO: this is added to catch unsupported configurations thrown when sizes

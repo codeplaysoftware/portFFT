@@ -147,17 +147,19 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
                                                           level_num, iter_value, outer_batch_product);
     if (level == detail::level::WORKITEM) {
       workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_loc, batch_size, scale_factor, global_data, kh,
-          static_cast<const Scalar*>(nullptr), store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, batch_size,
+          scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr), store_modifier_data,
+          static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_loc, twiddles_loc, batch_size,
-          implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
+          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
           store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_loc, twiddles_loc, batch_size,
-          implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr), store_modifier_data);
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
+          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr),
+          store_modifier_data);
     }
     sycl::group_barrier(global_data.it.get_group());
   }

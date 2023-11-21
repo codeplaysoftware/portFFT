@@ -81,8 +81,14 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @tparam SubgroupSize size of the subgroup
  * @tparam T Scalar type
  *
- * @param input global input pointer
- * @param output global output pointer
+ * @param input accessor or pointer to global memory containing input data. If complex storage (from
+ * `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param output accessor or pointer to global memory for output data. If complex storage (from
+ * `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to local allocation for subgroup level twiddles
  * @param n_transforms number of fft batches
@@ -94,10 +100,11 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
-PORTFFT_INLINE void workgroup_impl(const T* input, T* output, T* loc, T* loc_twiddles, IdxGlobal n_transforms,
-                                   const T* twiddles, T scaling_factor, global_data_struct<1> global_data,
-                                   sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
-                                   const T* store_modifier_data = nullptr) {
+PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_imag*/, T* /*output_imag*/, T* loc,
+                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
+                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
+                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
+  // complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
@@ -201,7 +208,7 @@ template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx 
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out,
+  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
@@ -227,8 +234,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
-      auto in_acc_or_usm = detail::get_access<const Scalar>(in, cgh);
-      auto out_acc_or_usm = detail::get_access<Scalar>(out, cgh);
+      auto in_acc_or_usm = detail::get_access(in, cgh);
+      auto out_acc_or_usm = detail::get_access(out, cgh);
+      auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
+      auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
@@ -243,7 +252,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 it};
             global_data.log_message_global("Running workgroup kernel");
             detail::workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0],
+                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
+                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0],
                 &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });
@@ -255,17 +265,10 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& /*factors*/,
-                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
-    const Idx casted_length = static_cast<Idx>(length);
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
-    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
+                      std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
+                      Idx /*factor_num*/, Idx /*num_factors*/) {
+    const Idx length_idx = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
 };
 
