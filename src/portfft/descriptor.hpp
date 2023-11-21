@@ -420,7 +420,8 @@ class committed_descriptor {
     template <detail::level Lev, typename Dummy>
     struct inner {
       static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                          std::size_t length, const std::vector<Idx>& factors);
+                          std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
+                          Idx num_factors);
     };
   };
 
@@ -442,10 +443,15 @@ class committed_descriptor {
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num = 0,
                           Idx num_factors = 0) {
-    // This spec constant is used in all implementations, so we set it here
+    const Idx length_idx = static_cast<Idx>(length);
+    // These spec constants are used in all implementations, so we set them here
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
-    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, multiply_on_load, multiply_on_store,
-                                        scale_factor_applied, level, factor_num, num_factors);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length_idx);
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length_idx));
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
+    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
 
   /**
@@ -1090,7 +1096,7 @@ class committed_descriptor {
    * `descriptor.complex_storage` is interleaved.
    * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
    * `descriptor.complex_storage` is interleaved.
-   * @tparam used_storage how components of a complex value are stored - either split or interleaved
+   * @param used_storage how components of a complex value are stored - either split or interleaved
    * @param dependencies events that must complete before the computation
    * @return sycl::event
    */
@@ -1101,11 +1107,11 @@ class committed_descriptor {
       if (used_storage == complex_storage::SPLIT_COMPLEX) {
         throw invalid_configuration(
             "To use interface with split real and imaginary memory, descriptor.complex_storage must be set to "
-            "SPLIT_COMPLEX!");
+            "SPLIT_COMPLEX.");
       }
       throw invalid_configuration(
           "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
-          "INTERLEAVED_COMPLEX!");
+          "INTERLEAVED_COMPLEX.");
     }
     if constexpr (Dir == direction::FORWARD) {
       return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.forward_strides,
@@ -1394,11 +1400,12 @@ class committed_descriptor {
                   "Both input and output to the kernels should be the same - either buffers or USM");
     using TInReinterpret = decltype(detail::reinterpret<const Scalar>(in));
     using TOutReinterpret = decltype(detail::reinterpret<Scalar>(out));
+    std::size_t vec_multiplier = params.complex_storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
     return dispatch<run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TInReinterpret, TOutReinterpret>>(
         dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out),
         detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
-        static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(2 * input_offset),
-        static_cast<IdxGlobal>(2 * output_offset), scale_factor, dimension_data.kernels);
+        static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(vec_multiplier * input_offset),
+        static_cast<IdxGlobal>(vec_multiplier * output_offset), scale_factor, dimension_data.kernels);
   }
 };
 

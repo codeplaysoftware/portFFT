@@ -323,16 +323,9 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/,
-                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
-    const Idx casted_length = static_cast<Idx>(length);
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
-    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
+                      detail::level /*level*/, Idx /*factor_num*/, Idx /*num_factors*/) {
+    const Idx length_idx = static_cast<Idx>(length);
+    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
 };
 

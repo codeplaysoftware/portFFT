@@ -210,9 +210,11 @@ auto get_descriptor(const test_params& params) {
  *
  * @tparam TestMemory Whether to run the test using USM or buffers
  * @tparam Dir FFT direction
+ * @tparam Storage complex storage to check
  * @tparam DescType Descriptor type
  * @tparam InputFType FFT input type, domain and precision
  * @tparam OutputFType FFT output type, domain and precision
+ * @tparam RealFType real type used in complex values - either `float` or `double`
  * @param queue Associated queue
  * @param desc Descriptor matching the test parameters
  * @param host_input FFT input

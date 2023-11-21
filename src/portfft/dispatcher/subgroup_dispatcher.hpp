@@ -198,24 +198,20 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i};
         detail::md_view local_md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}};
         copy_group<level::WORKGROUP>(global_data, input_view, local_md_view,
-                                     std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
+                                     std::array{fft_size, 2 * num_batches_in_local_mem});
       } else {
         detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
         detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
         detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
         detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
-        global_data.log_message_global(__func__, "params", max_num_batches_local_mem, factor_wi * factor_sg,
+        global_data.log_message_global(__func__, "params", max_num_batches_local_mem, fft_size,
                                        num_batches_in_local_mem);
-        sycl::group_barrier(global_data.it.get_group());
         global_data.log_message_global(__func__, "loading transposed real data from global to local memory");
-        sycl::group_barrier(global_data.it.get_group());
         copy_group<level::WORKGROUP>(global_data, input_real_view, local_real_view,
-                                     std::array{factor_wi * factor_sg, num_batches_in_local_mem});
-        sycl::group_barrier(global_data.it.get_group());
+                                     std::array{fft_size, num_batches_in_local_mem});
         global_data.log_message_global(__func__, "loading transposed imag data from global to local memory");
-        sycl::group_barrier(global_data.it.get_group());
         copy_group<level::WORKGROUP>(global_data, input_imag_view, local_imag_view,
-                                     std::array{factor_wi * factor_sg, num_batches_in_local_mem});
+                                     std::array{fft_size, num_batches_in_local_mem});
       }
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_local("data loaded to local memory:", loc_view,
@@ -354,18 +350,18 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                          "FactorSG) with LayoutOut = detail::layout::PACKED");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             detail::md_view local_md_view2{loc_view, std::array{2 * max_num_batches_local_mem, 1, 2}};
-            detail::md_view output_view{output, std::array{2, 1, 2 * factor_wi * factor_sg}, i * n_reals_per_fft};
+            detail::md_view output_view{output, std::array{2, 1, 2 * fft_size}, i * n_reals_per_fft};
             copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view,
-                                         std::array{factor_wi * factor_sg, 2, num_batches_in_local_mem});
+                                         std::array{fft_size, 2, num_batches_in_local_mem});
           } else {
             detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
             detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
-            detail::md_view output_real_view{output, std::array{1, factor_wi * factor_sg}, i * fft_size};
-            detail::md_view output_imag_view{output_imag, std::array{1, factor_wi * factor_sg}, i * fft_size};
+            detail::md_view output_real_view{output, std::array{1, fft_size}, i * fft_size};
+            detail::md_view output_imag_view{output_imag, std::array{1, fft_size}, i * fft_size};
             copy_group<level::WORKGROUP>(global_data, local_real_view, output_real_view,
-                                         std::array{factor_wi * factor_sg, num_batches_in_local_mem});
+                                         std::array{fft_size, num_batches_in_local_mem});
             copy_group<level::WORKGROUP>(global_data, local_imag_view, output_imag_view,
-                                         std::array{factor_wi * factor_sg, num_batches_in_local_mem});
+                                         std::array{fft_size, num_batches_in_local_mem});
           }
         } else {
           global_data.log_message_global(__func__,
@@ -657,18 +653,10 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& factors,
-                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
+                      std::size_t /*length*/, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
                       Idx /*num_factors*/) {
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
-    const Idx casted_length = static_cast<Idx>(length);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
-    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
   }
 };
 

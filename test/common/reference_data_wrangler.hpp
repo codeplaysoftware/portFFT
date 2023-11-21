@@ -229,14 +229,14 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
 /** Test the difference between a dft result and a reference results. Throws an exception if there is a differences.
  * @tparam Dir The direction of the DFT being verified
- * @tparam Scalar type of the scalar used for computations
+ * @tparam Storage complex storage `ref_output` and `actual_output` are using
  * @tparam Domain domain of the FFT
  * @param desc The description of the FFT.
  * @param ref_output The reference data to compare the result with before any transpose is applied
  * @param actual_output The actual result of the computation
  * @param comparison_tolerance An absolute and relative allowed error in the calculation
  * @param elem_name Name of the component (real/complex) this call is checking. Only used in error messages and only
- *when `ElemT` is real - `SPLIT_COMPLEX` storage is used.
+ * if `Storage` is `SPLIT_COMPLEX`.
  **/
 template <portfft::direction Dir, portfft::complex_storage Storage, typename ElemT, typename Scalar,
           portfft::domain Domain>
