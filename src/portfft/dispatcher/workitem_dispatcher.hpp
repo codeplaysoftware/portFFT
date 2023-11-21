@@ -322,8 +322,8 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& /*factors*/,
-                      detail::level /*level*/, Idx /*factor_num*/, Idx /*num_factors*/) {
+                      std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
+                      Idx /*factor_num*/, Idx /*num_factors*/) {
     const Idx length_idx = static_cast<Idx>(length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }

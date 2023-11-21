@@ -104,7 +104,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
                                    T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
                                    global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                    const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
-  //complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+  // complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
@@ -265,8 +265,8 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
+                      std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
+                      Idx /*factor_num*/, Idx /*num_factors*/) {
     const Idx length_idx = static_cast<Idx>(length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
