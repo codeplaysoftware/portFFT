@@ -85,7 +85,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
-                                  global_data_struct global_data, sycl::kernel_handler& kh,
+                                  global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
@@ -181,13 +181,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                                              n_reals_per_fft * num_batches_in_local_mem,
                                                              i * n_reals_per_fft);
       }
+      // TODO: Replace this with Async DMA where the hardware supports it.
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
                                                              n_reals_per_fft * num_batches_in_local_mem,
                                                              i * n_reals_per_fft);
       }
-      sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
       // load / store in a transposed manner
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -266,9 +266,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           if (working_inner) {
             PORTFFT_UNROLL
             for (Idx j = 0; j < factor_wi; j++) {
+              sycl::vec<T, 2> modifier_priv;
               Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
-                               loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+              // TODO: this leads to compilation error on AMD. Revert back to this once it is resolved
+              // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+              modifier_priv[0] = loc_store_modifier_view[base_offset];
+              modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
+              if (Dir == direction::BACKWARD) {
+                modifier_priv[1] *= -1;
+              }
+              multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+                               priv[2 * j + 1]);
             }
           }
         }
@@ -279,6 +287,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             priv[2 * idx + 1] *= scaling_factor;
           }
         }
+        // Async DMA can start here for the next set of load/store modifiers.
         if (working_inner) {
           global_data.log_dump_private("data in registers after scaling:", priv, n_reals_per_wi);
         }
@@ -449,10 +458,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           PORTFFT_UNROLL
           for (Idx j = 0; j < factor_wi; j++) {
+            sycl::vec<T, 2> modifier_priv;
             Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
                               id_of_fft_in_sg * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_store_modifier_view[base_offset],
-                             loc_store_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+            // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
+            modifier_priv[0] = loc_store_modifier_view[base_offset];
+            modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
+            if (Dir == direction::BACKWARD) {
+              modifier_priv[1] *= -1;
+            }
+            multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+                             priv[2 * j + 1]);
           }
         }
       }
@@ -636,18 +652,18 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& factors) {
+                      std::size_t length, const std::vector<Idx>& factors,
+                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
+                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
+                      Idx /*num_factors*/) {
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
     const Idx casted_length = static_cast<Idx>(length);
     in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
     in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(
-        detail::apply_scale_factor::APPLIED);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
   }
 };
 

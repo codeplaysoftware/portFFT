@@ -96,11 +96,10 @@ portFFT is still in early development. The supported configurations are:
 * Arbitrary forward and backward scales
 * Arbitrary forward and backward offsets
 
-The supported sizes depend on the CMake flags used which can be constrained by the device used.
-`PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.
-For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem.
-
-FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `PORTFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
+Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors.
+The largest prime factor depend on the device and the values set by `PORTFFT_REGISTERS_PER_WI` and `PORTFFT_SUBGROUP_SIZES`.
+For instance with `PORTFFT_REGISTERS_PER_WI` set to `128` (resp. `256`) each work-item can hold a maximum of 27 (resp. 56) complex values, thus with `PORTFFT_SUBGROUP_SIZES` set to `32` the largest prime factor cannot exceed `27*32=864` (resp. `56*32=1792`).
+portFFT may allocate up to `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scratch memory, depending on the configuration passed.
 
 Any batch size is supported as long as the input and output data fits in global memory.
 

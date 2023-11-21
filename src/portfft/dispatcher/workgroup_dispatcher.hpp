@@ -98,7 +98,7 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                    T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
-                                   global_data_struct global_data, sycl::kernel_handler& kh,
+                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                    const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
@@ -264,17 +264,17 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& /*factors*/) {
+                      std::size_t length, const std::vector<Idx>& /*factors*/,
+                      detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
+                      detail::apply_scale_factor scale_factor_applied, detail::level /*level*/, Idx /*factor_num*/,
+                      Idx /*num_factors*/) {
     const Idx casted_length = static_cast<Idx>(length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(casted_length);
     in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * casted_length);
     in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(casted_length));
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(
-        detail::elementwise_multiply::NOT_APPLIED);
-    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(
-        detail::apply_scale_factor::APPLIED);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
   }
 };
 

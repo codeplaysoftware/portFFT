@@ -25,6 +25,7 @@
 #include "portfft/common/transfers.hpp"
 #include "portfft/common/workitem.hpp"
 #include "portfft/descriptor.hpp"
+#include "portfft/dispatcher/global_dispatcher.hpp"
 #include "portfft/dispatcher/subgroup_dispatcher.hpp"
 #include "portfft/dispatcher/workgroup_dispatcher.hpp"
 #include "portfft/dispatcher/workitem_dispatcher.hpp"

@@ -430,6 +430,10 @@ void run_test(const test_params& params) {
                                         host_output_imag, host_reference_output_imag, tolerance);
   } catch (out_of_local_memory_error& e) {
     GTEST_SKIP() << e.what();
+  } catch (unsupported_configuration& e) {  // TODO: this is added to catch unsupported configurations thrown when sizes
+                                            // from workgroup tests suite get dispatched to global impl, when the data
+                                            // layout is not PACKED. remove once we have strided support for global impl
+    GTEST_SKIP() << e.what();
   }
 }
 
