@@ -104,16 +104,16 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
 
 // Sizes that can use either workgroup or Global implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 128),
-                                                ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_global_placement_layouts, fwd_only, interleaved_storage,
+                             ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
                          test_params_print());
 
 // Sizes that use the global implementations
 INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
-                                                ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
                          test_params_print());
 
 // Backward FFT test suite
@@ -127,9 +127,9 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
 // Backward FFT test suite
 // TODO: move these into the BackwardTest once the global impl supports strided layout
 INSTANTIATE_TEST_SUITE_P(BackwardGlobalTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_global_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
-                                                ::testing::Values(sizes_t{32768}, sizes_t{65536}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_global_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             ::testing::Values(sizes_t{32768}, sizes_t{65536}))),
                          test_params_print());
 
 // Multidimensional FFT test suite

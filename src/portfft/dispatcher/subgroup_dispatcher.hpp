@@ -64,10 +64,14 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param output accessor or pointer to global memory for output data. If complex storage (from `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param input accessor or pointer to global memory containing input data. If complex storage (from
+ * `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param output accessor or pointer to global memory for output data. If complex storage (from
+ * `SpecConstComplexStorage`) is split, this is just the real part of data.
+ * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param loc local accessor. Must have enough space for 2*FactorWI*FactorSG*SubgroupSize
  * values
  * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*FactorSG
@@ -564,7 +568,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               global_data, loc_view, output, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
           local2global<level::SUBGROUP, SubgroupSize>(
-              global_data, loc_view, output_imag, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg + local_imag_offset,
+              global_data, loc_view, output_imag, n_ffts_worked_on_by_sg * fft_size,
+              subgroup_id * n_cplx_per_sg + local_imag_offset,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
         }
         sycl::group_barrier(global_data.sg);

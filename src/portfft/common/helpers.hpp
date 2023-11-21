@@ -98,7 +98,7 @@ inline auto get_local_multi_ptr(T ptr) {
 
 /**
  * Gets access to data. No-op for a USM pointer.
- * 
+ *
  * @tparam T type pointed to
  * @param ptr pointer to get access to
  * @return the pointer `ptr`
@@ -109,8 +109,9 @@ T* get_access(T* ptr, sycl::handler&) {
 }
 
 /**
- * Gets access to data. For buffers construct an accessor object - read accessor if the element is const, otherwise write accessor.
- * 
+ * Gets access to data. For buffers construct an accessor object - read accessor if the element is const, otherwise
+ * write accessor.
+ *
  * @tparam T element type in the buffer
  * @param buf buffer
  * @param cgh command group handler
@@ -118,7 +119,7 @@ T* get_access(T* ptr, sycl::handler&) {
  */
 template <typename T>
 auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
-  if constexpr(std::is_const<T>::value){
+  if constexpr (std::is_const<T>::value) {
     return buf.template get_access<sycl::access::mode::read>(cgh);
   } else {
     return buf.template get_access<sycl::access::mode::write>(cgh);
@@ -127,7 +128,7 @@ auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
 
 /**
  * Reinterprets the data. For USM pointers it does just reinterpret cast to a pointer of the new type.
- * 
+ *
  * @tparam T type casting to
  * @tparam TSrc type casting from
  * @param ptr pointer to data to cast
@@ -139,11 +140,12 @@ T* reinterpret(TSrc* ptr) {
 }
 
 /**
- * Reinterprets the data. For buffers it calls the reinterpret function. Size of the type casting from must be a multiple of the size of the type casting to.
- * 
+ * Reinterprets the data. For buffers it calls the reinterpret function. Size of the type casting from must be a
+ * multiple of the size of the type casting to.
+ *
  * @tparam T type casting to
  * @tparam TSrc type casting from
- * @param buf buffer to cast 
+ * @param buf buffer to cast
  * @return buffer with the new type
  */
 template <typename T, typename TSrc>
