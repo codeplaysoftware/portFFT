@@ -111,6 +111,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
 
   Idx factor_n = detail::factorize(fft_size);
   Idx factor_m = fft_size / factor_n;
+  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
   const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
   auto loc_view = padded_view(loc, bank_lines_per_pad);
@@ -129,7 +130,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   Idx local_imag_offset = fft_size * max_num_batches_in_local_mem;
 
   for (IdxGlobal batch_start_idx = first_batch_start; batch_start_idx < n_transforms; batch_start_idx += num_batches_in_kernel) {
-    IdxGlobal offset = static_cast<IdxGlobal>(2 * fft_size) * batch_start_idx;
+    IdxGlobal offset = static_cast<IdxGlobal>(vec_size * fft_size) * batch_start_idx;
     if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
        * In the transposed case, the data is laid out in the local memory column-wise, viewing it as a FFT_Size x
@@ -144,7 +145,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         detail::md_view loc_md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}};
         copy_group<level::WORKGROUP>(global_data, input_view, loc_md_view,
                                     std::array{fft_size, 2 * num_batches_in_local_mem});
-      } else{
+      } else{ // storage == complex_storage::SPLIT_COMPLEX
         detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, batch_start_idx};
         detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, batch_start_idx};
         detail::md_view loc_real_view{loc_view, std::array{max_num_batches_in_local_mem, 1}};
@@ -170,7 +171,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
           detail::md_view output_view{output, std::array{2 * fft_size, 1, 2 * factor_n, 2}, offset};
           copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
                                       std::array{num_batches_in_local_mem, 2, factor_m, factor_n});
-        } else{
+        } else{ // storage == complex_storage::SPLIT_COMPLEX
           detail::md_view loc_real_view{
               loc_view, std::array{1, max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m}};
           detail::md_view loc_imag_view{
@@ -182,7 +183,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
           copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view,
                                       std::array{num_batches_in_local_mem, factor_m, factor_n});
         }
-      } else {
+      } else { //LayoutOut == detail::layout::BATCH_INTERLEAVED
         if(storage == complex_storage::INTERLEAVED_COMPLEX){
           detail::md_view loc_md_view2{
               loc_view, std::array{2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m, 1}};
@@ -191,7 +192,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
               2 * batch_start_idx};
           copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
                                       std::array{factor_m, factor_n, 2 * num_batches_in_local_mem});
-        }else{
+        }else{ // storage == complex_storage::SPLIT_COMPLEX
           detail::md_view loc_real_view{
               loc_view, std::array{max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m, 1}};
           detail::md_view loc_imag_view{
@@ -303,7 +304,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024 * 16, 1024, cgh};
+      sycl::stream s{1024 * 16 * 8*2, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},

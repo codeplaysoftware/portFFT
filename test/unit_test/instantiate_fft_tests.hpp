@@ -93,7 +93,7 @@ INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
