@@ -101,7 +101,8 @@ PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx strid
     T res_real = 0;
     T res_imag = 0;
 
-    PORTFFT_UNROLL // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+    // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+    PORTFFT_UNROLL
     for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       T multi_re = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
       T multi_im = twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
@@ -280,7 +281,8 @@ template <direction Dir, Idx SubgroupSize, typename T>
 PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx factor_sg, const T* sg_twiddles,
                            T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % factor_sg;
-  PORTFFT_UNROLL // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+  // IGC doesn't unroll this loop and generates a warning when called from workgroup impl.
+  PORTFFT_UNROLL
   for (Idx idx_of_element_in_wi = 0; idx_of_element_in_wi < factor_wi; idx_of_element_in_wi++) {
     T& real = inout[2 * idx_of_element_in_wi];
     T& imag = inout[2 * idx_of_element_in_wi + 1];

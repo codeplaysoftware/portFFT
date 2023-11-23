@@ -8,7 +8,7 @@ portFFT is in early stages of development and will support more options and opti
 ## Pre-requisites
 
 * [DPC++] oneAPI release 2023.2.0
-  * Nightly releases should work but are not tested
+  * Nightly releases from [intel/llvm] should work but are not tested
   * Other SYCL implementations are not tested
 * [Level Zero] drivers
   * OpenCL drivers are not supported
@@ -96,11 +96,10 @@ portFFT is still in early development. The supported configurations are:
 * Arbitrary forward and backward scales
 * Arbitrary forward and backward offsets
 
-The supported sizes depend on the CMake flags used which can be constrained by the device used.
-`PORTFFT_VEC_LOAD_BYTES` is used to calculate the largest FFT that can fit in a workitem.
-For instance setting it to `128` (resp. `256`) allows to fit a single precision FFT of size `27` (resp. `56`) in a single workitem.
-
-FFT sizes that are a product of a supported workitem FFT size and the subgroup size - the first value from `PORTFFT_SUBGROUP_SIZES` that is supported by the device - are also supported.
+Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors.
+The largest prime factor depend on the device and the values set by `PORTFFT_REGISTERS_PER_WI` and `PORTFFT_SUBGROUP_SIZES`.
+For instance with `PORTFFT_REGISTERS_PER_WI` set to `128` (resp. `256`) each work-item can hold a maximum of 27 (resp. 56) complex values, thus with `PORTFFT_SUBGROUP_SIZES` set to `32` the largest prime factor cannot exceed `27*32=864` (resp. `56*32=1792`).
+portFFT may allocate up to `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scratch memory, depending on the configuration passed.
 
 Any batch size is supported as long as the input and output data fits in global memory.
 
@@ -132,6 +131,7 @@ welcome! If you have an idea for a new feature or a fix, please get in
 contact.
 
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
+[intel/llvm]: https://github.com/intel/llvm/releases
 [Level Zero]: https://dgpu-docs.intel.com/technologies/level-zero.html
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com

@@ -210,9 +210,11 @@ auto get_descriptor(const test_params& params) {
  *
  * @tparam TestMemory Whether to run the test using USM or buffers
  * @tparam Dir FFT direction
+ * @tparam Storage complex storage to check
  * @tparam DescType Descriptor type
  * @tparam InputFType FFT input type, domain and precision
  * @tparam OutputFType FFT output type, domain and precision
+ * @tparam RealFType real type used in complex values - either `float` or `double`
  * @param queue Associated queue
  * @param desc Descriptor matching the test parameters
  * @param host_input FFT input
@@ -440,6 +442,10 @@ void run_test(const test_params& params) {
     check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag,
                                         host_output_imag, host_reference_output_imag, tolerance);
   } catch (out_of_local_memory_error& e) {
+    GTEST_SKIP() << e.what();
+  } catch (unsupported_configuration& e) {  // TODO: this is added to catch unsupported configurations thrown when sizes
+                                            // from workgroup tests suite get dispatched to global impl, when the data
+                                            // layout is not PACKED. remove once we have strided support for global impl
     GTEST_SKIP() << e.what();
   }
 }

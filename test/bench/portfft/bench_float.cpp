@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
   bench_dft<std::complex<ftype>>(q, profiling_q, "small_1d", {16}, 8 * 1024 * 1024);
   bench_dft<std::complex<ftype>>(q, profiling_q, "medium_small_1d", {256}, 512 * 1024);
   bench_dft<std::complex<ftype>>(q, profiling_q, "medium_large_1d", {4096}, 32 * 1024);
+  bench_dft<std::complex<ftype>>(q, profiling_q, "large_1d", {65536}, 2048);
 
   benchmark::RunSpecifiedBenchmarks();
   benchmark::Shutdown();

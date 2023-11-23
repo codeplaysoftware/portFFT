@@ -41,7 +41,7 @@ constexpr direction inv(direction dir) { return dir == direction::FORWARD ? dire
 namespace detail {
 enum class pad { DO_PAD, DONT_PAD };
 
-enum class level { WORKITEM, SUBGROUP, WORKGROUP, DEVICE };
+enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
 
 enum class layout {
   /// Packed layout represents default strides and distance.

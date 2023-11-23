@@ -96,30 +96,62 @@ inline auto get_local_multi_ptr(T ptr) {
   return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
 }
 
+/**
+ * Gets access to data. No-op for a USM pointer.
+ *
+ * @tparam T type pointed to
+ * @param ptr pointer to get access to
+ * @return the pointer `ptr`
+ */
 template <typename T>
 T* get_access(T* ptr, sycl::handler&) {
   return ptr;
 }
 
-template <typename T, std::enable_if_t<std::is_const<T>::value>* = nullptr>
+/**
+ * Gets access to data. For buffers construct an accessor object - read accessor if the element is const, otherwise
+ * write accessor.
+ *
+ * @tparam T element type in the buffer
+ * @param buf buffer
+ * @param cgh command group handler
+ * @return accessor
+ */
+template <typename T>
 auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
-  return buf.template get_access<sycl::access::mode::read>(cgh);
+  if constexpr (std::is_const<T>::value) {
+    return buf.template get_access<sycl::access::mode::read>(cgh);
+  } else {
+    return buf.template get_access<sycl::access::mode::write>(cgh);
+  }
 }
 
-template <typename T, std::enable_if_t<!std::is_const<T>::value>* = nullptr>
-auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
-  return buf.template get_access<sycl::access::mode::write>(cgh);
-}
-
+/**
+ * Reinterprets the data. For USM pointers it does just reinterpret cast to a pointer of the new type.
+ *
+ * @tparam T type casting to
+ * @tparam TSrc type casting from
+ * @param ptr pointer to data to cast
+ * @return reinterpreted pointer
+ */
 template <typename T, typename TSrc>
 T* reinterpret(TSrc* ptr) {
   return reinterpret_cast<T*>(ptr);
 }
 
+/**
+ * Reinterprets the data. For buffers it calls the reinterpret function. Size of the type casting from must be a
+ * multiple of the size of the type casting to.
+ *
+ * @tparam T type casting to
+ * @tparam TSrc type casting from
+ * @param buf buffer to cast
+ * @return buffer with the new type
+ */
 template <typename T, typename TSrc>
 auto reinterpret(const sycl::buffer<TSrc, 1>& buf) {
   static_assert(sizeof(TSrc) % sizeof(T) == 0,
-                "Can only reinterpret from a type, size of which is a multiple of size of the target type!");
+                "Can only reinterpret from a type, size of which is a multiple of size of the type casting to!");
   return buf.template reinterpret<T, 1>(sizeof(TSrc) / sizeof(T) * buf.size());
 }
 
