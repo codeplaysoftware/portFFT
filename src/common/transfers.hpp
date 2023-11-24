@@ -70,7 +70,7 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
   auto index_transform = [=](Idx i) PORTFFT_INLINE { return local_offset + i * SubgroupSize + local_id; };
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
-    PORTFFT_UNROLL
+    /*PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
       if (is_sg_contiguous) {
         global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
@@ -78,10 +78,34 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
       } else {
         local[index_transform(j)] = vec[static_cast<int>(j)];
       }
-    }
+    }*/
+    // j = 0
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 0 * SubgroupSize]),
+                          vec[static_cast<int>(0)]);
+    // j = 1
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 1 * SubgroupSize]),
+                          vec[static_cast<int>(1)]);
+    // j = 2
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 2 * SubgroupSize]),
+                          vec[static_cast<int>(2)]);
+    // j = 3
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 3 * SubgroupSize]),
+                          vec[static_cast<int>(3)]);
+    // j = 4
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 4 * SubgroupSize]),
+                          vec[static_cast<int>(4)]);
+    // j = 5
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 5 * SubgroupSize]),
+                          vec[static_cast<int>(5)]);
+    // j = 6
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 6 * SubgroupSize]),
+                          vec[static_cast<int>(6)]);
+    // j = 7
+    global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + 7 * SubgroupSize]),
+                          vec[static_cast<int>(7)]);
   } else {
     vec_t vec;
-    PORTFFT_UNROLL
+    /*PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
       if (is_sg_contiguous) {
         vec[static_cast<int>(j)] =
@@ -89,7 +113,31 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
       } else {
         vec[static_cast<int>(j)] = local[index_transform(j)];
       }
-    }
+    }*/
+    // j = 0
+    vec[static_cast<int>(0)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 0 * SubgroupSize]));
+    // j = 1
+    vec[static_cast<int>(1)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 1 * SubgroupSize]));
+    // j = 2
+    vec[static_cast<int>(2)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 2 * SubgroupSize]));
+    // j = 3
+    vec[static_cast<int>(3)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 3 * SubgroupSize]));
+    // j = 4
+    vec[static_cast<int>(4)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 4 * SubgroupSize]));
+    // j = 5
+    vec[static_cast<int>(5)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 5 * SubgroupSize]));
+    // j = 6
+    vec[static_cast<int>(6)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 6 * SubgroupSize]));
+    // j = 7
+    vec[static_cast<int>(7)] =
+        global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + 7 * SubgroupSize]));
     global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
   }
   return SgBlockCopyBlockSize;
