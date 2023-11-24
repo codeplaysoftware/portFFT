@@ -451,17 +451,83 @@ PORTFFT_INLINE void local2global(detail::global_data_struct global_data, LocalVi
  * @param local_offset offset to the local pointer
  */
 template <typename LocalT, typename PrivT>
-PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx num_elements_per_wi, LocalT local,
-                                  PrivT priv, Idx local_id, Idx stride, Idx local_offset = 0) {
+PORTFFT_INLINE void local2private(detail::global_data_struct global_data, Idx, LocalT local,
+                                  PrivT priv, Idx local_id, Idx, Idx local_offset = 0) {
+  static constexpr Idx num_elements_per_wi = 16 * 2;
+  static constexpr Idx stride = 16 * 2;
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "num_elements_per_wi", num_elements_per_wi, "local_id", local_id, "stride",
                                 stride, "local_offset", local_offset);
-  PORTFFT_UNROLL
+  /*PORTFFT_UNROLL
   for (Idx i = 0; i < num_elements_per_wi; i++) {
     Idx local_idx = local_offset + local_id * stride + i;
-    global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
+    //global_data.log_message(func_name, "from", local_idx, "to", i, "value", local[local_idx]);
     priv[i] = local[local_idx];
-  }
+  }*/
+  // i = 0
+  priv[0] = local[local_offset + local_id * stride + 0];
+  // i = 1
+  priv[1] = local[local_offset + local_id * stride + 1];
+  // i = 2
+  priv[2] = local[local_offset + local_id * stride + 2];
+  // i = 3
+  priv[3] = local[local_offset + local_id * stride + 3];
+  // i = 4
+  priv[4] = local[local_offset + local_id * stride + 4];
+  // i = 5
+  priv[5] = local[local_offset + local_id * stride + 5];
+  // i = 6
+  priv[6] = local[local_offset + local_id * stride + 6];
+  // i = 7
+  priv[7] = local[local_offset + local_id * stride + 7];
+  // i = 8
+  priv[8] = local[local_offset + local_id * stride + 8];
+  // i = 9
+  priv[9] = local[local_offset + local_id * stride + 9];
+  // i = 10
+  priv[10] = local[local_offset + local_id * stride + 10];
+  // i = 11
+  priv[11] = local[local_offset + local_id * stride + 11];
+  // i = 12
+  priv[12] = local[local_offset + local_id * stride + 12];
+  // i = 13
+  priv[13] = local[local_offset + local_id * stride + 13];
+  // i = 14
+  priv[14] = local[local_offset + local_id * stride + 14];
+  // i = 15
+  priv[15] = local[local_offset + local_id * stride + 15];
+  // i = 16
+  priv[16] = local[local_offset + local_id * stride + 16];
+  // i = 17
+  priv[17] = local[local_offset + local_id * stride + 17];
+  // i = 18
+  priv[18] = local[local_offset + local_id * stride + 18];
+  // i = 19
+  priv[19] = local[local_offset + local_id * stride + 19];
+  // i = 20
+  priv[20] = local[local_offset + local_id * stride + 20];
+  // i = 21
+  priv[21] = local[local_offset + local_id * stride + 21];
+  // i = 22
+  priv[22] = local[local_offset + local_id * stride + 22];
+  // i = 23
+  priv[23] = local[local_offset + local_id * stride + 23];
+  // i = 24
+  priv[24] = local[local_offset + local_id * stride + 24];
+  // i = 25
+  priv[25] = local[local_offset + local_id * stride + 25];
+  // i = 26
+  priv[26] = local[local_offset + local_id * stride + 26];
+  // i = 27
+  priv[27] = local[local_offset + local_id * stride + 27];
+  // i = 2
+  priv[28] = local[local_offset + local_id * stride + 28];
+  // i = 29
+  priv[29] = local[local_offset + local_id * stride + 29];
+  // i = 30
+  priv[30] = local[local_offset + local_id * stride + 30];
+  // i = 31
+  priv[31] = local[local_offset + local_id * stride + 31];
 }
 
 /**
@@ -552,15 +618,81 @@ PORTFFT_INLINE void global_batchinter_2_local_batchinter(detail::global_data_str
  * @param local_offset offset to the local base index
  */
 template <typename PrivT, typename LocalT>
-PORTFFT_INLINE void private2local(detail::global_data_struct global_data, Idx num_elemets_per_wi, PrivT priv,
-                                  LocalT local, Idx local_id, Idx stride, Idx local_offset = 0) {
+PORTFFT_INLINE void private2local(detail::global_data_struct global_data, Idx, PrivT priv,
+                                  LocalT local, Idx local_id, Idx, Idx local_offset = 0) {
+  static constexpr Idx num_elements_per_wi = 16 * 2;
+  static constexpr Idx stride = 16 * 2;
   const char* func_name = __func__;
   global_data.log_message_local(func_name, "local_id", local_id, "stride", stride, "local_offset", local_offset);
-  PORTFFT_UNROLL
+  /*PORTFFT_UNROLL
   for (Idx i = 0; i < num_elemets_per_wi; i++) {
     global_data.log_message(func_name, "from", i, "to", local_offset + local_id * stride + i, "value", priv[i]);
     local[local_offset + local_id * stride + i] = priv[i];
-  }
+  }*/
+  // i = 0
+  local[local_offset + local_id * stride + 0] = priv[0];
+  // i = 1
+  local[local_offset + local_id * stride + 1] = priv[1];
+  // i = 2
+  local[local_offset + local_id * stride + 2] = priv[2];
+  // i = 3
+  local[local_offset + local_id * stride + 3] = priv[3];
+  // i = 4
+  local[local_offset + local_id * stride + 4] = priv[4];
+  // i = 5
+  local[local_offset + local_id * stride + 5] = priv[5];
+  // i = 6
+  local[local_offset + local_id * stride + 6] = priv[6];
+  // i = 7
+  local[local_offset + local_id * stride + 7] = priv[7];
+  // i = 8
+  local[local_offset + local_id * stride + 8] = priv[8];
+  // i = 9
+  local[local_offset + local_id * stride + 9] = priv[9];
+  // i = 10
+  local[local_offset + local_id * stride + 10] = priv[10];
+  // i = 11
+  local[local_offset + local_id * stride + 11] = priv[11];
+  // i = 12
+  local[local_offset + local_id * stride + 12] = priv[12];
+  // i = 13
+  local[local_offset + local_id * stride + 13] = priv[13];
+  // i = 14
+  local[local_offset + local_id * stride + 14] = priv[14];
+  // i = 15
+  local[local_offset + local_id * stride + 15] = priv[15];
+  // i = 16
+  local[local_offset + local_id * stride + 16] = priv[16];
+  // i = 17
+  local[local_offset + local_id * stride + 17] = priv[17];
+  // i = 18
+  local[local_offset + local_id * stride + 18] = priv[18];
+  // i = 19
+  local[local_offset + local_id * stride + 19] = priv[19];
+  // i = 20
+  local[local_offset + local_id * stride + 20] = priv[20];
+  // i = 21
+  local[local_offset + local_id * stride + 21] = priv[21];
+  // i = 22
+  local[local_offset + local_id * stride + 22] = priv[22];
+  // i = 23
+  local[local_offset + local_id * stride + 23] = priv[23];
+  // i = 24
+  local[local_offset + local_id * stride + 24] = priv[24];
+  // i = 25
+  local[local_offset + local_id * stride + 25] = priv[25];
+  // i = 26
+  local[local_offset + local_id * stride + 26] = priv[26];
+  // i = 27
+  local[local_offset + local_id * stride + 27] = priv[27];
+  // i = 28
+  local[local_offset + local_id * stride + 28] = priv[28];
+  // i = 29
+  local[local_offset + local_id * stride + 29] = priv[29];
+  // i = 30
+  local[local_offset + local_id * stride + 30] = priv[30];
+  // i = 31
+  local[local_offset + local_id * stride + 31] = priv[31];
 }
 
 /**
