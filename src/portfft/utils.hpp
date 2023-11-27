@@ -26,6 +26,8 @@
 #include <limits>
 #include <vector>
 
+#include "common/memory_views.hpp"
+#include "common/workgroup.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 
@@ -96,26 +98,32 @@ constexpr bool can_cast_safely(const InputType& x) {
  * @param factor_size Length of the factor
  * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
  * implementations
- * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
- * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
+ * The function should accept factor size and whether the data layout in the local memory would be in a batch
+ * interleaved format, and whether or not load modifers be used. and should return a boolean indicating whether or not
+ * the factor size can fit in any of the implementation.
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
- * @return
+ * @param encountered_prime whether or not a large prime was encountered during factorization
+ * @param requires_load_modifier whether or not load modifier will be required.
+ * @return Largest factor that was possible to fit in either or workitem/subgroup level FFTs
  */
 template <typename F>
-IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed,
+                               bool& encountered_prime, bool requires_load_modifier) {
   IdxGlobal fact_1 = factor_size;
-  if (check_and_select_target_level(fact_1, transposed)) {
+  if (check_and_select_target_level(fact_1, transposed, requires_load_modifier)) {
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
-    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
+    encountered_prime = true;
+    return factor_size;
   }
   do {
     fact_1 = detail::factorize(fact_1);
     if (fact_1 == 1) {
-      throw internal_error("Factorization Failed !");
+      encountered_prime = true;
+      return factor_size;
     }
-  } while (!check_and_select_target_level(fact_1));
+  } while (!check_and_select_target_level(fact_1, transposed, requires_load_modifier));
   return fact_1;
 }
 
@@ -127,16 +135,25 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
  * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
  * implementation.
+ * @param requires_load_modifier whether or not load modifier will be required.
+ * @return whether or not a large prime was encounterd during factorization.
  */
 template <typename F>
-void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level, bool requires_load_modifier = false) {
+  bool encountered_prime = false;
   if (detail::factorize(input_size) == 1) {
-    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
+    encountered_prime = true;
+    return encountered_prime;
   }
   IdxGlobal temp = 1;
   while (input_size / temp != 1) {
-    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+    if (encountered_prime) {
+      return encountered_prime;
+    }
+    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true, encountered_prime,
+                                 requires_load_modifier);
   }
+  return encountered_prime;
 }
 
 /**
@@ -173,6 +190,54 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
       sycl::free(ptr, captured_queue);
     }
   });
+}
+
+/**
+ * @brief Gets the cumulative local memory usage for a particular level
+ * @tparam Scalar Scalar type
+ * @param level level to get the cumulative local memory usage for
+ * @param factor_size Factor size
+ * @param is_batch_interleaved Will the data be in a batch interleaved format in local memory
+ * @param is_load_modifier_applied Is load modifier applied
+ * @param is_store_modifier_applied Is store modifier applied
+ * @param workgroup_size workgroup size with which the kernel will be launched
+ * @return cumulative local memory usage in terms on number of scalars in local memory.
+ */
+inline Idx get_local_memory_usage(detail::level level, Idx factor_size, bool is_batch_interleaved,
+                                  bool is_load_modifier_applied, bool is_store_modifier_applied, Idx subgroup_size,
+                                  Idx workgroup_size) {
+  Idx local_memory_usage = 0;
+  switch (level) {
+    case detail::level::WORKITEM: {
+      // This will use local memory for load / store modifiers in the future.
+      if (!is_batch_interleaved) {
+        local_memory_usage += detail::pad_local(2 * factor_size * workgroup_size, 1);
+      }
+    } break;
+    case detail::level::SUBGROUP: {
+      local_memory_usage += 2 * factor_size;
+      Idx fact_sg = factorize_sg(factor_size, subgroup_size);
+      Idx num_ffts_in_sg = subgroup_size / fact_sg;
+      Idx num_ffts_in_local_mem =
+          is_batch_interleaved ? workgroup_size / 2 : num_ffts_in_sg * (workgroup_size / subgroup_size);
+      local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
+      if (is_load_modifier_applied) {
+        local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
+      }
+      if (is_store_modifier_applied) {
+        local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
+      }
+    } break;
+    case detail::level::WORKGROUP: {
+      Idx n = detail::factorize(factor_size);
+      Idx m = factor_size / n;
+      Idx num_ffts_in_local_mem = is_batch_interleaved ? workgroup_size / 2 : 1;
+      local_memory_usage += detail::pad_local(2 * factor_size * num_ffts_in_local_mem, bank_lines_per_pad_wg(m));
+    } break;
+    default:
+      break;
+  }
+  return local_memory_usage;
 }
 
 }  // namespace detail

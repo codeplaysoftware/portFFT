@@ -337,8 +337,9 @@ class committed_descriptor {
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
         detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
+      bool is_prime = false;
       if (n_idx_global == 1) {
-        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
+        is_prime = true;
       }
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
@@ -354,7 +355,7 @@ class committed_descriptor {
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
-          (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
+          (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) && !is_prime) {
         factors.push_back(factor_wi_n);
         factors.push_back(factor_sg_n);
         factors.push_back(factor_wi_m);
@@ -366,7 +367,8 @@ class committed_descriptor {
       }
     }
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
-    auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
+    auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true,
+                                             bool load_modifier_required = false) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
@@ -375,25 +377,13 @@ class committed_descriptor {
         return true;
       }
       bool fits_in_local_memory_subgroup = [&]() {
-        Idx temp_num_sgs_in_wg;
         IdxGlobal factor_sg = detail::factorize_sg<IdxGlobal>(factor_size, SubgroupSize);
         IdxGlobal factor_wi = factor_size / factor_sg;
         if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
-          if (batch_interleaved_layout) {
-            return (2 *
-                        num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-                            detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                            {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
-                        sizeof(Scalar) +
-                    2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
-                   static_cast<std::size_t>(local_memory_size);
-          }
-          return (num_scalars_in_local_mem<detail::layout::PACKED>(
-                      detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                      {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
-                      sizeof(Scalar) +
-                  2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
-                 static_cast<std::size_t>(local_memory_size);
+          return (detail::get_local_memory_usage(detail::level::SUBGROUP, static_cast<Idx>(factor_size),
+                                                 batch_interleaved_layout, load_modifier_required, true, SubgroupSize,
+                                                 PORTFFT_SGS_IN_WG * SubgroupSize) *
+                  static_cast<Idx>(sizeof(Scalar))) <= local_memory_size;
         }
         return false;
       }();
@@ -408,7 +398,12 @@ class committed_descriptor {
       }
       return false;
     };
-    detail::factorize_input(fft_size, check_and_select_target_level);
+    if (detail::factorize_input(fft_size, check_and_select_target_level)) {
+      param_vec.clear();
+      IdxGlobal padded_fft_size =
+          static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
+      detail::factorize_input(padded_fft_size, check_and_select_target_level, true);
+    }
     return {detail::level::GLOBAL, param_vec};
   }
 
