@@ -105,10 +105,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
 
-  const Idx fft_size = 16;//kh.get_specialization_constant<detail::SpecConstFftSize>();
+  static constexpr Idx fft_size = 16;//kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
-  const Idx n_reals = 2 * fft_size;
+  static constexpr Idx n_reals = 2 * fft_size;
 
   T priv[2 * 16];
   T wi_priv_scratch[2 * wi_temps(16)];
@@ -125,7 +125,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
   for (IdxGlobal i = global_id; i < round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(SubgroupSize));
        i += global_size) {
     bool working = i < n_transforms;
-    Idx n_working = sycl::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
+    //Idx n_working = sycl::min(SubgroupSize, static_cast<Idx>(n_transforms - i) + subgroup_local_id);
+    static constexpr Idx n_working = SubgroupSize;
 
     IdxGlobal global_offset = static_cast<IdxGlobal>(n_reals) * (i - static_cast<IdxGlobal>(subgroup_local_id));
     if (LayoutIn == detail::layout::PACKED) {

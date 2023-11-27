@@ -167,7 +167,8 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct global_
 template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, typename GlobalViewT,
           typename LocalViewT>
 PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, GlobalViewT global,
-                                       IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
+                                       IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx /*n*/) {
+  static constexpr Idx n = 16 * 2 * SubgroupSize;
   static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   using real_t = get_element_remove_cv_t<GlobalViewT>;
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Mismatch between global and local types");
@@ -177,7 +178,7 @@ PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct global_data, G
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset, "n",
                                         n);
 
-  Idx block_count = n / BlockSize;
+  static constexpr Idx block_count = n / BlockSize;
   if constexpr (Level == level::SUBGROUP) {
     for (Idx block_idx{0}; block_idx < block_count; ++block_idx) {
       Idx offset = block_idx * BlockSize;
