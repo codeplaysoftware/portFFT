@@ -452,18 +452,20 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * @param batch_start start of the current global batch being processed
  * @param factor_id current factor being proccessed
  * @param total_factors total number of factors
- * @param dependencies even dependencies
+ * @param in_dependencies input dependencies
+ * @param out_events std::vector to store event per batch in l2
  * @param queue queue
- * @return vector events, one for each batch in l2
+ * @return void
  */
 template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
           Idx SubgroupSize, typename TIn>
-std::vector<sycl::event> compute_level(
-    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
-    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
+void compute_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input,
+                   Scalar* output, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
+                   IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+                   IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2,
+                   IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id, Idx total_factors,
+                   const std::vector<sycl::event>& in_dependencies, std::vector<sycl::event>& out_events,
+                   sycl::queue& queue) {
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
@@ -493,21 +495,20 @@ std::vector<sycl::event> compute_level(
   }();
   const IdxGlobal* inner_batches = factors_triple + total_factors;
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
-  std::vector<sycl::event> events;
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
-    events.push_back(queue.submit([&](sycl::handler& cgh) {
+    out_events[static_cast<std::size_t>(batch_in_l2)] = queue.submit([&](sycl::handler& cgh) {
       sycl::local_accessor<Scalar, 1> loc_for_input(local_memory_for_input, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_twiddles(loc_mem_for_twiddles, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_modifier(local_mem_for_store_modifier, cgh);
       auto in_acc_or_usm = detail::get_access<const Scalar>(input, cgh);
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
-      if (static_cast<Idx>(dependencies.size()) < num_batches_in_l2) {
-        cgh.depends_on(dependencies);
+      if (static_cast<Idx>(in_dependencies.size()) < num_batches_in_l2) {
+        cgh.depends_on(in_dependencies);
       } else {
         // If events is a vector, the order of events is assumed to correspond to the order batches present in last
         // level cache.
-        cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
+        cgh.depends_on(in_dependencies.at(static_cast<std::size_t>(batch_in_l2)));
       }
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
@@ -517,9 +518,8 @@ std::vector<sycl::event> compute_level(
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
-    }));
+    });
   }
-  return events;
 }
 }  // namespace detail
 }  // namespace portfft
