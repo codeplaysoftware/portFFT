@@ -355,7 +355,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                              static_cast<std::size_t>(num_factors)),
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
-            num_factors, 0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events);
+            num_factors, 0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
         current_events[0].wait();
       }
       current_events[0] = detail::transpose_level<Scalar, Domain>(
@@ -363,7 +363,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out, factors_and_scan, committed_size,
           static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), 0, num_factors,
           2 * static_cast<IdxGlobal>(i) * committed_size + output_offset, desc.queue, desc.scratch_ptr_1,
-          desc.scratch_ptr_2, current_events);
+          desc.scratch_ptr_2, current_events, previous_events);
     }
     return current_events[0];
   }

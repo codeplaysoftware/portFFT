@@ -381,6 +381,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
  * @param ptr1 shared_ptr for the first scratch pointer
  * @param ptr2 shared_ptr for the second scratch pointer
  * @param events event dependencies
+ * @param generated_events std::vector to collect all generated events during transpositions.
  * @return sycl::event
  */
 template <typename Scalar, domain Domain, typename TOut>
@@ -389,8 +390,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
                             Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
                             std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
-                            const std::vector<sycl::event>& events) {
-  std::vector<sycl::event> transpose_events;
+                            const std::vector<sycl::event>& events, std::vector<sycl::event>& generated_events) {
   IdxGlobal ld_input = kd_struct.factors.at(1);
   IdxGlobal ld_output = kd_struct.factors.at(0);
   const IdxGlobal* inner_batches = factors_triple + total_factors;
@@ -398,7 +398,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
   for (Idx batch_in_l2 = 0;
        batch_in_l2 < num_batches_in_l2 && (static_cast<IdxGlobal>(batch_in_l2) + batch_start) < n_transforms;
        batch_in_l2++) {
-    transpose_events.push_back(queue.submit([&](sycl::handler& cgh) {
+    generated_events[static_cast<std::size_t>(batch_in_l2)] = queue.submit([&](sycl::handler& cgh) {
       auto out_acc_or_usm = detail::get_access<Scalar>(output, cgh);
       sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
       if (static_cast<Idx>(events.size()) < num_batches_in_l2) {
@@ -412,16 +412,16 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
       detail::dispatch_transpose_kernel_impl<Scalar>(
           input + 2 * committed_size * batch_in_l2, out_acc_or_usm, loc, factors_triple, inner_batches, inclusive_scan,
           output_offset + 2 * committed_size * batch_in_l2, ld_output, ld_input, cgh);
-    }));
+    });
   }
   if (factor_num != 0) {
     return queue.submit([&](sycl::handler& cgh) {
-      cgh.depends_on(transpose_events);
+      cgh.depends_on(generated_events);
       cgh.host_task([&]() { ptr1.swap(ptr2); });
     });
   }
   return queue.submit([&](sycl::handler& cgh) {
-    cgh.depends_on(transpose_events);
+    cgh.depends_on(generated_events);
     cgh.host_task([&]() {});
   });
 }
