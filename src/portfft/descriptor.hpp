@@ -240,6 +240,7 @@ class committed_descriptor {
     Idx used_sg_size;
     Idx num_batches_in_l2;
     Idx num_factors;
+    bool is_prime;
 
     dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length, Idx used_sg_size)
         : kernels(kernels), level(level), length(length), used_sg_size(used_sg_size) {}
@@ -405,6 +406,7 @@ class committed_descriptor {
       IdxGlobal padded_fft_size =
           static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
       detail::factorize_input(padded_fft_size, check_and_select_target_level, true);
+      detail::factorize_input(padded_fft_size, check_and_select_target_level, false);
     }
     return {detail::level::GLOBAL, param_vec};
   }
@@ -524,6 +526,7 @@ class committed_descriptor {
       std::vector<kernel_data_struct> result;
       if (is_compatible) {
         std::size_t counter = 0;
+        std::size_t dimension_size = 1;
         for (auto [level, ids, factors] : prepared_vec) {
           auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
           if (top_level == detail::level::GLOBAL) {
@@ -556,10 +559,12 @@ class committed_descriptor {
             is_compatible = false;
             break;
           }
+          dimension_size *=
+              static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
           counter++;
         }
         if (is_compatible) {
-          return {result, top_level, params.lengths[kernel_num], SubgroupSize};
+          return {result, top_level, dimension_size, SubgroupSize};
         }
       }
     }
@@ -584,13 +589,30 @@ class committed_descriptor {
           break;
         }
       }
+      IdxGlobal dimension_size = static_cast<IdxGlobal>(dimensions.at(global_dimension).length);
+      Idx num_forward_factors = 0;
+      Idx num_backward_factors = 0;
+      IdxGlobal temp_acc = 1;
       std::vector<IdxGlobal> factors;
       std::vector<IdxGlobal> sub_batches;
       std::vector<IdxGlobal> inclusive_scan;
       std::size_t cache_required_for_twiddles = 0;
       for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
-        IdxGlobal factor_size = static_cast<IdxGlobal>(
+        if (temp_acc == dimension_size) {
+          break;
+        }
+        temp_acc *= static_cast<IdxGlobal>(
             std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
+        num_forward_factors++;
+      }
+      if (dimensions.at(i).is_prime) {
+        num_backward_factors = static_cast<Idx>(dimensions.at(global_dimension).kernels.length()) - num_forward_factors;
+      }
+      const auto& kernels_for_dimension = dimensions.at(global_dimension).kernels;
+      for (Idx i = 0; i < num_forward_factors; i++) {
+        IdxGlobal factor_size = static_cast<IdxGlobal>(std::accumulate(kernels_for_dimension.at(i).factors.begin(),
+                                                                       kernels_for_dimension.at(i).factors.end(), 1,
+                                                                       std::multiplies<Idx>()));
         cache_required_for_twiddles +=
             static_cast<std::size_t>(2 * factor_size * kernel_data.batch_size) * sizeof(Scalar);
         factors.push_back(factor_size);
@@ -618,8 +640,8 @@ class committed_descriptor {
       for (std::size_t i = 1; i < factors.size(); i++) {
         inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
       }
-      dimensions.at(global_dimension).factors_and_scan =
-          detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
+      Idx mem_for_inclusive_scans = 3 * (num_forward_factors + num_backward_factors);
+      dimensions.at(global_dimension).factors_and_scan = detail::make_shared<IdxGlobal>(mem_for_inclusive_scans, queue);
       queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
       queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
                  sub_batches.size());
@@ -641,6 +663,11 @@ class committed_descriptor {
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+      }
+      if (num_backward_factors != 0) {
+        factors.clear();
+        sub_batches.clear();
+        inclusive_scan.clear();
       }
     } else {
       std::size_t max_encountered_global_size = 0;
@@ -760,6 +787,9 @@ class committed_descriptor {
     for (std::size_t i = 0; i < n_kernels; i++) {
       if (dimensions.at(i).level == detail::level::GLOBAL) {
         is_scratch_required = true;
+        if (detail::factorize(static_cast<IdxGlobal>(params.lengths.at(0))) == 1) {
+          dimensions.at(i).is_prime = true;
+        }
         num_global_level_dimensions++;
       }
     }
