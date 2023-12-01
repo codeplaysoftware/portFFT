@@ -298,7 +298,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
       cgh.parallel_for<detail::workitem_kernel<
           Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
-          detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, SubgroupSize>>(
+          detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             Idx fft_size = kh.get_specialization_constant<detail::WorkitemSpecConstFftSize>();
@@ -310,7 +310,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             global_data.log_message_global("Running workitem kernel");
             detail::workitem_dispatch_impl<Dir, LayoutIn, LayoutOut, detail::elementwise_multiply::NOT_APPLIED,
                                            detail::elementwise_multiply::NOT_APPLIED,
-                                           detail::apply_scale_factor::APPLIED, SubgroupSize,
+                                           detail::apply_scale_factor::NOT_APPLIED, SubgroupSize,
                                            detail::cooley_tukey_size_list_t, Scalar>(
                 &in_acc_or_usm[0] + 2 * input_offset, &out_acc_or_usm[0] + 2 * output_offset, &loc[0], n_transforms,
                 global_data, scale_factor, fft_size);
