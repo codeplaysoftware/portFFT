@@ -490,18 +490,18 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data);
+      static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data);
     };
   };
 
   /**
    * Calculates twiddle factors for the implementation in use.
    *
-   * @param kernel_data data about the kernel the twiddles are needed for
+   * @param dimension_data data about the dimension for which twiddles are needed
    * @return Scalar* USM pointer to the twiddle factors
    */
-  Scalar* calculate_twiddles(kernel_data_struct& kernel_data) {
-    return dispatch<calculate_twiddles_struct>(kernel_data.level, kernel_data);
+  Scalar* calculate_twiddles(dimension_struct& dimension_data) {
+    return dispatch<calculate_twiddles_struct>(dimension_data.level, dimension_data);
   }
 
   /**
@@ -740,24 +740,14 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
-      if (dimensions.at(i).level == detail::level::GLOBAL) {
-        dimensions.back().kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
-            dispatch<calculate_twiddles_struct>(detail::level::GLOBAL, dimensions.back().kernels.at(0)),
-            [queue](Scalar* ptr) {
-              if (ptr != nullptr) {
-                sycl::free(ptr, queue);
-              }
-            });
-      } else {
-        for (kernel_data_struct& kernel : dimensions.back().kernels) {
-          kernel.twiddles_forward = std::shared_ptr<Scalar>(calculate_twiddles(kernel), [queue](Scalar* ptr) {
+      dimensions.back().kernels.at(0).twiddles_forward =
+          std::shared_ptr<Scalar>(calculate_twiddles(dimensions.back()), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
               sycl::free(ptr, queue);
             }
           });
-        }
-      }
     }
+
     bool is_scratch_required = false;
     Idx num_global_level_dimensions = 0;
     for (std::size_t i = 0; i < n_kernels; i++) {
@@ -1354,7 +1344,7 @@ class committed_descriptor {
       static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag,
                                  TOut& out_imag, const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t forward_offset, std::size_t backward_offset, Scalar scale_factor,
-                                 std::vector<kernel_data_struct>& kernels);
+                                 dimension_struct& dimension_data);
     };
   };
 
@@ -1405,7 +1395,7 @@ class committed_descriptor {
         dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out),
         detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
         static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(vec_multiplier * input_offset),
-        static_cast<IdxGlobal>(vec_multiplier * output_offset), scale_factor, dimension_data.kernels);
+        static_cast<IdxGlobal>(vec_multiplier * output_offset), scale_factor, dimension_data);
   }
 };
 
