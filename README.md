@@ -26,8 +26,8 @@ Clone portFFT and run the following commands from the cloned repository.
 Build using DPC++ 2024.0 as:
 
 ```shell
-source /opt/intel/oneapi/compiler/2024.0/env/vars.sh
-cmake -Bbuild -DCMAKE_CXX_COMPILER=/opt/intel/oneapi/compiler/2024.0/linux/bin/icpx -DPORTFFT_BUILD_TESTS=ON -DPORTFFT_BUILD_BENCHMARKS=ON
+source /path/to/intel/oneapi/compiler/2024.0/env/vars.sh
+cmake -Bbuild -DCMAKE_CXX_COMPILER=icpx -DPORTFFT_BUILD_TESTS=ON -DPORTFFT_BUILD_BENCHMARKS=ON
 cmake --build build
 ```
 
