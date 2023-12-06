@@ -1,5 +1,23 @@
 ---
-Checks:          'readability-*,-readability-identifier-length,-readability-function-cognitive-complexity,-readability-named-parameter,performance-*,bugprone-*,-bugprone-standalone-empty,-bugprone-easily-swappable-parameters,-bugprone-implicit-widening-of-multiplication-result,misc-*,-misc-const-correctness,-misc-non-private-member-variables-in-classes,modernize-type-traits,modernize-use-using,llvm-include-order'
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-standalone-empty,
+  llvm-include-order,
+  misc-*,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  modernize-type-traits,
+  modernize-use-using,
+  performance-*,
+  -performance-avoid-endl,
+  readability-*,
+  -readability-function-cognitive-complexity,
+  -readability-identifier-length,
+  -readability-named-parameter,
+
 WarningsAsErrors: true
 CheckOptions:
   - key:             readability-identifier-naming.ClassCase
