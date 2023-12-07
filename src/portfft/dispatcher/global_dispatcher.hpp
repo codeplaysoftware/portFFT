@@ -310,16 +310,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED,
-                            SubgroupSize>(
-          kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan,
-          scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
-          2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
-          static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
-          dimension_data.num_factors, current_events, previous_events, desc.queue);
-      intermediate_twiddles_offset += 2 * kernels.at(0).batch_size *
-                                      static_cast<IdxGlobal>(kernels.at(0).length);
-      impl_twiddle_offset += detail::increment_twiddle_offset(
-          kernels.at(0).level, static_cast<Idx>(kernels.at(0).length));
+                            SubgroupSize>(kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan,
+                                          scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
+                                          2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
+                                          static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
+                                          static_cast<IdxGlobal>(i), 0, dimension_data.num_factors, current_events,
+                                          previous_events, desc.queue);
+      intermediate_twiddles_offset += 2 * kernels.at(0).batch_size * static_cast<IdxGlobal>(kernels.at(0).length);
+      impl_twiddle_offset +=
+          detail::increment_twiddle_offset(kernels.at(0).level, static_cast<Idx>(kernels.at(0).length));
       current_events.swap(previous_events);
       for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension_data.num_factors);
            factor_num++) {
@@ -333,16 +332,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         } else {
           detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                 detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-              kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
-              desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
-              impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
-              static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
-              dimension_data.num_factors, current_events, previous_events, desc.queue);
-          intermediate_twiddles_offset += 2 * kernels.at(factor_num).batch_size *
-                                          static_cast<IdxGlobal>(kernels.at(factor_num).length);
-          impl_twiddle_offset +=
-              detail::increment_twiddle_offset(kernels.at(factor_num).level,
-                                               static_cast<Idx>(kernels.at(factor_num).length));
+              kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
+              twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,
+              committed_size, static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
+              static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), dimension_data.num_factors, current_events,
+              previous_events, desc.queue);
+          intermediate_twiddles_offset +=
+              2 * kernels.at(factor_num).batch_size * static_cast<IdxGlobal>(kernels.at(factor_num).length);
+          impl_twiddle_offset += detail::increment_twiddle_offset(kernels.at(factor_num).level,
+                                                                  static_cast<Idx>(kernels.at(factor_num).length));
           current_events.swap(previous_events);
         }
       }
@@ -352,19 +350,17 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       });
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
         current_events[0] = detail::transpose_level<Scalar, Domain>(
-            kernels.at(static_cast<std::size_t>(num_transpose) +
-                                             static_cast<std::size_t>(num_factors)),
+            kernels.at(static_cast<std::size_t>(num_transpose) + static_cast<std::size_t>(num_factors)),
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
             num_factors, 0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
         current_events[0].wait();
       }
       current_events[0] = detail::transpose_level<Scalar, Domain>(
-          kernels.at(static_cast<std::size_t>(num_factors)),
-          static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out, factors_and_scan, committed_size,
-          static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), 0, num_factors,
-          2 * static_cast<IdxGlobal>(i) * committed_size + output_offset, desc.queue, desc.scratch_ptr_1,
-          desc.scratch_ptr_2, current_events, previous_events);
+          kernels.at(static_cast<std::size_t>(num_factors)), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out,
+          factors_and_scan, committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms,
+          static_cast<IdxGlobal>(i), 0, num_factors, 2 * static_cast<IdxGlobal>(i) * committed_size + output_offset,
+          desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
     }
     return current_events[0];
   }

@@ -30,6 +30,7 @@
 #include "portfft/descriptor.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/specialization_constant.hpp"
+#include "portfft/utils.hpp"
 
 namespace portfft {
 namespace detail {
@@ -119,7 +120,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
   Idx factor_n = detail::factorize(fft_size);
   Idx factor_m = fft_size / factor_n;
   const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
-  const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
+  const Idx bank_lines_per_pad = detail::bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
   auto loc_view = padded_view(loc, bank_lines_per_pad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
@@ -227,8 +228,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workgroup<Scalar, LayoutIn>(
         n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
-    const Idx bank_lines_per_pad =
-        bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * kernel_data.factors[2] * kernel_data.factors[3]);
+    const Idx bank_lines_per_pad = detail::bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
+                                                                 kernel_data.factors[2] * kernel_data.factors[3]);
     std::size_t sg_twiddles_offset = static_cast<std::size_t>(
         detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * num_batches_in_local_mem, bank_lines_per_pad));
     return desc.queue.submit([&](sycl::handler& cgh) {
@@ -284,7 +285,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
     Idx num_batches_in_local_mem =
         detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * PORTFFT_SGS_IN_WG);
     return detail::pad_local(static_cast<std::size_t>(2 * num_batches_in_local_mem) * length,
-                             bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m)) +
+                             detail::bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m)) +
            2 * (m + n);
   }
 };

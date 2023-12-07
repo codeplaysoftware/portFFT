@@ -27,7 +27,6 @@
 #include <vector>
 
 #include "common/memory_views.hpp"
-#include "common/workgroup.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 
@@ -190,6 +189,28 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
       sycl::free(ptr, captured_queue);
     }
   });
+}
+
+/**
+ * Calculate the number of groups or bank lines of PORTFFT_N_LOCAL_BANKS between each padding in local memory,
+ * specifically for reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are
+ * 64 complex elements in a row, then the consecutive values in the same column are 128 floats apart. There are 32
+ * banks, each the size of a float, so we only want a padding float every 128/32=4 bank lines to read along the column
+ * without bank conflicts.
+ *
+ * @tparam T Input type to the function
+ * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
+ * @return the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
+ */
+template <typename T>
+constexpr T bank_lines_per_pad_wg(T row_size) {
+  constexpr T BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
+  if (row_size % BankLineSize == 0) {
+    return row_size / BankLineSize;
+  }
+  // There is room for improvement here. E.G if row_size was half of BankLineSize then maybe you would still want 1
+  // pad every bank group.
+  return 1;
 }
 
 /**
