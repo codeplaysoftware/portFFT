@@ -101,11 +101,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, T* loc, IdxGlobal n
                                   global_data_struct global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
-  const detail::elementwise_multiply multiply_on_load = detail::elementwise_multiply::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
-  const detail::elementwise_multiply multiply_on_store = detail::elementwise_multiply::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
-  const detail::apply_scale_factor apply_scale_factor = detail::apply_scale_factor::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
+  detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
+  detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
 
-  const Idx fft_size = 16;//kh.get_specialization_constant<detail::SpecConstFftSize>();
+  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   const Idx n_reals = 2 * fft_size;
