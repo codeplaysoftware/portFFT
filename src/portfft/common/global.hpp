@@ -78,19 +78,21 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_product(const IdxGlobal* inclusi
  * @param num_factors Number of factors
  * @param iter_value Current iterator value of the flattened n-dimensional loop
  * @param outer_batch_product Inclusive Scan of factors at position level_num-1
+ * @param storage complex storage: interleaved or split
  * @return outer batch offset to be applied for the current iteration
  */
 PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                                        const IdxGlobal* inclusive_scan, Idx num_factors, Idx level_num,
                                                        IdxGlobal iter_value, IdxGlobal outer_batch_product, complex_storage storage) {
+  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   auto get_outer_batch_offset_impl = [&](Idx N) -> IdxGlobal {
     IdxGlobal outer_batch_offset = 0;
     for (Idx j = 0; j < N; j++) {
       if (j == N - 1) {
-        outer_batch_offset += 2 * (iter_value % factors[j]) * inner_batches[j];
+        outer_batch_offset += vec_size * (iter_value % factors[j]) * inner_batches[j];
       } else {
         outer_batch_offset +=
-            2 * ((iter_value / (outer_batch_product / inclusive_scan[j])) % factors[j]) * inner_batches[j];
+            vec_size * ((iter_value / (outer_batch_product / inclusive_scan[j])) % factors[j]) * inner_batches[j];
       }
     }
     return outer_batch_offset;
@@ -100,7 +102,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
     return static_cast<std::size_t>(0);
   }
   if (level_num == 1) {
-    return 2 * iter_value * inner_batches[0];
+    return vec_size * iter_value * inner_batches[0];
   }
   if (level_num == num_factors - 1) {
     return get_outer_batch_offset_impl(level_num - 1);
@@ -230,6 +232,8 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @tparam SubgroupSize Subgroup size
  * @param input input pointer
  * @param output output pointer
+ * @param input_imag input pointer for imaginary data
+ * @param output_imag output pointer for imaginary data
  * @param loc_for_input local memory for input
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
@@ -254,7 +258,7 @@ void launch_kernel(const Scalar* input, Scalar* output, const Scalar* input_imag
                    IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
                    sycl::handler& cgh) {
 #ifdef PORTFFT_LOG
-  sycl::stream s{1024 * 16, 1024, cgh};
+  sycl::stream s{1024 * 16 * 16, 1024, cgh};
 #endif
   auto [global_range, local_range] = launch_params;
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
@@ -306,16 +310,24 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
             s,
 #endif
             it};
+        global_data.log_message_global("entering transpose kernel - buffer impl");
         complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
+          global_data.log_message_subgroup("iter_value: ", iter_value);
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                                 level_num, iter_value, outer_batch_product, storage);
-          detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
-                                    &output[0] + outer_batch_offset + output_offset, loc, global_data);
+          if(storage == complex_storage::INTERLEAVED_COMPLEX){
+            detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
+                                      &output[0] + outer_batch_offset + output_offset, loc, global_data);
+          } else{
+            detail::generic_transpose<1>(lda, ldb, 16, input + outer_batch_offset,
+                                      &output[0] + outer_batch_offset + output_offset, loc, global_data);
+          }
         }
+        global_data.log_message_global("exiting transpose kernel - buffer impl");
       });
 }
 
@@ -339,7 +351,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
                                            const IdxGlobal* inclusive_scan, IdxGlobal output_offset, IdxGlobal lda,
                                            IdxGlobal ldb, sycl::handler& cgh) {
 #ifdef PORTFFT_LOG
-  sycl::stream s{1024 * 16, 1024, cgh};
+  sycl::stream s{1024 * 16 * 16, 1024, cgh};
 #endif
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::USM>>(
       sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
@@ -351,16 +363,25 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
             s,
 #endif
             it};
+        global_data.log_message_global("entering transpose kernel - USM impl");
         complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
+          global_data.log_message_global("iter_value: ", iter_value);
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                                 level_num, iter_value, outer_batch_product, storage);
-          detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
+          global_data.log_message_global("calling generic_transpose. outer_batch_offset ", outer_batch_offset);
+          if(storage == complex_storage::INTERLEAVED_COMPLEX){
+            detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
+          } else {
+            detail::generic_transpose<1>(lda, ldb, 16, input + outer_batch_offset,
+                                    &output[0] + outer_batch_offset + output_offset, loc, global_data);
+          }
         }
+        global_data.log_message_global("exiting transpose kernel - USM impl");
       });
 }
 
