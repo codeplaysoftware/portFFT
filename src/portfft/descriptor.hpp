@@ -241,7 +241,8 @@ class committed_descriptor {
     bool is_prime;
     Idx used_sg_size;
     Idx num_batches_in_l2;
-    Idx num_factors;
+    Idx forward_factors;
+    Idx backward_factors;
 
     dimension_struct(std::vector<kernel_data_struct> kernels, detail::level level, std::size_t length,
                      std::size_t committed_length, bool is_prime, Idx used_sg_size)
@@ -600,25 +601,14 @@ class committed_descriptor {
           break;
         }
       }
-      IdxGlobal dimension_size = static_cast<IdxGlobal>(dimensions.at(global_dimension).length);
-      Idx num_forward_factors = 0;
-      Idx num_backward_factors = 0;
-      IdxGlobal temp_acc = 1;
+
       std::vector<IdxGlobal> factors;
       std::vector<IdxGlobal> sub_batches;
       std::vector<IdxGlobal> inclusive_scan;
       std::size_t cache_required_for_twiddles = 0;
-      for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
-        if (temp_acc == dimension_size) {
-          break;
-        }
-        temp_acc *= static_cast<IdxGlobal>(
-            std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
-        num_forward_factors++;
-      }
-      if (dimensions.at(global_dimension).is_prime) {
-        num_backward_factors = static_cast<Idx>(dimensions.at(global_dimension).kernels.size()) - num_forward_factors;
-      }
+      Idx num_forward_factors = dimensions.at(global_dimension).forward_factors;
+      Idx num_backward_factors = dimensions.at(global_dimension).backward_factors;
+
       const auto& kernels_for_dimension = dimensions.at(global_dimension).kernels;
       for (std::size_t i = 0; i < static_cast<std::size_t>(num_forward_factors); i++) {
         IdxGlobal factor_size = static_cast<IdxGlobal>(std::accumulate(kernels_for_dimension.at(i).factors.begin(),
@@ -629,7 +619,7 @@ class committed_descriptor {
         factors.push_back(factor_size);
         sub_batches.push_back(kernels_for_dimension.at(i).batch_size);
       }
-      dimensions.at(global_dimension).num_factors = num_forward_factors;
+
       std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
       // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
       dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
@@ -681,6 +671,37 @@ class committed_descriptor {
         factors.clear();
         sub_batches.clear();
         inclusive_scan.clear();
+        for (std::size_t i = 0; i < static_cast<std::size_t>(num_backward_factors); i++) {
+          const auto& backward_factor_kernel = kernels_for_dimension.at(num_forward_factors + i);
+          factors.push_back(
+              static_cast<IdxGlobal>(std::accumulate(backward_factor_kernel.factors.begin(),
+                                                     backward_factor_kernel.factors.end(), 1, std::multiplies<Idx>())));
+          sub_batches.push_back(backward_factor_kernel.batch_size);
+        }
+        inclusive_scan.push_back(factors.at(0));
+        for (std::size_t i = 1; i < static_cast<std::size_t>(num_backward_factors); i++) {
+          inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
+        }
+        IdxGlobal* offset_ptr = dimensions.at(global_dimension).factors_and_scan.get() + 3 * num_forward_factors;
+        queue.copy(factors.data(), offset_ptr, static_cast<std::size_t>(num_backward_factors));
+        queue.copy(sub_batches.data(), offset_ptr + num_backward_factors, sub_batches.size());
+        queue.copy(inclusive_scan.data(), offset_ptr + 2 * num_backward_factors, inclusive_scan.size());
+        queue.wait();
+
+        Idx num_backward_transposes = dimensions.at(global_dimension).backward_factors - 1;
+        for (std::size_t i = 0; i < num_backward_transposes; i++) {
+          std::vector<sycl::kernel_id> ids;
+          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
+              queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+          in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+              static_cast<Idx>(factors.size()));
+          dimensions.at(global_dimension)
+              .kernels.emplace_back(
+                  sycl::build(in_bundle),
+                  std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
+                  std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+        }
       }
     } else {
       std::size_t max_encountered_global_size = 0;
@@ -711,7 +732,7 @@ class committed_descriptor {
           for (std::size_t j = 1; j < factors.size(); j++) {
             inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
           }
-          dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
+          dimensions.at(i).forward_factors = static_cast<Idx>(factors.size());
           dimensions.at(i).factors_and_scan =
               detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
           queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
@@ -777,6 +798,9 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
+      if (dimensions.back().committed_length != dimensions.back().length) {
+        dimensions.back().is_prime = true;
+      }
       dimensions.back().kernels.at(0).twiddles_forward =
           std::shared_ptr<Scalar>(calculate_twiddles(dimensions.back()), [queue](Scalar* ptr) {
             if (ptr != nullptr) {

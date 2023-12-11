@@ -108,12 +108,18 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
   static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
     auto& kernels = dimension_data.kernels;
     std::vector<IdxGlobal> factors_idx_global;
+    IdxGlobal temp_acc = 1;
     // Get factor sizes per level;
     for (const auto& kernel_data : kernels) {
       factors_idx_global.push_back(static_cast<IdxGlobal>(
           std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>())));
+      temp_acc *= factors_idx_global.back();
+      if (temp_acc == dimension_data.committed_length) {
+        break;
+      }
     }
-
+    dimension_data.forward_factors = static_cast<Idx>(factors_idx_global.size());
+    dimension_data.backward_factors = static_cast<Idx>(kernels.size()) - dimension_data.forward_factors;
     std::vector<IdxGlobal> sub_batches;
     // Get sub batches
     for (std::size_t i = 0; i < factors_idx_global.size() - 1; i++) {
@@ -121,12 +127,31 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                                             factors_idx_global.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
     }
     sub_batches.push_back(factors_idx_global.at(factors_idx_global.size() - 2));
+    // factors and inner batches for the backward factors;
+    if (dimension_data.backward_factors > 0) {
+      for (Idx i = 0; i < dimension_data.backward_factors; i++) {
+        const auto& kd_struct = kernels.at(static_cast<std::size_t>(dimension_data.forward_factors + i));
+        factors_idx_global.push_back(static_cast<IdxGlobal>(
+            std::accumulate(kd_struct.factors.begin(), kd_struct.factors.end(), 1, std::multiplies<Idx>())));
+      }
+      for (Idx back_factor = 0; back_factor < dimension_data.backward_factors - 1; back_factor++) {
+        sub_batches.push_back(std::accumulate(
+            factors_idx_global.begin() + static_cast<long>(dimension_data.forward_factors + back_factor + 1),
+            factors_idx_global.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
+      }
+    }
     // calculate total memory required for twiddles;
     IdxGlobal mem_required_for_twiddles = 0;
     // First calculate mem required for twiddles between factors;
-    for (std::size_t i = 0; i < factors_idx_global.size() - 1; i++) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.forward_factors - 1); i++) {
       mem_required_for_twiddles += 2 * factors_idx_global.at(i) * sub_batches.at(i);
     }
+    if (dimension_data.backward_factors > 0) {
+      for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.backward_factors - 1); i++) {
+        mem_required_for_twiddles += 2 * factors_idx_global.at(i) * sub_batches.at(i);
+      }
+    }
+
     // Now calculate mem required for twiddles per implementation
     std::size_t counter = 0;
     for (const auto& kernel_data : kernels) {
@@ -157,8 +182,13 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
     IdxGlobal offset = 0;
     // calculate twiddles to be multiplied between factors
-    for (std::size_t i = 0; i < factors_idx_global.size() - 1; i++) {
+    for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.forward_factors) - 1; i++) {
       calculate_twiddles(sub_batches.at(i), factors_idx_global.at(i), offset, host_memory.data());
+    }
+    if (dimension_data.backward_factors > 0) {
+      for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.backward_factors) - 1; i++) {
+        calculate_twiddles(sub_batches.at(i), factors_idx_global.at(i), offset, host_memory.data());
+      }
     }
     // Now calculate per twiddles.
     counter = 0;
@@ -292,8 +322,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t num_batches = desc.params.number_of_transforms;
     std::size_t max_batches_in_l2 = static_cast<std::size_t>(dimension_data.num_batches_in_l2);
     IdxGlobal initial_impl_twiddle_offset = 0;
-    Idx num_factors = dimension_data.num_factors;
-    IdxGlobal committed_size = static_cast<IdxGlobal>(desc.params.lengths[0]);
+    Idx num_factors = dimension_data.forward_factors;
+    IdxGlobal committed_size = static_cast<IdxGlobal>(dimension_data.length);
     Idx num_transposes = num_factors - 1;
     std::vector<sycl::event> current_events;
     std::vector<sycl::event> previous_events;
@@ -314,29 +344,28 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                                           scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
                                           2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
                                           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
-                                          static_cast<IdxGlobal>(i), 0, dimension_data.num_factors, current_events,
-                                          previous_events, desc.queue);
+                                          static_cast<IdxGlobal>(i), 0, num_factors, current_events, previous_events,
+                                          desc.queue);
       intermediate_twiddles_offset += 2 * kernels.at(0).batch_size * static_cast<IdxGlobal>(kernels.at(0).length);
       impl_twiddle_offset +=
           detail::increment_twiddle_offset(kernels.at(0).level, static_cast<Idx>(kernels.at(0).length));
       current_events.swap(previous_events);
-      for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension_data.num_factors);
-           factor_num++) {
-        if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
+      for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(num_factors); factor_num++) {
+        if (static_cast<Idx>(factor_num) == num_factors - 1) {
           detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
               dimension_data.kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
               desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
               impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
-              static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
-              dimension_data.num_factors, current_events, previous_events, desc.queue);
+              static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), num_factors,
+              current_events, previous_events, desc.queue);
         } else {
           detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                 detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
               kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
               twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,
               committed_size, static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
-              static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), dimension_data.num_factors, current_events,
-              previous_events, desc.queue);
+              static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), num_factors, current_events, previous_events,
+              desc.queue);
           intermediate_twiddles_offset +=
               2 * kernels.at(factor_num).batch_size * static_cast<IdxGlobal>(kernels.at(factor_num).length);
           impl_twiddle_offset += detail::increment_twiddle_offset(kernels.at(factor_num).level,
