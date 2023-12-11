@@ -50,6 +50,7 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
   T_vec priv;
   IdxGlobal rounded_up_n = detail::round_up_to_multiple(N, static_cast<IdxGlobal>(tile_size));
   IdxGlobal rounded_up_m = detail::round_up_to_multiple(M, static_cast<IdxGlobal>(tile_size));
+  global_data.log_message_global("VecSize: ", VecSize);
   global_data.log_message_global(__func__, "Entered transpose function with lda: ", M, "ldb: ", N,
                                  "which are rounded up to: ", rounded_up_n, ", ", rounded_up_m);
   IdxGlobal start_y = static_cast<IdxGlobal>(global_data.it.get_group(1));

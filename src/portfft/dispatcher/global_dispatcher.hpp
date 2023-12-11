@@ -283,6 +283,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
+    std::cout << "execute IN:" << in << "IN imag: " << in_imag << std::endl;
     auto& dimension0 = desc.dimensions.at(0);
     complex_storage storage = desc.params.complex_storage;
     IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
@@ -314,7 +315,15 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
           vec_size * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
-          dimension0.num_factors, storage, {event}, desc.queue);
+          dimension0.num_factors, storage, {event}, desc.queue);std::vector<Scalar> tmp(desc.params.number_of_transforms * dimension0.length * 2);
+      desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
+      std::cout << std::endl;
+      std::cout << "after factor 0: ";
+      for(Scalar val : tmp){
+        std::cout << val << ", ";
+      }
+      std::cout << std::endl;
+      std::cout << std::endl;
       intermediate_twiddles_offset += 2 * kernel0.batch_size *
                                       static_cast<IdxGlobal>(kernel0.length);
       impl_twiddle_offset += detail::increment_twiddle_offset(
@@ -325,8 +334,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         if (static_cast<Idx>(factor_num) == dimension0.num_factors - 1) {
           l2_events =
               detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-                  current_kernel, desc.scratch_ptr_1.get(),
-                  desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(),
+                  current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
                   desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
                   impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
                   static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
@@ -334,8 +342,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         } else {
           l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                             detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-              current_kernel, desc.scratch_ptr_1.get(),
-              desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
+              current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
               desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
               impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
               static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
@@ -346,11 +353,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
               detail::increment_twiddle_offset(current_kernel.level,
                                                static_cast<Idx>(current_kernel.length));
         }
+        desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
+        std::cout << std::endl;
+        std::cout << "after factor " << factor_num << ": ";
+        for(Scalar val : tmp){
+          std::cout << val << ", ";
+        }
+        std::cout << std::endl;
+        std::cout << std::endl;
       }
       event = desc.queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(l2_events);
         cgh.host_task([&]() {});
       });
+      event.wait();
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
         event = detail::transpose_level<Scalar, Domain>(
             dimension0.kernels.at(static_cast<std::size_t>(num_transpose) +
@@ -375,7 +391,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           dimension0.kernels.at(static_cast<std::size_t>(num_factors)),
           desc.scratch_ptr_1.get(), out, factors_and_scan, committed_size,
           static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_factors,
-          vec_size * static_cast<IdxGlobal>(i) * committed_size + output_offset, desc.queue, {event}, storage);
+          vec_size * static_cast<IdxGlobal>(i) * committed_size + output_offset, desc.queue, 
+          {event}, storage);
       if(storage == complex_storage::SPLIT_COMPLEX){
         event.wait();
         std::cout << "starting imag transpose 0 from " << desc.scratch_ptr_1.get() << " to " << desc.scratch_ptr_2.get() << std::endl;

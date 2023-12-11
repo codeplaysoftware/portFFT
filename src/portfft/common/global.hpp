@@ -376,7 +376,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
           if(storage == complex_storage::INTERLEAVED_COMPLEX){
             detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
-          } else {
+          } else{
             detail::generic_transpose<1>(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
           }
@@ -463,6 +463,8 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * @param kd_struct associated kernel data struct with the factor
  * @param input input usm/buffer
  * @param output output pointer
+ * @param input_imag input usm/buffer for imaginary data
+ * @param output_imag output pointer for imaginary data
  * @param twiddles_ptr global pointer containing the input
  * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors

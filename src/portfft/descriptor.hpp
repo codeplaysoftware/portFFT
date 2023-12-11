@@ -323,7 +323,7 @@ class committed_descriptor {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
     }
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize) && false) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
@@ -353,7 +353,7 @@ class committed_descriptor {
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
-          (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
+          (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) && false) {
         factors.push_back(factor_wi_n);
         factors.push_back(factor_sg_n);
         factors.push_back(factor_wi_m);
@@ -407,7 +407,16 @@ class committed_descriptor {
       }
       return false;
     };
-    detail::factorize_input(fft_size, check_and_select_target_level);
+    detail::factorize_input(fft_size, check_and_select_target_level);std::cout << "GLOBAL: ";
+    for( auto& i : param_vec){
+      auto vec = std::get<2>(i);
+      std::cout << "(";
+      for(auto j : vec){
+        std::cout << j << ", ";
+      }
+      std::cout << "), ";
+    }
+    std::cout << std::endl;
     return {detail::level::GLOBAL, param_vec};
   }
 
@@ -861,6 +870,7 @@ class committed_descriptor {
   void compute_forward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
+    std::cout << "compute_forward ip IN:" << inout_real << " IN imag: " << inout_imag << std::endl;
     compute_forward(inout_real, inout_imag, inout_real, inout_imag);
   }
 
@@ -907,6 +917,7 @@ class committed_descriptor {
    */
   void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
                        sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    std::cout << "compute_forward oop IN:" << in_real << " IN imag: " << in_imag << std::endl;
     dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
@@ -940,6 +951,7 @@ class committed_descriptor {
    */
   void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    std::cout << "compute_backward oop IN:" << in_real << " IN imag: " << in_imag << std::endl;
     dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
@@ -968,6 +980,7 @@ class committed_descriptor {
                               const std::vector<sycl::event>& dependencies = {}) {
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
+    std::cout << "compute_forward ip IN:" << inout_real << " IN imag: " << inout_imag << std::endl;
     return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
   }
 
@@ -1005,7 +1018,8 @@ class committed_descriptor {
    */
   sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return compute_backward(inout_real, inout_real, inout_imag, inout_imag, dependencies);
+    std::cout << "compute_backward ip IN:" << inout_real << " IN imag: " << inout_imag << std::endl;
+    return compute_backward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
   }
 
   /**
@@ -1033,6 +1047,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
                               scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    std::cout << "compute_forward oop IN:" << in_real << " IN imag: " << in_imag << std::endl;
     return dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
                                                   dependencies);
   }
@@ -1077,6 +1092,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
                                scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    std::cout << "compute_backward IN:" << in_real << " IN imag: " << in_imag << std::endl;
     return dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
                                                    dependencies);
   }
@@ -1103,6 +1119,7 @@ class committed_descriptor {
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
+    std::cout << "dispatch_direction IN:" << in << " IN imag: " << in_imag << std::endl;
     if (used_storage != params.complex_storage) {
       if (used_storage == complex_storage::SPLIT_COMPLEX) {
         throw invalid_configuration(
