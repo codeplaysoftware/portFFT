@@ -120,6 +120,8 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @tparam SubgroupSize Subgroup size
  * @param input input pointer
  * @param output output pointer
+ * @param input_imag input pointer for imaginary data
+ * @param output_imag output pointer for imaginary data
  * @param implementation_twiddles global twiddles pointer containing twiddles for the sub implementation
  * @param store_modifier store modifier data
  * @param input_loc local memory for storing the input
@@ -176,8 +178,10 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut Output layout
  * @tparam SubgroupSize Subgroup size
- * @param input input of type sycl::accessor
- * @param output USM output pointer
+ * @param input input accessor
+ * @param output output USM pointer
+ * @param input input accessor for imaginary data
+ * @param output output USM pointer for imaginary data
  * @param loc_for_input local memory for input
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
@@ -369,10 +373,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
-          global_data.log_message_global("iter_value: ", iter_value);
+          global_data.log_message_subgroup("iter_value: ", iter_value);
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                                 level_num, iter_value, outer_batch_product, storage);
-          global_data.log_message_global("calling generic_transpose. outer_batch_offset ", outer_batch_offset);
           if(storage == complex_storage::INTERLEAVED_COMPLEX){
             detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
@@ -399,12 +402,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
  * @param num_batches_in_l2 number of batches in l2
  * @param n_transforms number of transforms as set in the descriptor
  * @param batch_start start of the current global batch being processed
- * @param factor_num Current transpose level being run
  * @param total_factors total number of factors of the committed size
  * @param output_offset offset to the output pointer
  * @param queue queue associated with the commit
- * @param ptr1 shared_ptr for the first scratch pointer
- * @param ptr2 shared_ptr for the second scratch pointer
  * @param events event dependencies
  * @return sycl::event
  */
@@ -439,12 +439,6 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
           output_offset + vec_size * committed_size * batch_in_l2, ld_output, ld_input, cgh);
     }));
   }
-  /*if (factor_num != 0) {
-    return queue.submit([&](sycl::handler& cgh) {
-      cgh.depends_on(transpose_events);
-      cgh.host_task([&]() { ptr1.swap(ptr2); });
-    });
-  }*/
   return queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(transpose_events);
     cgh.host_task([&]() {});
@@ -479,7 +473,8 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * @param batch_start start of the current global batch being processed
  * @param factor_id current factor being proccessed
  * @param total_factors total number of factors
- * @param dependencies even dependencies
+ * @param storage complex storage: interleaved or split
+ * @param dependencies dependent events
  * @param queue queue
  * @return vector events, one for each batch in l2
  */

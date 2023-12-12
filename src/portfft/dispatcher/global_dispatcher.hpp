@@ -379,7 +379,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             num_factors, 0, desc.queue, {event}, storage);
         event.wait();
         if(storage == complex_storage::SPLIT_COMPLEX){
-          std::cout << "starting imag transpose " << num_transpose << " from " << desc.scratch_ptr_1.get() << " to " << desc.scratch_ptr_2.get() << std::endl;
           event = detail::transpose_level<Scalar, Domain>(
               dimension0.kernels.at(static_cast<std::size_t>(num_transpose) +
                                               static_cast<std::size_t>(num_factors)),
@@ -398,7 +397,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           {event}, storage);
       if(storage == complex_storage::SPLIT_COMPLEX){
         event.wait();
-        std::cout << "starting imag transpose 0 from " << desc.scratch_ptr_1.get() << " to " << desc.scratch_ptr_2.get() << std::endl;
         event = detail::transpose_level<Scalar, Domain>(
             dimension0.kernels.at(static_cast<std::size_t>(num_factors)),
             desc.scratch_ptr_1.get() + imag_offset, out_imag, factors_and_scan, committed_size,

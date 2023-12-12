@@ -73,6 +73,7 @@ namespace detail {
  * @param dft_size Size of each DFT to calculate
  * @param stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @param ndfts_in_outer_dimension Number of DFTs in outer dimension
+ * @param storage complex storage: interleaved or split
  * @param layout_in Input Layout
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
@@ -137,7 +138,6 @@ __attribute__((always_inline)) inline void dimension_dft(
   for (Idx j = begin; j < end; j += step) {
     Idx j_inner = j % stride_within_dft;
     Idx j_outer = j / stride_within_dft;
-    //auto loc_start_view = offset_view(loc, 2 * j_outer * outer_stride);
     bool working = true;
     if (excess_sgs) {
       working = j < total_dfts;
@@ -306,6 +306,7 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param fft_size Problem Size
  * @param N Smaller factor of the Problem size
  * @param M Larger factor of the problem size
+ * @param storage complex storage: interleaved or split
  * @param layout_in Whether or not the input is transposed
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.

@@ -323,7 +323,7 @@ class committed_descriptor {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
     }
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize) && false) {
+    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
@@ -353,7 +353,7 @@ class committed_descriptor {
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
-          (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) && false) {
+          (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
         factors.push_back(factor_wi_n);
         factors.push_back(factor_sg_n);
         factors.push_back(factor_wi_m);
@@ -408,16 +408,6 @@ class committed_descriptor {
       return false;
     };
     detail::factorize_input(fft_size, check_and_select_target_level);
-    std::cout << "GLOBAL: ";
-    for( auto& i : param_vec){
-      auto vec = std::get<2>(i);
-      std::cout << "(";
-      for(auto j : vec){
-        std::cout << j << ", ";
-      }
-      std::cout << "), ";
-    }
-    std::cout << std::endl;
     return {detail::level::GLOBAL, param_vec};
   }
 

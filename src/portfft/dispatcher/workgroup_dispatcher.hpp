@@ -129,7 +129,6 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   Idx max_num_batches_in_local_mem =
       get_num_batches_in_local_mem_workgroup<LayoutIn>(static_cast<Idx>(global_data.it.get_local_range(0)));
 
-  //Idx max_reals_in_local_memory = 2 * fft_size * max_num_batches_in_local_mem;
   IdxGlobal first_batch_start = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
   IdxGlobal num_batches_in_kernel =
       static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
