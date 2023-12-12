@@ -41,7 +41,7 @@ class transpose_kernel;
  * @tparam SubgroupSize size of the subgroup
  * @return vector of kernel ids
  */
-template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
+/*template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
@@ -71,7 +71,7 @@ std::vector<sycl::kernel_id> get_ids() {
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
 #undef INSTANTIATE_DIRECTION_MEM_LAYOUTS
   return ids;
-}
+}*/
 
 /**
  * Utility function to check if a value can be casted safely.
@@ -144,7 +144,7 @@ void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
  * @tparam Scalar Scalar type
  * @return vector containing sycl::kernel_ids
  */
-template <typename Scalar>
+/*template <typename Scalar>
 std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                               \
@@ -157,7 +157,7 @@ std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
   PORTFFT_GET_TRANSPOSE_KERNEL_ID(detail::memory::BUFFER)
 #undef PORTFFT_GET_TRANSPOSE_KERNEL_ID
   return ids;
-}
+}*/
 
 /**
  * Utility function to create a shared pointer, with memory allocated on device

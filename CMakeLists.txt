@@ -62,6 +62,8 @@ set(PORTFFT_SRC_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
   $<INSTALL_INTERFACE:src>)
 
+find_package(SYCL)
+
 add_library(portfft INTERFACE)
 target_include_directories(portfft INTERFACE
     ${PORTFFT_INCLUDE_DIR}
@@ -73,6 +75,9 @@ target_compile_definitions(portfft INTERFACE PORTFFT_VEC_LOAD_BYTES=${PORTFFT_VE
 target_compile_definitions(portfft INTERFACE PORTFFT_SGS_IN_WG=${PORTFFT_SGS_IN_WG})
 target_compile_definitions(portfft INTERFACE PORTFFT_MAX_CONCURRENT_KERNELS=${PORTFFT_MAX_CONCURRENT_KERNELS})
 if(${PORTFFT_USE_SG_TRANSFERS})
+  if(AdaptiveCpp_FOUND)
+    message(FATAL_ERROR "PORTFFT_USE_SG_TRANSFERS is not compatible with AdaptiveCpp")
+  endif()
   target_compile_definitions(portfft INTERFACE PORTFFT_USE_SG_TRANSFERS)
 endif()
 if(${PORTFFT_SLOW_SG_SHUFFLES})
@@ -81,6 +86,9 @@ else()
   target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=0)
 endif()
 if(${PORTFFT_USE_SCLA})
+  if(AdaptiveCpp_FOUND)
+    message(FATAL_ERROR "PORTFFT_USE_SCLA is not compatible with AdaptiveCpp")
+  endif()
   target_compile_definitions(portfft INTERFACE PORTFFT_USE_SCLA)
 endif()
 
@@ -102,8 +110,12 @@ if(${PORTFFT_LOG})
 endif()
 
 target_compile_options(portfft INTERFACE -fgpu-inline-threshold=1000000)
-target_link_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
-target_compile_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
+if(AdaptiveCpp_FOUND)
+  target_compile_definitions(portfft INTERFACE PORTFFT_USE_ADAPTIVECPP)
+else()
+  target_link_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
+  target_compile_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
+endif()
 
 include(CMakePackageConfigHelpers)
 set(version_file "${CMAKE_CURRENT_BINARY_DIR}/cmake/portfft-version.cmake")
@@ -142,7 +154,7 @@ export(EXPORT portfft
 )
 
 add_library(portfft_warnings INTERFACE)
-target_compile_options(portfft_warnings INTERFACE -Wall -Wextra -Wshadow -Wconversion -Wpedantic)
+target_compile_options(portfft_warnings INTERFACE -Wno-everything)
 
 if(${PORTFFT_BUILD_TESTS})
   enable_testing()

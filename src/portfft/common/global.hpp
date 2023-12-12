@@ -136,10 +136,9 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
                                    Scalar* store_modifier_loc, const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                    const IdxGlobal* inclusive_scan, IdxGlobal batch_size, Scalar scale_factor,
-                                   detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
-  auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
-  Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
-  Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+                                   level level, Idx level_num, Idx num_factors
+                                   detail::global_data_struct<1> global_data,
+                                   ) {
   global_data.log_message_global(__func__, "dispatching sub implementation for factor num = ", level_num);
   IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
   for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
@@ -197,24 +196,37 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
                    const Scalar* impl_twiddles, const IdxGlobal* factors, const IdxGlobal* inner_batches,
                    const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
                    IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
+                   //#ifdef PORTFFT_USE_ADAPTIVECPP
+                   //level level, Idx level_num, Idx num_factors,
+                   //#endif // PORTFFT_USE_ADAPTIVECPP
                    sycl::handler& cgh) {
-  auto [global_range, local_range] = launch_params;
+  /*auto [global_range, local_range] = launch_params;
 #ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
-      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      [=](sycl::nd_item<1> it
+      #ifndef PORTFFT_USE_ADAPTIVECPP
+      , sycl::kernel_handler kh
+      #endif // PORTFFT_USE_ADAPTIVECPP
+      ) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
 #endif
             it};
+        
+#ifndef PORTFFT_USE_ADAPTIVECPP
+  auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
+  Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
+  Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+#endif // PORTFFT_USE_ADAPTIVECPP
         dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
-            scale_factor, global_data, kh);
-      });
+            scale_factor, level, level_num, num_factors, global_data, kh);
+      });*/
 }
 
 /**
@@ -251,7 +263,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
                    const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
                    IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
                    sycl::handler& cgh) {
-#ifdef PORTFFT_LOG
+/*#ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   auto [global_range, local_range] = launch_params;
@@ -267,7 +279,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
             scale_factor, global_data, kh);
-      });
+      });*/
 }
 
 /**
@@ -290,22 +302,32 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
                                            sycl::accessor<Scalar, 1, sycl::access::mode::write>& output,
                                            sycl::local_accessor<Scalar, 2>& loc, const IdxGlobal* factors,
                                            const IdxGlobal* inner_batches, const IdxGlobal* inclusive_scan,
-                                           IdxGlobal output_offset, IdxGlobal lda, IdxGlobal ldb, sycl::handler& cgh) {
-#ifdef PORTFFT_LOG
+                                           IdxGlobal output_offset, IdxGlobal lda, IdxGlobal ldb, sycl::handler& cgh
+                                           //#ifdef PORTFFT_USE_ADAPTIVECPP
+                                           //, Idx level_num, Idx num_factors
+                                           //#endif
+                                           ) {
+/*#ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::BUFFER>>(
       sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
                          detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
-      [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+      [=](sycl::nd_item<2> it
+#ifndef PORTFFT_USE_ADAPTIVECPP
+      , sycl::kernel_handler kh
+#endif // PORTFFT_USE_ADAPTIVECPP
+      ) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
 #endif
             it};
+#ifndef PORTFFT_USE_ADAPTIVECPP
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+#endif // PORTFFT_USE_ADAPTIVECPP
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
@@ -313,7 +335,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
           detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
-      });
+      });*/
 }
 
 /**
@@ -334,22 +356,32 @@ template <typename Scalar>
 static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 2>& loc,
                                            const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                            const IdxGlobal* inclusive_scan, IdxGlobal output_offset, IdxGlobal lda,
-                                           IdxGlobal ldb, sycl::handler& cgh) {
-#ifdef PORTFFT_LOG
+                                           IdxGlobal ldb, sycl::handler& cgh
+                                           //#ifdef PORTFFT_USE_ADAPTIVECPP
+                                           //, Idx level_num, Idx num_factors
+                                           //#endif // PORTFFT_USE_ADAPTIVECPP
+                                           ) {
+/*#ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::USM>>(
       sycl::nd_range<2>({detail::round_up_to_multiple(static_cast<std::size_t>(lda), static_cast<std::size_t>(16)),
                          detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16))},
                         {16, 16}),
-      [=](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+      [=](sycl::nd_item<2> it
+      #ifndef PORTFFT_USE_ADAPTIVECPP
+      , sycl::kernel_handler kh
+      #endif // PORTFFT_USE_ADAPTIVECPP
+      ) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
 #endif
             it};
+        #ifndef PORTFFT_USE_ADAPTIVECPP
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+        #endif // PORTFFT_USE_ADAPTIVECPP
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
         for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
@@ -357,7 +389,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
           detail::generic_transpose(lda, ldb, 16, input + outer_batch_offset,
                                     &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
-      });
+      });*/
 }
 
 /**
@@ -467,6 +499,7 @@ std::vector<sycl::event> compute_level(
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
+  level level = kd_struct.level;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
   std::size_t local_mem_for_store_modifier = [&]() -> std::size_t {
     if (factor_id < total_factors - 1) {

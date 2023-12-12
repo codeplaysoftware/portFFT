@@ -78,8 +78,9 @@ inline T round_up_to_multiple(T value, T factor) {
  * @return sycl::multi_ptr
  */
 template <typename T>
-inline auto get_global_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::yes>(ptr);
+inline auto get_global_multi_ptr(T* ptr) {
+  return sycl::multi_ptr<T, sycl::access::address_space::global_space>(ptr);
+  //return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::yes>(ptr);
 }
 
 /**
@@ -90,8 +91,9 @@ inline auto get_global_multi_ptr(T ptr) {
  * @return sycl::multi_ptr
  */
 template <typename T>
-inline auto get_local_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::yes>(ptr);
+inline auto get_local_multi_ptr(T* ptr) {
+  return sycl::multi_ptr<T, sycl::access::address_space::local_space>(ptr);
+  //return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::yes>(ptr);
 }
 
 /**

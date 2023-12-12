@@ -206,7 +206,7 @@ class committed_descriptor {
   std::size_t scratch_space_required;
 
   struct kernel_data_struct {
-    sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
+    //sycl::kernel_bundle<sycl::bundle_state::executable> exec_bundle;
     std::vector<Idx> factors;
     std::size_t length;
     Idx used_sg_size;
@@ -218,10 +218,10 @@ class committed_descriptor {
     IdxGlobal global_range;
     IdxGlobal local_range;
 
-    kernel_data_struct(sycl::kernel_bundle<sycl::bundle_state::executable>&& exec_bundle,
+    kernel_data_struct(/*sycl::kernel_bundle<sycl::bundle_state::executable>&& exec_bundle,*/
                        const std::vector<Idx>& factors, std::size_t length, Idx used_sg_size, Idx num_sgs_per_wg,
                        std::shared_ptr<Scalar> twiddles_forward, detail::level level)
-        : exec_bundle(std::move(exec_bundle)),
+        : //exec_bundle(std::move(exec_bundle)),
           factors(factors),
           length(length),
           used_sg_size(used_sg_size),
@@ -250,12 +250,12 @@ class committed_descriptor {
     switch (level) {
       case detail::level::WORKITEM:
         return Impl::template inner<detail::level::WORKITEM, void>::execute(*this, args...);
-      case detail::level::SUBGROUP:
+      /*case detail::level::SUBGROUP:
         return Impl::template inner<detail::level::SUBGROUP, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, void>::execute(*this, args...);
       case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::GLOBAL, void>::execute(*this, args...);*/
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -267,12 +267,12 @@ class committed_descriptor {
     switch (level) {
       case detail::level::WORKITEM:
         return Impl::template inner<detail::level::WORKITEM, LayoutIn, void>::execute(*this, args...);
-      case detail::level::SUBGROUP:
+      /*case detail::level::SUBGROUP:
         return Impl::template inner<detail::level::SUBGROUP, LayoutIn, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
         return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
       case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::GLOBAL, LayoutIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::GLOBAL, LayoutIn, void>::execute(*this, args...);*/
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -285,7 +285,7 @@ class committed_descriptor {
       case detail::level::WORKITEM:
         return Impl::template inner<detail::level::WORKITEM, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
                                                                                                                args...);
-      case detail::level::SUBGROUP:
+      /*case detail::level::SUBGROUP:
         return Impl::template inner<detail::level::SUBGROUP, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
                                                                                                                args...);
       case detail::level::WORKGROUP:
@@ -293,7 +293,7 @@ class committed_descriptor {
             *this, args...);
       case detail::level::GLOBAL:
         return Impl::template inner<detail::level::GLOBAL, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
-                                                                                                             args...);
+                                                                                                             args...);*/
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -310,21 +310,21 @@ class committed_descriptor {
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>>
+  std::tuple<detail::level, std::vector<std::tuple<detail::level, /*std::vector<sycl::kernel_id>,*/ std::vector<Idx>>>>
   prepare_implementation(std::size_t kernel_num) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
     }
 
-    std::vector<sycl::kernel_id> ids;
+    //std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
     if (detail::fits_in_wi<Scalar>(fft_size)) {
-      ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
+      //ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
+      return {detail::level::WORKITEM, {{detail::level::WORKITEM, /*ids,*/ factors}}};
     }
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+    /*if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
@@ -409,7 +409,8 @@ class committed_descriptor {
       return false;
     };
     detail::factorize_input(fft_size, check_and_select_target_level);
-    return {detail::level::GLOBAL, param_vec};
+    return {detail::level::GLOBAL, param_vec};*/
+    throw portfft::unsupported_configuration("TMP");
   }
 
   /**
@@ -419,7 +420,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+      static void execute(committed_descriptor& desc, /*sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,*/
                           std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                           Idx num_factors);
     };
@@ -438,11 +439,12 @@ class committed_descriptor {
    * @param factor_num factor number which is set as a spec constant
    * @param num_factors total number of factors of the committed size, set as a spec constant.
    */
-  void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+  void set_spec_constants(detail::level top_level, /*sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,*/
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num = 0,
                           Idx num_factors = 0) {
+#ifndef PORTFFT_USE_ADAPTIVECPP
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
@@ -452,6 +454,7 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
+  #endif // PORTFFT_USE_ADAPTIVECPP
   }
 
   /**
@@ -518,17 +521,17 @@ class committed_descriptor {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
       bool is_compatible = true;
-      for (auto [level, ids, factors] : prepared_vec) {
+      /*for (auto [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
         if (!is_compatible) {
           break;
         }
-      }
+      }*/
       std::vector<kernel_data_struct> result;
       if (is_compatible) {
         std::size_t counter = 0;
-        for (auto [level, ids, factors] : prepared_vec) {
-          auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+        for (auto [level, /*ids,*/ factors] : prepared_vec) {
+          /*auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
           if (top_level == detail::level::GLOBAL) {
             if (counter == prepared_vec.size() - 1) {
               set_spec_constants(detail::level::GLOBAL, in_bundle,
@@ -549,9 +552,9 @@ class committed_descriptor {
             set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                                detail::apply_scale_factor::APPLIED, level);
-          }
+          }*/
           try {
-            result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
+            result.emplace_back(/*sycl::build(in_bundle),*/ factors, params.lengths[kernel_num], SubgroupSize,
                                 PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
           } catch (std::exception& e) {
             std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
@@ -580,7 +583,7 @@ class committed_descriptor {
   void allocate_scratch_and_precompute_scan(Idx num_global_level_dimensions) {
     std::size_t n_kernels = params.lengths.size();
     if (num_global_level_dimensions == 1) {
-      std::size_t global_dimension = 0;
+      /*std::size_t global_dimension = 0;
       for (std::size_t i = 0; i < n_kernels; i++) {
         if (dimensions.at(i).level == detail::level::GLOBAL) {
           global_dimension = i;
@@ -644,7 +647,7 @@ class committed_descriptor {
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
-      }
+      }*/
     } else {
       std::size_t max_encountered_global_size = 0;
       for (std::size_t i = 0; i < n_kernels; i++) {
@@ -684,7 +687,7 @@ class committed_descriptor {
                      inclusive_scan.size());
           queue.wait();
           // build transpose kernels
-          std::size_t num_transposes_required = factors.size() - 1;
+          /*std::size_t num_transposes_required = factors.size() - 1;
           for (std::size_t j = 0; j < num_transposes_required; j++) {
             auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
                 queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
@@ -695,7 +698,7 @@ class committed_descriptor {
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
-          }
+          }*/
         }
       }
     }

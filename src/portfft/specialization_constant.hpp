@@ -29,6 +29,8 @@
 namespace portfft {
 namespace detail {
 
+#ifndef PORTFFT_USE_ADAPTIVECPP
+
 constexpr static sycl::specialization_id<Idx> SpecConstFftSize{};
 constexpr static sycl::specialization_id<Idx> SpecConstNumRealsPerFFT{};
 constexpr static sycl::specialization_id<Idx> SpecConstWIScratchSize{};
@@ -43,6 +45,8 @@ constexpr static sycl::specialization_id<Idx> SubgroupFactorSGSpecConst{};
 constexpr static sycl::specialization_id<level> GlobalSubImplSpecConst{};
 constexpr static sycl::specialization_id<Idx> GlobalSpecConstLevelNum{};
 constexpr static sycl::specialization_id<Idx> GlobalSpecConstNumFactors{};
+
+#endif // PORTFFT_USE_ADAPTIVECPP
 
 }  // namespace detail
 }  // namespace portfft

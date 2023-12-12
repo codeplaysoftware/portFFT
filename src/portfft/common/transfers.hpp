@@ -231,12 +231,12 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct<1> glob
   // A helper function to generate indexes in local memory.
   auto index_transform = [=](Idx i) PORTFFT_INLINE { return local_offset + i * SubgroupSize + local_id; };
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
-    vec_t vec = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
+    vec_t vec;// = global_data.sg.load<ChunkSize>(detail::get_global_multi_ptr(&global[global_offset]));
     PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
       if (is_sg_contiguous) {
-        global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
-                             vec[static_cast<int>(j)]);
+        //global_data.sg.store(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]),
+        //                     vec[static_cast<int>(j)]);
       } else {
         local[index_transform(j)] = vec[static_cast<int>(j)];
       }
@@ -246,13 +246,13 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct<1> glob
     PORTFFT_UNROLL
     for (Idx j = 0; j < ChunkSize; j++) {
       if (is_sg_contiguous) {
-        vec[static_cast<int>(j)] =
-            global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]));
+        //vec[static_cast<int>(j)] =
+        //    global_data.sg.load(detail::get_local_multi_ptr(&local[local_offset + j * SubgroupSize]));
       } else {
         vec[static_cast<int>(j)] = local[index_transform(j)];
       }
     }
-    global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
+    //global_data.sg.store(detail::get_global_multi_ptr(&global[global_offset]), vec);
   }
   return SgBlockCopyBlockSize;
 }

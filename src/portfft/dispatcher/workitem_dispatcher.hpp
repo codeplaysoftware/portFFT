@@ -107,14 +107,16 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
 template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   IdxGlobal n_transforms, T scaling_factor, global_data_struct<1> global_data,
-                                  sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
+                                  /*sycl::kernel_handler& kh*/
+                                  complex_storage storage, detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store, detail::apply_scale_factor apply_scale_factor, const Idx fft_size,
+                                  const T* load_modifier_data = nullptr,
                                   const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
                                   T* loc_store_modifier = nullptr) {
-  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+  /*complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
+  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();*/
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
 
@@ -288,9 +290,14 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
         n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
+    const complex_storage storage = complex_storage::INTERLEAVED_COMPLEX;
+    detail::elementwise_multiply multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
+    detail::elementwise_multiply multiply_on_store = detail::elementwise_multiply::NOT_APPLIED;
+    detail::apply_scale_factor apply_scale_factor = detail::apply_scale_factor::NOT_APPLIED;
+    const Idx fft_size = 16;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(kernel_data.exec_bundle);
+      //cgh.use_kernel_bundle(kernel_data.exec_bundle);
       auto in_acc_or_usm = detail::get_access(in, cgh);
       auto out_acc_or_usm = detail::get_access(out, cgh);
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
@@ -301,7 +308,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+          [=](sycl::nd_item<1> it/*, sycl::kernel_handler kh*/) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
                 s,
@@ -311,7 +318,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             detail::workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
-                scale_factor, global_data, kh);
+                scale_factor, global_data, /*kh*/ storage, multiply_on_load, multiply_on_store, apply_scale_factor, fft_size);
             global_data.log_message_global("Exiting workitem kernel");
           });
     });
@@ -321,11 +328,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
-  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+  static void execute(committed_descriptor& /*desc*/, /*sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,*/
                       std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
                       Idx /*factor_num*/, Idx /*num_factors*/) {
     const Idx length_idx = static_cast<Idx>(length);
-    in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
+    //in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
 };
 

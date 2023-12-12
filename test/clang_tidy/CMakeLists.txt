@@ -26,7 +26,7 @@
 # Clang-tidy needs to have a compilation data-base to work on, so we
 # need a dummy project.
 add_executable(clang_tidy_dummy clang_tidy_dummy.cpp)
-add_sycl_to_target(TARGET clang_tidy_dummy)
+add_sycl_to_target(TARGET clang_tidy_dummy SOURCES clang_tidy_dummy.cpp)
 target_link_libraries(
     clang_tidy_dummy
     PRIVATE
@@ -35,12 +35,14 @@ target_link_libraries(
 )
 
 # setup clang-tidy command from executable + options
-get_filename_component(CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
-find_program(CLANG_TIDY_BIN clang-tidy
-  PATHS ${CXX_COMPILER_DIR}
-  PATH_SUFFIXES compiler
-  REQUIRED
-)
+if(NOT CLANG_TIDY_BIN)
+  get_filename_component(CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+  find_program(CLANG_TIDY_BIN clang-tidy
+    PATHS ${CXX_COMPILER_DIR}
+    PATH_SUFFIXES compiler
+    REQUIRED
+  )
+endif()
 set(CLANG_TIDY_COMMAND "${CLANG_TIDY_BIN};--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
 if(PORTFFT_CLANG_TIDY_AUTOFIX)
     list(APPEND CLANG_TIDY_COMMAND "--fix")

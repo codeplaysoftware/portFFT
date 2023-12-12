@@ -212,7 +212,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              dimension_struct& dimension_data) {
-    auto& kernel_data = dimension_data.kernels.at(0);
+    /*auto& kernel_data = dimension_data.kernels.at(0);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return kernel_data.used_sg_size * PORTFFT_SGS_IN_WG / 2;
@@ -257,7 +257,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                 &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });
-    });
+    });*/
+    return {};
   }
 };
 

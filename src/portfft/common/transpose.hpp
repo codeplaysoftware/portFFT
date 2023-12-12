@@ -44,7 +44,7 @@ template <typename T>
 PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_size, const T* input, T* output,
                                              const sycl::local_accessor<T, 2>& loc,
                                              detail::global_data_struct<2> global_data) {
-  using T_vec = sycl::vec<T, 2>;
+  /*using T_vec = sycl::vec<T, 2>;
   T_vec priv;
   IdxGlobal rounded_up_n = detail::round_up_to_multiple(N, static_cast<IdxGlobal>(tile_size));
   IdxGlobal rounded_up_m = detail::round_up_to_multiple(M, static_cast<IdxGlobal>(tile_size));
@@ -86,8 +86,7 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
       // TODO: This barrier should not required, use double buffering. Preferably use portBLAS
       sycl::group_barrier(global_data.it.get_group());
     }
-  }
-}
+  }*/
 }  // namespace detail
 }  // namespace portfft
 #endif

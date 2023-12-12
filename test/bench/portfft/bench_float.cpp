@@ -40,8 +40,8 @@ int main(int argc, char** argv) {
   benchmark::SetDefaultTimeUnit(benchmark::kMillisecond);
   benchmark::Initialize(&argc, argv);
 
-  sycl::queue q;
-  sycl::queue profiling_q({sycl::property::queue::enable_profiling()});
+  sycl::queue q(sycl::gpu_selector_v);
+  sycl::queue profiling_q(sycl::gpu_selector_v, {sycl::property::queue::enable_profiling()});
   print_device(q);
 
   // Benchmark configurations must match with the ones in test/bench/utils/reference_dft_set.hpp

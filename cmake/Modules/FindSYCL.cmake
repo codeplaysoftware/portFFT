@@ -47,16 +47,23 @@ if(IntelSYCL_FOUND)
     target_compile_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     target_link_options(${ARG_TARGET} PUBLIC ${COMPILE_FLAGS})
     endfunction()
+    return()
 endif()
 
 # Try to find DPC++ (nightly or manually set compiler path)
-if(NOT IntelSYCL_FOUND)
-    find_package(DPCPP QUIET)
+find_package(DPCPP QUIET)
+if(DPCPP_FOUND)
+  return()
 endif()
 
-if(NOT IntelSYCL_FOUND AND NOT DPCPP_FOUND)
-  # Display warnings
-  find_package(IntelSYCL)
-  find_package(DPCPP)
-  message(FATAL_ERROR "No SYCL implementation found")
+# Try to find AdaptiveCpp
+find_package(AdaptiveCpp QUIET)
+if(AdaptiveCpp_FOUND)
+  return()
 endif()
+
+# Display warnings
+find_package(IntelSYCL)
+find_package(DPCPP)
+find_package(AdaptiveCpp)
+message(FATAL_ERROR "No SYCL implementation found")

@@ -23,8 +23,6 @@
 # *
 # **************************************************************************/
 
-find_package(SYCL)
-
 # Get google test.
 include(FetchContent)
 FetchContent_Declare(
