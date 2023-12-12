@@ -71,11 +71,10 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
       if (i < N && j < M) {
         priv.load(0, detail::get_global_multi_ptr(&input[VecSize * (i * M + j)]));
         loc[global_data.it.get_local_id(0)][VecSize * global_data.it.get_local_id(1)] = priv[0];
-        global_data.log_message(
-            __func__, "loaded data", priv, "from global index: ",VecSize * (i * M + j),
-            " and storing it to local index: ", global_data.it.get_local_id(0), ", ", 
-            VecSize * global_data.it.get_local_id(1));
-        if constexpr(VecSize>1){
+        global_data.log_message(__func__, "loaded data", priv, "from global index: ", VecSize * (i * M + j),
+                                " and storing it to local index: ", global_data.it.get_local_id(0), ", ",
+                                VecSize * global_data.it.get_local_id(1));
+        if constexpr (VecSize > 1) {
           loc[global_data.it.get_local_id(0)][VecSize * global_data.it.get_local_id(1) + 1] = priv[1];
         }
       }
@@ -86,14 +85,13 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
 
       if (j_transposed < N && i_transposed < M) {
         priv[0] = loc[global_data.it.get_local_id(1)][VecSize * global_data.it.get_local_id(0)];
-        if constexpr(VecSize>1){
+        if constexpr (VecSize > 1) {
           priv[1] = loc[global_data.it.get_local_id(1)][VecSize * global_data.it.get_local_id(0) + 1];
         }
         priv.store(0, detail::get_global_multi_ptr(&output[VecSize * i_transposed * N + VecSize * j_transposed]));
-        global_data.log_message(
-            __func__, "stored data", priv, "from local index: ", global_data.it.get_local_id(1), ", ", 
-            VecSize * global_data.it.get_local_id(0),
-            " and storing it to global index: ", VecSize * i_transposed * N + VecSize * j_transposed);
+        global_data.log_message(__func__, "stored data", priv, "from local index: ", global_data.it.get_local_id(1),
+                                ", ", VecSize * global_data.it.get_local_id(0), " and storing it to global index: ",
+                                VecSize * i_transposed * N + VecSize * j_transposed);
       }
       // TODO: This barrier should not required, use double buffering. Preferably use portBLAS
       sycl::group_barrier(global_data.it.get_group());

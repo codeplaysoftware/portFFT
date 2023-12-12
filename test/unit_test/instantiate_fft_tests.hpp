@@ -91,9 +91,9 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
 // sizes that might use subgroup or workgroup implementation depending on device
 // and configurations
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
-                         ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 131),
-                                                ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 131),
+                             ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
                          test_params_print());
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
@@ -105,8 +105,8 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
 // Sizes that can use either workgroup or Global implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_global_placement_layouts, fwd_only, complex_storages,
-                             ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
+                             all_valid_global_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 128),
+                             ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
                          test_params_print());
 
 // Sizes that use the global implementations
