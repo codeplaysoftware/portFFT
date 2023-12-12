@@ -316,6 +316,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           vec_size * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
           dimension0.num_factors, storage, {event}, desc.queue);std::vector<Scalar> tmp(desc.params.number_of_transforms * dimension0.length * 2);
+#ifdef PORTFFT_LOG_DUMPS
       desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
       std::cout << std::endl;
       std::cout << "after factor 0: ";
@@ -324,6 +325,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       }
       std::cout << std::endl;
       std::cout << std::endl;
+#endif
       intermediate_twiddles_offset += 2 * kernel0.batch_size *
                                       static_cast<IdxGlobal>(kernel0.length);
       impl_twiddle_offset += detail::increment_twiddle_offset(
@@ -353,6 +355,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
               detail::increment_twiddle_offset(current_kernel.level,
                                                static_cast<Idx>(current_kernel.length));
         }
+#ifdef PORTFFT_LOG_DUMPS
         desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
         std::cout << std::endl;
         std::cout << "after factor " << factor_num << ": ";
@@ -361,6 +364,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         }
         std::cout << std::endl;
         std::cout << std::endl;
+#endif
       }
       event = desc.queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(l2_events);

@@ -433,6 +433,7 @@ void run_test(const test_params& params) {
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
   double tolerance = 1e-3;
 
+#ifdef PORTFFT_LOG_DUMPS
   std::cout << "host_input: ";
   for (std::size_t t = 0; t < host_input.size(); ++t) {
     std::cout << host_input[t] << ", ";
@@ -443,6 +444,7 @@ void run_test(const test_params& params) {
     std::cout << host_input_imag[t] << ", ";
   }
   std::cout << std::endl;
+#endif
 
   try {
     check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag,
