@@ -151,6 +151,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.backward_factors - 1); i++) {
         mem_required_for_twiddles += 2 * factors_idx_global.at(i) * sub_batches.at(i);
       }
+      mem_required_for_twiddles += static_cast<IdxGlobal>(4 * dimension_data.length);
     }
 
     // Now calculate mem required for twiddles per implementation
@@ -182,6 +183,15 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     };
 
     IdxGlobal offset = 0;
+    if (dimension_data.is_prime) {
+      // get bluestein specific modifiers.
+      detail::get_fft_chirp_signal(device_twiddles + counter, static_cast<IdxGlobal>(dimension_data.committed_length),
+                                   static_cast<IdxGlobal>(dimension_data.length), desc.queue);
+      offset += static_cast<IdxGlobal>(2 * dimension_data.length);
+      detail::populate_bluestein_input_modifiers(device_twiddles + counter,
+                                                 static_cast<IdxGlobal>(dimension_data.committed_length),
+                                                 static_cast<IdxGlobal>(dimension_data.length), desc.queue);
+    }
     // calculate twiddles to be multiplied between factors
     for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.forward_factors) - 1; i++) {
       calculate_twiddles(sub_batches.at(i), factors_idx_global.at(i), offset, host_memory.data());
