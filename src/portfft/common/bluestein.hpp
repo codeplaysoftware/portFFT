@@ -54,6 +54,18 @@ void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_
   naive_dft(chirp_signal, chirp_fft, dimension_size);
   queue.copy(reinterpret_cast<T*>(&chirp_fft[0]), ptr, 2 * dimension_size).wait();
 }
+
+template <typename T>
+void populate_input_and_output_modifiers(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size,
+                                         sycl::queue& queue) {
+  using ctype = std::complex<T>;
+  ctype* scratch = (ctype*)calloc(dimension_size, sizeof(ctype));
+  for (IdxGlobal i = 0; i < committed_size; i++) {
+    double theta = -M_PI * static_cast<double>(i * i) / static_cast<double>(committed_size);
+    scratch[i] = ctype(std::cos(theta), std::sin(theta));
+  }
+  queue.copy(reinterpret_cast<T*>(&scratch[0]), ptr, 2 * dimension_size);
+}
 }  // namespace detail
 }  // namespace portfft
 

@@ -25,6 +25,7 @@
 
 #include <cstring>
 
+#include "portfft/common/bluestein.hpp"
 #include "portfft/common/global.hpp"
 #include "portfft/common/subgroup.hpp"
 #include "portfft/defines.hpp"
@@ -114,7 +115,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       factors_idx_global.push_back(static_cast<IdxGlobal>(
           std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>())));
       temp_acc *= factors_idx_global.back();
-      if (temp_acc == dimension_data.committed_length) {
+      if (temp_acc == static_cast<IdxGlobal>(dimension_data.committed_length)) {
         break;
       }
     }

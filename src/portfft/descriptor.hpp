@@ -594,12 +594,12 @@ class committed_descriptor {
           detail::elementwise_multiply last_uses_store_modifiers =
               backward_factors > 0 ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
           set_global_impl_spec_consts(in_bundles, first_uses_load_modifiers, detail::elementwise_multiply::NOT_APPLIED,
-                                      counter);
+                                      static_cast<Idx>(counter));
           if (backward_factors > 0) {
             std::vector<in_bundle_and_metadata> backward_kernels_slice(in_bundles.begin() + static_cast<long>(counter),
                                                                        in_bundles.end());
             set_global_impl_spec_consts(backward_kernels_slice, detail::elementwise_multiply::NOT_APPLIED,
-                                        last_uses_store_modifiers, backward_factors);
+                                        last_uses_store_modifiers, static_cast<Idx>(backward_factors));
             std::copy(backward_kernels_slice.begin(), backward_kernels_slice.end(),
                       in_bundles.begin() + static_cast<long>(counter));
           }
@@ -720,7 +720,8 @@ class committed_descriptor {
         sub_batches.clear();
         inclusive_scan.clear();
         for (std::size_t i = 0; i < static_cast<std::size_t>(num_backward_factors); i++) {
-          const auto& backward_factor_kernel = kernels_for_dimension.at(num_forward_factors + i);
+          const auto& backward_factor_kernel =
+              kernels_for_dimension.at(static_cast<std::size_t>(num_forward_factors) + i);
           factors.push_back(
               static_cast<IdxGlobal>(std::accumulate(backward_factor_kernel.factors.begin(),
                                                      backward_factor_kernel.factors.end(), 1, std::multiplies<Idx>())));

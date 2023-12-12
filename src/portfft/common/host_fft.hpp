@@ -28,10 +28,12 @@ namespace portfft {
 namespace detail {
 template <typename T>
 void naive_dft(T* input, T* output, IdxGlobal fft_size) {
+  using ftype = std::complex<T>;
   for (int i = 0; i < fft_size; i++) {
-    ftype temp = 0;
+    ftype temp = ftype(0, 0);
     for (int j = 0; j < fft_size; j++) {
-      ftype multiplier = ftype(std::cos((-2 * M_PI * i * j) / fft_size), std::sin((-2 * M_PI * i * j) / fft_size));
+      ftype multiplier = ftype(std::cos((-2 * M_PI * i * j) / static_cast<double>(fft_size)),
+                               std::sin((-2 * M_PI * i * j) / static_cast<double>(fft_size)));
       temp += input[j] * multiplier;
     }
     output[i] = temp;
