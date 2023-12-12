@@ -151,6 +151,7 @@ bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level, bo
     }
     temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true, encountered_prime,
                                  requires_load_modifier);
+    requires_load_modifier = false;
   }
   return encountered_prime;
 }
