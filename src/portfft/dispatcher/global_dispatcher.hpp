@@ -283,7 +283,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              std::vector<kernel_data_struct>& kernel_data) {
-    std::cout << "execute IN:" << in << "IN imag: " << in_imag << std::endl;
     auto& dimension0 = desc.dimensions.at(0);
     complex_storage storage = desc.params.complex_storage;
     IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;

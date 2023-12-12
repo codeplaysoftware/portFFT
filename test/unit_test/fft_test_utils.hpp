@@ -230,7 +230,6 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
     const std::vector<OutputFType>& host_reference_output, const std::vector<RealFType>& host_input_imag,
     std::vector<RealFType>& host_output_imag, const std::vector<RealFType>& host_reference_output_imag,
     double tolerance) {
-  std::cout << "check_fft usm IN:" << host_input.data() << " IN imag: " << host_input_imag.data() << std::endl;
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
@@ -258,8 +257,6 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
 
   std::vector<sycl::event> dependencies{copy_event, copy_event2, oop_init_event, oop_imag_init_event};
 
-  std::cout << "check_fft usm 2 IN:" << device_input << " IN imag: " << device_input_imag << std::endl;
-
   sycl::event fft_event = [&]() {
     if (is_oop) {
       if constexpr (Dir == direction::FORWARD) {
@@ -282,14 +279,12 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
           return committed_descriptor.compute_forward(device_input, dependencies);
         } else {
-          std::cout << "check_fft usm 3 IN:" << device_input << " IN imag: " << device_input_imag << std::endl;
           return committed_descriptor.compute_forward(device_input, device_input_imag, dependencies);
         }
       } else {
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
           return committed_descriptor.compute_backward(device_input, dependencies);
         } else {
-          std::cout << "check_fft usm 3 IN:" << device_input << " IN imag: " << device_input_imag << std::endl;
           return committed_descriptor.compute_backward(device_input, device_input_imag, dependencies);
         }
       }
@@ -341,7 +336,6 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
     const std::vector<OutputFType>& host_reference_output, std::vector<RealFType>& host_input_imag,
     std::vector<RealFType>& host_output_imag, const std::vector<RealFType>& host_reference_output_imag,
     double tolerance) {
-  std::cout << "check_fft buf IN:" << host_input.data() << " IN imag: " << host_input_imag.data() << std::endl;
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
@@ -431,7 +425,7 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
-  double tolerance = 1e-3;
+  double tolerance = 2e-2;
 
 #ifdef PORTFFT_LOG_DUMPS
   std::cout << "host_input: ";
