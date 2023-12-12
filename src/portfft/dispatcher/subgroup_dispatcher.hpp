@@ -579,7 +579,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
+  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
+    const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
@@ -607,20 +608,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             std::vector<kernel_data_struct>& kernel_data) {
-    constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    Scalar* twiddles = kernel_data[0].twiddles_forward.get();
-    Idx factor_sg = kernel_data[0].factors[1];
+                             dimension_struct& dimension_data) {
+    constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
+    auto& kernel_data = dimension_data.kernels.at(0);
+    Scalar* twiddles = kernel_data.twiddles_forward.get();
+    Idx factor_sg = kernel_data.factors[1];
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, LayoutIn, Dummy>::execute(
-            desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
-            kernel_data[0].num_sgs_per_wg);
+            desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
-        n_transforms, factor_sg, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
-    std::size_t twiddle_elements = 2 * kernel_data[0].length;
+        n_transforms, factor_sg, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
+    std::size_t twiddle_elements = 2 * kernel_data.length;
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
+      cgh.use_kernel_bundle(kernel_data.exec_bundle);
       auto in_acc_or_usm = detail::get_access(in, cgh);
       auto out_acc_or_usm = detail::get_access(out, cgh);
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
@@ -631,7 +632,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data[0].num_sgs_per_wg)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG

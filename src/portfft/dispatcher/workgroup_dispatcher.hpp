@@ -280,29 +280,29 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             std::vector<kernel_data_struct>& kernel_data) {
+                             dimension_struct& dimension_data) {
+    auto& kernel_data = dimension_data.kernels.at(0);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
-        return kernel_data[0].used_sg_size * PORTFFT_SGS_IN_WG / 2;
+        return kernel_data.used_sg_size * PORTFFT_SGS_IN_WG / 2;
       } else {
         return 1;
       }
     }();
-    constexpr detail::memory Mem = std::is_pointer<TOut>::value ? detail::memory::USM : detail::memory::BUFFER;
-    Scalar* twiddles = kernel_data[0].twiddles_forward.get();
+    constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
+    Scalar* twiddles = kernel_data.twiddles_forward.get();
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, LayoutIn, Dummy>::execute(
-            desc, kernel_data[0].length, kernel_data[0].used_sg_size, kernel_data[0].factors,
-            kernel_data[0].num_sgs_per_wg);
+            desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workgroup<Scalar, LayoutIn>(
-        n_transforms, SubgroupSize, kernel_data[0].num_sgs_per_wg, desc.n_compute_units));
-    const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) *
-                                                         kernel_data[0].factors[2] * kernel_data[0].factors[3]);
+        n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
+    const Idx bank_lines_per_pad =
+        bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * kernel_data.factors[2] * kernel_data.factors[3]);
     std::size_t sg_twiddles_offset = static_cast<std::size_t>(
-        detail::pad_local(2 * static_cast<Idx>(kernel_data[0].length) * num_batches_in_local_mem, bank_lines_per_pad));
+        detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * num_batches_in_local_mem, bank_lines_per_pad));
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
-      cgh.use_kernel_bundle(kernel_data[0].exec_bundle);
+      cgh.use_kernel_bundle(kernel_data.exec_bundle);
       auto in_acc_or_usm = detail::get_access(in, cgh);
       auto out_acc_or_usm = detail::get_access(out, cgh);
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
@@ -361,7 +361,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, kernel_data_struct& kernel_data) {
+  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
+    const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];

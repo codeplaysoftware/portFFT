@@ -72,7 +72,6 @@ inline T round_up_to_multiple(T value, T factor) {
 
 /**
  * Cast a raw pointer to a global sycl::multi_ptr.
- * The multi_ptr is using the legacy decoration for now as this is better supported.
  *
  * @tparam T Pointer type
  * @param ptr Raw pointer to cast to multi_ptr
@@ -80,12 +79,11 @@ inline T round_up_to_multiple(T value, T factor) {
  */
 template <typename T>
 inline auto get_global_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::legacy>(ptr);
+  return sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::yes>(ptr);
 }
 
 /**
  * Cast a raw pointer to a local sycl::multi_ptr.
- * The multi_ptr is using the legacy decoration for now as this is better supported.
  *
  * @tparam T Pointer type
  * @param ptr Raw pointer to cast to multi_ptr
@@ -93,7 +91,7 @@ inline auto get_global_multi_ptr(T ptr) {
  */
 template <typename T>
 inline auto get_local_multi_ptr(T ptr) {
-  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::legacy>(ptr);
+  return sycl::address_space_cast<sycl::access::address_space::local_space, sycl::access::decorated::yes>(ptr);
 }
 
 /**
@@ -119,7 +117,7 @@ T* get_access(T* ptr, sycl::handler&) {
  */
 template <typename T>
 auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
-  if constexpr (std::is_const<T>::value) {
+  if constexpr (std::is_const_v<T>) {
     return buf.template get_access<sycl::access::mode::read>(cgh);
   } else {
     return buf.template get_access<sycl::access::mode::write>(cgh);

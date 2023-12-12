@@ -27,7 +27,7 @@
 include_guard()
 
 # Try to find a DPC++ release
-# (reqrs source /opt/intel/oneapi/compilers/2023.2.0/env/vars.sh)
+# (reqrs source /path/to/intel/oneapi/compiler/2024.0/env/vars.sh)
 find_package(IntelSYCL QUIET)
 if(IntelSYCL_FOUND)
     function(add_sycl_to_target)

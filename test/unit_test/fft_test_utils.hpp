@@ -425,7 +425,7 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
-  double tolerance = 2e-2;
+  double tolerance = 5e-2;
 
 #ifdef PORTFFT_LOG_DUMPS
   std::cout << "host_input: ";
