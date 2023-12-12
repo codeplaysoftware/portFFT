@@ -291,7 +291,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     const IdxGlobal* factors_and_scan = static_cast<const IdxGlobal*>(dimension0.factors_and_scan.get());
     std::size_t num_batches = desc.params.number_of_transforms;
     std::size_t max_batches_in_l2 = static_cast<std::size_t>(dimension0.num_batches_in_l2);
-    std::size_t imag_offset = dimension0.length * num_batches;
+    std::size_t imag_offset = dimension0.length * max_batches_in_l2;
     IdxGlobal initial_impl_twiddle_offset = 0;
     Idx num_factors = dimension0.num_factors;
     IdxGlobal committed_size = static_cast<IdxGlobal>(desc.params.lengths[0]);
