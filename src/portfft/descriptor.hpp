@@ -591,7 +591,7 @@ class committed_descriptor {
               backward_factors > 0 ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
           detail::elementwise_multiply last_uses_store_modifiers =
               backward_factors > 0 ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
-          set_global_impl_spec_consts(in_bundles, first_uses_load_modifiers, detail::elementwise_multiply::NOT_APPLIED,
+          set_global_impl_spec_consts(in_bundles, first_uses_load_modifiers, last_uses_store_modifiers,
                                       static_cast<Idx>(counter));
           if (backward_factors > 0) {
             std::vector<in_bundle_and_metadata> backward_kernels_slice(in_bundles.begin() + static_cast<long>(counter),

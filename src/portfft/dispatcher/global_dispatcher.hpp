@@ -184,7 +184,6 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
     IdxGlobal offset = 0;
     if (dimension_data.is_prime) {
-      std::cout << "I AM POPULATING THE BLUESTEIN TWIDDLES " << std::endl;
       // get bluestein specific modifiers.
       detail::get_fft_chirp_signal(device_twiddles + offset, static_cast<IdxGlobal>(dimension_data.committed_length),
                                    static_cast<IdxGlobal>(dimension_data.length), desc.queue);
@@ -411,7 +410,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
       }
     };
-    run_global.template operator()<Dir>(kernels);
+    run_global.template operator()<direction::FORWARD>(kernels);
+    if (dimension_data.is_prime) {
+      run_global.template operator()<direction::BACKWARD>(
+          std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()));
+    }
     return current_events[0];
   }
 };
