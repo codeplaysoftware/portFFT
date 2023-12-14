@@ -284,17 +284,16 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              dimension_struct& dimension_data) {
-    auto& dimension0 = desc.dimensions.at(0);
     complex_storage storage = desc.params.complex_storage;
     IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
     const auto& kernels = dimension_data.kernels;
     const Scalar* twiddles_ptr = static_cast<const Scalar*>(kernels.at(0).twiddles_forward.get());
-    const IdxGlobal* factors_and_scan = static_cast<const IdxGlobal*>(dimension0.factors_and_scan.get());
+    const IdxGlobal* factors_and_scan = static_cast<const IdxGlobal*>(dimension_data.factors_and_scan.get());
     std::size_t num_batches = desc.params.number_of_transforms;
-    std::size_t max_batches_in_l2 = static_cast<std::size_t>(dimension0.num_batches_in_l2);
-    std::size_t imag_offset = dimension0.length * max_batches_in_l2;
+    std::size_t max_batches_in_l2 = static_cast<std::size_t>(dimension_data.num_batches_in_l2);
+    std::size_t imag_offset = dimension_data.length * max_batches_in_l2;
     IdxGlobal initial_impl_twiddle_offset = 0;
-    Idx num_factors = dimension0.num_factors;
+    Idx num_factors = dimension_data.num_factors;
     IdxGlobal committed_size = static_cast<IdxGlobal>(desc.params.lengths[0]);
     Idx num_transposes = num_factors - 1;
     std::vector<sycl::event> l2_events;
@@ -315,30 +314,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset,
           vec_size * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
-          dimension0.num_factors, storage, {event}, desc.queue);
-      std::vector<Scalar> tmp(desc.params.number_of_transforms * dimension0.length * 2);
-#ifdef PORTFFT_LOG_DUMPS
-      desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
-      std::cout << std::endl;
-      std::cout << "after factor 0: ";
-      for (Scalar val : tmp) {
-        std::cout << val << ", ";
-      }
-      std::cout << std::endl;
-      std::cout << std::endl;
-#endif
+          dimension_data.num_factors, storage, {event}, desc.queue);
+      detail::dump_device("after factor 0:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
       intermediate_twiddles_offset += 2 * kernel0.batch_size * static_cast<IdxGlobal>(kernel0.length);
       impl_twiddle_offset += detail::increment_twiddle_offset(kernel0.level, static_cast<Idx>(kernel0.length));
-      for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension0.num_factors); factor_num++) {
+      for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension_data.num_factors); factor_num++) {
         auto& current_kernel = kernels.at(factor_num);
-        if (static_cast<Idx>(factor_num) == dimension0.num_factors - 1) {
+        if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
           l2_events =
               detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
                   current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(),
                   desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
                   factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0, committed_size,
                   static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i),
-                  static_cast<Idx>(factor_num), dimension0.num_factors, storage, l2_events, desc.queue);
+                  static_cast<Idx>(factor_num), dimension_data.num_factors, storage, l2_events, desc.queue);
         } else {
           l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
                                             detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
@@ -346,21 +335,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
               desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
               factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0, committed_size,
               static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i),
-              static_cast<Idx>(factor_num), dimension0.num_factors, storage, l2_events, desc.queue);
+              static_cast<Idx>(factor_num), dimension_data.num_factors, storage, l2_events, desc.queue);
           intermediate_twiddles_offset += 2 * current_kernel.batch_size * static_cast<IdxGlobal>(current_kernel.length);
           impl_twiddle_offset +=
               detail::increment_twiddle_offset(current_kernel.level, static_cast<Idx>(current_kernel.length));
         }
-#ifdef PORTFFT_LOG_DUMPS
-        desc.queue.copy(desc.scratch_ptr_1.get(), tmp.data(), tmp.size(), l2_events).wait();
-        std::cout << std::endl;
-        std::cout << "after factor " << factor_num << ": ";
-        for (Scalar val : tmp) {
-          std::cout << val << ", ";
-        }
-        std::cout << std::endl;
-        std::cout << std::endl;
-#endif
+      detail::dump_device("after factor:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
       }
       event = desc.queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(l2_events);
