@@ -332,6 +332,7 @@ class committed_descriptor {
     std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
     if (detail::fits_in_wi<Scalar>(fft_size)) {
+      factors.push_back(static_cast<Idx>(fft_size));
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
     }
@@ -573,13 +574,10 @@ class committed_descriptor {
       std::vector<kernel_data_struct> result;
       std::size_t counter = 0;
       std::size_t dimension_size = 1;
-      for (auto [level, ids, factors] : prepared_vec) {
+      for (const auto& [level, ids, factors] : prepared_vec) {
         dimension_size *=
             static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
         counter++;
-        if (dimension_size != params.lengths[kernel_num]) {
-          break;
-        }
       }
       std::size_t backward_factors = prepared_vec.size() - counter;
       std::vector<in_bundle_and_metadata> in_bundles;
@@ -847,9 +845,6 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
-      if (dimensions.back().committed_length != dimensions.back().length) {
-        dimensions.back().is_prime = true;
-      }
       dimensions.back().kernels.at(0).twiddles_forward =
           std::shared_ptr<Scalar>(calculate_twiddles(dimensions.back()), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
