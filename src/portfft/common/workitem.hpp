@@ -130,7 +130,7 @@ template <direction Dir, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_small, Idx stride_in, Idx stride_out,
                                      T* privateScratch) {
   PORTFFT_UNROLL
-  for (Idx i = 0; i < factor_small; i++) {
+  for (Idx i = 0; factor_n > 1 && i < factor_small; i++) {
     wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n,
                                 factor_small * stride_in, 1, privateScratch + 2 * factor_n * factor_small);
     PORTFFT_UNROLL
@@ -149,7 +149,9 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_n; i++) {
-    naive_dft<Dir>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_small, factor_n, factor_n * stride_out,
+    auto naive_in = factor_n == 1 ? in : privateScratch + 2 * i;
+    auto naive_stride_in = factor_n == 1 ? stride_in : factor_n;
+    naive_dft<Dir>(naive_in, out + 2 * i * stride_out, factor_small, naive_stride_in, factor_n * stride_out,
                    privateScratch + 2 * factor_n * factor_small);
   }
 }
@@ -184,7 +186,7 @@ PORTFFT_INLINE constexpr T get_small_factor(T N) {
   if (N % 5 == 0) return 5;
   if (N % 7 == 0) return 7;
   if (N % 11 == 0) return 11;
-  return 1;
+  return N;
 }
 
 /**
