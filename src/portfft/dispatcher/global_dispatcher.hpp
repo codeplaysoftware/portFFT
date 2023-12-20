@@ -101,6 +101,15 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
   return 0;
 }
 
+template <typename T>
+void trigger_device_copy(const T* src, T* dst, IdxGlobal num_elements_to_copy, IdxGlobal src_stride,
+                         IdxGlobal dst_stride, Idx num_copies, std::vector<sycl::event>& event_vector,
+                         sycl::queue& queue) {
+  for (Idx i = 0; i < num_copies; i++) {
+    event_vector.at(i) = queue.copy(src + i * src_stride, dst + i * dst_stride, num_elements_to_copy);
+  }
+}
+
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
@@ -408,10 +417,13 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
     };
     for (std::size_t i = 0; i < num_batches; i += max_batches_in_l2) {
-      run_global.template operator()<Dir>(kernels, i);
       if (dimension_data.is_prime) {
+        run_global.template operator()<direction::FORWARD>(
+            std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()), i);
         run_global.template operator()<direction::BACKWARD>(
             std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()), i);
+      } else {
+        run_global.template operator()<Dir>(kernels, i);
       }
     }
     return current_events[0];
