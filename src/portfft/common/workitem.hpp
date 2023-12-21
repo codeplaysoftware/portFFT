@@ -127,8 +127,9 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
 template <direction Dir, Idx RecursionN, Idx RecursionM, typename T>
 PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_m, Idx stride_in, Idx stride_out,
                                      T* privateScratch) {
+  const bool do_factor_n = factor_n > 1;
   PORTFFT_UNROLL
-  for (Idx i = 0; i < factor_m; i++) {
+  for (Idx i = 0; do_factor_n && i < factor_m; i++) {
     wi_dft<Dir, RecursionN>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n, factor_m * stride_in,
                             1, privateScratch + 2 * factor_n * factor_m);
     PORTFFT_UNROLL
@@ -147,7 +148,9 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_n; i++) {
-    wi_dft<Dir, RecursionM>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n, factor_n * stride_out,
+    auto adj_in = do_factor_n ? privateScratch + 2 * i : in;
+    auto adj_stride = do_factor_n ? factor_n : stride_in;
+    wi_dft<Dir, RecursionM>(adj_in, out + 2 * i * stride_out, factor_m, adj_stride, factor_n * stride_out,
                             privateScratch + 2 * factor_n * factor_m);
   }
 }
@@ -156,7 +159,7 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
  * Factorizes a number into two roughly equal factors.
  * @tparam T type of the number to factorize
  * @param N the number to factorize
- * @return the smaller of the factors
+ * @return the smaller of the factors or N if N is prime.
  */
 template <typename T>
 PORTFFT_INLINE constexpr T factorize(T N) {
@@ -177,21 +180,20 @@ PORTFFT_INLINE constexpr T factorize(T N) {
  * @param N size of the FFT problem
  * @return Number of temporary complex values
  */
-template <typename TIdx, Idx RecursionLevel = 0>
+template <typename TIdx, Idx RecursionLevel = detail::int_log2(detail::MaxComplexPerWI)>
 PORTFFT_INLINE constexpr TIdx wi_temps(TIdx N) {
-  TIdx f0 = factorize(N);
-  TIdx f1 = N / f0;
-  if (f0 < 2 || f1 < 2) {
+  if constexpr (RecursionLevel > 1) {
+    constexpr Idx RecursionN = RecursionLevel / 2 + RecursionLevel % 2;
+    constexpr Idx RecursionM = RecursionLevel - RecursionN;
+    TIdx f0 = factorize(N);
+    TIdx f1 = N / f0;
+    TIdx a = wi_temps<TIdx, RecursionN>(f0);
+    TIdx b = wi_temps<TIdx, RecursionM>(f1);
+    return (a > b ? a : b) + N;
+  } else {
+    // Naive DFT
     return N;
   }
-  constexpr Idx MaxRecursionLevel = detail::int_log2(detail::MaxComplexPerWI) - 1;
-  TIdx a{2};
-  TIdx b{2};
-  if constexpr (RecursionLevel < MaxRecursionLevel) {
-    a = wi_temps<TIdx, RecursionLevel + 1>(f0);
-    b = wi_temps<TIdx, RecursionLevel + 1>(f1);
-  }
-  return (a > b ? a : b) + N;
 }
 
 /**
@@ -228,12 +230,16 @@ template <direction Dir, Idx RecursionLevel = detail::int_log2(detail::MaxComple
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   static_assert(RecursionLevel >= 0, "Can't have -ve recursion level.");
   static_assert(RecursionLevel < 10, "Large recursion level suggests a bug.");
-  const Idx f0 = detail::factorize(fft_size);
   if constexpr (RecursionLevel > 1) {
     constexpr Idx RecursionN = RecursionLevel / 2 + RecursionLevel % 2;
     constexpr Idx RecursionM = RecursionLevel - RecursionN;
-    detail::cooley_tukey_dft<Dir, RecursionN, RecursionM>(in, out, fft_size / f0, f0, stride_in, stride_out,
-                                                          privateScratch);
+    const Idx f0 = detail::factorize(fft_size);
+    if (f0 >= 2 && fft_size / f0 >= 2) {
+      detail::cooley_tukey_dft<Dir, RecursionN, RecursionM>(in, out, fft_size / f0, f0, stride_in, stride_out,
+                                                            privateScratch);
+    } else {
+      detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out, privateScratch);
+    }
   } else {
     detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out, privateScratch);
   }
