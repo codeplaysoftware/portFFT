@@ -96,6 +96,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
+  bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
 
   const Idx factor_wi = kh.get_specialization_constant<SubgroupFactorWISpecConst>();
   const Idx factor_sg = kh.get_specialization_constant<SubgroupFactorSGSpecConst>();
@@ -255,7 +257,19 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             }
           }
         }
+        if (take_conjugate_on_load) {
+          PORTFFT_UNROLL
+          for (Idx k = 0; k < factor_wi; k++) {
+            priv[2 * k + 1] *= -1;
+          }
+        }
         sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+        if (take_conjugate_on_store) {
+          PORTFFT_UNROLL
+          for (Idx k = 0; k < factor_wi; k++) {
+            priv[2 * k + 1] *= -1;
+          }
+        }
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
         }
@@ -449,7 +463,19 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
         }
       }
+      if (take_conjugate_on_load) {
+        PORTFFT_UNROLL
+        for (Idx k = 0; k < factor_wi; k++) {
+          priv[2 * k + 1] *= -1;
+        }
+      }
       sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+      if (take_conjugate_on_store) {
+        PORTFFT_UNROLL
+        for (Idx k = 0; k < factor_wi; k++) {
+          priv[2 * k + 1] *= -1;
+        }
+      }
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
       }

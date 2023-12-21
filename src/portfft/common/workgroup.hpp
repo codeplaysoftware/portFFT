@@ -55,6 +55,8 @@ namespace detail {
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @param ApplyScaleFactor Whether or not the scale factor is applied
+ * @param take_conjugate_on_load Whether or not take the conjugate of the input before computing the fft.
+ * @param take_conjugate_on_store Whether or not take the conjugate of the result of the fft
  * @param global_data global data for the kernel
  */
 template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
@@ -63,7 +65,8 @@ __attribute__((always_inline)) inline void dimension_dft(
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
     Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, detail::layout layout_in,
     detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-    detail::apply_scale_factor apply_scale_factor, global_data_struct<1> global_data) {
+    detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load, bool take_conjugate_on_store,
+    global_data_struct<1> global_data) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
@@ -175,9 +178,19 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
       }
     }
-
+    if (take_conjugate_on_load) {
+      PORTFFT_UNROLL
+      for (Idx k = 0; k < fact_wi; k++) {
+        priv[2 * k + 1] *= -1;
+      }
+    }
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
-
+    if (take_conjugate_on_store) {
+      PORTFFT_UNROLL
+      for (Idx k = 0; k < fact_wi; k++) {
+        priv[2 * k + 1] *= -1;
+      }
+    }
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Store modifier data layout in global memory - n_transforms x N x FactorSG x FactorWI
@@ -237,6 +250,8 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
  * @param apply_scale_factor Whether or not the scale factor is applied
+ * @param take_conjugate_on_load Whether or not take the conjugate of the input before computing the fft.
+ * @param take_conjugate_on_store Whether or not take the conjugate of the result of the fft
  * @param global_data global data for the kernel
  */
 template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
@@ -245,7 +260,8 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
                            detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
-                           detail::apply_scale_factor apply_scale_factor, detail::global_data_struct<1> global_data) {
+                           detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load,
+                           bool take_conjugate_on_store, detail::global_data_struct<1> global_data) {
   global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
