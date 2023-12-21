@@ -173,6 +173,8 @@ PORTFFT_INLINE void multiply_complex(const T input_real, const T input_imag, con
 
 /**
  * Log2 of an Idx
+ * Eg. int_log2(16) = 4
+ * Eg. int_log2(31) = 4
  * @param x The value to get log2 of. Must be more than 0.
  */
 PORTFFT_INLINE constexpr Idx int_log2(Idx x) {

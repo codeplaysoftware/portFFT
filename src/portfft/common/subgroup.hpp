@@ -166,31 +166,31 @@ PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx facto
  * @param[in,out] imag imaginary component of the input/output complex value for
  * one workitem
  * @param factor_n the first factor of the problem size
- * @param factor_small the second factor of the problem size. A small prime or 1.
+ * @param factor_m the second factor of the problem size
  * @param stride Stride between workitems working on consecutive values of one
  * DFT
  * @param sg subgroup
  */
-template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
-PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_small, Idx stride,
+template <direction Dir, Idx SubgroupSize, Idx RecursionN, Idx RecursionM, typename T>
+PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
                                               sycl::sub_group& sg) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
-  Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_small);
+  Idx index_in_outer_dft = (local_id / stride) % (factor_n * factor_m);
   Idx k = index_in_outer_dft % factor_n;  // index in the contiguous factor/fft
   Idx n = index_in_outer_dft / factor_n;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_n, factor_small * stride, sg);
+  cross_sg_dft<Dir, SubgroupSize, RecursionN>(real, imag, factor_n, factor_m * stride, sg);
   // transpose
-  cross_sg_transpose(real, imag, factor_n, factor_small, stride, sg);
-  T multi_re = twiddle<T>::Re[factor_n * factor_small][k * n];
-  T multi_im = twiddle<T>::Im[factor_n * factor_small][k * n];
+  cross_sg_transpose(real, imag, factor_n, factor_m, stride, sg);
+  T multi_re = twiddle<T>::Re[factor_n * factor_m][k * n];
+  T multi_im = twiddle<T>::Im[factor_n * factor_m][k * n];
   if constexpr (Dir == direction::BACKWARD) {
     multi_im = -multi_im;
   }
   detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
-  // Small factor - is prime or 1, so cannot apply Cooley-Tukey.
-  cross_sg_naive_dft<Dir>(real, imag, factor_small, factor_n * stride, sg);
+  // factor M
+  cross_sg_dft<Dir, SubgroupSize, RecursionM>(real, imag, factor_m, factor_n * stride, sg);
 }
 
 /**
@@ -210,12 +210,14 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Id
  * DFT
  * @param sg subgroup
  */
-template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
+template <direction Dir, Idx SubgroupSize, Idx RecursionLevel = detail::int_log2(SubgroupSize), typename T>
 PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
-  constexpr Idx MaxRecursionLevel = detail::int_log2(SubgroupSize);
-  if constexpr (RecursionLevel < MaxRecursionLevel) {
-    const Idx f0 = detail::get_small_factor(fft_size);
-    cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
+  static_assert(RecursionLevel >= 0, "Can't have negative recursion level.");
+  if constexpr (RecursionLevel > 1) {
+    const Idx f0 = detail::factorize(fft_size);
+    constexpr Idx RecursionN = RecursionLevel / 2 + RecursionLevel % 2;
+    constexpr Idx RecursionM = RecursionLevel - RecursionN;
+    cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionN, RecursionM>(real, imag, fft_size / f0, f0, stride, sg);
   } else {
     cross_sg_naive_dft<Dir>(real, imag, fft_size, stride, sg);
   }

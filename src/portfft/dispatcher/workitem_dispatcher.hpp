@@ -207,7 +207,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         global_data.log_message_global(__func__, "applying load modifier");
         detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, i * n_reals);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
+      wi_dft<Dir>(priv, priv, fft_size, 1, 1, wi_private_scratch);
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
