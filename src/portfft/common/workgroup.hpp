@@ -269,13 +269,15 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
-      detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, global_data);
+      detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, take_conjugate_on_load,
+      take_conjugate_on_store, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
       load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, layout_in,
-      detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, global_data);
+      detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, take_conjugate_on_load,
+      take_conjugate_on_store, global_data);
   global_data.log_message_global(__func__, "exited");
 }
 

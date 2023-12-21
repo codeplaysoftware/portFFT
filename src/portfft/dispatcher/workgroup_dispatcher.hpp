@@ -182,7 +182,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
       wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
                                 offset / static_cast<IdxGlobal>(2 * fft_size), load_modifier_data, store_modifier_data,
                                 fft_size, factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store,
-                                apply_scale_factor, take_ take_conjugate_on_load, take_conjugate_on_store, global_data);
+                                apply_scale_factor, take_conjugate_on_load, take_conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT

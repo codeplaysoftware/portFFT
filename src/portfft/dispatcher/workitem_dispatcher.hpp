@@ -215,56 +215,57 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         for (Idx j = 0; j < fft_size; j++) {
           priv[2 * j + 1] *= -1;
         }
-        wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
-        if (take_conjugate_on_store) {
-          PORTFFT_UNROLL
-          for (Idx j = 0; j < fft_size; j++) {
-            priv[2 * j + 1] *= -1;
-          }
-        }
-        global_data.log_dump_private("data in registers after computation:", priv, n_reals);
-        if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-          // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
-          // to ensure much lesser bank conflicts
-          global_data.log_message_global(__func__, "applying store modifier");
-          detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, i * n_reals);
-        }
-        if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
-          PORTFFT_UNROLL
-          for (Idx idx = 0; idx < n_reals; idx += 2) {
-            priv[idx] *= scaling_factor;
-            priv[idx + 1] *= scaling_factor;
-          }
-        }
-        global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
-        global_data.log_message_global(__func__, "loading data from private to local memory");
-        if (LayoutOut == detail::layout::PACKED) {
-          if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
-            copy_wi(global_data, priv, offset_local_view, n_reals);
-          } else {
-            detail::strided_view priv_real_view{priv, 2};
-            detail::strided_view priv_imag_view{priv, 2, 1};
-            detail::offset_view local_real_view{loc_view, local_offset + subgroup_local_id * fft_size};
-            detail::offset_view local_imag_view{loc_view,
-                                                local_offset + subgroup_local_id * fft_size + local_imag_offset};
-            copy_wi(global_data, priv_real_view, local_real_view, fft_size);
-            copy_wi(global_data, priv_imag_view, local_imag_view, fft_size);
-          }
-        } else {
-          if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            detail::strided_view output_view{output, n_transforms, i * 2};
-            copy_wi<2>(global_data, priv, output_view, fft_size);
-          } else {
-            detail::strided_view priv_real_view{priv, 2};
-            detail::strided_view priv_imag_view{priv, 2, 1};
-            detail::strided_view output_real_view{output, n_transforms, i};
-            detail::strided_view output_imag_view{output_imag, n_transforms, i};
-            copy_wi(global_data, priv_real_view, output_real_view, fft_size);
-            copy_wi(global_data, priv_imag_view, output_imag_view, fft_size);
-          }
+      }
+      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
+      if (take_conjugate_on_store) {
+        PORTFFT_UNROLL
+        for (Idx j = 0; j < fft_size; j++) {
+          priv[2 * j + 1] *= -1;
         }
       }
+      global_data.log_dump_private("data in registers after computation:", priv, n_reals);
+      if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
+        // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
+        // to ensure much lesser bank conflicts
+        global_data.log_message_global(__func__, "applying store modifier");
+        detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, i * n_reals);
+      }
+      if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
+        PORTFFT_UNROLL
+        for (Idx idx = 0; idx < n_reals; idx += 2) {
+          priv[idx] *= scaling_factor;
+          priv[idx + 1] *= scaling_factor;
+        }
+      }
+      global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
+      global_data.log_message_global(__func__, "loading data from private to local memory");
+      if (LayoutOut == detail::layout::PACKED) {
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
+          copy_wi(global_data, priv, offset_local_view, n_reals);
+        } else {
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          detail::offset_view local_real_view{loc_view, local_offset + subgroup_local_id * fft_size};
+          detail::offset_view local_imag_view{loc_view,
+                                              local_offset + subgroup_local_id * fft_size + local_imag_offset};
+          copy_wi(global_data, priv_real_view, local_real_view, fft_size);
+          copy_wi(global_data, priv_imag_view, local_imag_view, fft_size);
+        }
+      } else {
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view output_view{output, n_transforms, i * 2};
+          copy_wi<2>(global_data, priv, output_view, fft_size);
+        } else {
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          detail::strided_view output_real_view{output, n_transforms, i};
+          detail::strided_view output_imag_view{output_imag, n_transforms, i};
+          copy_wi(global_data, priv_real_view, output_real_view, fft_size);
+          copy_wi(global_data, priv_imag_view, output_imag_view, fft_size);
+        }
+      }
+    }
     if (LayoutOut == detail::layout::PACKED) {
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, n_reals * n_working);
