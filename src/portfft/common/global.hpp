@@ -204,7 +204,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
 #endif
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
-      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
@@ -257,7 +257,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
   auto [global_range, local_range] = launch_params;
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
-      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
