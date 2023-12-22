@@ -1575,9 +1575,7 @@ struct descriptor {
    * @param dir direction
    */
   std::size_t& get_distance(direction dir) noexcept {
-      return dir == direction::FORWARD ?
-      forward_distance :
-      backward_distance;
+    return dir == direction::FORWARD ? forward_distance : backward_distance;
   }
 
   /**
