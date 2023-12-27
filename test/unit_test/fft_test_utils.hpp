@@ -392,18 +392,15 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
  */
 template <test_memory TestMemory, typename FType, direction Dir, complex_storage Storage>
 void run_test(const test_params& params) {
-  std::vector<sycl::aspect> queue_aspects;
-  if constexpr (std::is_same_v<FType, double>) {
-    queue_aspects.push_back(sycl::aspect::fp64);
-  }
-  if constexpr (TestMemory == test_memory::usm) {
-    queue_aspects.push_back(sycl::aspect::usm_device_allocations);
-  }
+  // Use default selector to match with the device printed
   sycl::queue queue;
-  try {
-    queue = sycl::queue(sycl::aspect_selector(queue_aspects));
-  } catch (sycl::exception& e) {
-    GTEST_SKIP() << e.what();
+  sycl::device dev = queue.get_device();
+  if (std::is_same_v<FType, double> && !dev.has(sycl::aspect::fp64)) {
+    GTEST_SKIP() << "Device does not support double precision";
+    return;
+  }
+  if (TestMemory == test_memory::usm && !dev.has(sycl::aspect::usm_device_allocations)) {
+    GTEST_SKIP() << "Device does not support USM";
     return;
   }
 

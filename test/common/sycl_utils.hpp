@@ -22,6 +22,8 @@
 #define PORTFFT_TEST_COMMON_SYCL_UTILS_HPP
 
 #include <memory>
+#include <sstream>
+#include <string>
 
 #include <sycl/sycl.hpp>
 
@@ -38,6 +40,46 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue queue) {
       sycl::free(ptr, captured_queue);
     }
   });
+}
+
+/**
+ * Return the device type as a string
+ * @param dev SYCL device
+ */
+std::string get_device_type(sycl::device dev) {
+  using sycl::info::device_type;
+  switch (dev.get_info<sycl::info::device::device_type>()) {
+    case device_type::cpu:
+      return "CPU";
+    case device_type::gpu:
+      return "GPU";
+    case device_type::accelerator:
+      return "accelerator";
+    case device_type::custom:
+      return "custom";
+    case device_type::host:
+      return "host";
+    default:
+      return "unknown";
+  };
+}
+
+/**
+ * Return the list of supported subgroup sizes as a string
+ * @param dev SYCL device
+ */
+std::string get_device_subgroup_sizes(sycl::device dev) {
+  auto subgroup_sizes = dev.get_info<sycl::info::device::sub_group_sizes>();
+  std::stringstream subgroup_sizes_str;
+  subgroup_sizes_str << "[";
+  for (std::size_t i = 0; i < subgroup_sizes.size(); ++i) {
+    if (i > 0) {
+      subgroup_sizes_str << ", ";
+    }
+    subgroup_sizes_str << subgroup_sizes[i];
+  }
+  subgroup_sizes_str << "]";
+  return subgroup_sizes_str.str();
 }
 
 #endif  // PORTFFT_TEST_COMMON_SYCL_UTILS_HPP

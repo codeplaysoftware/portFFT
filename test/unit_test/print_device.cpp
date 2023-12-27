@@ -18,17 +18,17 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
-#define PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
+#include <gtest/gtest.h>
 
-#include <sycl/sycl.hpp>
+#include "sycl_utils.hpp"
 
-#include <benchmark/benchmark.h>
-
-#include "common/sycl_utils.hpp"
-
-void add_device_context(sycl::queue queue) {
+/**
+ * Print information of the device selected by the default selector.
+ * Use this as a test to print the information once when using ctest.
+ */
+void print_device() {
   namespace info = sycl::info::device;
+  sycl::queue queue;
   sycl::device dev = queue.get_device();
   sycl::platform platform = dev.get_info<info::platform>();
 
@@ -36,18 +36,20 @@ void add_device_context(sycl::queue queue) {
   std::string supports_double_str = dev.has(sycl::aspect::fp64) ? "yes" : "no";
   std::string supports_usm_str = dev.has(sycl::aspect::usm_device_allocations) ? "yes" : "no";
   std::string subgroup_sizes_str = get_device_subgroup_sizes(dev);
-  std::string local_memory_size_str = std::to_string(dev.get_info<sycl::info::device::local_mem_size>()) + "B";
+  auto local_memory_size = dev.get_info<sycl::info::device::local_mem_size>();
 
-  benchmark::AddCustomContext("Device type", device_type_str);
-  benchmark::AddCustomContext("Platform", platform.get_info<sycl::info::platform::name>());
-  benchmark::AddCustomContext("Name", dev.get_info<info::name>());
-  benchmark::AddCustomContext("Vendor", dev.get_info<info::vendor>());
-  benchmark::AddCustomContext("Version", dev.get_info<info::version>());
-  benchmark::AddCustomContext("Driver version", dev.get_info<info::driver_version>());
-  benchmark::AddCustomContext("Double supported", supports_double_str);
-  benchmark::AddCustomContext("USM supported", supports_usm_str);
-  benchmark::AddCustomContext("Subgroup sizes", subgroup_sizes_str);
-  benchmark::AddCustomContext("Local memory size", local_memory_size_str);
+  std::cout << "Running tests on:\n";
+  std::cout << "  Device type: " << device_type_str << "\n";
+  std::cout << "  Platform: " << platform.get_info<sycl::info::platform::name>() << "\n";
+  std::cout << "  Name: " << dev.get_info<info::name>() << "\n";
+  std::cout << "  Vendor: " << dev.get_info<info::vendor>() << "\n";
+  std::cout << "  Version: " << dev.get_info<info::version>() << "\n";
+  std::cout << "  Driver version: " << dev.get_info<info::driver_version>() << "\n";
+  std::cout << "  Double supported: " << supports_double_str << "\n";
+  std::cout << "  USM supported: " << supports_usm_str << "\n";
+  std::cout << "  Subgroup sizes: " << subgroup_sizes_str << "\n";
+  std::cout << "  Local memory size: " << local_memory_size << "B\n";
+  std::cout << std::endl;
 }
 
-#endif  // PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
+TEST(print_device, run) { print_device(); }
