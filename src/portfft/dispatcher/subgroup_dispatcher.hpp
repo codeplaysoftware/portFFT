@@ -668,8 +668,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
   static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
     Idx dft_length = static_cast<Idx>(length);
+    Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
-      Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
       Idx padded_fft_bytes = detail::pad_local(2 * dft_length, Idx(1)) * static_cast<Idx>(sizeof(Scalar));
       Idx max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
       Idx batches_per_sg = used_sg_size / 2;
@@ -682,7 +682,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       Idx factor_sg = factors[1];
       Idx n_ffts_per_sg = used_sg_size / factor_sg;
       Idx num_scalars_per_sg = detail::pad_local(2 * dft_length * n_ffts_per_sg, 1);
-      Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
+      Idx max_n_sgs = (desc.local_memory_size - twiddle_bytes) / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
       num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
       Idx res = num_scalars_per_sg * num_sgs_per_wg;
       return static_cast<std::size_t>(res);
