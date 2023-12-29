@@ -58,10 +58,8 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
   auto in_dev = make_shared<forward_t>(num_elements, q);
-  std::shared_ptr<complex_type> out_dev;
-  if (desc.placement == portfft::placement::OUT_OF_PLACE) {
-    out_dev = make_shared<complex_type>(num_elements, q);
-  }
+  std::shared_ptr<complex_type> out_dev =
+      desc.placement == portfft::placement::OUT_OF_PLACE ? make_shared<complex_type>(num_elements, q) : nullptr;
 
   auto committed = desc.commit(q);
   q.wait();
@@ -160,10 +158,8 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
   auto in_dev = make_shared<forward_t>(num_elements, q);
-  std::shared_ptr<complex_type> out_dev;
-  if (desc.placement == portfft::placement::OUT_OF_PLACE) {
-    out_dev = make_shared<complex_type>(num_elements, q);
-  }
+  std::shared_ptr<complex_type> out_dev =
+      desc.placement == portfft::placement::OUT_OF_PLACE ? make_shared<complex_type>(num_elements, q) : nullptr;
 
   auto committed = desc.commit(q);
 
