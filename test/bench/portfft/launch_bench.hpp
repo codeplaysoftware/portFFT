@@ -28,6 +28,7 @@
 #include <benchmark/benchmark.h>
 #include <portfft/portfft.hpp>
 
+#include "common/sycl_utils.hpp"
 #include "utils/bench_utils.hpp"
 #include "utils/device_number_generator.hpp"
 #include "utils/ops_estimate.hpp"
@@ -56,9 +57,11 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
-  complex_type* out_dev =
-      desc.placement == portfft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+  auto in_dev = make_shared<forward_t>(num_elements, q);
+  std::shared_ptr<complex_type> out_dev;
+  if (desc.placement == portfft::placement::OUT_OF_PLACE) {
+    out_dev = make_shared<complex_type>(num_elements, q);
+  }
 
   auto committed = desc.commit(q);
   q.wait();
@@ -67,17 +70,17 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
   auto [forward_data, backward_data, forward_data_imag, backward_data_imag] =
       gen_fourier_data<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(
           desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
-  q.copy(forward_data.data(), in_dev, num_elements).wait();
+  q.copy(forward_data.data(), in_dev.get(), num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
   // warmup
-  auto event = desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                              : committed.compute_forward(in_dev, out_dev);
+  auto event = desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev.get())
+                                                              : committed.compute_forward(in_dev.get(), out_dev.get());
   event.wait();
 
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev.get()) : out_dev.get(),
          host_output.data(), num_elements)
       .wait();
   verify_dft<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(desc, backward_data,
@@ -95,17 +98,17 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
     std::chrono::time_point<std::chrono::high_resolution_clock> end;
     if (desc.placement == portfft::placement::IN_PLACE) {
       start = std::chrono::high_resolution_clock::now();
-      dependencies.emplace_back(committed.compute_forward(in_dev));
+      dependencies.emplace_back(committed.compute_forward(in_dev.get()));
       for (std::size_t r = 1; r != runs; r += 1) {
-        dependencies[0] = committed.compute_forward(in_dev, dependencies);
+        dependencies[0] = committed.compute_forward(in_dev.get(), dependencies);
       }
       dependencies[0].wait();
       end = std::chrono::high_resolution_clock::now();
     } else {
       start = std::chrono::high_resolution_clock::now();
-      dependencies.emplace_back(committed.compute_forward(in_dev, out_dev));
+      dependencies.emplace_back(committed.compute_forward(in_dev.get(), out_dev.get()));
       for (std::size_t r = 1; r != runs; r += 1) {
-        dependencies[0] = committed.compute_forward(in_dev, out_dev, dependencies);
+        dependencies[0] = committed.compute_forward(in_dev.get(), out_dev.get(), dependencies);
       }
       dependencies[0].wait();
       end = std::chrono::high_resolution_clock::now();
@@ -116,8 +119,6 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
     state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
-  sycl::free(in_dev, q);
-  sycl::free(out_dev, q);
 }
 
 /**
@@ -158,9 +159,11 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   double ops = cooley_tukey_ops_estimate(N, N_transforms);
   std::size_t bytes_transferred = global_mem_transactions<complex_type, complex_type>(N_transforms, N, N);
 
-  forward_t* in_dev = sycl::malloc_device<forward_t>(num_elements, q);
-  complex_type* out_dev =
-      desc.placement == portfft::placement::IN_PLACE ? nullptr : sycl::malloc_device<complex_type>(num_elements, q);
+  auto in_dev = make_shared<forward_t>(num_elements, q);
+  std::shared_ptr<complex_type> out_dev;
+  if (desc.placement == portfft::placement::OUT_OF_PLACE) {
+    out_dev = make_shared<complex_type>(num_elements, q);
+  }
 
   auto committed = desc.commit(q);
 
@@ -169,19 +172,19 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   auto [forward_data, backward_data, forward_data_imag, backward_data_imag] =
       gen_fourier_data<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(
           desc, portfft::detail::layout::PACKED, portfft::detail::layout::PACKED, 0.f);
-  q.copy(forward_data.data(), in_dev, num_elements).wait();
+  q.copy(forward_data.data(), in_dev.get(), num_elements).wait();
 #endif  // PORTFFT_VERIFY_BENCHMARKS
 
   auto compute = [&]() {
-    return desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev)
-                                                          : committed.compute_forward(in_dev, out_dev);
+    return desc.placement == portfft::placement::IN_PLACE ? committed.compute_forward(in_dev.get())
+                                                          : committed.compute_forward(in_dev.get(), out_dev.get());
   };
   // warmup
   compute().wait();
 
 #ifdef PORTFFT_VERIFY_BENCHMARKS
   std::vector<complex_type> host_output(num_elements);
-  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev) : out_dev,
+  q.copy(desc.placement == portfft::placement::IN_PLACE ? reinterpret_cast<complex_type*>(in_dev.get()) : out_dev.get(),
          host_output.data(), num_elements)
       .wait();
   verify_dft<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(desc, backward_data,
@@ -198,8 +201,6 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
     state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
-  sycl::free(in_dev, q);
-  sycl::free(out_dev, q);
 }
 
 /**

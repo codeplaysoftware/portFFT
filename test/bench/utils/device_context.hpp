@@ -18,14 +18,14 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
-#define PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#ifndef PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
+#define PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
 
 #include <sycl/sycl.hpp>
 
 #include <benchmark/benchmark.h>
 
-void print_device(sycl::queue queue) {
+void add_device_context(sycl::queue queue) {
   namespace info = sycl::info::device;
   using sycl::info::device_type;
   sycl::device dev = queue.get_device();
@@ -76,4 +76,4 @@ void print_device(sycl::queue queue) {
   benchmark::AddCustomContext("Subgroup sizes", subgroup_sizes_str.str());
 }
 
-#endif  // PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#endif  // PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
