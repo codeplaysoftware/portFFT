@@ -509,11 +509,12 @@ std::vector<sycl::event> compute_level(
         // level cache.
         cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
       }
+      const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
+      const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
-          twiddles_ptr + intermediate_twiddle_offset, twiddles_ptr + subimpl_twiddle_offset, factors_triple,
-          inner_batches, inclusive_scan, batch_size, scale_factor,
-          2 * committed_size * batch_in_l2 + input_global_offset,
+          twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple, inner_batches, inclusive_scan,
+          batch_size, scale_factor, 2 * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
