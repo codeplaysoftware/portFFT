@@ -28,8 +28,7 @@
  */
 void print_device() {
   namespace info = sycl::info::device;
-  sycl::queue queue;
-  sycl::device dev = queue.get_device();
+  sycl::device dev;
   sycl::platform platform = dev.get_info<info::platform>();
 
   std::string device_type_str = get_device_type(dev);
