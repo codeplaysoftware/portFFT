@@ -509,6 +509,8 @@ std::vector<sycl::event> compute_level(
         // level cache.
         cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
       }
+      // Backends may check pointer validity. For the WI implementation, where no subimpl_twiddles alloc is used,
+      // the subimpl_twiddles + subimpl_twiddle_offset may point to the end of the allocation and therefore be invalid.
       const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
       const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
