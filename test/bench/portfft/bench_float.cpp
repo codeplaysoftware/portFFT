@@ -21,7 +21,7 @@
 #include <portfft/traits.hpp>
 
 #include "launch_bench.hpp"
-#include "utils/sycl_utils.hpp"
+#include "utils/device_context.hpp"
 
 template <typename T>
 void bench_dft(sycl::queue q, sycl::queue profiling_q, const std::string& suffix,
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 
   sycl::queue q;
   sycl::queue profiling_q({sycl::property::queue::enable_profiling()});
-  print_device(q);
+  add_device_context(q);
 
   // Benchmark configurations must match with the ones in test/bench/utils/reference_dft_set.hpp
   // Configurations are progressively added as portFFT supports more of them.
