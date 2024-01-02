@@ -367,7 +367,12 @@ class committed_descriptor {
     }
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
-      if (detail::fits_in_wi<Scalar>(factor_size)) {
+      constexpr std::size_t LocalRange = PORTFFT_SGS_IN_WG * SubgroupSize;
+      if (detail::fits_in_wi<Scalar>(factor_size) &&
+          static_cast<std::size_t>(local_memory_size) >
+              sizeof(Scalar) * 2 * LocalRange * static_cast<std::size_t>(factor_size)) {
+        // The local memory requirement (LocalRange * factor_size) is only required for the final factor.
+        // There is no way to know if this is the last factor, so it is always used.
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{static_cast<Idx>(factor_size)});
@@ -385,14 +390,14 @@ class committed_descriptor {
                             detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
                             {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
                         sizeof(Scalar) +
-                    2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                    2 * static_cast<std::size_t>(factor_size) * (LocalRange / 2) * sizeof(Scalar)) <
                    static_cast<std::size_t>(local_memory_size);
           }
           return (num_scalars_in_local_mem<detail::layout::PACKED>(
                       detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
                       {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
                       sizeof(Scalar) +
-                  2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+                  2 * static_cast<std::size_t>(factor_size) * (LocalRange / 2) * sizeof(Scalar)) <
                  static_cast<std::size_t>(local_memory_size);
         }
         return false;

@@ -118,6 +118,13 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
                              ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
                          test_params_print());
 
+// Selected individual tests in workgroup or global size range
+INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
+                                                ::testing::Values(sizes_t{15360}))),
+                         test_params_print());
+
 // Sizes that use the global implementations
 INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
