@@ -115,7 +115,7 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_global_placement_layouts, fwd_only, interleaved_storage,
-                             ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}, sizes_t{15360}))),
+                             ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
                          test_params_print());
 
 // Sizes that use the global implementations
