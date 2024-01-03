@@ -179,17 +179,11 @@ __attribute__((always_inline)) inline void dimension_dft(
       }
     }
     if (take_conjugate_on_load) {
-      PORTFFT_UNROLL
-      for (Idx k = 0; k < fact_wi; k++) {
-        priv[2 * k + 1] *= -1;
-      }
+      take_conjugate(priv, fact_wi);
     }
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
     if (take_conjugate_on_store) {
-      PORTFFT_UNROLL
-      for (Idx k = 0; k < fact_wi; k++) {
-        priv[2 * k + 1] *= -1;
-      }
+      take_conjugate(priv, fact_wi);
     }
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {

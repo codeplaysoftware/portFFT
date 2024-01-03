@@ -258,17 +258,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
         }
         if (take_conjugate_on_load) {
-          PORTFFT_UNROLL
-          for (Idx k = 0; k < factor_wi; k++) {
-            priv[2 * k + 1] *= -1;
-          }
+          take_conjugate(priv, factor_wi);
         }
         sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
         if (take_conjugate_on_store) {
-          PORTFFT_UNROLL
-          for (Idx k = 0; k < factor_wi; k++) {
-            priv[2 * k + 1] *= -1;
-          }
+          take_conjugate(priv, factor_wi);
         }
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
@@ -464,17 +458,11 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         }
       }
       if (take_conjugate_on_load) {
-        PORTFFT_UNROLL
-        for (Idx k = 0; k < factor_wi; k++) {
-          priv[2 * k + 1] *= -1;
-        }
+        take_conjugate(priv, factor_wi);
       }
       sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
       if (take_conjugate_on_store) {
-        PORTFFT_UNROLL
-        for (Idx k = 0; k < factor_wi; k++) {
-          priv[2 * k + 1] *= -1;
-        }
+        take_conjugate(priv, factor_wi);
       }
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);

@@ -211,17 +211,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, i * n_reals);
       }
       if (take_conjugate_on_load) {
-        PORTFFT_UNROLL
-        for (Idx j = 0; j < fft_size; j++) {
-          priv[2 * j + 1] *= -1;
-        }
+        take_conjugate(priv, fft_size);
       }
       wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
       if (take_conjugate_on_store) {
-        PORTFFT_UNROLL
-        for (Idx j = 0; j < fft_size; j++) {
-          priv[2 * j + 1] *= -1;
-        }
+        take_conjugate(priv, fft_size);
       }
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
