@@ -334,6 +334,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              dimension_struct& dimension_data) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc++20-extensions"
     (void)in_imag;
     (void)out_imag;
     const auto& kernels = dimension_data.kernels;
@@ -427,6 +429,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       }
     }
     return current_events[0];
+#pragma clang diagnostic pop
   }
 };
 
