@@ -26,7 +26,7 @@
  * Print information of the device selected by the default selector.
  * Use this as a test to print the information once when using ctest.
  */
-void print_device() {
+void print_device_info() {
   namespace info = sycl::info::device;
   sycl::device dev;
   sycl::platform platform = dev.get_info<info::platform>();
@@ -51,4 +51,4 @@ void print_device() {
   std::cout << std::endl;
 }
 
-TEST(print_device, run) { print_device(); }
+TEST(print_info, device) { print_device_info(); }

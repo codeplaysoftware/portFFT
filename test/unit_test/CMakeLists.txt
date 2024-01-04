@@ -36,7 +36,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 set(PORTFFT_UNIT_TESTS
-    print_device.cpp
+    print_device_info.cpp
     descriptor.cpp
     transfers.cpp
     fft_float.cpp
