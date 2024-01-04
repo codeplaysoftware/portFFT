@@ -315,7 +315,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           vec_size * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
           dimension_data.num_factors, storage, {event}, desc.queue);
-      detail::dump_device("after factor 0:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
+      detail::dump_device(desc.queue, "after factor 0:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
       intermediate_twiddles_offset += 2 * kernel0.batch_size * static_cast<IdxGlobal>(kernel0.length);
       impl_twiddle_offset += detail::increment_twiddle_offset(kernel0.level, static_cast<Idx>(kernel0.length));
       for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension_data.num_factors); factor_num++) {
@@ -340,7 +340,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           impl_twiddle_offset +=
               detail::increment_twiddle_offset(current_kernel.level, static_cast<Idx>(current_kernel.length));
         }
-      detail::dump_device("after factor:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
+      detail::dump_device(desc.queue, "after factor:", desc.scratch_ptr_1.get(), desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
       }
       event = desc.queue.submit([&](sycl::handler& cgh) {
         cgh.depends_on(l2_events);

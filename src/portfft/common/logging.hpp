@@ -284,16 +284,17 @@ PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]]
  * Prints the message and dumps data from device to standard output
  * 
  * @tparam T type of element to dump
+ * @param q queue to use for copying data to host
  * @param msg message to print
  * @param dev_ptr USM pointer to data on device
  * @param size number of elements to dump
  * @param dependencies dependencies to wait on
  */
 template<typename T>
-PORTFFT_INLINE void dump_device([[maybe_unused]] const char* msg, [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size, [[maybe_unused]] std::vector<sycl::event> dependencies = {}){
+PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue q, [[maybe_unused]] const char* msg, [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size, [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}){
 #ifdef PORTFFT_LOG_DUMPS
-  std::vector<Scalar> tmp(size);
-  desc.queue.copy(dev_ptr, tmp.data(),size, l2_events).wait();
+  std::vector<T> tmp(size);
+  q.copy(dev_ptr, tmp.data(),size, dependencies).wait();
   dump_host(msg, tmp.data(), size);
 #endif
 }
