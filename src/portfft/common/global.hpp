@@ -215,7 +215,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
 #endif
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
-      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
@@ -270,7 +270,7 @@ void launch_kernel(const Scalar* input, Scalar* output, const Scalar* input_imag
   auto [global_range, local_range] = launch_params;
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
-      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) [[sycl::reqd_sub_group_size(SubgroupSize)]] {
+      [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
             s,
@@ -500,7 +500,7 @@ std::vector<sycl::event> compute_level(
         return 1;
       }
       if (kd_struct.level == detail::level::SUBGROUP) {
-        return 2 * kd_struct.length * static_cast<std::size_t>(local_range / 2);
+        return detail::pad_local(2 * kd_struct.length * static_cast<std::size_t>(local_range / 2), std::size_t(1));
       }
     }
     return std::size_t(1);
@@ -537,10 +537,14 @@ std::vector<sycl::event> compute_level(
         // level cache.
         cgh.depends_on(dependencies.at(static_cast<std::size_t>(batch_in_l2)));
       }
+      // Backends may check pointer validity. For the WI implementation, where no subimpl_twiddles alloc is used,
+      // the subimpl_twiddles + subimpl_twiddle_offset may point to the end of the allocation and therefore be invalid.
+      const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
+      const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + vec_size * batch_in_l2 * committed_size, in_imag_acc_or_usm,
           output_imag + vec_size * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
-          twiddles_ptr + intermediate_twiddle_offset, twiddles_ptr + subimpl_twiddle_offset, factors_triple,
+          twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple,
           inner_batches, inclusive_scan, batch_size, scale_factor,
           vec_size * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),

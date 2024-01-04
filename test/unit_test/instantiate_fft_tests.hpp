@@ -54,6 +54,9 @@ constexpr test_placement_layouts_params valid_multi_dim_placement_layouts[] = {
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
 auto all_valid_multi_dim_placement_layouts = ::testing::ValuesIn(valid_multi_dim_placement_layouts);
 
+auto ip_packed_layout = ::testing::Values(
+    test_placement_layouts_params{placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED});
+
 auto oop_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED});
 
@@ -95,6 +98,12 @@ INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                              all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 131),
                              ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
                          test_params_print());
+// Regression test where subgroup or workgroup implemention depended on correct local memory requirement calcs.
+INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(131),
+                                                ::testing::Values(sizes_t{1536}))),
+                         test_params_print());
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
@@ -114,6 +123,12 @@ INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_global_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
+                         test_params_print());
+
+INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(
+                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
+                                                ::testing::Values(sizes_t{9800}))),
                          test_params_print());
 
 // Backward FFT test suite

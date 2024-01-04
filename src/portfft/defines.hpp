@@ -37,6 +37,8 @@
 #define PORTFFT_UNROLL _Pragma("clang loop unroll(full)")
 #endif
 
+#define PORTFFT_REQD_SUBGROUP_SIZE(SIZE) [[sycl::reqd_sub_group_size(SIZE)]]
+
 static_assert((PORTFFT_VEC_LOAD_BYTES & (PORTFFT_VEC_LOAD_BYTES - 1)) == 0,
               "PORTFFT_VEC_LOAD_BYTES should be a power of 2!");
 

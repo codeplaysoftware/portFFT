@@ -32,6 +32,7 @@
 
 #include "reference_data_wrangler.hpp"
 #include "sub_tuple.hpp"
+#include "sycl_utils.hpp"
 
 using namespace portfft;
 
@@ -233,25 +234,25 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
-  auto device_input = sycl::malloc_device<InputFType>(host_input.size(), queue);
-  OutputFType* device_output = nullptr;
-  RealFType* device_input_imag = nullptr;
-  RealFType* device_output_imag = nullptr;
+  auto device_input = make_shared<InputFType>(host_input.size(), queue);
+  std::shared_ptr<OutputFType> device_output;
+  std::shared_ptr<RealFType> device_input_imag;
+  std::shared_ptr<RealFType> device_output_imag;
   sycl::event oop_init_event;
   sycl::event oop_imag_init_event;
   sycl::event copy_event2;
 
-  auto copy_event = queue.copy(host_input.data(), device_input, host_input.size());
+  auto copy_event = queue.copy(host_input.data(), device_input.get(), host_input.size());
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    device_input_imag = sycl::malloc_device<RealFType>(host_input_imag.size(), queue);
-    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag, host_input_imag.size());
+    device_input_imag = make_shared<RealFType>(host_input_imag.size(), queue);
+    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag.get(), host_input_imag.size());
   }
   if (is_oop) {
-    device_output = sycl::malloc_device<OutputFType>(host_output.size(), queue);
-    oop_init_event = queue.copy(host_output.data(), device_output, host_output.size());
+    device_output = make_shared<OutputFType>(host_output.size(), queue);
+    oop_init_event = queue.copy(host_output.data(), device_output.get(), host_output.size());
     if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-      device_output_imag = sycl::malloc_device<RealFType>(host_output_imag.size(), queue);
-      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag, host_output_imag.size());
+      device_output_imag = make_shared<RealFType>(host_output_imag.size(), queue);
+      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag.get(), host_output_imag.size());
     }
   }
 
@@ -261,56 +262,45 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
     if (is_oop) {
       if constexpr (Dir == direction::FORWARD) {
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
-          return committed_descriptor.compute_forward(device_input, device_output, dependencies);
+          return committed_descriptor.compute_forward(device_input.get(), device_output.get(), dependencies);
         } else {
-          return committed_descriptor.compute_forward(device_input, device_input_imag, device_output,
-                                                      device_output_imag, dependencies);
+          return committed_descriptor.compute_forward(device_input.get(), device_input_imag.get(), device_output.get(),
+                                                      device_output_imag.get(), dependencies);
         }
       } else {
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
-          return committed_descriptor.compute_backward(device_input, device_output, dependencies);
+          return committed_descriptor.compute_backward(device_input.get(), device_output.get(), dependencies);
         } else {
-          return committed_descriptor.compute_backward(device_input, device_input_imag, device_output,
-                                                       device_output_imag, dependencies);
+          return committed_descriptor.compute_backward(device_input.get(), device_input_imag.get(), device_output.get(),
+                                                       device_output_imag.get(), dependencies);
         }
       }
     } else {
       if constexpr (Dir == direction::FORWARD) {
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
-          return committed_descriptor.compute_forward(device_input, dependencies);
+          return committed_descriptor.compute_forward(device_input.get(), dependencies);
         } else {
-          return committed_descriptor.compute_forward(device_input, device_input_imag, dependencies);
+          return committed_descriptor.compute_forward(device_input.get(), device_input_imag.get(), dependencies);
         }
       } else {
         if constexpr (Storage == complex_storage::INTERLEAVED_COMPLEX) {
-          return committed_descriptor.compute_backward(device_input, dependencies);
+          return committed_descriptor.compute_backward(device_input.get(), dependencies);
         } else {
-          return committed_descriptor.compute_backward(device_input, device_input_imag, dependencies);
+          return committed_descriptor.compute_backward(device_input.get(), device_input_imag.get(), dependencies);
         }
       }
     }
   }();
 
-  queue.copy(is_oop ? device_output : device_input, host_output.data(), host_output.size(), {fft_event});
+  queue.copy(is_oop ? device_output.get() : device_input.get(), host_output.data(), host_output.size(), {fft_event});
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    queue.copy(is_oop ? device_output_imag : device_input_imag, host_output_imag.data(), host_output_imag.size(),
-               {fft_event});
+    queue.copy(is_oop ? device_output_imag.get() : device_input_imag.get(), host_output_imag.data(),
+               host_output_imag.size(), {fft_event});
   }
   queue.wait_and_throw();
   verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, "real");
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
     verify_dft<Dir, Storage>(desc, host_reference_output_imag, host_output_imag, tolerance, "imaginary");
-  }
-
-  sycl::free(device_input, queue);
-  if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    sycl::free(device_input_imag, queue);
-  }
-  if (is_oop) {
-    sycl::free(device_output, queue);
-    if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-      sycl::free(device_output_imag, queue);
-    }
   }
 }
 
@@ -402,18 +392,15 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
  */
 template <test_memory TestMemory, typename FType, direction Dir, complex_storage Storage>
 void run_test(const test_params& params) {
-  std::vector<sycl::aspect> queue_aspects;
-  if constexpr (std::is_same_v<FType, double>) {
-    queue_aspects.push_back(sycl::aspect::fp64);
-  }
-  if constexpr (TestMemory == test_memory::usm) {
-    queue_aspects.push_back(sycl::aspect::usm_device_allocations);
-  }
+  // Use default selector to match with the device printed
   sycl::queue queue;
-  try {
-    queue = sycl::queue(sycl::aspect_selector(queue_aspects));
-  } catch (sycl::exception& e) {
-    GTEST_SKIP() << e.what();
+  sycl::device dev = queue.get_device();
+  if (std::is_same_v<FType, double> && !dev.has(sycl::aspect::fp64)) {
+    GTEST_SKIP() << "Device does not support double precision";
+    return;
+  }
+  if (TestMemory == test_memory::usm && !dev.has(sycl::aspect::usm_device_allocations)) {
+    GTEST_SKIP() << "Device does not support USM";
     return;
   }
 

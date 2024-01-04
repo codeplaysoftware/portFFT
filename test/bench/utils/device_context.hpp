@@ -18,53 +18,25 @@
  *
  **************************************************************************/
 
-#ifndef PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
-#define PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#ifndef PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
+#define PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
 
 #include <sycl/sycl.hpp>
 
 #include <benchmark/benchmark.h>
 
-void print_device(sycl::queue queue) {
+#include "common/sycl_utils.hpp"
+
+void add_device_context(sycl::queue queue) {
   namespace info = sycl::info::device;
-  using sycl::info::device_type;
   sycl::device dev = queue.get_device();
   sycl::platform platform = dev.get_info<info::platform>();
 
-  std::string device_type_str;
-  switch (dev.get_info<info::device_type>()) {
-    case device_type::cpu:
-      device_type_str = "CPU";
-      break;
-    case device_type::gpu:
-      device_type_str = "GPU";
-      break;
-    case device_type::accelerator:
-      device_type_str = "accelerator";
-      break;
-    case device_type::custom:
-      device_type_str = "custom";
-      break;
-    case device_type::host:
-      device_type_str = "host";
-      break;
-    default:
-      device_type_str = "unknown";
-      break;
-  };
-
-  bool supports_double = dev.get_info<info::double_fp_config>().empty();
-
-  auto subgroup_sizes = dev.get_info<info::sub_group_sizes>();
-  std::stringstream subgroup_sizes_str;
-  subgroup_sizes_str << "[";
-  for (std::size_t i = 0; i < subgroup_sizes.size(); ++i) {
-    if (i > 0) {
-      subgroup_sizes_str << ", ";
-    }
-    subgroup_sizes_str << subgroup_sizes[i];
-  }
-  subgroup_sizes_str << "]";
+  std::string device_type_str = get_device_type(dev);
+  std::string supports_double_str = dev.has(sycl::aspect::fp64) ? "yes" : "no";
+  std::string supports_usm_str = dev.has(sycl::aspect::usm_device_allocations) ? "yes" : "no";
+  std::string subgroup_sizes_str = get_device_subgroup_sizes(dev);
+  std::string local_memory_size_str = std::to_string(dev.get_info<sycl::info::device::local_mem_size>()) + "B";
 
   benchmark::AddCustomContext("Device type", device_type_str);
   benchmark::AddCustomContext("Platform", platform.get_info<sycl::info::platform::name>());
@@ -72,8 +44,10 @@ void print_device(sycl::queue queue) {
   benchmark::AddCustomContext("Vendor", dev.get_info<info::vendor>());
   benchmark::AddCustomContext("Version", dev.get_info<info::version>());
   benchmark::AddCustomContext("Driver version", dev.get_info<info::driver_version>());
-  benchmark::AddCustomContext("Double supported", (supports_double ? "no" : "yes"));
-  benchmark::AddCustomContext("Subgroup sizes", subgroup_sizes_str.str());
+  benchmark::AddCustomContext("Double supported", supports_double_str);
+  benchmark::AddCustomContext("USM supported", supports_usm_str);
+  benchmark::AddCustomContext("Subgroup sizes", subgroup_sizes_str);
+  benchmark::AddCustomContext("Local memory size", local_memory_size_str);
 }
 
-#endif  // PORTFFT_TEST_BENCH_UTILS_SYCL_UTILS_HPP
+#endif  // PORTFFT_TEST_BENCH_UTILS_DEVICE_CONTEXT_HPP
