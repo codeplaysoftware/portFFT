@@ -474,7 +474,7 @@ std::vector<sycl::event> compute_level(
         return 1;
       }
       if (kd_struct.level == detail::level::SUBGROUP) {
-        return 2 * kd_struct.length * static_cast<std::size_t>(local_range / 2);
+        return detail::pad_local(2 * kd_struct.length * static_cast<std::size_t>(local_range / 2), std::size_t(1));
       }
     }
     return std::size_t(1);
