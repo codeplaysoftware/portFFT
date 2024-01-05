@@ -36,9 +36,10 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 set(PORTFFT_UNIT_TESTS
-    fft_float.cpp
-    transfers.cpp
+    print_device_info.cpp
     descriptor.cpp
+    transfers.cpp
+    fft_float.cpp
 )
 if(PORTFFT_ENABLE_DOUBLE_BUILDS)
     list(APPEND PORTFFT_UNIT_TESTS
