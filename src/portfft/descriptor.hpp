@@ -367,7 +367,6 @@ class committed_descriptor {
     }
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
-      constexpr std::size_t LocalRange = PORTFFT_SGS_IN_WG * SubgroupSize;
       if (detail::fits_in_wi<Scalar>(factor_size)) {
         // Throughout we have assumed there would always be enough local memory for the WI implementation.
         param_vec.emplace_back(detail::level::WORKITEM,
