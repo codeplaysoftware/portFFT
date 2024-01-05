@@ -47,7 +47,7 @@ namespace detail {
 inline std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, IdxGlobal num_batches, detail::level level,
                                                          Idx n_compute_units, Idx subgroup_size, Idx n_sgs_in_wg) {
   IdxGlobal n_available_sgs = 8 * n_compute_units * 64;
-  IdxGlobal wg_size = static_cast<IdxGlobal>(n_sgs_in_wg * subgroup_size);
+  IdxGlobal wg_size = n_sgs_in_wg * subgroup_size;
   if (level == detail::level::WORKITEM) {
     IdxGlobal n_ffts_per_wg = wg_size;
     IdxGlobal n_wgs_required = divide_ceil(num_batches, n_ffts_per_wg);
