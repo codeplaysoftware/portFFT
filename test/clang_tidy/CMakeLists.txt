@@ -36,7 +36,12 @@ target_link_libraries(
 
 # setup clang-tidy command from executable + options
 get_filename_component(CXX_COMPILER_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
-set(CLANG_TIDY_COMMAND "${CXX_COMPILER_DIR}/../bin-llvm/clang-tidy;--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
+find_program(CLANG_TIDY_BIN clang-tidy
+  PATHS ${CXX_COMPILER_DIR}
+  PATH_SUFFIXES compiler
+  REQUIRED
+)
+set(CLANG_TIDY_COMMAND "${CLANG_TIDY_BIN};--header-filter=${CMAKE_SOURCE_DIR}/src/*;--config-file=${CMAKE_SOURCE_DIR}/.clang-tidy")
 if(PORTFFT_CLANG_TIDY_AUTOFIX)
     list(APPEND CLANG_TIDY_COMMAND "--fix")
 endif()

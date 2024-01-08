@@ -382,6 +382,7 @@ class committed_descriptor {
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true,
                                              bool load_modifier_required = false) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
+        // Throughout we have assumed there would always be enough local memory for the WI implementation.
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{static_cast<Idx>(factor_size)});
@@ -1201,6 +1202,11 @@ class committed_descriptor {
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
+#ifndef PORTFFT_ENABLE_BUFFER_BUILDS
+    if constexpr (!std::is_pointer_v<TIn> || !std::is_pointer_v<TOut>) {
+      throw invalid_configuration("Buffer interface can not be called when buffer builds are disabled.");
+    }
+#endif
     if (used_storage != params.complex_storage) {
       if (used_storage == complex_storage::SPLIT_COMPLEX) {
         throw invalid_configuration(

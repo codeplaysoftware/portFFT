@@ -31,7 +31,7 @@
 #include <utility>
 
 #include "launch_bench.hpp"
-#include "utils/sycl_utils.hpp"
+#include "utils/device_context.hpp"
 
 static constexpr std::pair<std::string_view, std::string_view> ARG_KEYS[] = {
     {"domain", "d"},    {"lengths", "n"},   {"batch", "b"},  {"fwd_strides", "fs"}, {"bwd_strides", "bs"},
@@ -308,7 +308,7 @@ int main_manual_bench(int argc, char** argv) {
 
   sycl::queue q;
   sycl::queue profiling_q({sycl::property::queue::enable_profiling()});
-  print_device(q);
+  add_device_context(q);
 
   for (int i = 1; i < argc; ++i) {
     std::string_view arg = argv[i];

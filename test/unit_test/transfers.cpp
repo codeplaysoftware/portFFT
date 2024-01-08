@@ -48,11 +48,15 @@ void test() {
   }
 
   sycl::queue q;
-  ftype* sentinels_loc1_dev = sycl::malloc_device<ftype>(2 * N_sentinel_values, q);
-  ftype* sentinels_loc2_dev = sycl::malloc_device<ftype>(2 * N_sentinel_values, q);
+  auto sentinels_loc1_dev_sptr = make_shared<ftype>(2 * N_sentinel_values, q);
+  auto sentinels_loc2_dev_sptr = make_shared<ftype>(2 * N_sentinel_values, q);
+  ftype* sentinels_loc1_dev = sentinels_loc1_dev_sptr.get();
+  ftype* sentinels_loc2_dev = sentinels_loc2_dev_sptr.get();
 
-  ftype* a_dev = sycl::malloc_device<ftype>(N * wg_size + 2 * N_sentinel_values, q);
-  ftype* b_dev = sycl::malloc_device<ftype>(N * wg_size + 2 * N_sentinel_values, q);
+  auto a_dev_sptr = make_shared<ftype>(N * wg_size + 2 * N_sentinel_values, q);
+  auto b_dev_sptr = make_shared<ftype>(N * wg_size + 2 * N_sentinel_values, q);
+  ftype* a_dev = a_dev_sptr.get();
+  ftype* b_dev = b_dev_sptr.get();
   ftype* a_dev_work = a_dev + N_sentinel_values;
   ftype* b_dev_work = b_dev + N_sentinel_values;
 
@@ -134,10 +138,6 @@ void test() {
     EXPECT_EQ(loc1_sentinels[i], sentinel_loc1);
     EXPECT_EQ(loc2_sentinels[i], sentinel_loc2);
   }
-  sycl::free(a_dev, q);
-  sycl::free(b_dev, q);
-  sycl::free(sentinels_loc1_dev, q);
-  sycl::free(sentinels_loc2_dev, q);
 }
 
 TEST(transfers, unpadded) { test<portfft::detail::pad::DONT_PAD, 0>(); }
