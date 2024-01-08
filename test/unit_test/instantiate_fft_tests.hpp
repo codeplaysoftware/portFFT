@@ -239,7 +239,7 @@ INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
     }                                                                                                               \
   }
 
-#if PORTFFT_ENABLE_BUFFER_BUILDS == 1
+#ifdef PORTFFT_ENABLE_BUFFER_BUILDS
 #define INSTANTIATE_TESTS(TYPE)     \
   INSTANTIATE_TESTS_FULL(TYPE, usm) \
   INSTANTIATE_TESTS_FULL(TYPE, buffer)
