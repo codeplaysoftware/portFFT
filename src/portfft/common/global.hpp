@@ -85,15 +85,14 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
                                                        const IdxGlobal* inclusive_scan, Idx num_factors, Idx level_num,
                                                        IdxGlobal iter_value, IdxGlobal outer_batch_product,
                                                        complex_storage storage) {
-  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   auto get_outer_batch_offset_impl = [&](Idx N) -> IdxGlobal {
     IdxGlobal outer_batch_offset = 0;
     for (Idx j = 0; j < N; j++) {
       if (j == N - 1) {
-        outer_batch_offset += vec_size * (iter_value % factors[j]) * inner_batches[j];
+        outer_batch_offset += 2 * (iter_value % factors[j]) * inner_batches[j];
       } else {
         outer_batch_offset +=
-            vec_size * ((iter_value / (outer_batch_product / inclusive_scan[j])) % factors[j]) * inner_batches[j];
+            2 * ((iter_value / (outer_batch_product / inclusive_scan[j])) % factors[j]) * inner_batches[j];
       }
     }
     return outer_batch_offset;
@@ -103,7 +102,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
     return static_cast<std::size_t>(0);
   }
   if (level_num == 1) {
-    return vec_size * iter_value * inner_batches[0];
+    return 2 * iter_value * inner_batches[0];
   }
   if (level_num == num_factors - 1) {
     return get_outer_batch_offset_impl(level_num - 1);
@@ -143,7 +142,7 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
                                    const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                    const IdxGlobal* inclusive_scan, IdxGlobal batch_size, Scalar scale_factor,
                                    detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
-  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+  complex_storage storage = complex_storage::INTERLEAVED_COMPLEX;// kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
@@ -154,19 +153,19 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
                                                           level_num, iter_value, outer_batch_product, storage);
     if (level == detail::level::WORKITEM) {
       workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, batch_size, scale_factor, global_data, kh,
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, 
+          input_loc, batch_size, scale_factor, global_data, kh,
           static_cast<const Scalar*>(nullptr), store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, twiddles_loc, batch_size, implementation_twiddles, scale_factor,
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, 
+          input_loc, twiddles_loc, batch_size, implementation_twiddles, scale_factor,
           global_data, kh, static_cast<const Scalar*>(nullptr), store_modifier_data, static_cast<Scalar*>(nullptr),
           store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, twiddles_loc, batch_size, implementation_twiddles, scale_factor,
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, 
+          input_loc, twiddles_loc, batch_size, implementation_twiddles, scale_factor,
           global_data, kh, static_cast<Scalar*>(nullptr), store_modifier_data);
     }
     sycl::group_barrier(global_data.it.get_group());
@@ -317,8 +316,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
             s,
 #endif
             it};
-        global_data.log_message_global("entering transpose kernel - buffer impl");
-        complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+        complex_storage storage = complex_storage::INTERLEAVED_COMPLEX;
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
@@ -326,15 +324,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
           global_data.log_message_subgroup("iter_value: ", iter_value);
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                                 level_num, iter_value, outer_batch_product, storage);
-          if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
-                                         &output[0] + outer_batch_offset + output_offset, loc, global_data);
-          } else {
-            detail::generic_transpose<1>(lda, ldb, 16, input + outer_batch_offset,
-                                         &output[0] + outer_batch_offset + output_offset, loc, global_data);
-          }
+          detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
+                                        &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
-        global_data.log_message_global("exiting transpose kernel - buffer impl");
       });
 }
 
@@ -370,8 +362,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
             s,
 #endif
             it};
-        global_data.log_message_global("entering transpose kernel - USM impl");
-        complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+        complex_storage storage = complex_storage::INTERLEAVED_COMPLEX;
         Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
         Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
         IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
@@ -379,15 +370,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
           global_data.log_message_subgroup("iter_value: ", iter_value);
           IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                                 level_num, iter_value, outer_batch_product, storage);
-          if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
-                                         &output[0] + outer_batch_offset + output_offset, loc, global_data);
-          } else {
-            detail::generic_transpose<1>(lda, ldb, 16, input + outer_batch_offset,
-                                         &output[0] + outer_batch_offset + output_offset, loc, global_data);
-          }
+          detail::generic_transpose<2>(lda, ldb, 16, input + outer_batch_offset,
+                                        &output[0] + outer_batch_offset + output_offset, loc, global_data);
         }
-        global_data.log_message_global("exiting transpose kernel - USM impl");
       });
 }
 
@@ -417,7 +402,6 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
                             IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
                             complex_storage storage) {
-  IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> transpose_events;
   IdxGlobal ld_input = kd_struct.factors.at(1);
   IdxGlobal ld_output = kd_struct.factors.at(0);
@@ -428,7 +412,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
        batch_in_l2++) {
     transpose_events.push_back(queue.submit([&](sycl::handler& cgh) {
       auto out_acc_or_usm = detail::get_access<Scalar>(output, cgh);
-      sycl::local_accessor<Scalar, 2> loc({16, 16 * static_cast<std::size_t>(vec_size)}, cgh);
+      sycl::local_accessor<Scalar, 2> loc({16, 32}, cgh);
       if (static_cast<Idx>(events.size()) < num_batches_in_l2) {
         cgh.depends_on(events);
       } else {
@@ -438,10 +422,16 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
       }
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
       detail::dispatch_transpose_kernel_impl<Scalar>(
-          input + vec_size * committed_size * batch_in_l2, out_acc_or_usm, loc, factors_triple, inner_batches,
-          inclusive_scan, output_offset + vec_size * committed_size * batch_in_l2, ld_output, ld_input, cgh);
+          input + 2 * committed_size * batch_in_l2, out_acc_or_usm, loc, factors_triple, inner_batches,
+          inclusive_scan, output_offset + 2 * committed_size * batch_in_l2, ld_output, ld_input, cgh);
     }));
   }
+  /*if (factor_num != 0) {
+    return queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(transpose_events);
+      cgh.host_task([&]() { ptr1.swap(ptr2); });
+    });
+  }*/
   return queue.submit([&](sycl::handler& cgh) {
     cgh.depends_on(transpose_events);
     cgh.host_task([&]() {});
@@ -519,7 +509,6 @@ std::vector<sycl::event> compute_level(
   }();
   const IdxGlobal* inner_batches = factors_triple + total_factors;
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
-  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
@@ -542,11 +531,11 @@ std::vector<sycl::event> compute_level(
       const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
       const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
-          in_acc_or_usm, output + vec_size * batch_in_l2 * committed_size, in_imag_acc_or_usm,
-          output_imag + vec_size * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
+          in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, in_imag_acc_or_usm,
+          output_imag + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
           twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple,
           inner_batches, inclusive_scan, batch_size, scale_factor,
-          vec_size * committed_size * batch_in_l2 + input_global_offset,
+          2 * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
