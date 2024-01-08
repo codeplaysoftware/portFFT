@@ -36,8 +36,10 @@ using sizes_t = std::vector<std::size_t>;
 constexpr test_placement_layouts_params valid_placement_layouts[] = {
     {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
     {placement::IN_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
+#ifdef PORTFFT_ENABLE_OOP_BUILDS
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED},
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED},
+#endif
     {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED},
     {placement::OUT_OF_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED}};
 auto all_valid_placement_layouts = ::testing::ValuesIn(valid_placement_layouts);
@@ -50,8 +52,12 @@ constexpr test_placement_layouts_params valid_oop_placement_layouts[] = {
 auto all_valid_oop_placement_layouts = ::testing::ValuesIn(valid_oop_placement_layouts);
 
 constexpr test_placement_layouts_params valid_multi_dim_placement_layouts[] = {
-    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED},
-    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
+    {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED}
+#ifdef PORTFFT_ENABLE_OOP_BUILDS
+    ,
+    {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED}
+#endif
+};
 auto all_valid_multi_dim_placement_layouts = ::testing::ValuesIn(valid_multi_dim_placement_layouts);
 
 auto ip_packed_layout = ::testing::Values(
@@ -61,7 +67,9 @@ auto oop_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED});
 
 constexpr test_placement_layouts_params valid_global_layouts[] = {
+#ifdef PORTFFT_ENABLE_OOP_BUILDS
     {placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED},
+#endif
     {placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED}};
 auto all_valid_global_placement_layouts = ::testing::ValuesIn(valid_global_layouts);
 
@@ -231,8 +239,12 @@ INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
     }                                                                                                               \
   }
 
+#ifdef PORTFFT_ENABLE_BUFFER_BUILDS
 #define INSTANTIATE_TESTS(TYPE)     \
   INSTANTIATE_TESTS_FULL(TYPE, usm) \
   INSTANTIATE_TESTS_FULL(TYPE, buffer)
+#else
+#define INSTANTIATE_TESTS(TYPE) INSTANTIATE_TESTS_FULL(TYPE, usm)
+#endif
 
 #endif
