@@ -1094,9 +1094,9 @@ class committed_descriptor {
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
-    if constexpr(!PORTFFT_ENABLE_BUFFER_BUILDS && (!std::is_pointer_v<TIn> || !std::is_pointer_v<TOut>)){
+    if constexpr (!PORTFFT_ENABLE_BUFFER_BUILDS && (!std::is_pointer_v<TIn> || !std::is_pointer_v<TOut>)) {
       throw invalid_configuration("Buffer interface can not be called when buffer builds are disabled.");
-    } else{
+    } else {
       if (used_storage != params.complex_storage) {
         if (used_storage == complex_storage::SPLIT_COMPLEX) {
           throw invalid_configuration(
