@@ -368,6 +368,7 @@ class committed_descriptor {
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
+        // Throughout we have assumed there would always be enough local memory for the WI implementation.
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{static_cast<Idx>(factor_size)});
