@@ -1096,26 +1096,25 @@ class committed_descriptor {
                                  complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
     if constexpr (!PORTFFT_ENABLE_BUFFER_BUILDS && (!std::is_pointer_v<TIn> || !std::is_pointer_v<TOut>)) {
       throw invalid_configuration("Buffer interface can not be called when buffer builds are disabled.");
-    } else {
-      if (used_storage != params.complex_storage) {
-        if (used_storage == complex_storage::SPLIT_COMPLEX) {
-          throw invalid_configuration(
-              "To use interface with split real and imaginary memory, descriptor.complex_storage must be set to "
-              "SPLIT_COMPLEX.");
-        }
+    }
+    if (used_storage != params.complex_storage) {
+      if (used_storage == complex_storage::SPLIT_COMPLEX) {
         throw invalid_configuration(
-            "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
-            "INTERLEAVED_COMPLEX.");
+            "To use interface with split real and imaginary memory, descriptor.complex_storage must be set to "
+            "SPLIT_COMPLEX.");
       }
-      if constexpr (Dir == direction::FORWARD) {
-        return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.forward_strides,
-                                        params.backward_strides, params.forward_distance, params.backward_distance,
-                                        params.forward_offset, params.backward_offset, params.forward_scale);
-      } else {
-        return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.backward_strides,
-                                        params.forward_strides, params.backward_distance, params.forward_distance,
-                                        params.backward_offset, params.forward_offset, params.backward_scale);
-      }
+      throw invalid_configuration(
+          "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
+          "INTERLEAVED_COMPLEX.");
+    }
+    if constexpr (Dir == direction::FORWARD) {
+      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.forward_strides,
+                                      params.backward_strides, params.forward_distance, params.backward_distance,
+                                      params.forward_offset, params.backward_offset, params.forward_scale);
+    } else {
+      return dispatch_dimensions<Dir>(in, out, in_imag, out_imag, dependencies, params.backward_strides,
+                                      params.forward_strides, params.backward_distance, params.forward_distance,
+                                      params.backward_offset, params.forward_offset, params.backward_scale);
     }
   }
 
