@@ -317,11 +317,12 @@ class committed_descriptor {
    *
    * @tparam SubgroupSize size of the subgroup
    * @param kernel_num the consecutive number of the kernel to prepare
-   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel,
-   * vector of kernel ids, factors
+   * @return implementation to use for the dimension, the size for that dimension and a vector of tuples of:
+   * implementation to use for a kernel, vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>>
+  std::tuple<detail::level, IdxGlobal,
+             std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>>
   prepare_implementation(std::size_t kernel_num) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
@@ -334,7 +335,7 @@ class committed_descriptor {
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       factors.push_back(static_cast<Idx>(fft_size));
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
+      return {detail::level::WORKITEM, fft_size, {{detail::level::WORKITEM, ids, factors}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
@@ -344,7 +345,7 @@ class committed_descriptor {
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
       ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
-      return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
+      return {detail::level::SUBGROUP, fft_size, {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
@@ -375,7 +376,7 @@ class committed_descriptor {
         // This factorization of N and M is duplicated in the dispatch logic on the device.
         // The CT and spec constant factors should match.
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
-        return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+        return {detail::level::WORKGROUP, fft_size, {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
@@ -417,8 +418,9 @@ class committed_descriptor {
           static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
       detail::factorize_input(padded_fft_size, check_and_select_target_level, true);
       detail::factorize_input(padded_fft_size, check_and_select_target_level, false);
+      fft_size = padded_fft_size;
     }
-    return {detail::level::GLOBAL, param_vec};
+    return {detail::level::GLOBAL, fft_size, param_vec};
   }
 
   /**
@@ -526,7 +528,7 @@ class committed_descriptor {
                                    detail::elementwise_multiply last_uses_load_modifier, Idx num_kernels) {
     Idx counter = 0;
     for (auto& [level, in_bundle, factors] : prepared_vec) {
-      if (counter > num_kernels) {
+      if (counter >= num_kernels) {
         break;
       }
       if (counter == num_kernels - 1) {
@@ -564,7 +566,7 @@ class committed_descriptor {
   template <Idx SubgroupSize, Idx... OtherSGSizes>
   dimension_struct build_w_spec_const(std::size_t kernel_num) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
+      auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
       bool is_compatible = true;
       for (auto [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
@@ -572,40 +574,48 @@ class committed_descriptor {
           break;
         }
       }
-      std::vector<kernel_data_struct> result;
-      std::size_t counter = 0;
-      std::size_t dimension_size = 1;
-      for (const auto& [level, ids, factors] : prepared_vec) {
-        dimension_size *=
-            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
-        counter++;
+      bool is_prime = false;
+      if (dimension_size != static_cast<IdxGlobal>(params.lengths[kernel_num])) {
+        is_prime = true;
       }
-      std::size_t backward_factors = prepared_vec.size() - counter;
+      IdxGlobal num_forward_factors = 0;
+      IdxGlobal num_backward_factors = 0;
+      IdxGlobal temp = 1;
+      for (const auto& [level, ids, factors] : prepared_vec) {
+        if (temp == dimension_size) {
+          break;
+        }
+        temp *= static_cast<IdxGlobal>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
+        num_forward_factors++;
+      }
+      num_backward_factors = static_cast<IdxGlobal>(prepared_vec.size()) - num_forward_factors;
+      std::vector<kernel_data_struct> result;
       std::vector<in_bundle_and_metadata> in_bundles;
       if (is_compatible) {
-        for (auto [level, ids, factors] : prepared_vec) {
+        for (const auto& [level, ids, factors] : prepared_vec) {
           in_bundles.emplace_back(level, sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids),
                                   factors);
         }
         if (top_level == detail::level::GLOBAL) {
           detail::elementwise_multiply first_uses_load_modifiers =
-              backward_factors > 0 ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
+              is_prime ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
           detail::elementwise_multiply last_uses_store_modifiers =
-              backward_factors > 0 ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
+              is_prime ? detail::elementwise_multiply::APPLIED : detail::elementwise_multiply::NOT_APPLIED;
           set_global_impl_spec_consts(in_bundles, first_uses_load_modifiers, last_uses_store_modifiers,
-                                      static_cast<Idx>(counter));
-          if (backward_factors > 0) {
-            std::vector<in_bundle_and_metadata> backward_kernels_slice(in_bundles.begin() + static_cast<long>(counter),
-                                                                       in_bundles.end());
+                                      static_cast<Idx>(num_forward_factors));
+          if (is_prime) {
+            std::vector<in_bundle_and_metadata> backward_kernels_slice(
+                in_bundles.begin() + static_cast<long>(num_forward_factors), in_bundles.end());
             set_global_impl_spec_consts(backward_kernels_slice, detail::elementwise_multiply::NOT_APPLIED,
-                                        last_uses_store_modifiers, static_cast<Idx>(backward_factors));
+                                        last_uses_store_modifiers, static_cast<Idx>(num_backward_factors));
             std::copy(backward_kernels_slice.begin(), backward_kernels_slice.end(),
-                      in_bundles.begin() + static_cast<long>(counter));
+                      in_bundles.begin() + static_cast<long>(num_forward_factors));
           }
         } else {
           for (auto& [level, in_bundle, factors] : in_bundles) {
-            set_spec_constants(top_level, in_bundle, dimension_size, factors, detail::elementwise_multiply::NOT_APPLIED,
-                               detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED, level);
+            set_spec_constants(top_level, in_bundle, static_cast<std::size_t>(dimension_size), factors,
+                               detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
+                               detail::apply_scale_factor::APPLIED, level);
           }
         }
 
@@ -620,11 +630,8 @@ class committed_descriptor {
             break;
           }
         }
-        bool is_prime = false;
-        if (backward_factors > 0) {
-          is_prime = true;
-        }
-        return {result, top_level, dimension_size, params.lengths[kernel_num], is_prime, SubgroupSize};
+        return {result,   top_level,   static_cast<std::size_t>(dimension_size), params.lengths[kernel_num],
+                is_prime, SubgroupSize};
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
