@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 #define PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
+#include <cerrno>
 #include <complex>
 #include <cstdio>
 #include <exception>
@@ -92,10 +93,13 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "  if (is_complex):\n"
       "    inData = inData + 1j * rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
       "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
-      "  inData.reshape(-1, 1)\n"
-      "  outData.reshape(-1, 1)\n"
-      "  inData = inData.astype(complex_type)\n"
       "  outData = outData.astype(complex_type)\n"
+      "  if (not is_complex):\n"
+      "    fft_len = np.prod(dims)\n"
+      "    bwd_real_len = (fft_len // dims[-1]) * (dims[-1] // 2  + 1)\n"
+      "    # For each batch halve the size of the last FFT dimension\n"
+      "    outData = outData.reshape([batch, fft_len])[:, :bwd_real_len]\n"
+      "  # input and output shape is irrelevant when outputting the buffer\n"
       "  stdout.buffer.write(inData.tobytes())\n"
       "  stdout.buffer.write(outData.tobytes())\n"
       "gen_data(";
@@ -125,7 +129,9 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   auto process_close_func = [](FILE* f) {
     if (pclose(f) != 0) {
-      throw std::runtime_error("failed to close validation sub-process");
+      // Note: strerror may output "Operation not supported" if the process is closed and we have not read all of its
+      // output with std::fread
+      throw std::runtime_error("failed to close validation sub-process, errno:" + std::string(std::strerror(errno)));
     }
   };
   std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
@@ -195,13 +201,15 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   std::vector<Scalar> backward_imag;
 
   if constexpr (!IsInterleaved) {
-    if (!IsRealDomain) {
+    if constexpr (!IsRealDomain) {
       forward_real.reserve(forward.size());
       forward_imag.reserve(forward.size());
       for (auto el : forward) {
         forward_real.push_back(el.real());
         forward_imag.push_back(el.imag());
       }
+    } else {
+      forward_real = std::move(forward);
     }
     backward_real.reserve(backward.size());
     backward_imag.reserve(backward.size());
