@@ -103,10 +103,10 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
 }
 
 template <typename T>
-void trigger_device_copy(const T* src, T* dst, IdxGlobal num_elements_to_copy, IdxGlobal src_stride,
-                         IdxGlobal dst_stride, Idx num_copies, std::vector<sycl::event>& event_vector,
+void trigger_device_copy(const T* src, T* dst, std::size_t num_elements_to_copy, std::size_t src_stride,
+                         std::size_t dst_stride, std::size_t num_copies, std::vector<sycl::event>& event_vector,
                          sycl::queue& queue) {
-  for (Idx i = 0; i < num_copies; i++) {
+  for (std::size_t i = 0; i < num_copies; i++) {
     event_vector.at(i) = queue.copy(src + i * src_stride, dst + i * dst_stride, num_elements_to_copy);
   }
 }
@@ -422,17 +422,45 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           static_cast<IdxGlobal>(i), 0, num_factors, 2 * static_cast<IdxGlobal>(i) * committed_size + output_offset,
           desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, current_events, previous_events);
     };
+
     for (std::size_t i = 0; i < num_batches; i += max_batches_in_l2) {
       if (dimension_data.is_prime) {
+        desc.queue
+            .submit([&](sycl::handler& cgh) {
+              cgh.depends_on(current_events[0]);
+              auto in_acc_or_usm = detail::get_access(in, cgh);
+              cgh.host_task([&]() {
+                detail::trigger_device_copy(&in_acc_or_usm[0] + 2 * i * dimension_data.committed_length,
+                                            desc.scratch_ptr_1.get(), 2 * dimension_data.committed_length,
+                                            2 * dimension_data.committed_length, 2 * dimension_data.length,
+                                            max_batches_in_l2, current_events, desc.queue);
+              });
+            })
+            .wait();
         run_global.template operator()<direction::FORWARD>(
-            std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()), i);
+            std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors),
+                        kernels.begin() + static_cast<long>(dimension_data.forward_factors)),
+            i);
         run_global.template operator()<direction::BACKWARD>(
             std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()), i);
+        desc.queue.submit([&](sycl::handler& cgh) {
+          cgh.depends_on(current_events[0]);
+          auto out_acc_or_usm = detail::get_access(out, cgh);
+          cgh.host_task([&]() {
+            detail::trigger_device_copy(
+                desc.scratch_ptr_2.get(), &out_acc_or_usm[0] + 2 * i * dimension_data.committed_length,
+                2 * dimension_data.committed_length, 2 * dimension_data.length, 2 * dimension_data.committed_length,
+                max_batches_in_l2, current_events, desc.queue);
+          });
+        });
       } else {
         run_global.template operator()<Dir>(kernels, i);
       }
     }
-    return current_events[0];
+    return desc.queue.submit([&](sycl::handler& cgh) {
+      cgh.depends_on(current_events);
+      cgh.host_task([]() {});
+    });
 #pragma clang diagnostic pop
   }
 };
