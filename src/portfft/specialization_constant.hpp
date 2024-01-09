@@ -47,6 +47,8 @@ constexpr static sycl::specialization_id<Idx> GlobalSpecConstNumFactors{};
 constexpr static sycl::specialization_id<bool> SpecConstTakeConjugateOnLoad{};
 constexpr static sycl::specialization_id<bool> SpecConstTakeConjugateOnStore{};
 
+constexpr static sycl::specialization_id<bool> SpecConstIncrementModifierPointer{};
+
 }  // namespace detail
 }  // namespace portfft
 #endif

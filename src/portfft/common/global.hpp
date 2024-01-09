@@ -140,26 +140,29 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
+  bool increment_modifier_pointer =
+      kh.get_specialization_constant<SpecConstIncrementModifierPointer>();  // Should it be a spec constant ?
   global_data.log_message_global(__func__, "dispatching sub implementation for factor num = ", level_num);
   IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
   for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
     IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                           level_num, iter_value, outer_batch_product);
+    auto store_modifier_offset = increment_modifier_pointer ? outer_batch_offset : 0;
     if (level == detail::level::WORKITEM) {
       workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, batch_size,
-          scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr), store_modifier_data,
-          static_cast<Scalar*>(nullptr), store_modifier_loc);
+          scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
+          store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
           batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
-          store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
+          store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
           batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr),
-          store_modifier_data);
+          store_modifier_data + store_modifier_offset);
     }
     sycl::group_barrier(global_data.it.get_group());
   }
