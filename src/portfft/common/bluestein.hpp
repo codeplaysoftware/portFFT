@@ -33,13 +33,12 @@ namespace detail {
 /**
  * Utility function to get chirp signal and fft
  * @tparam T Scalar Type
- * @param ptr Device Pointer containing the load/store modifiers.
+ * @param ptr Host Pointer containing the load/store modifiers.
  * @param committed_size original problem size
  * @param dimension_size padded size
- * @param queue queue with the committed descriptor
  */
 template <typename T>
-void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size, sycl::queue& queue) {
+void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size) {
   using ctype = std::complex<T>;
   ctype* chirp_signal = (ctype*)calloc(static_cast<std::size_t>(dimension_size), sizeof(ctype));
   ctype* chirp_fft = (ctype*)malloc(static_cast<std::size_t>(dimension_size) * sizeof(ctype));
@@ -52,19 +51,25 @@ void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_
     chirp_signal[committed_size + num_zeros + i - 1] = chirp_signal[committed_size - i];
   }
   naive_dft(chirp_signal, chirp_fft, dimension_size);
-  queue.copy(reinterpret_cast<T*>(&chirp_fft[0]), ptr, static_cast<std::size_t>(2 * dimension_size)).wait();
+  std::memcpy(ptr, reinterpret_cast<T*>(&chirp_fft[0]), static_cast<std::size_t>(2 * dimension_size) * sizeof(T));
 }
 
+/**
+ * Populates input modifiers required for bluestein
+ * @tparam T Scalar Type
+ * @param ptr Host Pointer containing the load/store modifiers.
+ * @param committed_size original problem size
+ * @param dimension_size padded size
+ */
 template <typename T>
-void populate_bluestein_input_modifiers(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size,
-                                        sycl::queue& queue) {
+void populate_bluestein_input_modifiers(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size) {
   using ctype = std::complex<T>;
   ctype* scratch = (ctype*)calloc(static_cast<std::size_t>(dimension_size), sizeof(ctype));
   for (IdxGlobal i = 0; i < committed_size; i++) {
     double theta = -M_PI * static_cast<double>(i * i) / static_cast<double>(committed_size);
     scratch[i] = ctype(static_cast<T>(std::cos(theta)), static_cast<T>(std::sin(theta)));
   }
-  queue.copy(reinterpret_cast<T*>(&scratch[0]), ptr, static_cast<std::size_t>(2 * dimension_size));
+  std::memcpy(ptr, reinterpret_cast<T*>(&scratch[0]), static_cast<std::size_t>(2 * dimension_size) * sizeof(T));
 }
 }  // namespace detail
 }  // namespace portfft

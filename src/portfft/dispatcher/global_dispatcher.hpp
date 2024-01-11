@@ -118,6 +118,151 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
   static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
     auto& kernels = dimension_data.kernels;
+
+    /**
+     * Helper Lambda to calculate twiddles
+     */
+    auto calculate_twiddles = [](IdxGlobal N, IdxGlobal M, IdxGlobal& offset, Scalar* ptr) {
+      for (IdxGlobal i = 0; i < N; i++) {
+        for (IdxGlobal j = 0; j < M; j++) {
+          double theta = -2 * M_PI * static_cast<double>(i * j) / static_cast<double>(N * M);
+          ptr[offset++] = static_cast<Scalar>(std::cos(theta));
+          ptr[offset++] = static_cast<Scalar>(std::sin(theta));
+        }
+      }
+    };
+
+    /**
+     * Gets cumulative global memory requirements for provided set of factors and sub batches.
+     */
+    auto get_cumulative_memory_requirememts = [&](std::vector<IdxGlobal>& factors, std::vector<IdxGlobal>& sub_batches,
+                                                  direction dir) -> IdxGlobal {
+      // calculate sizes for modifiers
+      std::size_t num_factors = static_cast<std::size_t>(dir == direction::FORWARD ? dimension_data.forward_factors
+                                                                                   : dimension_data.backward_factors);
+      std::size_t offset = static_cast<std::size_t>(dir == direction::FORWARD ? 0 : dimension_data.backward_factors);
+      IdxGlobal total_memory = 0;
+
+      // get memory for modifiers
+      for (std::size_t i = 0; i < num_factors - 1; i++) {
+        total_memory += 2 * factors.at(offset + i) * sub_batches.at(offset + i);
+      }
+
+      // Get memory required for twiddles per sub-level
+      for (std::size_t i = 0; i < num_factors; i++) {
+        auto level = kernels.at(offset + i).level;
+        if (level == detail::level::SUBGROUP) {
+          total_memory += 2 * factors.at(offset + i);
+        } else if (level == detail::level::WORKGROUP) {
+          IdxGlobal factor_1 = detail::factorize(factors.at(offset + i));
+          IdxGlobal factor_2 = factors.at(offset + i) / factor_1;
+          total_memory += 2 * (factor_1 * factor_2) + 2 * (factor_1 + factor_2);
+        }
+      }
+      return total_memory;
+    };
+
+    /**
+     * populates and rearranges twiddles on host pointer and populates
+     * the kernel specific metadata (launch params and local mem requirements for twiddles only)
+     */
+    auto populate_twiddles_and_metadata = [&](Scalar* ptr, std::vector<IdxGlobal>& factors,
+                                              std::vector<IdxGlobal>& sub_batches, IdxGlobal& ptr_offset,
+                                              direction dir) -> void {
+      std::size_t num_factors = static_cast<std::size_t>(dir == direction::FORWARD ? dimension_data.forward_factors
+                                                                                   : dimension_data.backward_factors);
+      std::size_t offset = static_cast<std::size_t>(dir == direction::FORWARD ? 0 : dimension_data.backward_factors);
+      Scalar* scratch_ptr = (Scalar*)malloc(2 * dimension_data.length * sizeof(Scalar));
+
+      // generate and rearrange store modifiers
+      for (std::size_t i = 0; i < num_factors - 1; i++) {
+        calculate_twiddles(sub_batches.at(offset + i), factors.at(offset + i), ptr_offset, ptr);
+        if (kernels.at(offset + i).level == detail::level::WORKITEM) {
+          // For the WI implementation, utilize coalesced loads from global as they are not being reused.
+          // shift them to local memory only for devices which do not have coalesced accesses.
+          detail::complex_transpose(ptr + ptr_offset, scratch_ptr, factors.at(offset + i), sub_batches.at(offset + i),
+                                    factors.at(offset + i) * sub_batches.at(offset + i));
+          std::memcpy(ptr + ptr_offset, scratch_ptr,
+                      2 * factors.at(offset + i) * sub_batches.at(offset + i) * sizeof(Scalar));
+        }
+      }
+
+      // Calculate twiddles for the implementation corresponding to per factor;
+      for (Idx i = 0; i < num_factors; i++) {
+        const auto& kernel_data = kernels.at(offset + i);
+        if (kernels.at(offset + i).level == detail::level::SUBGROUP) {
+          for (Idx j = 0; j < kernel_data.factors.at(0); j++) {
+            for (Idx k = 0; k < kernel_data.factors.at(1); k++) {
+              double theta = -2 * M_PI * static_cast<double>(j * k) /
+                             static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
+              auto twiddle =
+                  std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
+              ptr[offset + static_cast<std::size_t>(j * kernel_data.factors.at(0) + i)] = twiddle.real();
+              ptr[offset + static_cast<std::size_t>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i)] =
+                  twiddle.imag();
+            }
+          }
+          ptr_offset += 2 * kernel_data.factors.at(0) * kernel_data.factors.at(1);
+        } else if (kernels.at(offset + i).level == detail::level::WORKGROUP) {
+          Idx factor_n = kernel_data.factors.at(0) * kernel_data.factors.at(1);
+          Idx factor_m = kernel_data.factors.at(2) * kernel_data.factors.at(3);
+          calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(0)),
+                             static_cast<IdxGlobal>(kernel_data.factors.at(1)), ptr_offset, ptr);
+          calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(2)),
+                             static_cast<IdxGlobal>(kernel_data.factors.at(3)), ptr_offset, ptr);
+          // Calculate wg twiddles and transpose them
+          calculate_twiddles(static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m), ptr_offset, ptr);
+          for (Idx j = 0; j < factor_n; j++) {
+            detail::complex_transpose(ptr + offset + 2 * j * factor_n, scratch_ptr, factor_m, factor_n,
+                                      factor_n * factor_m);
+            std::memcpy(ptr + offset + 2 * j * factor_n, scratch_ptr,
+                        static_cast<std::size_t>(2 * factor_n * factor_m) * sizeof(float));
+          }
+        }
+      }
+
+      // Populate Metadata
+      for (std::size_t i = 0; i < num_factors; i++) {
+        auto& kernel_data = kernels.at(offset + i);
+        kernel_data.batch_size = sub_batches.at(offset + i);
+        kernel_data.length = static_cast<std::size_t>(factors.at(offset + i));
+        if (kernel_data.level == detail::level::WORKITEM) {
+          Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+          if (i < kernels.size() - 1) {
+            kernel_data.local_mem_required = static_cast<std::size_t>(1);
+          } else {
+            kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
+                detail::level::WORKITEM, static_cast<std::size_t>(factors.at(offset + i)), kernel_data.used_sg_size,
+                {static_cast<Idx>(factors.at(offset + i))}, num_sgs_in_wg);
+          }
+          auto [global_range, local_range] =
+              detail::get_launch_params(factors.at(offset + i), sub_batches.at(offset + i), detail::level::WORKITEM,
+                                        desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
+          kernel_data.global_range = global_range;
+          kernel_data.local_range = local_range;
+        } else if (kernel_data.level == detail::level::SUBGROUP) {
+          Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+          IdxGlobal factor_sg = detail::factorize_sg(factors.at(offset + i), kernel_data.used_sg_size);
+          IdxGlobal factor_wi = factors.at(offset + i) / factor_sg;
+          if (i < kernels.size() - 1) {
+            kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
+                detail::level::SUBGROUP, static_cast<std::size_t>(factors.at(offset + i)), kernel_data.used_sg_size,
+                {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+          } else {
+            kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
+                detail::level::SUBGROUP, static_cast<std::size_t>(factors.at(offset + i)), kernel_data.used_sg_size,
+                {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+          }
+          auto [global_range, local_range] =
+              detail::get_launch_params(factors.at(offset + i), sub_batches.at(offset + i), detail::level::SUBGROUP,
+                                        desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
+          kernel_data.global_range = global_range;
+          kernel_data.local_range = local_range;
+        }
+      }
+      free(scratch_ptr);
+    };
+
     std::vector<IdxGlobal> factors_idx_global;
     IdxGlobal temp_acc = 1;
     // Get factor sizes per level;
@@ -131,167 +276,59 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     }
     dimension_data.forward_factors = static_cast<Idx>(factors_idx_global.size());
     dimension_data.backward_factors = static_cast<Idx>(kernels.size()) - dimension_data.forward_factors;
+    for (const auto& kernel_data : kernels.begin() + static_cast<long>(factors_idx_global.size())) {
+      factors_idx_global.push_back(static_cast<IdxGlobal>(
+          std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>())));
+    }
+
+    // Get sub batches per direction
     std::vector<IdxGlobal> sub_batches;
-    // Get sub batches
-    for (std::size_t i = 0; i < factors_idx_global.size() - 1; i++) {
-      sub_batches.push_back(std::accumulate(factors_idx_global.begin() + static_cast<long>(i + 1),
-                                            factors_idx_global.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
+    for (Idx i = 0; i < dimension_data.forward_factors - 1; i++) {
+      sub_batches.push_back(
+          std::accumulate(factors_idx_global.begin() + static_cast<long>(i + 1),
+                          factors_idx_global.begin() + static_cast<long>(dimension_data.forward_factors), IdxGlobal(1),
+                          std::multiplies<IdxGlobal>()));
     }
-    sub_batches.push_back(factors_idx_global.at(factors_idx_global.size() - 2));
-    // factors and inner batches for the backward factors;
+    sub_batches.push_back(factors_idx_global.at(static_cast<std::size_t>(dimension_data.forward_factors - 2)));
     if (dimension_data.backward_factors > 0) {
-      for (Idx i = 0; i < dimension_data.backward_factors; i++) {
-        const auto& kd_struct = kernels.at(static_cast<std::size_t>(dimension_data.forward_factors + i));
-        factors_idx_global.push_back(static_cast<IdxGlobal>(
-            std::accumulate(kd_struct.factors.begin(), kd_struct.factors.end(), 1, std::multiplies<Idx>())));
+      for (Idx i = 0; i < dimension_data.backward_factors - 1; i++) {
+        sub_batches.push_back(
+            std::accumulate(factors_idx_global.begin() + static_cast<long>(dimension_data.forward_factors + i + 1),
+                            factors_idx_global.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
       }
-      for (Idx back_factor = 0; back_factor < dimension_data.backward_factors - 1; back_factor++) {
-        sub_batches.push_back(std::accumulate(
-            factors_idx_global.begin() + static_cast<long>(dimension_data.forward_factors + back_factor + 1),
-            factors_idx_global.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
-      }
+      sub_batches.push_back(factors_idx_global.at(factors_idx_global.size() - 2));
     }
-    // calculate total memory required for twiddles;
-    IdxGlobal mem_required_for_twiddles = 0;
-    // First calculate mem required for twiddles between factors;
-    for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.forward_factors - 1); i++) {
-      mem_required_for_twiddles += 2 * factors_idx_global.at(i) * sub_batches.at(i);
-    }
+
+    // Get total Global memory required to store all the twiddles and multipliers.
+    IdxGlobal mem_required_for_twiddles =
+        get_cumulative_memory_requirememts(factors_idx_global, sub_batches, direction::FORWARD);
     if (dimension_data.backward_factors > 0) {
-      for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.backward_factors - 1); i++) {
-        mem_required_for_twiddles += 2 * factors_idx_global.at(i) * sub_batches.at(i);
-      }
+      mem_required_for_twiddles +=
+          get_cumulative_memory_requirememts(factors_idx_global, sub_batches, direction::BACKWARD);
+      // Presence of backward factors signifies that Bluestein will be used.
+      // Thus take into account memory required for load modifiers as well.
       mem_required_for_twiddles += static_cast<IdxGlobal>(4 * dimension_data.length);
     }
 
-    // Now calculate mem required for twiddles per implementation
-    std::size_t counter = 0;
-    for (const auto& kernel_data : kernels) {
-      if (kernel_data.level == detail::level::SUBGROUP) {
-        mem_required_for_twiddles += 2 * factors_idx_global.at(counter);
-      } else if (kernel_data.level == detail::level::WORKGROUP) {
-        IdxGlobal factor_1 = detail::factorize(factors_idx_global.at(counter));
-        IdxGlobal factor_2 = factors_idx_global.at(counter) / factor_1;
-        mem_required_for_twiddles += 2 * (factor_1 * factor_2) + 2 * (factor_1 + factor_2);
-      }
-      counter++;
-    }
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
-    std::vector<Scalar> scratch_space(static_cast<std::size_t>(mem_required_for_twiddles));
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
-    // Helper Lambda to calculate twiddles
-    auto calculate_twiddles = [](IdxGlobal N, IdxGlobal M, IdxGlobal& offset, Scalar* ptr) {
-      for (IdxGlobal i = 0; i < N; i++) {
-        for (IdxGlobal j = 0; j < M; j++) {
-          double theta = -2 * M_PI * static_cast<double>(i * j) / static_cast<double>(N * M);
-          ptr[offset++] = static_cast<Scalar>(std::cos(theta));
-          ptr[offset++] = static_cast<Scalar>(std::sin(theta));
-        }
-      }
-    };
-
     IdxGlobal offset = 0;
     if (dimension_data.is_prime) {
-      // get bluestein specific modifiers.
-      detail::get_fft_chirp_signal(device_twiddles + offset, static_cast<IdxGlobal>(dimension_data.committed_length),
-                                   static_cast<IdxGlobal>(dimension_data.length), desc.queue);
+      // first populate load modifiers for bluestein.
+      detail::get_fft_chirp_signal(host_memory.data() + offset, static_cast<IdxGlobal>(dimension_data.committed_length),
+                                   static_cast<IdxGlobal>(dimension_data.length));
       offset += static_cast<IdxGlobal>(2 * dimension_data.length);
-      detail::populate_bluestein_input_modifiers(device_twiddles + offset,
+      detail::populate_bluestein_input_modifiers(host_memory.data() + offset,
                                                  static_cast<IdxGlobal>(dimension_data.committed_length),
-                                                 static_cast<IdxGlobal>(dimension_data.length), desc.queue);
-    }
-    // calculate twiddles to be multiplied between factors
-    for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.forward_factors) - 1; i++) {
-      calculate_twiddles(sub_batches.at(i), factors_idx_global.at(i), offset, host_memory.data());
-    }
-    if (dimension_data.backward_factors > 0) {
-      for (std::size_t i = 0; i < static_cast<std::size_t>(dimension_data.backward_factors) - 1; i++) {
-        calculate_twiddles(sub_batches.at(i), factors_idx_global.at(i), offset, host_memory.data());
-      }
-    }
-    // Now calculate per twiddles.
-    counter = 0;
-    for (const auto& kernel_data : kernels) {
-      if (kernel_data.level == detail::level::SUBGROUP) {
-        for (Idx i = 0; i < kernel_data.factors.at(0); i++) {
-          for (Idx j = 0; j < kernel_data.factors.at(1); j++) {
-            double theta = -2 * M_PI * static_cast<double>(i * j) /
-                           static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
-            auto twiddle =
-                std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
-            host_memory[static_cast<std::size_t>(offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(0) + i))] =
-                twiddle.real();
-            host_memory[static_cast<std::size_t>(
-                offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i))] =
-                twiddle.imag();
-          }
-        }
-        offset += 2 * kernel_data.factors.at(0) * kernel_data.factors.at(1);
-      } else if (kernel_data.level == detail::level::WORKGROUP) {
-        Idx factor_n = kernel_data.factors.at(0) * kernel_data.factors.at(1);
-        Idx factor_m = kernel_data.factors.at(2) * kernel_data.factors.at(3);
-        calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(0)),
-                           static_cast<IdxGlobal>(kernel_data.factors.at(1)), offset, host_memory.data());
-        calculate_twiddles(static_cast<IdxGlobal>(kernel_data.factors.at(2)),
-                           static_cast<IdxGlobal>(kernel_data.factors.at(3)), offset, host_memory.data());
-        // Calculate wg twiddles and transpose them
-        calculate_twiddles(static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m), offset,
-                           host_memory.data());
-        for (Idx j = 0; j < factor_n; j++) {
-          detail::complex_transpose(host_memory.data() + offset + 2 * j * factor_n, scratch_space.data(), factor_m,
-                                    factor_n, factor_n * factor_m);
-        }
-      }
-      counter++;
+                                                 static_cast<IdxGlobal>(dimension_data.length));
+      offset += static_cast<IdxGlobal>(2 * dimension_data.length);
     }
 
-    // Rearrage the twiddles between factors for optimal access patters in shared memory
-    // Also take this opportunity to populate local memory size, and batch size, and launch params and local memory
-    // usage Note, global impl only uses store modifiers
-    // TODO: there is a heap corruption in workitem's access of loaded modifiers, hence loading from global directly for
-    // now.
-    counter = 0;
-    for (auto& kernel_data : kernels) {
-      kernel_data.batch_size = sub_batches.at(counter);
-      kernel_data.length = static_cast<std::size_t>(factors_idx_global.at(counter));
-      if (kernel_data.level == detail::level::WORKITEM) {
-        // See comments in workitem_dispatcher for layout requirments.
-        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
-        if (counter < kernels.size() - 1) {
-          kernel_data.local_mem_required = static_cast<std::size_t>(1);
-        } else {
-          kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
-              detail::level::WORKITEM, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factors_idx_global.at(counter))}, num_sgs_in_wg);
-        }
-        auto [global_range, local_range] =
-            detail::get_launch_params(factors_idx_global.at(counter), sub_batches.at(counter), detail::level::WORKITEM,
-                                      desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
-        kernel_data.global_range = global_range;
-        kernel_data.local_range = local_range;
-      } else if (kernel_data.level == detail::level::SUBGROUP) {
-        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
-        // See comments in subgroup_dispatcher for layout requirements.
-        IdxGlobal factor_sg = detail::factorize_sg(factors_idx_global.at(counter), kernel_data.used_sg_size);
-        IdxGlobal factor_wi = factors_idx_global.at(counter) / factor_sg;
-        if (counter < kernels.size() - 1) {
-          kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
-        } else {
-          kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
-              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
-        }
-        auto [global_range, local_range] =
-            detail::get_launch_params(factors_idx_global.at(counter), sub_batches.at(counter), detail::level::SUBGROUP,
-                                      desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
-        kernel_data.global_range = global_range;
-        kernel_data.local_range = local_range;
-      }
-      counter++;
+    populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, direction::FORWARD);
+    if (dimension_data.backward_factors) {
+      populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, direction::BACKWARD);
     }
     desc.queue.copy(host_memory.data(), device_twiddles, static_cast<std::size_t>(mem_required_for_twiddles)).wait();
     return device_twiddles;
