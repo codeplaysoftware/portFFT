@@ -336,7 +336,7 @@ class committed_descriptor {
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
-        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global) && false) {
+        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
       if (n_idx_global == 1) {
         throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
       }
