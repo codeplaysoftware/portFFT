@@ -138,7 +138,7 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
 INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
-                             ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
+                             ::testing::Values(sizes_t{32768}, sizes_t{68640}, sizes_t{65536}, sizes_t{131072}))),
                          test_params_print());
 
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
