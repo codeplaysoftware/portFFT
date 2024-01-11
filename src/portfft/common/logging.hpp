@@ -299,6 +299,10 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue q, [[maybe_unused]]
   std::vector<T> tmp(size);
   q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
   dump_host(msg, tmp.data(), size);
+#else
+  // even with [[maybe_unused]] we get a warning:
+  // the parameter 'q' is copied for each invocation but only used as a const reference; consider making it a const reference
+  (void) q;
 #endif
 }
 
