@@ -299,8 +299,9 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
   }
   queue.wait_and_throw();
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, host_reference_output_imag, host_output_imag);
-  } else{
+    verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, host_reference_output_imag,
+                             host_output_imag);
+  } else {
     verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance);
   }
 }
@@ -375,8 +376,9 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
     }
   }
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance, host_reference_output_imag, is_oop ? host_output_imag : host_input_imag);
-  } else{
+    verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance,
+                             host_reference_output_imag, is_oop ? host_output_imag : host_input_imag);
+  } else {
     verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance);
   }
 }
@@ -413,7 +415,8 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
-  std::size_t n_elems = std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>());
+  std::size_t n_elems =
+      std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>());
   // theoretical max L2 error of Cooley-Tukey
   double tolerance = std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
 

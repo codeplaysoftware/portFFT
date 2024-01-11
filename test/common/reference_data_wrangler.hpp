@@ -274,14 +274,14 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
       }
       std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
                 << actual_output[i] << std::endl;
-      
+
       throw std::runtime_error("Verification Failed");
     }
     if constexpr (!IsInterleaved) {
       if (ref_output_imag[i] != actual_output_imag[i]) {
         std::cerr << "imag part:";
-      std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output_imag[i] << " vs "
-                << actual_output_imag[i] << std::endl;
+        std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output_imag[i]
+                  << " vs " << actual_output_imag[i] << std::endl;
       }
     }
   }
@@ -304,7 +304,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
     for (std::size_t e = 0; e != dft_len; ++e) {
       BwdType computed_val = this_batch_computed[e];
       BwdType ref_val = this_batch_ref[e];
-      if constexpr (!IsInterleaved){
+      if constexpr (!IsInterleaved) {
         computed_val += std::complex<Scalar>(0, this_batch_computed_imag[e]);
         ref_val += std::complex<Scalar>(0, this_batch_ref_imag[e]);
       }
@@ -329,7 +329,7 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
     for (std::size_t e = 0; e != dft_len; ++e) {
       BwdType computed_val = this_batch_computed[e];
       BwdType ref_val = this_batch_ref[e];
-      if constexpr (!IsInterleaved){
+      if constexpr (!IsInterleaved) {
         computed_val += std::complex<Scalar>(0, this_batch_computed_imag[e]);
         ref_val += std::complex<Scalar>(0, this_batch_ref_imag[e]);
       }
@@ -337,8 +337,8 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
       if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
         // std::endl is used intentionally to flush the error message before google test exits the test.
         std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dft_len + e
-                  << ", does not match\nref " << ref_val << " vs " << computed_val << "\ndiff "
-                  << diff << ", tolerance " << comparison_tolerance << std::endl;
+                  << ", does not match\nref " << ref_val << " vs " << computed_val << "\ndiff " << diff
+                  << ", tolerance " << comparison_tolerance << std::endl;
         throw std::runtime_error("Verification Failed");
       }
     }

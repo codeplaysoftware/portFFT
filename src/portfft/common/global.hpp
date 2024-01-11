@@ -541,12 +541,13 @@ std::vector<sycl::event> compute_level(
       // the subimpl_twiddles + subimpl_twiddle_offset may point to the end of the allocation and therefore be invalid.
       const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
       const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
-      Scalar* offset_output_imag = storage == complex_storage::INTERLEAVED_COMPLEX ? nullptr : output_imag + vec_size * batch_in_l2 * committed_size;
+      Scalar* offset_output_imag = storage == complex_storage::INTERLEAVED_COMPLEX
+                                       ? nullptr
+                                       : output_imag + vec_size * batch_in_l2 * committed_size;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
-          in_acc_or_usm, output + vec_size * batch_in_l2 * committed_size, in_imag_acc_or_usm,
-          offset_output_imag, loc_for_input, loc_for_twiddles, loc_for_modifier,
-          twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple,
-          inner_batches, inclusive_scan, batch_size, scale_factor,
+          in_acc_or_usm, output + vec_size * batch_in_l2 * committed_size, in_imag_acc_or_usm, offset_output_imag,
+          loc_for_input, loc_for_twiddles, loc_for_modifier, twiddles_ptr + intermediate_twiddle_offset,
+          subimpl_twiddles, factors_triple, inner_batches, inclusive_scan, batch_size, scale_factor,
           vec_size * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
