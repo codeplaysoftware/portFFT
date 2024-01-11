@@ -123,7 +123,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   Idx fft_size = factor_sg * factor_wi;
   Idx n_cplx_per_sg = n_ffts_per_sg * fft_size;
   Idx n_reals_per_sg = n_ffts_per_sg * n_reals_per_fft;
-  Idx id_of_fft_in_sg = subgroup_local_id / factor_sg;
+  // id_of_fft_in_sg must be < n_ffts_per_sg. Subtraction ensure this for trailing work-items.
+  Idx id_of_fft_in_sg = subgroup_local_id / factor_sg - (subgroup_local_id >= factor_sg * n_ffts_per_sg);
   Idx id_of_wi_in_fft = subgroup_local_id % factor_sg;
   Idx n_ffts_per_wg = n_ffts_per_sg * n_sgs_in_wg;
 
