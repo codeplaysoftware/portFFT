@@ -292,17 +292,13 @@ PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]]
  * @param dependencies dependencies to wait on
  */
 template <typename T>
-PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue q, [[maybe_unused]] const char* msg,
+PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
                                 [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
                                 [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
 #ifdef PORTFFT_LOG_DUMPS
   std::vector<T> tmp(size);
   q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
   dump_host(msg, tmp.data(), size);
-#else
-  // even with [[maybe_unused]] we get a warning:
-  // the parameter 'q' is copied for each invocation but only used as a const reference; consider making it a const reference
-  (void) q;
 #endif
 }
 
