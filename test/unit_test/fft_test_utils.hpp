@@ -238,25 +238,23 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
   std::shared_ptr<OutputFType> device_output;
   std::shared_ptr<RealFType> device_input_imag;
   std::shared_ptr<RealFType> device_output_imag;
-  sycl::event oop_init_event;
-  sycl::event oop_imag_init_event;
-  sycl::event copy_event2;
 
-  auto copy_event = queue.copy(host_input.data(), device_input.get(), host_input.size());
+  std::vector<sycl::event> dependencies{queue.copy(host_input.data(), device_input.get(), host_input.size())};
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
     device_input_imag = make_shared<RealFType>(host_input_imag.size(), queue);
-    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag.get(), host_input_imag.size());
+    dependencies.push_back(queue.copy(host_input_imag.data(), device_input_imag.get(), host_input_imag.size()));
   }
   if (is_oop) {
     device_output = make_shared<OutputFType>(host_output.size(), queue);
-    oop_init_event = queue.copy(host_output.data(), device_output.get(), host_output.size());
+    dependencies.push_back(queue.copy(host_output.data(), device_output.get(), host_output.size()));
     if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
       device_output_imag = make_shared<RealFType>(host_output_imag.size(), queue);
-      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag.get(), host_output_imag.size());
+      dependencies.push_back(queue.copy(host_output_imag.data(), device_output_imag.get(), host_output_imag.size()));
     }
   }
 
-  std::vector<sycl::event> dependencies{copy_event, copy_event2, oop_init_event, oop_imag_init_event};
+  // if a compute function throws, we need to ensure copies are complete before the shared pointers are deallocated
+  queue.wait();
 
   sycl::event fft_event = [&]() {
     if (is_oop) {
