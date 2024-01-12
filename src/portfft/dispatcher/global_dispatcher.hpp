@@ -182,24 +182,27 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
           // shift them to local memory only for devices which do not have coalesced accesses.
           detail::complex_transpose(ptr + ptr_offset, scratch_ptr, factors.at(offset + i), sub_batches.at(offset + i),
                                     factors.at(offset + i) * sub_batches.at(offset + i));
-          std::memcpy(ptr + ptr_offset, scratch_ptr,
-                      2 * factors.at(offset + i) * sub_batches.at(offset + i) * sizeof(Scalar));
+          std::memcpy(
+              ptr + ptr_offset, scratch_ptr,
+              static_cast<std::size_t>(2 * factors.at(offset + i) * sub_batches.at(offset + i)) * sizeof(Scalar));
         }
       }
 
       // Calculate twiddles for the implementation corresponding to per factor;
-      for (Idx i = 0; i < num_factors; i++) {
+      for (std::size_t i = 0; i < num_factors; i++) {
         const auto& kernel_data = kernels.at(offset + i);
         if (kernels.at(offset + i).level == detail::level::SUBGROUP) {
-          for (Idx j = 0; j < kernel_data.factors.at(0); j++) {
-            for (Idx k = 0; k < kernel_data.factors.at(1); k++) {
+          for (std::size_t j = 0; j < std::size_t(kernel_data.factors.at(0)); j++) {
+            for (std::size_t k = 0; k < std::size_t(kernel_data.factors.at(1)); k++) {
               double theta = -2 * M_PI * static_cast<double>(j * k) /
                              static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
               auto twiddle =
                   std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
-              ptr[offset + static_cast<std::size_t>(j * kernel_data.factors.at(0) + i)] = twiddle.real();
-              ptr[offset + static_cast<std::size_t>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i)] =
-                  twiddle.imag();
+              ptr[offset + j * static_cast<std::size_t>(kernel_data.factors.at(0)) + i] = twiddle.real();
+              ptr[offset +
+                  (j + static_cast<std::size_t>(kernel_data.factors.at(1))) *
+                      static_cast<std::size_t>(kernel_data.factors.at(0)) +
+                  i] = twiddle.imag();
             }
           }
           ptr_offset += 2 * kernel_data.factors.at(0) * kernel_data.factors.at(1);
@@ -276,16 +279,18 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     }
     dimension_data.forward_factors = static_cast<Idx>(factors_idx_global.size());
     dimension_data.backward_factors = static_cast<Idx>(kernels.size()) - dimension_data.forward_factors;
-    for (const auto& kernel_data : kernels.begin() + static_cast<long>(factors_idx_global.size())) {
+    for (std::size_t i = 0; i < std::size_t(dimension_data.backward_factors); i++) {
       factors_idx_global.push_back(static_cast<IdxGlobal>(
-          std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>())));
+          std::accumulate(kernels.at(i + static_cast<std::size_t>(dimension_data.forward_factors)).factors.begin(),
+                          kernels.at(i + static_cast<std::size_t>(dimension_data.forward_factors)).factors.end(), 1,
+                          std::multiplies<Idx>())));
     }
 
     // Get sub batches per direction
     std::vector<IdxGlobal> sub_batches;
     for (Idx i = 0; i < dimension_data.forward_factors - 1; i++) {
       sub_batches.push_back(
-          std::accumulate(factors_idx_global.begin() + static_cast<long>(i + 1),
+          std::accumulate(factors_idx_global.begin() + i + 1,
                           factors_idx_global.begin() + static_cast<long>(dimension_data.forward_factors), IdxGlobal(1),
                           std::multiplies<IdxGlobal>()));
     }
