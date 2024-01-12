@@ -353,7 +353,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
         cgh.depends_on(l2_events);
         cgh.host_task([&]() {});
       });
-      event.wait();
+      //event.wait();
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
         event = detail::transpose_level<Scalar, Domain>(
             kernels.at(static_cast<std::size_t>(num_transpose) + static_cast<std::size_t>(num_factors)),
