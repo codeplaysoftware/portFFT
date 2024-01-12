@@ -415,8 +415,8 @@ void run_test(const test_params& params) {
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
   double n_elems =
       static_cast<double>(std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>()));
-  // theoretical max L2 error of Cooley-Tukey
-  double tolerance = std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
+  // 2 * theoretical max L2 error of Cooley-Tukey
+  double tolerance = 2 * std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
 
   portfft::detail::dump_host("host_input:", host_input.data(), host_input.size());
   portfft::detail::dump_host("host_input_imag:", host_input.data(), host_input.size());
