@@ -172,37 +172,34 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       std::size_t num_factors = static_cast<std::size_t>(dir == direction::FORWARD ? dimension_data.forward_factors
                                                                                    : dimension_data.backward_factors);
       std::size_t offset = static_cast<std::size_t>(dir == direction::FORWARD ? 0 : dimension_data.backward_factors);
-      Scalar* scratch_ptr = (Scalar*)malloc(2 * dimension_data.length * sizeof(Scalar));
+      Scalar* scratch_ptr = (Scalar*)malloc(8 * dimension_data.length * sizeof(Scalar));
 
-      // generate and rearrange store modifiers
       for (std::size_t i = 0; i < num_factors - 1; i++) {
-        calculate_twiddles(sub_batches.at(offset + i), factors.at(offset + i), ptr_offset, ptr);
         if (kernels.at(offset + i).level == detail::level::WORKITEM) {
-          // For the WI implementation, utilize coalesced loads from global as they are not being reused.
-          // shift them to local memory only for devices which do not have coalesced accesses.
-          detail::complex_transpose(ptr + ptr_offset, scratch_ptr, factors.at(offset + i), sub_batches.at(offset + i),
-                                    factors.at(offset + i) * sub_batches.at(offset + i));
-          std::memcpy(
-              ptr + ptr_offset, scratch_ptr,
-              static_cast<std::size_t>(2 * factors.at(offset + i) * sub_batches.at(offset + i)) * sizeof(Scalar));
+          // Use coalesced loads from global memory and not local memory to ensure optimal accesses.
+          // Local memory option provided for devices which do not support coalesced accesses.
+          calculate_twiddles(factors.at(offset + i), sub_batches.at(offset + i), ptr_offset, ptr);
+        } else {
+          calculate_twiddles(sub_batches.at(offset + i), factors.at(offset + i), ptr_offset, ptr);
         }
       }
 
       // Calculate twiddles for the implementation corresponding to per factor;
       for (std::size_t i = 0; i < num_factors; i++) {
         const auto& kernel_data = kernels.at(offset + i);
-        if (kernels.at(offset + i).level == detail::level::SUBGROUP) {
+        if (kernel_data.level == detail::level::SUBGROUP) {
           for (std::size_t j = 0; j < std::size_t(kernel_data.factors.at(0)); j++) {
             for (std::size_t k = 0; k < std::size_t(kernel_data.factors.at(1)); k++) {
               double theta = -2 * M_PI * static_cast<double>(j * k) /
                              static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
               auto twiddle =
                   std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
-              ptr[offset + j * static_cast<std::size_t>(kernel_data.factors.at(0)) + i] = twiddle.real();
-              ptr[offset +
-                  (j + static_cast<std::size_t>(kernel_data.factors.at(1))) *
+              ptr[static_cast<std::size_t>(ptr_offset) + k * static_cast<std::size_t>(kernel_data.factors.at(0)) + j] =
+                  twiddle.real();
+              ptr[static_cast<std::size_t>(ptr_offset) +
+                  (k + static_cast<std::size_t>(kernel_data.factors.at(1))) *
                       static_cast<std::size_t>(kernel_data.factors.at(0)) +
-                  i] = twiddle.imag();
+                  j] = twiddle.imag();
             }
           }
           ptr_offset += 2 * kernel_data.factors.at(0) * kernel_data.factors.at(1);
@@ -216,9 +213,9 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
           // Calculate wg twiddles and transpose them
           calculate_twiddles(static_cast<IdxGlobal>(factor_n), static_cast<IdxGlobal>(factor_m), ptr_offset, ptr);
           for (Idx j = 0; j < factor_n; j++) {
-            detail::complex_transpose(ptr + offset + 2 * j * factor_n, scratch_ptr, factor_m, factor_n,
+            detail::complex_transpose(ptr + ptr_offset + 2 * j * factor_n, scratch_ptr, factor_m, factor_n,
                                       factor_n * factor_m);
-            std::memcpy(ptr + offset + 2 * j * factor_n, scratch_ptr,
+            std::memcpy(ptr + ptr_offset + 2 * j * factor_n, scratch_ptr,
                         static_cast<std::size_t>(2 * factor_n * factor_m) * sizeof(float));
           }
         }
@@ -250,11 +247,11 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
           if (i < kernels.size() - 1) {
             kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
                 detail::level::SUBGROUP, static_cast<std::size_t>(factors.at(offset + i)), kernel_data.used_sg_size,
-                {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+                {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, num_sgs_in_wg);
           } else {
             kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
                 detail::level::SUBGROUP, static_cast<std::size_t>(factors.at(offset + i)), kernel_data.used_sg_size,
-                {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+                {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, num_sgs_in_wg);
           }
           auto [global_range, local_range] =
               detail::get_launch_params(factors.at(offset + i), sub_batches.at(offset + i), detail::level::SUBGROUP,
