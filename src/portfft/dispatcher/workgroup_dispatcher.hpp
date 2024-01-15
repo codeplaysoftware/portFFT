@@ -117,7 +117,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
 
   Idx factor_n = detail::factorize(fft_size);
   Idx factor_m = fft_size / factor_n;
-  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
+  const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
   const Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
   auto loc_view = padded_view(loc, bank_lines_per_pad);

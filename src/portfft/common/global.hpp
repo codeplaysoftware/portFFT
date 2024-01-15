@@ -85,7 +85,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
                                                        const IdxGlobal* inclusive_scan, Idx num_factors, Idx level_num,
                                                        IdxGlobal iter_value, IdxGlobal outer_batch_product,
                                                        complex_storage storage) {
-  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
+  const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   auto get_outer_batch_offset_impl = [&](Idx N) -> IdxGlobal {
     IdxGlobal outer_batch_offset = 0;
     for (Idx j = 0; j < N; j++) {
@@ -417,7 +417,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
                             IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
                             complex_storage storage) {
-  IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
+  const IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> transpose_events;
   IdxGlobal ld_input = kd_struct.factors.at(1);
   IdxGlobal ld_output = kd_struct.factors.at(0);
@@ -519,7 +519,7 @@ std::vector<sycl::event> compute_level(
   }();
   const IdxGlobal* inner_batches = factors_triple + total_factors;
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
-  Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
+  const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
