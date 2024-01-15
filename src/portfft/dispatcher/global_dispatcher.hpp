@@ -229,11 +229,11 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         if (counter < kernels.size() - 1) {
           kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
               detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+              kernel_data.used_sg_size, {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, num_sgs_in_wg);
         } else {
           kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
               detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+              kernel_data.used_sg_size, {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, num_sgs_in_wg);
         }
         auto [global_range, local_range] =
             detail::get_launch_params(factors_idx_global.at(counter), sub_batches.at(counter), detail::level::SUBGROUP,
