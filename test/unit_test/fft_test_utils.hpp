@@ -413,8 +413,8 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
-  double n_elems =
-      static_cast<double>(std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>()));
+  double n_elems = static_cast<double>(
+      std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>()));
   // 2 * theoretical max L2 error of Cooley-Tukey
   double tolerance = 2 * std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
 

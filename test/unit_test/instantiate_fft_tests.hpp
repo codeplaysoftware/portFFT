@@ -117,8 +117,8 @@ INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
 // Regression test where subgroup or workgroup implemention depended on correct local memory requirement calcs.
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(1, 131),
-                                                ::testing::Values(sizes_t{1536}))),
+                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage,
+                                                ::testing::Values(1, 131), ::testing::Values(sizes_t{1536}))),
                          test_params_print());
 // sizes that use workgroup implementation
 // size 3072 is disabled due to hard-to-debug issue on w6800
