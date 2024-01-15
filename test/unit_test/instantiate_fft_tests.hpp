@@ -144,7 +144,7 @@ INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
                              ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
-                                                ::testing::Values(sizes_t{9800}, sizes_t{15360}))),
+                                                ::testing::Values(sizes_t{9800}, sizes_t{15360}, sizes_t{68640}))),
                          test_params_print());
 
 // Backward FFT test suite
