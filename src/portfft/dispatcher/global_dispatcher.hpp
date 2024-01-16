@@ -102,6 +102,18 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
   return 0;
 }
 
+/**
+ * Utility function to copy data between pointers with different distances between each batch.
+ * @tparam T scalar type
+ * @param src source pointer
+ * @param dst destination pointer
+ * @param num_elements_to_copy number of elements to copy
+ * @param src_stride stride of the source pointer
+ * @param dst_stride stride of the destination pointer
+ * @param num_copies number of batches to copy
+ * @param event_vector vector to store the generated events
+ * @param queue queue
+ */
 template <typename T>
 void trigger_device_copy(const T* src, T* dst, std::size_t num_elements_to_copy, std::size_t src_stride,
                          std::size_t dst_stride, std::size_t num_copies, std::vector<sycl::event>& event_vector,
@@ -175,7 +187,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
       for (std::size_t i = 0; i < num_factors - 1; i++) {
         if (kernels.at(offset + i).level == detail::level::WORKITEM) {
-          // Use coalesced loads from global memory and not local memory to ensure optimal accesses.
+          // Use coalesced loads from global memory to ensure optimal accesses. Avoid extraneous write to local memory.
           // Local memory option provided for devices which do not support coalesced accesses.
           calculate_twiddles(factors.at(offset + i), sub_batches.at(offset + i), ptr_offset, ptr);
         } else {
@@ -416,7 +428,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       initial_impl_twiddle_offset += 2 * kernels.at(i).batch_size * static_cast<IdxGlobal>(kernels.at(i).length);
     }
 
-    auto run_global = [&]<direction Direction>(const std::vector<kernel_data_struct>& kernels, const std::size_t& i) {
+    auto global_impl_driver = [&]<direction Direction>(const std::vector<kernel_data_struct>& kernels,
+                                                       const std::size_t& i) {
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       if (dimension_data.is_prime) {
@@ -490,11 +503,11 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
               });
             })
             .wait();
-        run_global.template operator()<direction::FORWARD>(
+        global_impl_driver.template operator()<direction::FORWARD>(
             std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors),
                         kernels.begin() + static_cast<long>(dimension_data.forward_factors)),
             i);
-        run_global.template operator()<direction::BACKWARD>(
+        global_impl_driver.template operator()<direction::BACKWARD>(
             std::vector(kernels.begin() + static_cast<long>(dimension_data.forward_factors), kernels.end()), i);
         desc.queue.submit([&](sycl::handler& cgh) {
           cgh.depends_on(current_events[0]);
@@ -507,7 +520,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           });
         });
       } else {
-        run_global.template operator()<Dir>(kernels, i);
+        global_impl_driver.template operator()<Dir>(kernels, i);
       }
     }
     return desc.queue.submit([&](sycl::handler& cgh) {

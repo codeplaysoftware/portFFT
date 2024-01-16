@@ -26,6 +26,14 @@
 
 namespace portfft {
 namespace detail {
+
+/**
+ * Host Naive DFT. Works OOP only
+ * @tparam T Scalar Type
+ * @param input input pointer
+ * @param output output pointer
+ * @param fft_size fft size
+ */
 template <typename T>
 void naive_dft(std::complex<T>* input, std::complex<T>* output, IdxGlobal fft_size) {
   using ctype = std::complex<T>;
