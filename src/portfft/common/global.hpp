@@ -183,8 +183,8 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @tparam SubgroupSize Subgroup size
  * @param input input accessor
  * @param output output USM pointer
- * @param input input accessor for imaginary data
- * @param output output USM pointer for imaginary data
+ * @param input_imag input accessor for imaginary data
+ * @param output_imag output USM pointer for imaginary data
  * @param loc_for_input local memory for input
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
