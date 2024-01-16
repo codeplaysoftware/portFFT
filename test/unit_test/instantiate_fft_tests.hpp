@@ -121,11 +121,10 @@ INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupRegressionTest, FFTTest,
                                                 ::testing::Values(1, 131), ::testing::Values(sizes_t{1536}))),
                          test_params_print());
 // sizes that use workgroup implementation
-// size 3072 is disabled due to hard-to-debug issue on w6800
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
-                             ::testing::Values(sizes_t{2048}, /*sizes_t{3072},*/ sizes_t{4096}))),
+                             ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
 // Sizes that can use either workgroup or Global implementation
