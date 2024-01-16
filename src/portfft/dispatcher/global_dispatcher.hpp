@@ -359,14 +359,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
             desc.scratch_ptr_1.get(), desc.scratch_ptr_2.get(), factors_and_scan, committed_size,
             static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_factors, 0, desc.queue,
             {event}, storage);
-        event.wait();
         if (storage == complex_storage::SPLIT_COMPLEX) {
           event = detail::transpose_level<Scalar, Domain>(
               kernels.at(static_cast<std::size_t>(num_transpose) + static_cast<std::size_t>(num_factors)),
               desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_2.get() + imag_offset, factors_and_scan,
               committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_factors,
               0, desc.queue, {event}, storage);
-          event.wait();
         }
         desc.scratch_ptr_1.swap(desc.scratch_ptr_2);
       }
@@ -375,7 +373,6 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
           committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_factors,
           vec_size * static_cast<IdxGlobal>(i) * committed_size + output_offset, desc.queue, {event}, storage);
       if (storage == complex_storage::SPLIT_COMPLEX) {
-        event.wait();
         event = detail::transpose_level<Scalar, Domain>(
             kernels.at(static_cast<std::size_t>(num_factors)), desc.scratch_ptr_1.get() + imag_offset, out_imag,
             factors_and_scan, committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms,
