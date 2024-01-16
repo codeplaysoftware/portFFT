@@ -168,11 +168,10 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
      */
     auto populate_twiddles_and_metadata = [&](Scalar* ptr, std::vector<IdxGlobal>& factors,
                                               std::vector<IdxGlobal>& sub_batches, IdxGlobal& ptr_offset,
-                                              direction dir) -> void {
+                                              Scalar* scratch_ptr, direction dir) -> void {
       std::size_t num_factors = static_cast<std::size_t>(dir == direction::FORWARD ? dimension_data.forward_factors
                                                                                    : dimension_data.backward_factors);
       std::size_t offset = static_cast<std::size_t>(dir == direction::FORWARD ? 0 : dimension_data.backward_factors);
-      Scalar* scratch_ptr = (Scalar*)malloc(8 * dimension_data.length * sizeof(Scalar));
 
       for (std::size_t i = 0; i < num_factors - 1; i++) {
         if (kernels.at(offset + i).level == detail::level::WORKITEM) {
@@ -315,6 +314,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
+    Scalar* scratch_ptr = (Scalar*)malloc(8 * dimension_data.length * sizeof(Scalar));
 
     IdxGlobal offset = 0;
     if (dimension_data.is_prime) {
@@ -326,11 +326,24 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                                                  static_cast<IdxGlobal>(dimension_data.committed_length),
                                                  static_cast<IdxGlobal>(dimension_data.length));
       offset += static_cast<IdxGlobal>(2 * dimension_data.length);
+      // set the layout of the load modifiers according the requirement of the sub-impl.
+      if (kernels.at(0).level == detail::level::SUBGROUP) {
+        IdxGlobal base_offset = static_cast<IdxGlobal>(2 * dimension_data.length);
+        for (IdxGlobal i = 0; i < kernels.at(0).batch_size; i++) {
+          detail::complex_transpose(host_memory.data() + base_offset, scratch_ptr, kernels.at(0).factors[0],
+                                    kernels.at(0).factors[1], kernels.at(0).factors[0] * kernels.at(0).factors[1]);
+          std::memcpy(host_memory.data() + base_offset, scratch_ptr,
+                      2 * kernels.at(0).factors[0] * kernels.at(0).factors[1] * sizeof(float));
+          base_offset += 2 * kernels.at(0).factors[0] * kernels.at(0).factors[1];
+        }
+      }
     }
 
-    populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, direction::FORWARD);
+    populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, scratch_ptr,
+                                   direction::FORWARD);
     if (dimension_data.backward_factors) {
-      populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, direction::BACKWARD);
+      populate_twiddles_and_metadata(host_memory.data(), factors_idx_global, sub_batches, offset, scratch_ptr,
+                                     direction::BACKWARD);
     }
     desc.queue.copy(host_memory.data(), device_twiddles, static_cast<std::size_t>(mem_required_for_twiddles)).wait();
     return device_twiddles;
