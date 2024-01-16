@@ -133,15 +133,15 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  */
 template <direction Dir, typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
-                                   const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
+                                   const Scalar* load_modifier_data, const Scalar* store_modifier_data,
+                                   Scalar* input_loc, Scalar* twiddles_loc, Scalar* load_modifier_loc,
                                    Scalar* store_modifier_loc, const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                    const IdxGlobal* inclusive_scan, IdxGlobal batch_size, Scalar scale_factor,
                                    detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
   Idx num_factors = kh.get_specialization_constant<GlobalSpecConstNumFactors>();
-  bool increment_modifier_pointer =
-      kh.get_specialization_constant<SpecConstIncrementModifierPointer>();  // Should it be a spec constant ?
+  bool increment_modifier_pointer = kh.get_specialization_constant<SpecConstIncrementModifierPointer>();
   global_data.log_message_global(__func__, "dispatching sub implementation for factor num = ", level_num);
   IdxGlobal outer_batch_product = get_outer_batch_product(inclusive_scan, num_factors, level_num);
   for (IdxGlobal iter_value = 0; iter_value < outer_batch_product; iter_value++) {
@@ -151,17 +151,17 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
     if (level == detail::level::WORKITEM) {
       workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, batch_size,
-          scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
-          store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
+          scale_factor, global_data, kh, load_modifier_data, store_modifier_data + store_modifier_offset,
+          load_modifier_loc, store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
-          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
-          store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
+          batch_size, implementation_twiddles, scale_factor, global_data, kh, load_modifier_data,
+          store_modifier_data + store_modifier_offset, load_modifier_loc, store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
-          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr),
+          batch_size, implementation_twiddles, scale_factor, global_data, kh, load_modifier_data,
           store_modifier_data + store_modifier_offset);
     }
     sycl::group_barrier(global_data.it.get_group());
@@ -182,6 +182,8 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
  * @param multipliers_between_factors twiddles to be multiplied between factors
+ * @param loc_for_load_modifier local memory for load modifiers
+ * @param load_modifier pointer to global memory containing the load modifier data
  * @param impl_twiddles twiddles required for sub implementation
  * @param factors global memory pointer containing factors of the input
  * @param inner_batches global memory pointer containing the inner batch for each factor
@@ -197,6 +199,7 @@ template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn
 void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& input, Scalar* output,
                    sycl::local_accessor<Scalar, 1>& loc_for_input, sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
+                   sycl::local_accessor<Scalar, 1>& loc_for_load_modifier, const Scalar* load_modifier,
                    const Scalar* impl_twiddles, const IdxGlobal* factors, const IdxGlobal* inner_batches,
                    const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
                    IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
@@ -214,9 +217,9 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
 #endif
             it};
         dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
-            &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
-            &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
-            scale_factor, global_data, kh);
+            &input[0] + input_batch_offset, output, impl_twiddles, load_modifier, multipliers_between_factors,
+            &loc_for_input[0], &loc_for_twiddles[0], &loc_for_load_modifier[0], &loc_for_store_modifier[0], factors,
+            inner_batches, inclusive_scan, n_transforms, scale_factor, global_data, kh);
       });
 }
 
@@ -235,6 +238,8 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @param loc_for_twiddles local memory for twiddles
  * @param loc_for_store_modifier local memory for store modifier data
  * @param multipliers_between_factors twiddles to be multiplied between factors
+ * @param loc_for_load_modifier local memory for load modifiers
+ * @param load_modifier pointer to global memory containing the load modifier data
  * @param impl_twiddles twiddles required for sub implementation
  * @param factors global memory pointer containing factors of the input
  * @param inner_batches global memory pointer containing the inner batch for each factor
@@ -250,6 +255,7 @@ template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn
 void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 1>& loc_for_input,
                    sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
+                   sycl::local_accessor<Scalar, 1>& loc_for_load_modifier, const Scalar* load_modifier,
                    const Scalar* impl_twiddles, const IdxGlobal* factors, const IdxGlobal* inner_batches,
                    const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
                    IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
@@ -267,9 +273,9 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
 #endif
             it};
         dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
-            &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
-            &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
-            scale_factor, global_data, kh);
+            &input[0] + input_batch_offset, output, impl_twiddles, load_modifier, multipliers_between_factors,
+            &loc_for_input[0], &loc_for_twiddles[0], &loc_for_load_modifier[0], &loc_for_store_modifier[0], factors,
+            inner_batches, inclusive_scan, n_transforms, scale_factor, global_data, kh);
       });
 }
 
@@ -504,6 +510,7 @@ void compute_level(const typename committed_descriptor<Scalar, Domain>::kernel_d
       sycl::local_accessor<Scalar, 1> loc_for_input(local_memory_for_input, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_twiddles(loc_mem_for_twiddles, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_modifier(local_mem_for_store_modifier, cgh);
+      sycl::local_accessor<Scalar, 1> loc_for_load_modifier(1, cgh);
       auto in_acc_or_usm = detail::get_access<const Scalar>(input, cgh);
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
       if (static_cast<Idx>(in_dependencies.size()) < num_batches_in_l2) {
@@ -519,8 +526,9 @@ void compute_level(const typename committed_descriptor<Scalar, Domain>::kernel_d
       const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
       detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
-          twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple, inner_batches, inclusive_scan,
-          batch_size, scale_factor, 2 * committed_size * batch_in_l2 + input_global_offset,
+          twiddles_ptr + intermediate_twiddle_offset, loc_for_load_modifier, static_cast<const Scalar*>(nullptr),
+          subimpl_twiddles, factors_triple, inner_batches, inclusive_scan, batch_size, scale_factor,
+          2 * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);
