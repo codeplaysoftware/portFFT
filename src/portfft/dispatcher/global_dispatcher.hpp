@@ -314,7 +314,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
-    Scalar* scratch_ptr = (Scalar*)malloc(8 * dimension_data.length * sizeof(Scalar));
+    Scalar* scratch_ptr = (Scalar*)malloc(2 * dimension_data.length * sizeof(Scalar));
 
     IdxGlobal offset = 0;
     if (dimension_data.is_prime) {
@@ -332,8 +332,9 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         for (IdxGlobal i = 0; i < kernels.at(0).batch_size; i++) {
           detail::complex_transpose(host_memory.data() + base_offset, scratch_ptr, kernels.at(0).factors[0],
                                     kernels.at(0).factors[1], kernels.at(0).factors[0] * kernels.at(0).factors[1]);
-          std::memcpy(host_memory.data() + base_offset, scratch_ptr,
-                      2 * kernels.at(0).factors[0] * kernels.at(0).factors[1] * sizeof(float));
+          std::memcpy(
+              host_memory.data() + base_offset, scratch_ptr,
+              static_cast<std::size_t>(2 * kernels.at(0).factors[0] * kernels.at(0).factors[1]) * sizeof(Scalar));
           base_offset += 2 * kernels.at(0).factors[0] * kernels.at(0).factors[1];
         }
       }

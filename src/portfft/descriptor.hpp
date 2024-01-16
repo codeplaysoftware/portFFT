@@ -520,12 +520,12 @@ class committed_descriptor {
    * Sets the spec constants for the global implementation.
    * @param prepared_vec Vector returned by prepare_implementations
    * @param first_uses_load_modifiers whether or not first kernel multiplies the modifier before dft compute
-   * @param last_uses_load_modifier whether or not first kernel multiplies the modifier after dft compute
+   * @param last_uses_store_modifier whether or not last kernel multiplies the modifier after dft compute
    * @param num_kernels number of factors
    */
   void set_global_impl_spec_consts(std::vector<in_bundle_and_metadata>& prepared_vec,
                                    detail::elementwise_multiply first_uses_load_modifiers,
-                                   detail::elementwise_multiply last_uses_load_modifier, Idx num_kernels) {
+                                   detail::elementwise_multiply last_uses_store_modifier, Idx num_kernels) {
     Idx counter = 0;
     for (auto& [level, in_bundle, factors] : prepared_vec) {
       if (counter >= num_kernels) {
@@ -535,8 +535,11 @@ class committed_descriptor {
         set_spec_constants(
             detail::level::GLOBAL, in_bundle,
             static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
-            factors, detail::elementwise_multiply::NOT_APPLIED, last_uses_load_modifier,
+            factors, detail::elementwise_multiply::NOT_APPLIED, last_uses_store_modifier,
             detail::apply_scale_factor::APPLIED, level, static_cast<Idx>(counter), static_cast<Idx>(num_kernels));
+        if (last_uses_store_modifier == detail::elementwise_multiply::APPLIED) {
+          in_bundle.template set_specialization_constant<detail::SpecConstIncrementModifierPointer>(true);
+        }
       } else if (counter == 0) {
         set_spec_constants(
             detail::level::GLOBAL, in_bundle,
