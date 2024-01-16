@@ -66,12 +66,16 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  */
 template <direction Dir, typename PrivT, typename T>
 PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifier_data, IdxGlobal modifier_stride,
-                                   IdxGlobal modifier_offset) {
+                                   IdxGlobal modifier_offset, [[maybe_unused]] sycl::sub_group& sg) {
   using vec_t = sycl::vec<T, 2>;
   PORTFFT_UNROLL
   for (Idx j = 0; j < num_elements; j++) {
     sycl::vec<T, 2> modifier_vec;
+#ifdef PORTFFT_USE_SG_TRANSFERS
+    modifier_vec = sg.load<2>(detail::get_global_multi_ptr(modifier_data + j * modifier_stride + modifier_offset));
+#else
     modifier_vec = *reinterpret_cast<const vec_t*>(modifier_data + j * modifier_stride + modifier_offset);
+#endif
     if (Dir == direction::BACKWARD) {
       modifier_vec[1] *= -1;
     }
@@ -210,7 +214,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         // Assumes load modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
-        detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, 2 * n_transforms, 2 * i);
+        detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, 2 * n_transforms, 2 * i, global_data.sg);
       }
       if (take_conjugate_on_load) {
         take_conjugate(priv, fft_size);
@@ -224,7 +228,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
-        detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, 2 * n_transforms, 2 * i);
+        detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, 2 * n_transforms, 2 * i, global_data.sg);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL
