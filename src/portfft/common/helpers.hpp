@@ -99,11 +99,16 @@ inline auto get_local_multi_ptr(T ptr) {
  *
  * @tparam T type pointed to
  * @param ptr pointer to get access to
+ * @param access_rqd If false, nullptr is returned.
  * @return the pointer `ptr`
  */
 template <typename T>
-T* get_access(T* ptr, sycl::handler&) {
-  return ptr;
+T* get_access(T* ptr, sycl::handler&, bool access_rqd = true) {
+  if (access_rqd){
+    return ptr;
+  } else {
+    return nullptr;
+  }
 }
 
 /**
@@ -113,14 +118,16 @@ T* get_access(T* ptr, sycl::handler&) {
  * @tparam T element type in the buffer
  * @param buf buffer
  * @param cgh command group handler
+ * @param access_rqd If false, the accessor is zero-ranged. There is still a dependency on the buffer.
  * @return accessor
  */
 template <typename T>
-auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh) {
+auto get_access(sycl::buffer<T, 1> buf, sycl::handler& cgh, bool access_rqd = true) {
+  sycl::range<1> acc_range = access_rqd ? buf.get_range() : 0;
   if constexpr (std::is_const_v<T>) {
-    return buf.template get_access<sycl::access::mode::read>(cgh);
+    return buf.template get_access<sycl::access::mode::read>(cgh, acc_range);
   } else {
-    return buf.template get_access<sycl::access::mode::write>(cgh);
+    return buf.template get_access<sycl::access::mode::write>(cgh, acc_range);
   }
 }
 

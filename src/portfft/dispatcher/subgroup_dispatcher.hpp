@@ -202,7 +202,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                      std::array{fft_size, 2 * num_batches_in_local_mem});
       } else {
         detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
-        detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
+        detail::md_view input_imag_view{static_cast<decltype(input_imag)>(nullptr), std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
         detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
         detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
         global_data.log_message_global(__func__, "params", max_num_batches_local_mem, fft_size,
@@ -309,7 +309,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                   (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(fft_size) +
                       static_cast<IdxGlobal>(id_of_wi_in_fft)};
               detail::strided_view output_imag_view{
-                  output_imag, static_cast<IdxGlobal>(factor_sg),
+                  static_cast<decltype(output_imag)>(nullptr), static_cast<IdxGlobal>(factor_sg),
                   (i + static_cast<IdxGlobal>(sub_batch)) * static_cast<IdxGlobal>(fft_size) +
                       static_cast<IdxGlobal>(id_of_wi_in_fft)};
               detail::strided_view priv_real_view{priv, 2};
@@ -358,7 +358,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
             detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
             detail::md_view output_real_view{output, std::array{1, fft_size}, i * fft_size};
-            detail::md_view output_imag_view{output_imag, std::array{1, fft_size}, i * fft_size};
+            detail::md_view output_imag_view{static_cast<decltype(output_imag)>(nullptr), std::array{1, fft_size}, i * fft_size};
             copy_group<level::WORKGROUP>(global_data, local_real_view, output_real_view,
                                          std::array{fft_size, num_batches_in_local_mem});
             copy_group<level::WORKGROUP>(global_data, local_imag_view, output_imag_view,
@@ -377,7 +377,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
             detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
             detail::md_view output_real_view{output, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
-            detail::md_view output_imag_view{output_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
+            detail::md_view output_imag_view{static_cast<decltype(output_imag)>(nullptr), std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
             copy_group<level::WORKGROUP>(global_data, local_real_view, output_real_view,
                                          std::array{factor_wi * factor_sg, num_batches_in_local_mem});
             copy_group<level::WORKGROUP>(global_data, local_imag_view, output_imag_view,
@@ -396,13 +396,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             global_data, input, loc_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
             static_cast<IdxGlobal>(n_reals_per_fft) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
             subgroup_id * n_reals_per_sg);
-      } else {
+      } else {        
         global2local<level::SUBGROUP, SubgroupSize>(
             global_data, input, loc_view, n_ffts_worked_on_by_sg * fft_size,
             static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
             subgroup_id * n_cplx_per_sg);
+        // global2local<level::SUBGROUP, SubgroupSize>(
+        //     global_data, input_imag, loc_view, n_ffts_worked_on_by_sg * fft_size,
+        //     static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
+        //     local_imag_offset + subgroup_id * n_cplx_per_sg);
         global2local<level::SUBGROUP, SubgroupSize>(
-            global_data, input_imag, loc_view, n_ffts_worked_on_by_sg * fft_size,
+            global_data, static_cast<decltype(input_imag)>(nullptr), loc_view, n_ffts_worked_on_by_sg * fft_size,
             static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
             local_imag_offset + subgroup_id * n_cplx_per_sg);
       }
@@ -503,7 +507,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                                   i * static_cast<IdxGlobal>(n_cplx_per_sg) +
                                                       static_cast<IdxGlobal>(id_of_fft_in_sg * fft_size) +
                                                       static_cast<IdxGlobal>(id_of_wi_in_fft)};
-            detail::strided_view output_imag_view{output_imag, static_cast<IdxGlobal>(factor_sg),
+            detail::strided_view output_imag_view{static_cast<decltype(output_imag)>(nullptr), static_cast<IdxGlobal>(factor_sg),
                                                   i * static_cast<IdxGlobal>(n_cplx_per_sg) +
                                                       static_cast<IdxGlobal>(id_of_fft_in_sg * fft_size) +
                                                       static_cast<IdxGlobal>(id_of_wi_in_fft)};
@@ -524,7 +528,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             detail::strided_view priv_imag_view{priv, 2, 1};
             detail::strided_view output_real_view{output, std::array{static_cast<IdxGlobal>(factor_sg), n_transforms},
                                                   std::array{static_cast<IdxGlobal>(id_of_wi_in_fft), i}};
-            detail::strided_view output_imag_view{output_imag,
+            detail::strided_view output_imag_view{static_cast<decltype(output_imag)>(nullptr),
                                                   std::array{static_cast<IdxGlobal>(factor_sg), n_transforms},
                                                   std::array{static_cast<IdxGlobal>(id_of_wi_in_fft), i}};
             copy_wi(global_data, priv_real_view, output_real_view, factor_wi);
@@ -565,7 +569,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               global_data, loc_view, output, n_ffts_worked_on_by_sg * fft_size, subgroup_id * n_cplx_per_sg,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
           local2global<level::SUBGROUP, SubgroupSize>(
-              global_data, loc_view, output_imag, n_ffts_worked_on_by_sg * fft_size,
+              global_data, loc_view, static_cast<decltype(output_imag)>(nullptr), n_ffts_worked_on_by_sg * fft_size,
               subgroup_id * n_cplx_per_sg + local_imag_offset,
               static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)));
         }
@@ -620,13 +624,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
         n_transforms, factor_sg, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
     std::size_t twiddle_elements = 2 * kernel_data.length;
+    std::cout << "TRACE: subgroup impl: LayoutIn="<< (LayoutIn == detail::layout::PACKED ? "PACKED" : "BATCH_INTER")<<"; LayoutOut=d" << (LayoutOut == detail::layout::PACKED ? "PACKED" : "BATCH_INTER")<< "\n";
+    std::cout << "TRACE:  \t\tfactorSg="<<factor_sg<<"; factorWi="<<kernel_data.length/static_cast<std::size_t>(factor_sg)<<"; local_elements="<<local_elements<<";\n";
+    std::cout << "TRACE:  \t\tscale_factor=" << scale_factor << "\n";
+    std::cout << "TRACE:  \t\tdecs.params.complex_storage=" << (desc.params.complex_storage == complex_storage::SPLIT_COMPLEX ? "Split complex" : "interleaved complex") << "\n";
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data.exec_bundle);
       auto in_acc_or_usm = detail::get_access(in, cgh);
       auto out_acc_or_usm = detail::get_access(out, cgh);
-      auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
-      auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
+      auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh, desc.params.complex_storage == complex_storage::SPLIT_COMPLEX);
+      auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh, desc.params.complex_storage == complex_storage::SPLIT_COMPLEX);
+      if constexpr(std::is_pointer_v<TIn>){
+        std::cout << "TRACE:  \t\tin_imag=" << in_imag_acc_or_usm << "; out_imag=" << out_imag_acc_or_usm << "\n";
+      }
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
       sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
 #ifdef PORTFFT_LOG

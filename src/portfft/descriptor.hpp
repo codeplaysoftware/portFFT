@@ -451,6 +451,7 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length_idx));
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    std::cout << "TRACE: set_spec_constants (descriptor.cpp): scale_factor_applied=" << (scale_factor_applied == detail::apply_scale_factor::APPLIED ? "Y" : "N") << ";\n";
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
