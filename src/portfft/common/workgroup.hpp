@@ -56,7 +56,6 @@ namespace detail {
 /**
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
- * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT The type of the local view
@@ -77,15 +76,18 @@ namespace detail {
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @param ApplyScaleFactor Whether or not the scale factor is applied
+ * @param take_conjugate_on_load whether or not to take conjugate of the input
+ * @param take_conjugate_on_store whether or not to take conjugate of the output
  * @param global_data global data for the kernel
  */
-template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
+template <Idx SubgroupSize, typename LocalT, typename T>
 __attribute__((always_inline)) inline void dimension_dft(
     LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor, Idx max_num_batches_in_local_mem,
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
     Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, detail::layout layout_in,
     detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-    detail::apply_scale_factor apply_scale_factor, global_data_struct<1> global_data) {
+    detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load, bool take_conjugate_on_store,
+    global_data_struct<1> global_data) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
@@ -168,9 +170,6 @@ __attribute__((always_inline)) inline void dimension_dft(
           sycl::vec<T, 2> twiddles = reinterpret_cast<const sycl::vec<T, 2>*>(wg_twiddles)[twiddle_index];
           T twiddle_real = twiddles[0];
           T twiddle_imag = twiddles[1];
-          if constexpr (Dir == direction::BACKWARD) {
-            twiddle_imag = -twiddle_imag;
-          }
           multiply_complex(priv[2 * i], priv[2 * i + 1], twiddle_real, twiddle_imag, priv[2 * i], priv[2 * i + 1]);
         }
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * fact_wi);
@@ -197,9 +196,13 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
       }
     }
-
-    sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
-
+    if (take_conjugate_on_load) {
+      take_conjugate(priv, fact_wi);
+    }
+    sg_dft<SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
+    if (take_conjugate_on_store) {
+      take_conjugate(priv, fact_wi);
+    }
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Store modifier data layout in global memory - n_transforms x N x FactorSG x FactorWI
@@ -238,7 +241,6 @@ __attribute__((always_inline)) inline void dimension_dft(
 /**
  * Calculates FFT using Bailey 4 step algorithm.
  *
- * @tparam Dir Direction of the FFT
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT Local memory view type
  * @tparam T Scalar type
@@ -259,15 +261,18 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
  * @param apply_scale_factor Whether or not the scale factor is applied
+ * @param take_conjugate_on_load whether or not to take conjugate of the input
+ * @param take_conjugate_on_store whether or not to take conjugate of the output
  * @param global_data global data for the kernel
  */
-template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
+template <Idx SubgroupSize, typename LocalT, typename T>
 PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                            Idx max_num_batches_in_local_mem, Idx batch_num_in_local, IdxGlobal batch_num_in_kernel,
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
                            detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
-                           detail::apply_scale_factor apply_scale_factor, detail::global_data_struct<1> global_data) {
+                           detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load,
+                           bool take_conjugate_on_store, detail::global_data_struct<1> global_data) {
   global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
@@ -275,13 +280,15 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
-      detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, global_data);
+      detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, take_conjugate_on_load,
+      take_conjugate_on_store, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
       load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, layout_in,
-      detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, global_data);
+      detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, take_conjugate_on_load,
+      take_conjugate_on_store, global_data);
   global_data.log_message_global(__func__, "exited");
 }
 

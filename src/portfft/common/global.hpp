@@ -111,7 +111,6 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
 /**
  * Device function responsible for calling the corresponding sub-implementation
  *
- * @tparam Dir Direction of the FFT
  * @tparam Scalar  Scalar type
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut Output layout
@@ -131,7 +130,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @param global_data global data
  * @param kh kernel handler
  */
-template <direction Dir, typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize>
+template <typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
                                    Scalar* store_modifier_loc, const IdxGlobal* factors, const IdxGlobal* inner_batches,
@@ -168,7 +167,6 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
 /**
  * Utility function to launch the kernel when the input is a buffer
  * @tparam Scalar Scalar type
- * @tparam Dir Direction of the FFT
  * @tparam Domain Domain of the compute
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut Output layout
@@ -189,8 +187,7 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
  */
-template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
-          int SubgroupSize>
+template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize>
 void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& input, Scalar* output,
                    sycl::local_accessor<Scalar, 1>& loc_for_input, sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
@@ -210,7 +207,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
             s,
 #endif
             it};
-        dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
+        dispatch_level<Scalar, LayoutIn, LayoutOut, SubgroupSize>(
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
             scale_factor, global_data, kh);
@@ -221,7 +218,6 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * TODO: Launch the kernel directly from compute_level and remove the duplicated launch_kernel
  * Utility function to launch the kernel when the input is an USM
  * @tparam Scalar Scalar type
- * @tparam Dir Direction of the FFT
  * @tparam Domain Domain of the compute
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut Output layout
@@ -242,8 +238,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
  */
-template <typename Scalar, direction Dir, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut,
-          int SubgroupSize>
+template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, int SubgroupSize>
 void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Scalar, 1>& loc_for_input,
                    sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
@@ -263,7 +258,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
             s,
 #endif
             it};
-        dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
+        dispatch_level<Scalar, LayoutIn, LayoutOut, SubgroupSize>(
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
             scale_factor, global_data, kh);
@@ -430,7 +425,6 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * Prepares the launch of fft compute at a particular level
  * @tparam Scalar Scalar type
  * @tparam Domain Domain of FFT
- * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input layout
  * @tparam LayoutOut output layout
  * @tparam SubgroupSize subgroup size
@@ -456,8 +450,8 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * @param queue queue
  * @return vector events, one for each batch in l2
  */
-template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-          Idx SubgroupSize, typename TIn>
+template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
+          typename TIn>
 std::vector<sycl::event> compute_level(
     const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
     const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
@@ -513,7 +507,7 @@ std::vector<sycl::event> compute_level(
       // the subimpl_twiddles + subimpl_twiddle_offset may point to the end of the allocation and therefore be invalid.
       const bool using_wi_level = kd_struct.level == detail::level::WORKITEM;
       const Scalar* subimpl_twiddles = using_wi_level ? nullptr : twiddles_ptr + subimpl_twiddle_offset;
-      detail::launch_kernel<Scalar, Dir, Domain, LayoutIn, LayoutOut, SubgroupSize>(
+      detail::launch_kernel<Scalar, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
           twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple, inner_batches, inclusive_scan,
           batch_size, scale_factor, 2 * committed_size * batch_in_l2 + input_global_offset,

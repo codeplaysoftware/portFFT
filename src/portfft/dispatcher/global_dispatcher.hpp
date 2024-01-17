@@ -279,18 +279,18 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 };
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
-          typename TOut>
+template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data) {
+                             dimension_struct& dimension_data, direction compute_direction) {
     (void)in_imag;
     (void)out_imag;
-    const auto& kernels = dimension_data.kernels;
+    const auto& kernels =
+        compute_direction == direction::FORWARD ? dimension_data.forward_kernels : dimension_data.backward_kernels;
     const Scalar* twiddles_ptr = static_cast<const Scalar*>(kernels.at(0).twiddles_forward.get());
     const IdxGlobal* factors_and_scan = static_cast<const IdxGlobal*>(dimension_data.factors_and_scan.get());
     std::size_t num_batches = desc.params.number_of_transforms;
@@ -310,7 +310,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     for (std::size_t i = 0; i < num_batches; i += max_batches_in_l2) {
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
-      l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
+      l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
                                         detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
           kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor,
           intermediate_twiddles_offset, impl_twiddle_offset,
@@ -324,14 +324,14 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
            factor_num++) {
         if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
           l2_events =
-              detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
+              detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
                   kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
                   desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
                   impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
                   static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
                   dimension_data.num_factors, l2_events, desc.queue);
         } else {
-          l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
+          l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
                                             detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
               kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
               twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,

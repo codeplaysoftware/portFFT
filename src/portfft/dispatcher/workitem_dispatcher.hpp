@@ -80,7 +80,6 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
 /**
  * Implementation of FFT for sizes that can be done by independent work items.
  *
- * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
@@ -104,7 +103,7 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
+template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   IdxGlobal n_transforms, T scaling_factor, global_data_struct<1> global_data,
                                   sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
@@ -114,6 +113,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
+  bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
@@ -207,7 +209,13 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         global_data.log_message_global(__func__, "applying load modifier");
         detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, i * n_reals);
       }
-      wi_dft<Dir, 0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
+      if (take_conjugate_on_load) {
+        take_conjugate(priv, fft_size);
+      }
+      wi_dft<0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
+      if (take_conjugate_on_store) {
+        take_conjugate(priv, fft_size);
+      }
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
@@ -272,17 +280,17 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
-          typename TOut>
+template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data) {
+                             dimension_struct& dimension_data, direction compute_direction) {
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
-    auto& kernel_data = dimension_data.kernels.at(0);
+    auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
+                                                                : dimension_data.backward_kernels.at(0);
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
             desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
@@ -308,7 +316,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running workitem kernel");
-            detail::workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+            detail::workitem_impl<SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
                 scale_factor, global_data, kh);

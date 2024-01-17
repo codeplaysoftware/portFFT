@@ -59,7 +59,6 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
 /**
  * Implementation of FFT for sizes that can be done by a subgroup.
  *
- * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
@@ -86,7 +85,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
+template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
@@ -96,6 +95,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
+  bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
 
   const Idx factor_wi = kh.get_specialization_constant<SubgroupFactorWISpecConst>();
   const Idx factor_sg = kh.get_specialization_constant<SubgroupFactorSGSpecConst>();
@@ -256,7 +257,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             }
           }
         }
-        sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+        if (take_conjugate_on_load) {
+          take_conjugate(priv, factor_wi);
+        }
+        sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+        if (take_conjugate_on_store) {
+          take_conjugate(priv, factor_wi);
+        }
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
         }
@@ -450,7 +457,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
         }
       }
-      sg_dft<Dir, SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+      if (take_conjugate_on_load) {
+        take_conjugate(priv, factor_wi);
+      }
+      sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
+      if (take_conjugate_on_store) {
+        take_conjugate(priv, factor_wi);
+      }
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
       }
@@ -601,17 +614,17 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 };
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
-          typename TOut>
+template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::SUBGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data) {
+                             dimension_struct& dimension_data, direction compute_direction) {
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
-    auto& kernel_data = dimension_data.kernels.at(0);
+    auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
+                                                                : dimension_data.backward_kernels.at(0);
     Scalar* twiddles = kernel_data.twiddles_forward.get();
     Idx factor_sg = kernel_data.factors[1];
     std::size_t local_elements =
@@ -641,7 +654,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running subgroup kernel");
-            detail::subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+            detail::subgroup_impl<SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0],
                 &loc_twiddles[0], n_transforms, twiddles, scale_factor, global_data, kh);

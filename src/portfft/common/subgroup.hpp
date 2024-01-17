@@ -60,14 +60,13 @@ factors and does transposition and twiddle multiplication inbetween.
 */
 
 // forward declaration
-template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
+template <Idx SubgroupSize, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg);
 
 /**
  * Calculates DFT using naive algorithm by using workitems of one subgroup.
  * Each workitem holds one input and one output complex value.
  *
- * @tparam Dir direction of the FFT
  * @tparam T type of the scalar to work on
  * @param[in,out] real real component of the input/output complex value for one
  * workitem
@@ -78,7 +77,7 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
  * DFT
  * @param sg subgroup
  */
-template <direction Dir, typename T>
+template <typename T>
 PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
   if (fft_size == 2 && (stride & (stride - 1)) == 0) {
     Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
@@ -106,9 +105,7 @@ PORTFFT_INLINE void cross_sg_naive_dft(T& real, T& imag, Idx fft_size, Idx strid
     for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       T multi_re = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
       T multi_im = twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
-      if constexpr (Dir == direction::BACKWARD) {
-        multi_im = -multi_im;
-      }
+
       Idx source_wi_id = fft_start + idx_in * stride;
 
       T cur_real = sycl::select_from_group(sg, real, static_cast<std::size_t>(source_wi_id));
@@ -157,7 +154,6 @@ PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx facto
  * Calculates DFT using Cooley-Tukey FFT algorithm. Size of the problem is N*M.
  * Each workitem holds one input and one output complex value.
  *
- * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize Size of subgroup in kernel
  * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
@@ -171,7 +167,7 @@ PORTFFT_INLINE void cross_sg_transpose(T& real, T& imag, Idx factor_n, Idx facto
  * DFT
  * @param sg subgroup
  */
-template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
+template <Idx SubgroupSize, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Idx factor_m, Idx stride,
                                               sycl::sub_group& sg) {
   Idx local_id = static_cast<Idx>(sg.get_local_linear_id());
@@ -180,24 +176,20 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Id
   Idx n = index_in_outer_dft / factor_n;  // index of the contiguous factor/fft
 
   // factor N
-  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_n, factor_m * stride, sg);
+  cross_sg_dft<SubgroupSize, RecursionLevel>(real, imag, factor_n, factor_m * stride, sg);
   // transpose
   cross_sg_transpose(real, imag, factor_n, factor_m, stride, sg);
   T multi_re = twiddle<T>::Re[factor_n * factor_m][k * n];
   T multi_im = twiddle<T>::Im[factor_n * factor_m][k * n];
-  if constexpr (Dir == direction::BACKWARD) {
-    multi_im = -multi_im;
-  }
   detail::multiply_complex(real, imag, multi_re, multi_im, real, imag);
   // factor M
-  cross_sg_dft<Dir, SubgroupSize, RecursionLevel>(real, imag, factor_m, factor_n * stride, sg);
+  cross_sg_dft<SubgroupSize, RecursionLevel>(real, imag, factor_m, factor_n * stride, sg);
 }
 
 /**
  * Calculates DFT using FFT algorithm. Each workitem holds one input and one
  * output complex value.
  *
- * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam SubgroupSize Size of subgroup in kernel
  * @tparam RecursionLevel level of recursion in SG dft
  * @tparam T type of the scalar to work on
@@ -210,15 +202,15 @@ PORTFFT_INLINE void cross_sg_cooley_tukey_dft(T& real, T& imag, Idx factor_n, Id
  * DFT
  * @param sg subgroup
  */
-template <direction Dir, Idx SubgroupSize, Idx RecursionLevel, typename T>
+template <Idx SubgroupSize, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
   constexpr Idx MaxRecursionLevel = detail::int_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     const Idx f0 = detail::factorize(fft_size);
     if (f0 >= 2 && fft_size / f0 >= 2) {
-      cross_sg_cooley_tukey_dft<Dir, SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
+      cross_sg_cooley_tukey_dft<SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
     } else {
-      cross_sg_naive_dft<Dir>(real, imag, fft_size, stride, sg);
+      cross_sg_naive_dft(real, imag, fft_size, stride, sg);
     }
   }
 }
@@ -266,7 +258,6 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * Calculates FFT of size N*M using workitems in a subgroup. Works in place. The
  * end result needs to be transposed when storing it to the local memory!
  *
- * @tparam Dir direction of the FFT
  * @tparam SubgroupSize Size of subgroup in kernel
  * @tparam T type of the scalar used for computations
  * @param inout pointer to private memory where the input/output data is
@@ -277,7 +268,7 @@ constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
  * commit
  * @param private_scratch Scratch memory for wi implementation
  */
-template <direction Dir, Idx SubgroupSize, typename T>
+template <Idx SubgroupSize, typename T>
 PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx factor_sg, const T* sg_twiddles,
                            T* private_scratch) {
   Idx idx_of_wi_in_fft = static_cast<Idx>(sg.get_local_linear_id()) % factor_sg;
@@ -299,7 +290,7 @@ PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx fac
       }
     }
   };
-  wi_dft<Dir, 0>(inout, inout, factor_wi, 1, 1, private_scratch);
+  wi_dft<0>(inout, inout, factor_wi, 1, 1, private_scratch);
 }
 
 /**
