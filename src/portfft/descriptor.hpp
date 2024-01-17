@@ -176,8 +176,8 @@ class committed_descriptor {
   using complex_type = std::complex<Scalar>;
 
   friend struct descriptor<Scalar, Domain>;
-  template <typename Scalar1, domain Domain1, direction Dir, detail::layout LayoutIn, detail::layout LayoutOut,
-            Idx SubgroupSize, typename TIn>
+  template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
+            typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
       const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple, Scalar1 scale_factor,
@@ -233,6 +233,7 @@ class committed_descriptor {
   struct dimension_struct {
     std::vector<kernel_data_struct> forward_kernels;
     std::vector<kernel_data_struct> backward_kernels;
+    std::vector<kernel_data_struct> transpose_kernels;
     std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
     std::size_t length;
@@ -502,18 +503,18 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data);
+      static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels);
     };
   };
 
   /**
    * Calculates twiddle factors for the implementation in use.
    *
-   * @param dimension_data data about the dimension for which twiddles are needed
+   * @param kernels vector of kernels
    * @return Scalar* USM pointer to the twiddle factors
    */
-  Scalar* calculate_twiddles(dimension_struct& dimension_data) {
-    return dispatch<calculate_twiddles_struct>(dimension_data.level, dimension_data);
+  Scalar* calculate_twiddles(detail::level level, std::vector<kernel_data_struct>& kernels) {
+    return dispatch<calculate_twiddles_struct>(level, kernels);
   }
 
   /**
@@ -543,7 +544,7 @@ class committed_descriptor {
           bool take_conjugate_on_load = compute_direction == direction::FORWARD ? false : true;
           bool take_conjugate_on_store = compute_direction == direction::FORWARD ? false : true;
           std::vector<kernel_data_struct> result;
-          for (auto [level, ids, factors] : prepared_vec) {
+          for (auto& [level, ids, factors] : prepared_vec) {
             auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
             if (top_level == detail::level::GLOBAL) {
               if (counter == prepared_vec.size() - 1) {
@@ -620,7 +621,7 @@ class committed_descriptor {
       std::vector<IdxGlobal> sub_batches;
       std::vector<IdxGlobal> inclusive_scan;
       std::size_t cache_required_for_twiddles = 0;
-      for (const auto& kernel_data : dimensions.at(global_dimension).kernels) {
+      for (const auto& kernel_data : dimensions.at(global_dimension).forward_kernels) {
         IdxGlobal factor_size = static_cast<IdxGlobal>(
             std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
         cache_required_for_twiddles +=
@@ -669,7 +670,7 @@ class committed_descriptor {
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
             static_cast<Idx>(factors.size()));
         dimensions.at(global_dimension)
-            .kernels.emplace_back(
+            .forward_kernels.emplace_back(
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
@@ -693,7 +694,7 @@ class committed_descriptor {
           std::vector<IdxGlobal> factors;
           std::vector<IdxGlobal> sub_batches;
           std::vector<IdxGlobal> inclusive_scan;
-          for (const auto& kernel_data : dimensions.at(i).kernels) {
+          for (const auto& kernel_data : dimensions.at(i).forward_kernels) {
             IdxGlobal factor_size = static_cast<IdxGlobal>(
                 std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
             factors.push_back(factor_size);
@@ -720,7 +721,7 @@ class committed_descriptor {
             in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
             in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
                 static_cast<Idx>(factors.size()));
-            dimensions.at(i).kernels.emplace_back(
+            dimensions.at(i).transpose_kernels.emplace_back(
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
@@ -769,8 +770,14 @@ class committed_descriptor {
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
-      dimensions.back().kernels.at(0).twiddles_forward =
-          std::shared_ptr<Scalar>(calculate_twiddles(dimensions.back()), [queue](Scalar* ptr) {
+      dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
+          calculate_twiddles(dimensions.back().level, dimensions.back().forward_kernels), [queue](Scalar* ptr) {
+            if (ptr != nullptr) {
+              sycl::free(ptr, queue);
+            }
+          });
+      dimensions.back().backward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
+          calculate_twiddles(dimensions.back().level, dimensions.back().backward_kernels), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
               sycl::free(ptr, queue);
             }
@@ -1138,17 +1145,9 @@ class committed_descriptor {
           "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
           "INTERLEAVED_COMPLEX.");
     }
-    if constexpr (Dir == direction::FORWARD) {
-      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
-                                 params.backward_strides, params.forward_distance, params.backward_distance,
-                                 params.forward_offset, params.backward_offset, params.forward_scale,
-                                 compute_direction);
-    } else {
-      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_strides,
-                                 params.forward_strides, params.backward_distance, params.forward_distance,
-                                 params.backward_offset, params.forward_offset, params.backward_scale,
-                                 compute_direction);
-    }
+    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
+                               params.backward_strides, params.forward_distance, params.backward_distance,
+                               params.forward_offset, params.backward_offset, params.forward_scale, compute_direction);
   }
 
   /**
@@ -1175,7 +1174,7 @@ class committed_descriptor {
    * @param compute_direction direction of compute, forward / backward
    * @return sycl::event
    */
-  template <direction Dir, typename TIn, typename TOut>
+  template <typename TIn, typename TOut>
   sycl::event dispatch_dimensions(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                   const std::vector<sycl::event>& dependencies,
                                   const std::vector<std::size_t>& input_strides,
@@ -1266,13 +1265,13 @@ class committed_descriptor {
    * @param compute_direction direction of compute, forward / backward
    * @return sycl::event
    */
-  template <direction Dir, typename TIn, typename TOut>
+  template <typename TIn, typename TOut>
   sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
                                  std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
                                  Scalar scale_factor, dimension_struct& dimension_data, direction compute_direction) {
-    return dispatch_kernel_1d_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
+    return dispatch_kernel_1d_helper<TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
         in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
         output_distance, input_offset, output_offset, scale_factor, dimension_data, compute_direction);
   }
@@ -1317,7 +1316,7 @@ class committed_descriptor {
       const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
       const bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
       const bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
-      for (kernel_data_struct kernel_data : dimension_data.kernels) {
+      for (kernel_data_struct kernel_data : dimension_data.forward_kernels) {
         std::size_t minimum_local_mem_required;
         if (input_batch_interleaved) {
           minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
@@ -1356,7 +1355,7 @@ class committed_descriptor {
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return dispatch_kernel_1d_helper<Dir, TIn, TOut, OtherSGSizes...>(
+      return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(
           in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
           output_distance, input_offset, output_offset, scale_factor, dimension_data);
     }

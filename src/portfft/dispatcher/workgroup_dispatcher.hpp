@@ -180,7 +180,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
       wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
                            offset / static_cast<IdxGlobal>(2 * fft_size), load_modifier_data, store_modifier_data,
                            fft_size, factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store,
-                           take_conjugate_on_load, take_conjugate_on_store, apply_scale_factor, global_data);
+                           apply_scale_factor, take_conjugate_on_load, take_conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
@@ -243,7 +243,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
-      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
@@ -293,8 +293,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
-    const auto& kernel_data = dimension_data.kernels.at(0);
+  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
+    const auto& kernel_data = kernels.at(0);
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];

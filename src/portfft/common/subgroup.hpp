@@ -279,13 +279,10 @@ PORTFFT_INLINE void sg_dft(T* inout, sycl::sub_group& sg, Idx factor_wi, Idx fac
     T& imag = inout[2 * idx_of_element_in_wi + 1];
 
     if (factor_sg > 1) {
-      detail::cross_sg_dft<Dir, SubgroupSize, 0>(real, imag, factor_sg, 1, sg);
+      detail::cross_sg_dft<SubgroupSize, 0>(real, imag, factor_sg, 1, sg);
       if (idx_of_element_in_wi > 0) {
         T twiddle_real = sg_twiddles[idx_of_element_in_wi * factor_sg + idx_of_wi_in_fft];
         T twiddle_imag = sg_twiddles[(idx_of_element_in_wi + factor_wi) * factor_sg + idx_of_wi_in_fft];
-        if constexpr (Dir == direction::BACKWARD) {
-          twiddle_imag = -twiddle_imag;
-        }
         detail::multiply_complex(real, imag, twiddle_real, twiddle_imag, real, imag);
       }
     }

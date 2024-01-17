@@ -280,9 +280,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
               modifier_priv[0] = loc_store_modifier_view[base_offset];
               modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
-              if (Dir == direction::BACKWARD) {
-                modifier_priv[1] *= -1;
-              }
               multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
                                priv[2 * j + 1]);
             }
@@ -478,9 +475,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
             modifier_priv[0] = loc_store_modifier_view[base_offset];
             modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
-            if (Dir == direction::BACKWARD) {
-              modifier_priv[1] *= -1;
-            }
             multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
                              priv[2 * j + 1]);
           }
@@ -593,8 +587,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
-    const auto& kernel_data = dimension_data.kernels.at(0);
+  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
+    const auto& kernel_data = kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
@@ -645,7 +639,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
-      cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{

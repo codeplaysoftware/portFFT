@@ -145,20 +145,20 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
     IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                           level_num, iter_value, outer_batch_product);
     if (level == detail::level::WORKITEM) {
-      workitem_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
+      workitem_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, batch_size,
           scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr), store_modifier_data,
           static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
-      subgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
+      subgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
           batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
           store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
-      workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
-          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<Scalar*>(nullptr),
-          store_modifier_data);
+      workgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                                                nullptr, nullptr, input_loc, twiddles_loc, batch_size,
+                                                                implementation_twiddles, scale_factor, global_data, kh,
+                                                                static_cast<Scalar*>(nullptr), store_modifier_data);
     }
     sycl::group_barrier(global_data.it.get_group());
   }
@@ -199,7 +199,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
 #ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
-  cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
+  cgh.parallel_for<global_kernel<Scalar, Domain, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
       [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
@@ -250,7 +250,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   auto [global_range, local_range] = launch_params;
-  cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
+  cgh.parallel_for<global_kernel<Scalar, Domain, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
       sycl::nd_range<1>(global_range, local_range),
       [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{

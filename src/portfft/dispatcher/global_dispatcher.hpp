@@ -106,8 +106,7 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
-    auto& kernels = dimension_data.kernels;
+  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
     std::vector<IdxGlobal> factors_idx_global;
     // Get factor sizes per level;
     for (const auto& kernel_data : kernels) {
@@ -281,7 +280,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
@@ -350,14 +349,14 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       });
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
         event = detail::transpose_level<Scalar, Domain>(
-            kernels.at(static_cast<std::size_t>(num_transpose) + static_cast<std::size_t>(num_factors)),
+            dimension_data.transpose_kernels.at(static_cast<std::size_t>(num_transpose)),
             static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_2.get(), factors_and_scan,
             committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_transpose,
             num_factors, 0, desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});
         event.wait();
       }
       event = detail::transpose_level<Scalar, Domain>(
-          kernels.at(static_cast<std::size_t>(num_factors)), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out,
+          dimension_data.transpose_kernels.at(0), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), out,
           factors_and_scan, committed_size, static_cast<Idx>(max_batches_in_l2), n_transforms,
           static_cast<IdxGlobal>(i), 0, num_factors, 2 * static_cast<IdxGlobal>(i) * committed_size + output_offset,
           desc.queue, desc.scratch_ptr_1, desc.scratch_ptr_2, {event});

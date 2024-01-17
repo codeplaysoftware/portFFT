@@ -56,7 +56,6 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
 /**
  * Utility function for applying load/store modifiers in workitem impl
  *
- * @tparam Dir Direction of the FFT
  * @tparam PrivT Private view type
  * @tparam T Type of pointer for load/store modifier global array
  * @param num_elements Num complex values per workitem
@@ -64,15 +63,12 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  * @param modifier_data global modifier data pointer
  * @param offset offset for the global modifier data pointer
  */
-template <direction Dir, typename PrivT, typename T>
+template <typename PrivT, typename T>
 PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifier_data, IdxGlobal offset) {
   PORTFFT_UNROLL
   for (Idx j = 0; j < num_elements; j++) {
     sycl::vec<T, 2> modifier_vec;
     modifier_vec.load(0, detail::get_global_multi_ptr(&modifier_data[offset + 2 * j]));
-    if (Dir == direction::BACKWARD) {
-      modifier_vec[1] *= -1;
-    }
     multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j], priv[2 * j + 1]);
   }
 }
@@ -207,7 +203,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         // Assumes load modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying load modifier");
-        detail::apply_modifier<Dir>(fft_size, priv, load_modifier_data, i * n_reals);
+        detail::apply_modifier(fft_size, priv, load_modifier_data, i * n_reals);
       }
       if (take_conjugate_on_load) {
         take_conjugate(priv, fft_size);
@@ -221,7 +217,7 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
-        detail::apply_modifier<Dir>(fft_size, priv, store_modifier_data, i * n_reals);
+        detail::apply_modifier(fft_size, priv, store_modifier_data, i * n_reals);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL
@@ -307,7 +303,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16 * 8, 1024, cgh};
 #endif
-      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
@@ -354,7 +350,9 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
-  static Scalar* execute(committed_descriptor& /*desc*/, dimension_struct& /*dimension_data*/) { return nullptr; }
+  static Scalar* execute(committed_descriptor& /*desc*/, std::vector<kernel_data_struct>& /*dimension_data*/) {
+    return nullptr;
+  }
 };
 
 }  // namespace portfft

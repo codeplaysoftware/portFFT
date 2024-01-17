@@ -31,7 +31,7 @@
 namespace portfft {
 
 // forward declaration
-template <direction Dir, Idx RecursionLevel, typename T>
+template <Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
 
 namespace detail {
@@ -107,8 +107,8 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
                                      T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_m; i++) {
-    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n,
-                                factor_m * stride_in, 1, privateScratch + 2 * factor_n * factor_m);
+    wi_dft<RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n, factor_m * stride_in, 1,
+                           privateScratch + 2 * factor_n * factor_m);
     PORTFFT_UNROLL
     for (Idx j = 0; j < factor_n; j++) {
       auto re_multiplier = twiddle<T>::Re[factor_n * factor_m][i * j];
@@ -121,8 +121,8 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_n; i++) {
-    wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n,
-                                factor_n * stride_out, privateScratch + 2 * factor_n * factor_m);
+    wi_dft<RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n, factor_n * stride_out,
+                           privateScratch + 2 * factor_n * factor_m);
   }
 }
 
