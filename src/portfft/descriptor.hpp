@@ -806,9 +806,9 @@ class committed_descriptor {
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
-      bool set_scale_as_unity = false;
+      bool set_scale_as_unity = true;
       if (i == n_kernels - 1) {
-        set_scale_as_unity = true;
+        set_scale_as_unity = false;
       }
       dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, set_scale_as_unity));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
