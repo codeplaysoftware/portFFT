@@ -26,6 +26,8 @@
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 
+#define PORTFFT_LOG
+
 namespace portfft::detail {
 
 /**
@@ -118,7 +120,7 @@ struct global_data_struct {
    * @param data View of data to log
    * @param num number of elements to log
    */
-  template <typename ViewT>
+  template <bool Force=false, typename ViewT>
   PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] ViewT data,
                                      [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
@@ -133,7 +135,20 @@ struct global_data_struct {
       }
       s << "\n" << sycl::stream_manipulator::flush;
     }
+#else
+    if (Force && it.get_local_id(0) == 0) {
+      s << "wg_id " << it.get_group(0);
+      s << " " << message << " ";
+      if (num) {
+        s << data[0];
+      }
+      for (Idx i = 1; i < num; i++) {
+        s << ", " << data[i];
+      }
+      s << "\n" << sycl::stream_manipulator::flush;
+    }
 #endif
+
   }
 
   /**
@@ -146,7 +161,7 @@ struct global_data_struct {
    * @param ptr pointer to data to log
    * @param num number of elements to log
    */
-  template <typename T>
+  template <bool Force=false, typename T>
   PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
                                        [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
@@ -159,6 +174,18 @@ struct global_data_struct {
       s << ", " << ptr[i];
     }
     s << "\n" << sycl::stream_manipulator::flush;
+#else
+    if constexpr(Force){
+        log_ids();
+        s << message << " ";
+        if (num) {
+          s << ptr[0];
+        }
+        for (Idx i = 1; i < num; i++) {
+          s << ", " << ptr[i];
+        }
+        s << "\n" << sycl::stream_manipulator::flush;
+    }
 #endif
   }
 
@@ -235,6 +262,12 @@ struct global_data_struct {
     }
 #endif
   }
+  template <typename... Ts>
+  PORTFFT_INLINE void log_message_global2([[maybe_unused]] Ts... messages) {
+    if (it.get_global_id(0) == 0) {
+      log_message_impl(messages...);
+    }
+  }
 
   /**
    * Logs a message with a single message from the selected level. Can log multiple objects/strings. They will be
@@ -272,13 +305,13 @@ struct global_data_struct {
 template <typename T>
 PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
                               [[maybe_unused]] std::size_t size) {
-#ifdef PORTFFT_LOG_DUMPS
+//#ifdef PORTFFT_LOG_DUMPS
   std::cout << msg << " ";
   for (std::size_t i = 0; i < size; i++) {
     std::cout << host_ptr[i] << ", ";
   }
   std::cout << std::endl;
-#endif
+//#endif
 }
 
 /**
@@ -295,11 +328,11 @@ template <typename T>
 PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
                                 [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
                                 [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
-#ifdef PORTFFT_LOG_DUMPS
+//#ifdef PORTFFT_LOG_DUMPS
   std::vector<T> tmp(size);
   q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
   dump_host(msg, tmp.data(), size);
-#endif
+//#endif
 }
 
 };  // namespace portfft::detail

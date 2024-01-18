@@ -137,6 +137,7 @@ __attribute__((always_inline)) inline void dimension_dft(
     end += (fft_in_subgroup == ffts_per_sg) ? 1 : 0;
   }
   for (Idx j = begin; j < end; j += step) {
+    sycl::group_barrier(global_data.it.get_group());
     Idx j_inner = j % stride_within_dft;
     Idx j_outer = j / stride_within_dft;
     bool working = true;
@@ -183,11 +184,13 @@ __attribute__((always_inline)) inline void dimension_dft(
           detail::strided_view priv_real_view{priv, 2};
           detail::strided_view priv_imag_view{priv, 2, 1};
           copy_wi(global_data, local_real_view, priv_real_view, fact_wi);
+          //sycl::group_barrier(global_data.it.get_group());
           copy_wi(global_data, local_imag_view, priv_imag_view, fact_wi);
         }
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * fact_wi);
 
+      //sycl::group_barrier(global_data.it.get_group());
       if (wg_twiddles) {
         PORTFFT_UNROLL
         for (Idx i = 0; i < fact_wi; i++) {
@@ -205,6 +208,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
         global_data.log_dump_private("data in registers after twiddle multiplication:", priv, 2 * fact_wi);
       }
+      //sycl::group_barrier(global_data.it.get_group());
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL
         for (Idx i = 0; i < fact_wi; i++) {
@@ -213,6 +217,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
         global_data.log_dump_private("data in registers after scaling:", priv, 2 * fact_wi);
       }
+      //sycl::group_barrier(global_data.it.get_group());
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
         PORTFFT_UNROLL
         for (Idx idx = 0; idx < fact_wi; idx++) {
@@ -226,9 +231,12 @@ __attribute__((always_inline)) inline void dimension_dft(
                            priv[2 * idx + 1]);
         }
       }
+      //sycl::group_barrier(global_data.it.get_group());
     }
 
+    sycl::group_barrier(global_data.it.get_group());
     sg_dft<Dir, SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
+    sycl::group_barrier(global_data.it.get_group());
 
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
@@ -245,6 +253,7 @@ __attribute__((always_inline)) inline void dimension_dft(
                            priv[2 * idx + 1]);
         }
       }
+      //sycl::group_barrier(global_data.it.get_group());
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
@@ -281,6 +290,7 @@ __attribute__((always_inline)) inline void dimension_dft(
               loc, std::array{fact_sg, stride_within_dft},
               std::array{wi_id_in_fft, j_inner + j_outer * outer_stride + local_imag_offset}};
           copy_wi(global_data, priv_real_view, local_real_view, fact_wi);
+          //sycl::group_barrier(global_data.it.get_group());
           copy_wi(global_data, priv_imag_view, local_imag_view, fact_wi);
         }
       }
@@ -328,6 +338,7 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
   global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
+      sycl::group_barrier(global_data.it.get_group());
   // column-wise DFTs
   detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
@@ -340,6 +351,7 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
       load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, storage, layout_in,
       detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, global_data);
   global_data.log_message_global(__func__, "exited");
+      sycl::group_barrier(global_data.it.get_group());
 }
 
 }  // namespace portfft

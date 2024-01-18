@@ -134,6 +134,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
       static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
   Idx local_imag_offset = fft_size * max_num_batches_in_local_mem;
 
+  sycl::group_barrier(global_data.it.get_group());
   for (IdxGlobal batch_start_idx = first_batch_start; batch_start_idx < n_transforms;
        batch_start_idx += num_batches_in_kernel) {
     IdxGlobal offset = static_cast<IdxGlobal>(vec_size * fft_size) * batch_start_idx;
@@ -163,12 +164,16 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
                                      std::array{fft_size, num_batches_in_local_mem});
       }
       sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("batch interleaved data loaded to local memory:", loc_view, 2 * (factor_m + factor_n));
+      sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
         wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
                                   sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size,
                                   factor_n, factor_m, storage, LayoutIn, multiply_on_load, multiply_on_store,
                                   apply_scale_factor, global_data);
         sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("computed data in local memory, batch interleaved input branch:", loc_view, 2 * (factor_m + factor_n));
+      sycl::group_barrier(global_data.it.get_group());
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
@@ -224,16 +229,27 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * fft_size, offset);
       } else {
         global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, fft_size, offset);
+        sycl::group_barrier(global_data.it.get_group());
         global2local<level::WORKGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size, offset,
                                                      local_imag_offset);
       }
+      sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("packed data loaded to local memory:", loc_view, 2 * (factor_m + factor_n));
       sycl::group_barrier(global_data.it.get_group());
       wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
                                 batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
                                 storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
                                 global_data);
       sycl::group_barrier(global_data.it.get_group());
+      global_data.log_dump_local("computed data in local memory, packed input branch:", loc_view, 2 * (factor_m + factor_n));
+      sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
+      /*for(int k=0;k<factor_m*factor_n;k++){
+        output[k+offset] = loc_view[k];
+        output_imag[k+offset] = loc_view[k + local_imag_offset];
+      }*/
+      //return; 
+
       // transposition for WG CT
       if (LayoutOut == detail::layout::PACKED) {
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -241,12 +257,37 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
           detail::md_view output_view{output, std::array{1, 2 * factor_n, 2}, offset};
           copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{2, factor_m, factor_n});
         } else {
+          //global_data.log_message_global2(__func__, "in branch");
           detail::md_view loc_real_view{loc_view, std::array{1, factor_m}};
           detail::md_view loc_imag_view{loc_view, std::array{1, factor_m}, local_imag_offset};
           detail::md_view output_real_view{output, std::array{factor_n, 1}, offset};
           detail::md_view output_imag_view{output_imag, std::array{factor_n, 1}, offset};
-          copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view, std::array{factor_m, factor_n});
-          copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view, std::array{factor_m, factor_n});
+          //copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view, std::array{factor_m, factor_n});
+          auto group = global_data.get_group<level::WORKGROUP>();
+          Idx local_id = static_cast<Idx>(group.get_local_id()[0]);
+          Idx local_size = static_cast<Idx>(group.get_local_range()[0]);
+          PORTFFT_UNROLL
+          for (Idx ij = local_id; ij < factor_m * factor_n; ij += local_size) {
+            Idx i = ij / factor_n;
+            Idx j = ij % factor_n;
+            //const auto& src_ref = loc_view[i * 1 + j * factor_m]; //loc_real_view.inner(i).inner(j).get();
+            //auto& dst_ref = output[i * factor_n + j * 1 + offset]; //output_real_view.inner(i).inner(j).get();
+            const auto& src_ref = loc_real_view.inner(i).inner(j).get();
+            auto& dst_ref = output_real_view.inner(i).inner(j).get();
+            dst_ref = src_ref;
+          }
+          sycl::group_barrier(global_data.it.get_group());
+          //copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view, std::array{factor_m, factor_n});
+          PORTFFT_UNROLL
+          for (Idx ij = local_id; ij < factor_m * factor_n; ij += local_size) {
+            Idx i = ij / factor_n;
+            Idx j = ij % factor_n;
+            const auto& src_ref2 = loc_imag_view.inner(i).inner(j).get();
+            auto& dst_ref2 = output_imag_view.inner(i).inner(j).get();
+            //const auto& src_ref2 = loc_view[i * 1 + j * factor_m + local_imag_offset]; //loc_imag_view.inner(i).inner(j).get();
+            //auto& dst_ref2 = output_imag[i * factor_n + j * 1 + offset]; //output_imag_view.inner(i).inner(j).get();
+            dst_ref2 = src_ref2;
+          }
         }
       } else {
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -267,8 +308,12 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
       }
       sycl::group_barrier(global_data.it.get_group());
     }
+    sycl::group_barrier(global_data.it.get_group());
   }
+  sycl::group_barrier(global_data.it.get_group());
+  global_data.log_dump_local("final computed data in local memory, packed input branch:", loc_view, 2 * (factor_m + factor_n));
   global_data.log_message_global(__func__, "exited");
+  sycl::group_barrier(global_data.it.get_group());
 }
 }  // namespace detail
 

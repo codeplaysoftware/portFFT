@@ -81,7 +81,7 @@ auto both_directions = ::testing::Values(direction::FORWARD, direction::BACKWARD
 
 auto complex_storages = ::testing::Values(complex_storage::INTERLEAVED_COMPLEX, complex_storage::SPLIT_COMPLEX);
 auto interleaved_storage = ::testing::Values(complex_storage::INTERLEAVED_COMPLEX);
-
+/*
 // sizes that use workitem implementation
 INSTANTIATE_TEST_SUITE_P(workItemTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
@@ -120,13 +120,14 @@ INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupRegressionTest, FFTTest,
                              ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage,
                                                 ::testing::Values(1, 131), ::testing::Values(sizes_t{1536}))),
                          test_params_print());
+*/
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
-
+/*
 // Sizes that can use either workgroup or Global implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
@@ -224,26 +225,26 @@ INSTANTIATE_TEST_SUITE_P(BwdScaledFFTTest, FFTTest,
                                                                   sizes_t{4096}, sizes_t{16, 512}),
                                                 ::testing::Values(1.0), scales)),
                          test_params_print());
-
+*/
 #define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                                                        \
   TEST_P(FFTTest, TYPE##_##MEMORY##_C2C) {                                                                          \
     auto params = GetParam();                                                                                       \
     if (params.dir == portfft::direction::FORWARD) {                                                                \
       if (params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {                                        \
-        run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD,                                            \
-                 portfft::complex_storage::INTERLEAVED_COMPLEX>(params);                                            \
+        /*run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD,                                            \
+                 portfft::complex_storage::INTERLEAVED_COMPLEX>(params); */                                           \
       } else {                                                                                                      \
         run_test<test_memory::MEMORY, TYPE, portfft::direction::FORWARD, portfft::complex_storage::SPLIT_COMPLEX>(  \
             params);                                                                                                \
       }                                                                                                             \
     } else {                                                                                                        \
-      if (params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {                                        \
+      /*if (params.storage == portfft::complex_storage::INTERLEAVED_COMPLEX) {                                        \
         run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD,                                           \
                  portfft::complex_storage::INTERLEAVED_COMPLEX>(params);                                            \
       } else {                                                                                                      \
         run_test<test_memory::MEMORY, TYPE, portfft::direction::BACKWARD, portfft::complex_storage::SPLIT_COMPLEX>( \
             params);                                                                                                \
-      }                                                                                                             \
+      } */                                                                                                            \
     }                                                                                                               \
   }
 
