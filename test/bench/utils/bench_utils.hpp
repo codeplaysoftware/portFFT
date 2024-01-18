@@ -38,6 +38,31 @@
  */
 static constexpr std::size_t runs_to_average = 10;
 
+/**
+ * Get the number of inputs to allocate for the average_host benchmark.
+ * Try to use \p target_num_inputs distinct inputs so that each call to compute uses a different input and avoids
+ * relying on cache. We allow to allocate up to 90% of the global memory for inputs and outputs. Multiple inputs are
+ * needed to avoid affecting the timings.
+ *
+ * @param input_size_bytes Size of the FFT input in bytes
+ * @param output_size_bytes Upper bound estimation of the size of the FFT output in bytes
+ * @param global_mem_size Global memory size available on the device
+ * @param target_num_inputs Target number of inputs
+ */
+std::size_t get_average_host_num_inputs(std::size_t input_size_bytes, std::size_t output_size_bytes,
+                                        std::size_t global_mem_size, std::size_t target_num_inputs) {
+  const std::size_t desired_allocation_size = input_size_bytes * target_num_inputs + output_size_bytes;
+  const std::size_t allocation_size_threshold = static_cast<std::size_t>(0.9 * static_cast<double>(global_mem_size));
+  const std::size_t num_inputs = desired_allocation_size <= allocation_size_threshold ? target_num_inputs : 1;
+  if (num_inputs < target_num_inputs) {
+    std::cerr << "Warning: Not enough global memory to allocate " << target_num_inputs
+              << " input(s). The results may appear better than they would be in a real application due to the "
+                 "device's cache."
+              << std::endl;
+  }
+  return num_inputs;
+}
+
 // Handle an exception by passing the message onto `SkipWithError`.
 // It is expected that this will be placed so the benchmark ends after this is called,
 // allowing the test to exit gracefully with an error message before moving onto the next test.
