@@ -527,6 +527,77 @@ class committed_descriptor {
   }
 
   /**
+   * utility function to set specialization constants
+   * @tparam SubgroupSize Subgroup size
+   * @param top_level selected level of implementation
+   * @param prepared_vec vector as returned from prepare_implementation
+   * @param compute_direction direction of compute, as in forward or backward
+   * @param kernel_num which dimension are the kernels being built for
+   * @param is_compatible flag to be set if the kernels are compatible
+   * @return
+   */
+  template <Idx SubgroupSize>
+  std::vector<kernel_data_struct> set_specialization_constants(
+      detail::level top_level,
+      std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>& prepared_vec,
+      direction compute_direction, std::size_t kernel_num, bool& is_compatible) {
+    Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
+    std::size_t counter = 0;
+    bool take_conjugate_on_load = false;
+    bool take_conjugate_on_store = false;
+    std::vector<kernel_data_struct> result;
+    for (auto& [level, ids, factors] : prepared_vec) {
+      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
+      if (top_level == detail::level::GLOBAL) {
+        if (counter == prepared_vec.size() - 1) {
+          if (compute_direction == direction::BACKWARD) {
+            take_conjugate_on_store = true;
+          }
+          set_spec_constants(
+              detail::level::GLOBAL, in_bundle,
+              static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+              factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
+              detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
+              static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+          // reset take_conjugate_on_store
+          take_conjugate_on_store = false;
+        } else {
+          if (counter == 0 && compute_direction == direction::BACKWARD) {
+            take_conjugate_on_load = true;
+          }
+          set_spec_constants(
+              detail::level::GLOBAL, in_bundle,
+              static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
+              factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
+              detail::apply_scale_factor::NOT_APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
+              scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+          // reset take_conjugate_on_load
+          take_conjugate_on_load = false;
+        }
+      } else {
+        if (compute_direction == direction::BACKWARD) {
+          take_conjugate_on_load = true;
+          take_conjugate_on_store = true;
+        }
+        set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
+                           detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
+                           detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
+                           scale_factor);
+      }
+      try {
+        result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
+                            PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+      } catch (std::exception& e) {
+        std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
+        is_compatible = false;
+        break;
+      }
+      counter++;
+    }
+    return result;
+  }
+
+  /**
    * Builds the kernel bundles with appropriate values of specialization constants for the first supported subgroup
    * size.
    *
@@ -548,67 +619,10 @@ class committed_descriptor {
       }
 
       if (is_compatible) {
-        auto set_specialization_constants = [&](direction compute_direction) -> std::vector<kernel_data_struct> {
-          Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
-          std::size_t counter = 0;
-          bool take_conjugate_on_load = false;
-          bool take_conjugate_on_store = false;
-          std::vector<kernel_data_struct> result;
-          for (auto& [level, ids, factors] : prepared_vec) {
-            auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-            if (top_level == detail::level::GLOBAL) {
-              if (counter == prepared_vec.size() - 1) {
-                if (compute_direction == direction::BACKWARD) {
-                  take_conjugate_on_store = true;
-                }
-                set_spec_constants(detail::level::GLOBAL, in_bundle,
-                                   static_cast<std::size_t>(
-                                       std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
-                                   factors, detail::elementwise_multiply::NOT_APPLIED,
-                                   detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED,
-                                   level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
-                                   static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-                // reset take_conjugate_on_store
-                take_conjugate_on_store = false;
-              } else {
-                if (counter == 0 && compute_direction == direction::BACKWARD) {
-                  take_conjugate_on_load = true;
-                }
-                set_spec_constants(detail::level::GLOBAL, in_bundle,
-                                   static_cast<std::size_t>(
-                                       std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
-                                   factors, detail::elementwise_multiply::NOT_APPLIED,
-                                   detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
-                                   level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
-                                   static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-                // reset take_conjugate_on_load
-                take_conjugate_on_load = false;
-              }
-            } else {
-              if (compute_direction == direction::BACKWARD) {
-                take_conjugate_on_load = true;
-                take_conjugate_on_store = true;
-              }
-              set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
-                                 detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                                 detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load,
-                                 take_conjugate_on_store, scale_factor);
-            }
-            try {
-              result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
-                                  PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
-            } catch (std::exception& e) {
-              std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
-                        << e.what() << std::endl;
-              is_compatible = false;
-              break;
-            }
-            counter++;
-          }
-          return result;
-        };
-        std::vector<kernel_data_struct> forward_kernels = set_specialization_constants(direction::FORWARD);
-        std::vector<kernel_data_struct> backward_kernels = set_specialization_constants(direction::BACKWARD);
+        std::vector<kernel_data_struct> forward_kernels = set_specialization_constants<SubgroupSize>(
+            top_level, prepared_vec, direction::FORWARD, kernel_num, is_compatible);
+        std::vector<kernel_data_struct> backward_kernels = set_specialization_constants<SubgroupSize>(
+            top_level, prepared_vec, direction::BACKWARD, kernel_num, is_compatible);
         if (is_compatible) {
           return {forward_kernels, backward_kernels, top_level, params.lengths[kernel_num], SubgroupSize};
         }
@@ -794,6 +808,7 @@ class committed_descriptor {
               sycl::free(ptr, queue);
             }
           });
+      // TODO: refactor multi-dimensional fft's such that they can use a single pointer for twiddles.
       dimensions.back().backward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
           calculate_twiddles(dimensions.back().level, dimensions.back().backward_kernels), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
