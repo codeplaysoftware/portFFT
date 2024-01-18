@@ -180,10 +180,10 @@ class committed_descriptor {
             typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
-      const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple, Scalar1 scale_factor,
-      IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-      IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-      Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+      const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset,
+      IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2,
+      IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id, Idx total_factors,
+      const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
