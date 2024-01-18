@@ -541,15 +541,14 @@ class committed_descriptor {
       if (is_compatible) {
         auto set_specialization_constants = [&](direction compute_direction) -> std::vector<kernel_data_struct> {
           std::size_t counter = 0;
-          bool take_conjugate_on_load = compute_direction == direction::FORWARD ? false : true;
-          bool take_conjugate_on_store = compute_direction == direction::FORWARD ? false : true;
+          bool take_conjugate_on_load = false;
+          bool take_conjugate_on_store = false;
           std::vector<kernel_data_struct> result;
           for (auto& [level, ids, factors] : prepared_vec) {
             auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
             if (top_level == detail::level::GLOBAL) {
               if (counter == prepared_vec.size() - 1) {
                 if (compute_direction == direction::BACKWARD) {
-                  take_conjugate_on_load = false;
                   take_conjugate_on_store = true;
                 }
                 set_spec_constants(detail::level::GLOBAL, in_bundle,
@@ -557,20 +556,29 @@ class committed_descriptor {
                                        std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
                                    factors, detail::elementwise_multiply::NOT_APPLIED,
                                    detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED,
-                                   level, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+                                   level, take_conjugate_on_load, take_conjugate_on_store, static_cast<Idx>(counter),
+                                   static_cast<Idx>(prepared_vec.size()));
+                // reset take_conjugate_on_store
+                take_conjugate_on_store = false;
               } else {
-                if (counter == 0) {
+                if (counter == 0 && compute_direction == direction::BACKWARD) {
                   take_conjugate_on_load = true;
-                  take_conjugate_on_store = false;
                 }
                 set_spec_constants(detail::level::GLOBAL, in_bundle,
                                    static_cast<std::size_t>(
                                        std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
                                    factors, detail::elementwise_multiply::NOT_APPLIED,
                                    detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
-                                   level, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+                                   level, take_conjugate_on_load, take_conjugate_on_store, static_cast<Idx>(counter),
+                                   static_cast<Idx>(prepared_vec.size()));
+                // reset take_conjugate_on_load
+                take_conjugate_on_load = false;
               }
             } else {
+              if (compute_direction == direction::BACKWARD) {
+                take_conjugate_on_load = true;
+                take_conjugate_on_store = true;
+              }
               set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                                  detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load,
@@ -670,7 +678,7 @@ class committed_descriptor {
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
             static_cast<Idx>(factors.size()));
         dimensions.at(global_dimension)
-            .forward_kernels.emplace_back(
+            .transpose_kernels.emplace_back(
                 sycl::build(in_bundle),
                 std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
                 std::shared_ptr<Scalar>(), detail::level::GLOBAL);
