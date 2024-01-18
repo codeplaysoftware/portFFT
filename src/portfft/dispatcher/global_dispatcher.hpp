@@ -284,8 +284,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
-                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data, direction compute_direction) {
+                             IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
+                             direction compute_direction) {
     (void)in_imag;
     (void)out_imag;
     const auto& kernels =
@@ -311,9 +311,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
                                         detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-          kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor,
-          intermediate_twiddles_offset, impl_twiddle_offset,
-          2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
+          kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, intermediate_twiddles_offset,
+          impl_twiddle_offset, 2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
           static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
           dimension_data.num_factors, {event}, desc.queue);
       intermediate_twiddles_offset += 2 * kernels.at(0).batch_size * static_cast<IdxGlobal>(kernels.at(0).length);
@@ -325,7 +324,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
           l2_events =
               detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
                   kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
-                  desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
+                  desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, intermediate_twiddles_offset,
                   impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
                   static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
                   dimension_data.num_factors, l2_events, desc.queue);
@@ -333,10 +332,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
           l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
                                             detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
               kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
-              twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,
-              committed_size, static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),
-              static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), dimension_data.num_factors, l2_events,
-              desc.queue);
+              twiddles_ptr, factors_and_scan, intermediate_twiddles_offset, impl_twiddle_offset, 0, committed_size,
+              static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i),
+              static_cast<Idx>(factor_num), dimension_data.num_factors, l2_events, desc.queue);
           intermediate_twiddles_offset +=
               2 * kernels.at(factor_num).batch_size * static_cast<IdxGlobal>(kernels.at(factor_num).length);
           impl_twiddle_offset += detail::increment_twiddle_offset(kernels.at(factor_num).level,

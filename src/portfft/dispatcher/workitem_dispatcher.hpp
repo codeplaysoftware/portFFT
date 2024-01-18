@@ -93,7 +93,6 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch
- * @param scaling_factor Scaling factor applied to the result
  * @param load_modifier_data Pointer to the load modifier data in global memory
  * @param store_modifier_data Pointer to the store modifier data in global memory
  * @param loc_load_modifier Pointer to load modifier data in local memory
@@ -101,16 +100,23 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  */
 template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
-                                  IdxGlobal n_transforms, T scaling_factor, global_data_struct<1> global_data,
-                                  sycl::kernel_handler& kh, const T* load_modifier_data = nullptr,
-                                  const T* store_modifier_data = nullptr, T* loc_load_modifier = nullptr,
-                                  T* loc_store_modifier = nullptr) {
+                                  IdxGlobal n_transforms, global_data_struct<1> global_data, sycl::kernel_handler& kh,
+                                  const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
+                                  T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
   bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
   bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+
+  T scaling_factor = [&]() {
+    if constexpr (std::is_same_v<T, float>) {
+      return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
+    } else {
+      return kh.get_specialization_constant<detail::SpecConstScaleFactorDouble>();
+    }
+  }();
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
@@ -282,8 +288,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
                                                                TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
-                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data, direction compute_direction) {
+                             IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
+                             direction compute_direction) {
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
     auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
                                                                 : dimension_data.backward_kernels.at(0);
@@ -315,7 +321,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
             detail::workitem_impl<SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
-                scale_factor, global_data, kh);
+                global_data, kh);
             global_data.log_message_global("Exiting workitem kernel");
           });
     });

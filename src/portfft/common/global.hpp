@@ -126,7 +126,6 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @param inner_batches global memory pointer containing the inner batch for each factor
  * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
  * @param batch_size Batch size for the corresponding input
- * @param scale_factor scale_factor
  * @param global_data global data
  * @param kh kernel handler
  */
@@ -134,7 +133,7 @@ template <typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Id
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* implementation_twiddles,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
                                    Scalar* store_modifier_loc, const IdxGlobal* factors, const IdxGlobal* inner_batches,
-                                   const IdxGlobal* inclusive_scan, IdxGlobal batch_size, Scalar scale_factor,
+                                   const IdxGlobal* inclusive_scan, IdxGlobal batch_size,
                                    detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
@@ -145,20 +144,19 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
     IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                           level_num, iter_value, outer_batch_product);
     if (level == detail::level::WORKITEM) {
-      workitem_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, batch_size,
-          scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr), store_modifier_data,
-          static_cast<Scalar*>(nullptr), store_modifier_loc);
+      workitem_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                                               nullptr, nullptr, input_loc, batch_size, global_data, kh,
+                                                               static_cast<const Scalar*>(nullptr), store_modifier_data,
+                                                               static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
-          batch_size, implementation_twiddles, scale_factor, global_data, kh, static_cast<const Scalar*>(nullptr),
+          batch_size, implementation_twiddles, global_data, kh, static_cast<const Scalar*>(nullptr),
           store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
-      workgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
-                                                                nullptr, nullptr, input_loc, twiddles_loc, batch_size,
-                                                                implementation_twiddles, scale_factor, global_data, kh,
-                                                                static_cast<Scalar*>(nullptr), store_modifier_data);
+      workgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
+          input + outer_batch_offset, output + outer_batch_offset, nullptr, nullptr, input_loc, twiddles_loc,
+          batch_size, implementation_twiddles, global_data, kh, static_cast<Scalar*>(nullptr), store_modifier_data);
     }
     sycl::group_barrier(global_data.it.get_group());
   }
@@ -182,7 +180,6 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @param inner_batches global memory pointer containing the inner batch for each factor
  * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
  * @param n_transforms batch size corresposding to the factor
- * @param scale_factor scale factor
  * @param input_batch_offset offset for the input pointer
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
@@ -192,9 +189,8 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
                    sycl::local_accessor<Scalar, 1>& loc_for_input, sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
                    const Scalar* impl_twiddles, const IdxGlobal* factors, const IdxGlobal* inner_batches,
-                   const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
-                   IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
-                   sycl::handler& cgh) {
+                   const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, IdxGlobal input_batch_offset,
+                   std::pair<sycl::range<1>, sycl::range<1>> launch_params, sycl::handler& cgh) {
   auto [global_range, local_range] = launch_params;
 #ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
@@ -210,7 +206,7 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
         dispatch_level<Scalar, LayoutIn, LayoutOut, SubgroupSize>(
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
-            scale_factor, global_data, kh);
+            global_data, kh);
       });
 }
 
@@ -233,7 +229,6 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @param inner_batches global memory pointer containing the inner batch for each factor
  * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
  * @param n_transforms batch size corresposding to the factor
- * @param scale_factor scale factor
  * @param input_batch_offset offset for the input pointer
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
@@ -243,9 +238,8 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
                    sycl::local_accessor<Scalar, 1>& loc_for_twiddles,
                    sycl::local_accessor<Scalar, 1>& loc_for_store_modifier, const Scalar* multipliers_between_factors,
                    const Scalar* impl_twiddles, const IdxGlobal* factors, const IdxGlobal* inner_batches,
-                   const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, Scalar scale_factor,
-                   IdxGlobal input_batch_offset, std::pair<sycl::range<1>, sycl::range<1>> launch_params,
-                   sycl::handler& cgh) {
+                   const IdxGlobal* inclusive_scan, IdxGlobal n_transforms, IdxGlobal input_batch_offset,
+                   std::pair<sycl::range<1>, sycl::range<1>> launch_params, sycl::handler& cgh) {
 #ifdef PORTFFT_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
@@ -261,7 +255,7 @@ void launch_kernel(const Scalar* input, Scalar* output, sycl::local_accessor<Sca
         dispatch_level<Scalar, LayoutIn, LayoutOut, SubgroupSize>(
             &input[0] + input_batch_offset, output, impl_twiddles, multipliers_between_factors, &loc_for_input[0],
             &loc_for_twiddles[0], &loc_for_store_modifier[0], factors, inner_batches, inclusive_scan, n_transforms,
-            scale_factor, global_data, kh);
+            global_data, kh);
       });
 }
 
@@ -435,7 +429,6 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
  * @param twiddles_ptr global pointer containing the input
  * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors
- * @param scale_factor scale factor
  * @param intermediate_twiddle_offset offset value to the global pointer for twiddles in between factors
  * @param subimpl_twiddle_offset offset value to to the global pointer for obtaining the twiddles required for sub
  * implementation
@@ -454,10 +447,10 @@ template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layou
           typename TIn>
 std::vector<sycl::event> compute_level(
     const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
-    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
+    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset,
+    IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2,
+    IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id, Idx total_factors,
+    const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
@@ -510,7 +503,7 @@ std::vector<sycl::event> compute_level(
       detail::launch_kernel<Scalar, Domain, LayoutIn, LayoutOut, SubgroupSize>(
           in_acc_or_usm, output + 2 * batch_in_l2 * committed_size, loc_for_input, loc_for_twiddles, loc_for_modifier,
           twiddles_ptr + intermediate_twiddle_offset, subimpl_twiddles, factors_triple, inner_batches, inclusive_scan,
-          batch_size, scale_factor, 2 * committed_size * batch_in_l2 + input_global_offset,
+          batch_size, 2 * committed_size * batch_in_l2 + input_global_offset,
           {sycl::range<1>(static_cast<std::size_t>(global_range)),
            sycl::range<1>(static_cast<std::size_t>(local_range))},
           cgh);

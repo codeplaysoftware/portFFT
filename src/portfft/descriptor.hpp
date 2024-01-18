@@ -44,10 +44,10 @@ template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layou
           typename TIn>
 std::vector<sycl::event> compute_level(
     const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
-    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset,
+    IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2,
+    IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id, Idx total_factors,
+    const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
@@ -435,6 +435,7 @@ class committed_descriptor {
 
   /**
    * Sets the implementation dependant specialization constant value
+   * @tparam T scalar type of the committed descriptor
    * @param top_level implementation to dispatch to
    * @param in_bundle input kernel bundle to set spec constants for
    * @param length length of the fft
@@ -445,14 +446,16 @@ class committed_descriptor {
    * @param level sub implementation to run which will be set as a spec constant
    * @param take_conjugate_on_load whether or not to take conjugate of the input
    * @param take_conjugate_on_store whether or not to take conjugate of the output
+   * @param scale_factor Scale to be applied to the result
    * @param factor_num factor number which is set as a spec constant
    * @param num_factors total number of factors of the committed size, set as a spec constant
    */
+  template <typename T>
   void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
-                          bool take_conjugate_on_load, bool take_conjugate_on_store, Idx factor_num = 0,
+                          bool take_conjugate_on_load, bool take_conjugate_on_store, T scale_factor, Idx factor_num = 0,
                           Idx num_factors = 0) {
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
@@ -464,6 +467,12 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnLoad>(take_conjugate_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnStore>(take_conjugate_on_store);
+    if constexpr (std::is_same_v<T, float>) {
+      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorFloat>(scale_factor);
+    } else {
+      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorDouble>(scale_factor);
+    }
+
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
 
@@ -540,6 +549,7 @@ class committed_descriptor {
 
       if (is_compatible) {
         auto set_specialization_constants = [&](direction compute_direction) -> std::vector<kernel_data_struct> {
+          Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
           std::size_t counter = 0;
           bool take_conjugate_on_load = false;
           bool take_conjugate_on_store = false;
@@ -556,8 +566,8 @@ class committed_descriptor {
                                        std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
                                    factors, detail::elementwise_multiply::NOT_APPLIED,
                                    detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::APPLIED,
-                                   level, take_conjugate_on_load, take_conjugate_on_store, static_cast<Idx>(counter),
-                                   static_cast<Idx>(prepared_vec.size()));
+                                   level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
+                                   static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
                 // reset take_conjugate_on_store
                 take_conjugate_on_store = false;
               } else {
@@ -569,8 +579,8 @@ class committed_descriptor {
                                        std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
                                    factors, detail::elementwise_multiply::NOT_APPLIED,
                                    detail::elementwise_multiply::APPLIED, detail::apply_scale_factor::NOT_APPLIED,
-                                   level, take_conjugate_on_load, take_conjugate_on_store, static_cast<Idx>(counter),
-                                   static_cast<Idx>(prepared_vec.size()));
+                                   level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
+                                   static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
                 // reset take_conjugate_on_load
                 take_conjugate_on_load = false;
               }
@@ -582,7 +592,7 @@ class committed_descriptor {
               set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
                                  detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                                  detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load,
-                                 take_conjugate_on_store);
+                                 take_conjugate_on_store, scale_factor);
             }
             try {
               result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
@@ -1155,7 +1165,7 @@ class committed_descriptor {
     }
     return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
                                params.backward_strides, params.forward_distance, params.backward_distance,
-                               params.forward_offset, params.backward_offset, params.forward_scale, compute_direction);
+                               params.forward_offset, params.backward_offset, compute_direction);
   }
 
   /**
@@ -1178,7 +1188,6 @@ class committed_descriptor {
    * @param output_distance distance between the starts of output data for two consecutive FFTs
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
-   * @param scale_factor scaling factor applied to the result
    * @param compute_direction direction of compute, forward / backward
    * @return sycl::event
    */
@@ -1188,7 +1197,7 @@ class committed_descriptor {
                                   const std::vector<std::size_t>& input_strides,
                                   const std::vector<std::size_t>& output_strides, std::size_t input_distance,
                                   std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
-                                  Scalar scale_factor, direction compute_direction) {
+                                  direction compute_direction) {
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
@@ -1221,7 +1230,7 @@ class committed_descriptor {
     sycl::event previous_event =
         dispatch_kernel_1d(in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size,
                            input_stride_0, output_stride_0, input_distance, output_distance, input_offset,
-                           output_offset, scale_factor, dimensions.back(), compute_direction);
+                           output_offset, dimensions.back(), compute_direction);
     if (n_dimensions == 1) {
       return previous_event;
     }
@@ -1236,8 +1245,8 @@ class committed_descriptor {
       for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
         sycl::event e = dispatch_kernel_1d<TOutConst, TOut>(
             out, out, out_imag, out_imag, previous_events, inner_size, inner_size, inner_size, 1, 1,
-            output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels,
-            static_cast<Scalar>(1.0), dimensions[i], compute_direction);
+            output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels, dimensions[i],
+            compute_direction);
         next_events.push_back(e);
       }
       inner_size *= params.lengths[i];
@@ -1268,7 +1277,6 @@ class committed_descriptor {
    * @param output_distance distance between the starts of output data for two consecutive FFTs
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
-   * @param scale_factor scaling factor applied to the result
    * @param dimension_data data for the dimension this call will work on
    * @param compute_direction direction of compute, forward / backward
    * @return sycl::event
@@ -1278,10 +1286,10 @@ class committed_descriptor {
                                  const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
                                  std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
-                                 Scalar scale_factor, dimension_struct& dimension_data, direction compute_direction) {
+                                 dimension_struct& dimension_data, direction compute_direction) {
     return dispatch_kernel_1d_helper<TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
         in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-        output_distance, input_offset, output_offset, scale_factor, dimension_data, compute_direction);
+        output_distance, input_offset, output_offset, dimension_data, compute_direction);
   }
 
   /**
@@ -1307,7 +1315,6 @@ class committed_descriptor {
    * @param output_distance distance between the starts of output data for two consecutive FFTs
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
-   * @param scale_factor scaling factor applied to the result
    * @param dimension_data data for the dimension this call will work on
    * @param compute_direction direction of compute, forward / backward
    * @return sycl::event
@@ -1317,8 +1324,8 @@ class committed_descriptor {
                                         const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                         std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
                                         std::size_t output_distance, std::size_t input_offset,
-                                        std::size_t output_offset, Scalar scale_factor,
-                                        dimension_struct& dimension_data, direction compute_direction) {
+                                        std::size_t output_offset, dimension_struct& dimension_data,
+                                        direction compute_direction) {
     if (SubgroupSize == dimension_data.used_sg_size) {
       const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
       const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
@@ -1340,23 +1347,23 @@ class committed_descriptor {
       }
       if (input_packed && output_packed) {
         return run_kernel<detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
-            dimension_data, compute_direction);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
+            compute_direction);
       }
       if (input_batch_interleaved && output_packed && in != out) {
         return run_kernel<detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
-            dimension_data, compute_direction);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
+            compute_direction);
       }
       if (input_packed && output_batch_interleaved && in != out) {
         return run_kernel<detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
-            dimension_data, compute_direction);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
+            compute_direction);
       }
       if (input_batch_interleaved && output_batch_interleaved) {
         return run_kernel<detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
-            dimension_data, compute_direction);
+            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
+            compute_direction);
       }
       throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
     }
@@ -1365,7 +1372,7 @@ class committed_descriptor {
     } else {
       return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(
           in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-          output_distance, input_offset, output_offset, scale_factor, dimension_data);
+          output_distance, input_offset, output_offset, dimension_data);
     }
   }
 
@@ -1385,7 +1392,7 @@ class committed_descriptor {
     struct inner {
       static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag,
                                  TOut& out_imag, const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                                 std::size_t forward_offset, std::size_t backward_offset, Scalar scale_factor,
+                                 std::size_t forward_offset, std::size_t backward_offset,
                                  dimension_struct& dimension_data, direction compute_direction);
     };
   };
@@ -1410,7 +1417,6 @@ class committed_descriptor {
    * @param n_transforms number of FT transforms to do in one call
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
-   * @param scale_factor scaling factor applied to the result
    * @param dimension_data data for the dimension this call will work on
    * @param compute_direction direction of fft, forward / backward
    * @return sycl::event
@@ -1418,8 +1424,8 @@ class committed_descriptor {
   template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                          const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                         std::size_t input_offset, std::size_t output_offset, Scalar scale_factor,
-                         dimension_struct& dimension_data, direction compute_direction) {
+                         std::size_t input_offset, std::size_t output_offset, dimension_struct& dimension_data,
+                         direction compute_direction) {
     // mixing const and non-const inputs leads to hard-to-debug linking errors, as both use the same kernel name, but
     // are called from different template instantiations.
     static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>,
@@ -1436,7 +1442,7 @@ class committed_descriptor {
         dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out),
         detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
         static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(vec_multiplier * input_offset),
-        static_cast<IdxGlobal>(vec_multiplier * output_offset), scale_factor, dimension_data, compute_direction);
+        static_cast<IdxGlobal>(vec_multiplier * output_offset), dimension_data, compute_direction);
   }
 };
 
