@@ -534,14 +534,18 @@ class committed_descriptor {
    * @param compute_direction direction of compute, as in forward or backward
    * @param kernel_num which dimension are the kernels being built for
    * @param is_compatible flag to be set if the kernels are compatible
+   * @param set_scale_as_unity whether or not scale factor needs to be set as unity
    * @return
    */
   template <Idx SubgroupSize>
   std::vector<kernel_data_struct> set_specialization_constants(
       detail::level top_level,
       std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>& prepared_vec,
-      direction compute_direction, std::size_t kernel_num, bool& is_compatible) {
+      direction compute_direction, std::size_t kernel_num, bool& is_compatible, bool set_scale_as_unity) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
+    if (set_scale_as_unity) {
+      scale_factor = static_cast<Scalar>(1.0);
+    }
     std::size_t counter = 0;
     bool take_conjugate_on_load = false;
     bool take_conjugate_on_store = false;
@@ -604,10 +608,11 @@ class committed_descriptor {
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
    * @param kernel_num the consecutive number of the kernel to build
+   * @param set_scale_as_unity whether or not scale factor needs to be set as unity
    * @return `dimension_struct` for the newly built kernels
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
-  dimension_struct build_w_spec_const(std::size_t kernel_num) {
+  dimension_struct build_w_spec_const(std::size_t kernel_num, bool set_scale_as_unity) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
       bool is_compatible = true;
@@ -620,9 +625,9 @@ class committed_descriptor {
 
       if (is_compatible) {
         std::vector<kernel_data_struct> forward_kernels = set_specialization_constants<SubgroupSize>(
-            top_level, prepared_vec, direction::FORWARD, kernel_num, is_compatible);
+            top_level, prepared_vec, direction::FORWARD, kernel_num, is_compatible, set_scale_as_unity);
         std::vector<kernel_data_struct> backward_kernels = set_specialization_constants<SubgroupSize>(
-            top_level, prepared_vec, direction::BACKWARD, kernel_num, is_compatible);
+            top_level, prepared_vec, direction::BACKWARD, kernel_num, is_compatible, set_scale_as_unity);
         if (is_compatible) {
           return {forward_kernels, backward_kernels, top_level, params.lengths[kernel_num], SubgroupSize};
         }
@@ -631,7 +636,7 @@ class committed_descriptor {
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
-      return build_w_spec_const<OtherSGSizes...>(kernel_num);
+      return build_w_spec_const<OtherSGSizes...>(kernel_num, set_scale_as_unity);
     }
   }
 
@@ -801,7 +806,11 @@ class committed_descriptor {
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
-      dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
+      bool set_scale_as_unity = false;
+      if (i == n_kernels - 1) {
+        set_scale_as_unity = true;
+      }
+      dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, set_scale_as_unity));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
           calculate_twiddles(dimensions.back().level, dimensions.back().forward_kernels), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
