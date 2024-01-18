@@ -261,6 +261,47 @@ struct global_data_struct {
   }
 };
 
+/**
+ * Prints the message and dumps data from host to standard output
+ *
+ * @tparam T type of element to dump
+ * @param msg message to print
+ * @param dev_ptr USM pointer to data on device
+ * @param size number of elements to dump
+ */
+template <typename T>
+PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
+                              [[maybe_unused]] std::size_t size) {
+#ifdef PORTFFT_LOG_DUMPS
+  std::cout << msg << " ";
+  for (std::size_t i = 0; i < size; i++) {
+    std::cout << host_ptr[i] << ", ";
+  }
+  std::cout << std::endl;
+#endif
+}
+
+/**
+ * Prints the message and dumps data from device to standard output
+ *
+ * @tparam T type of element to dump
+ * @param q queue to use for copying data to host
+ * @param msg message to print
+ * @param dev_ptr USM pointer to data on device
+ * @param size number of elements to dump
+ * @param dependencies dependencies to wait on
+ */
+template <typename T>
+PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
+                                [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
+                                [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
+#ifdef PORTFFT_LOG_DUMPS
+  std::vector<T> tmp(size);
+  q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
+  dump_host(msg, tmp.data(), size);
+#endif
+}
+
 };  // namespace portfft::detail
 
 #endif

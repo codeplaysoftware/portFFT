@@ -238,25 +238,23 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
   std::shared_ptr<OutputFType> device_output;
   std::shared_ptr<RealFType> device_input_imag;
   std::shared_ptr<RealFType> device_output_imag;
-  sycl::event oop_init_event;
-  sycl::event oop_imag_init_event;
-  sycl::event copy_event2;
 
-  auto copy_event = queue.copy(host_input.data(), device_input.get(), host_input.size());
+  std::vector<sycl::event> dependencies{queue.copy(host_input.data(), device_input.get(), host_input.size())};
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
     device_input_imag = make_shared<RealFType>(host_input_imag.size(), queue);
-    copy_event2 = queue.copy(host_input_imag.data(), device_input_imag.get(), host_input_imag.size());
+    dependencies.push_back(queue.copy(host_input_imag.data(), device_input_imag.get(), host_input_imag.size()));
   }
   if (is_oop) {
     device_output = make_shared<OutputFType>(host_output.size(), queue);
-    oop_init_event = queue.copy(host_output.data(), device_output.get(), host_output.size());
+    dependencies.push_back(queue.copy(host_output.data(), device_output.get(), host_output.size()));
     if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
       device_output_imag = make_shared<RealFType>(host_output_imag.size(), queue);
-      oop_imag_init_event = queue.copy(host_output_imag.data(), device_output_imag.get(), host_output_imag.size());
+      dependencies.push_back(queue.copy(host_output_imag.data(), device_output_imag.get(), host_output_imag.size()));
     }
   }
 
-  std::vector<sycl::event> dependencies{copy_event, copy_event2, oop_init_event, oop_imag_init_event};
+  // if a compute function throws, we need to ensure copies are complete before the shared pointers are deallocated
+  queue.wait();
 
   sycl::event fft_event = [&]() {
     if (is_oop) {
@@ -298,9 +296,11 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
                host_output_imag.size(), {fft_event});
   }
   queue.wait_and_throw();
-  verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, "real");
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    verify_dft<Dir, Storage>(desc, host_reference_output_imag, host_output_imag, tolerance, "imaginary");
+    verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, host_reference_output_imag,
+                             host_output_imag);
+  } else {
+    verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance);
   }
 }
 
@@ -373,10 +373,11 @@ std::enable_if_t<TestMemory == test_memory::buffer> check_fft(
       }
     }
   }
-  verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance, "real");
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
-    verify_dft<Dir, Storage>(desc, host_reference_output_imag, is_oop ? host_output_imag : host_input_imag, tolerance,
-                             "imaginary");
+    verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance,
+                             host_reference_output_imag, is_oop ? host_output_imag : host_input_imag);
+  } else {
+    verify_dft<Dir, Storage>(desc, host_reference_output, is_oop ? host_output : host_input, tolerance);
   }
 }
 
@@ -412,7 +413,13 @@ void run_test(const test_params& params) {
   decltype(host_reference_output) host_output(desc.get_output_count(params.dir), padding_value);
   decltype(host_reference_output_imag) host_output_imag(
       Storage == complex_storage::SPLIT_COMPLEX ? desc.get_output_count(params.dir) : 0, padding_value);
-  double tolerance = 1e-3;
+  double n_elems = static_cast<double>(
+      std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>()));
+  // 2 * theoretical max L2 error of Cooley-Tukey
+  double tolerance = 2 * std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
+
+  portfft::detail::dump_host("host_input:", host_input.data(), host_input.size());
+  portfft::detail::dump_host("host_input_imag:", host_input.data(), host_input.size());
 
   try {
     check_fft<TestMemory, Dir, Storage>(queue, desc, host_input, host_output, host_reference_output, host_input_imag,

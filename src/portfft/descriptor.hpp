@@ -44,18 +44,18 @@ template <typename Scalar, domain Domain, direction Dir, detail::layout LayoutIn
           Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(
     const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
-    const Scalar* twiddles_ptr, const IdxGlobal* factors_triple, Scalar scale_factor,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+    TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
+    Scalar scale_factor, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+    IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
+    IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
+    const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
                             const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
-                            Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num,
-                            Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
-                            std::shared_ptr<Scalar>& ptr1, std::shared_ptr<Scalar>& ptr2,
-                            const std::vector<sycl::event>& events);
+                            Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
+                            IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
+                            complex_storage storage);
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -180,18 +180,18 @@ class committed_descriptor {
             Idx SubgroupSize, typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
-      const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple, Scalar1 scale_factor,
-      IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-      IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-      Idx total_factors, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+      TIn input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple,
+      Scalar1 scale_factor, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+      IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
+      IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
+      const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
       const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar1* input,
       TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
-      IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_num, Idx total_factors, IdxGlobal output_offset,
-      sycl::queue& queue, std::shared_ptr<Scalar1>& ptr1, std::shared_ptr<Scalar1>& ptr2,
-      const std::vector<sycl::event>& events);
+      IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
+      const std::vector<sycl::event>& events, complex_storage storage);
 
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -637,6 +637,7 @@ class committed_descriptor {
         std::vector<sycl::kernel_id> ids;
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
                                                                             detail::get_transpose_kernel_ids<Scalar>());
+        in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
             static_cast<Idx>(factors.size()));
@@ -996,7 +997,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
                                const std::vector<sycl::event>& dependencies = {}) {
-    return compute_backward(inout_real, inout_real, inout_imag, inout_imag, dependencies);
+    return compute_backward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
   }
 
   /**

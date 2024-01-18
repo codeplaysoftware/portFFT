@@ -83,7 +83,8 @@ Use the `--help` flag to print help message on the configuration syntax.
 
 portFFT is still in early development. The supported configurations are:
 
-* complex to complex transforms
+* complex-to-complex transforms
+* interleaved complex and split complex (restricted to one dimension) storage
 * single and double precisions
 * forward and backward directions
 * in-place and out-of-place transforms
