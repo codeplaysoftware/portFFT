@@ -241,8 +241,8 @@ class committed_descriptor {
 
     dimension_struct(std::vector<kernel_data_struct> forward_kernels, std::vector<kernel_data_struct> backward_kernels,
                      detail::level level, std::size_t length, Idx used_sg_size)
-        : forward_kernels(forward_kernels),
-          backward_kernels(backward_kernels),
+        : forward_kernels(std::move(forward_kernels)),
+          backward_kernels(std::move(backward_kernels)),
           level(level),
           length(length),
           used_sg_size(used_sg_size) {}
@@ -433,7 +433,6 @@ class committed_descriptor {
 
   /**
    * Sets the implementation dependant specialization constant value
-   * @tparam T scalar type of the committed descriptor
    * @param top_level implementation to dispatch to
    * @param in_bundle input kernel bundle to set spec constants for
    * @param length length of the fft
@@ -448,12 +447,12 @@ class committed_descriptor {
    * @param factor_num factor number which is set as a spec constant
    * @param num_factors total number of factors of the committed size, set as a spec constant
    */
-  template <typename T>
   void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
-                          bool take_conjugate_on_load, bool take_conjugate_on_store, T scale_factor, Idx factor_num = 0,
+                          detail::complex_conjugate take_conjugate_on_load,
+                          detail::complex_conjugate take_conjugate_on_store, Scalar scale_factor, Idx factor_num = 0,
                           Idx num_factors = 0) {
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
@@ -465,7 +464,7 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnLoad>(take_conjugate_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnStore>(take_conjugate_on_store);
-    if constexpr (std::is_same_v<T, float>) {
+    if constexpr (std::is_same_v<Scalar, float>) {
       in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorFloat>(scale_factor);
     } else {
       in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorDouble>(scale_factor);
@@ -525,35 +524,36 @@ class committed_descriptor {
   }
 
   /**
-   * utility function to set specialization constants
+   * Sets the specialization constants for all the kernel_ids contained in the vector
+   * returned from prepare_implementation
    * @tparam SubgroupSize Subgroup size
    * @param top_level selected level of implementation
    * @param prepared_vec vector as returned from prepare_implementation
    * @param compute_direction direction of compute, as in forward or backward
-   * @param kernel_num which dimension are the kernels being built for
+   * @param dimension_num which dimension are the kernels being built for
    * @param is_compatible flag to be set if the kernels are compatible
    * @param set_scale_as_unity whether or not scale factor needs to be set as unity
    * @return
    */
   template <Idx SubgroupSize>
-  std::vector<kernel_data_struct> set_specialization_constants(
+  std::vector<kernel_data_struct> set_spec_constants_driver(
       detail::level top_level,
       std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>& prepared_vec,
-      direction compute_direction, std::size_t kernel_num, bool& is_compatible, bool set_scale_as_unity) {
+      direction compute_direction, std::size_t dimension_num, bool& is_compatible, bool set_scale_as_unity) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
     if (set_scale_as_unity) {
       scale_factor = static_cast<Scalar>(1.0);
     }
     std::size_t counter = 0;
-    bool take_conjugate_on_load = false;
-    bool take_conjugate_on_store = false;
+    auto take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
+    auto take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
     std::vector<kernel_data_struct> result;
     for (auto& [level, ids, factors] : prepared_vec) {
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
       if (top_level == detail::level::GLOBAL) {
         if (counter == prepared_vec.size() - 1) {
           if (compute_direction == direction::BACKWARD) {
-            take_conjugate_on_store = true;
+            take_conjugate_on_store = detail::complex_conjugate::TAKEN;
           }
           set_spec_constants(
               detail::level::GLOBAL, in_bundle,
@@ -562,10 +562,10 @@ class committed_descriptor {
               detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
               static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
           // reset take_conjugate_on_store
-          take_conjugate_on_store = false;
+          take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
         } else {
           if (counter == 0 && compute_direction == direction::BACKWARD) {
-            take_conjugate_on_load = true;
+            take_conjugate_on_load = detail::complex_conjugate::TAKEN;
           }
           set_spec_constants(
               detail::level::GLOBAL, in_bundle,
@@ -574,20 +574,20 @@ class committed_descriptor {
               detail::apply_scale_factor::NOT_APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
               scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
           // reset take_conjugate_on_load
-          take_conjugate_on_load = false;
+          take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
         }
       } else {
         if (compute_direction == direction::BACKWARD) {
-          take_conjugate_on_load = true;
-          take_conjugate_on_store = true;
+          take_conjugate_on_load = detail::complex_conjugate::TAKEN;
+          take_conjugate_on_store = detail::complex_conjugate::TAKEN;
         }
-        set_spec_constants(level, in_bundle, params.lengths[kernel_num], factors,
+        set_spec_constants(level, in_bundle, params.lengths[dimension_num], factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                            detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
                            scale_factor);
       }
       try {
-        result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
+        result.emplace_back(sycl::build(in_bundle), factors, params.lengths[dimension_num], SubgroupSize,
                             PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
       } catch (std::exception& e) {
         std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n" << e.what() << std::endl;
@@ -605,14 +605,14 @@ class committed_descriptor {
    *
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
-   * @param kernel_num the consecutive number of the kernel to build
+   * @param dimension_num The dimension for which the kernels are being built
    * @param set_scale_as_unity whether or not scale factor needs to be set as unity
    * @return `dimension_struct` for the newly built kernels
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
-  dimension_struct build_w_spec_const(std::size_t kernel_num, bool set_scale_as_unity) {
+  dimension_struct build_w_spec_const(std::size_t dimension_num, bool set_scale_as_unity) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
+      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
       for (auto [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
@@ -622,19 +622,19 @@ class committed_descriptor {
       }
 
       if (is_compatible) {
-        std::vector<kernel_data_struct> forward_kernels = set_specialization_constants<SubgroupSize>(
-            top_level, prepared_vec, direction::FORWARD, kernel_num, is_compatible, set_scale_as_unity);
-        std::vector<kernel_data_struct> backward_kernels = set_specialization_constants<SubgroupSize>(
-            top_level, prepared_vec, direction::BACKWARD, kernel_num, is_compatible, set_scale_as_unity);
+        std::vector<kernel_data_struct> forward_kernels = set_spec_constants_driver<SubgroupSize>(
+            top_level, prepared_vec, direction::FORWARD, dimension_num, is_compatible, set_scale_as_unity);
+        std::vector<kernel_data_struct> backward_kernels = set_spec_constants_driver<SubgroupSize>(
+            top_level, prepared_vec, direction::BACKWARD, dimension_num, is_compatible, set_scale_as_unity);
         if (is_compatible) {
-          return {forward_kernels, backward_kernels, top_level, params.lengths[kernel_num], SubgroupSize};
+          return {forward_kernels, backward_kernels, top_level, params.lengths[dimension_num], SubgroupSize};
         }
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
-      return build_w_spec_const<OtherSGSizes...>(kernel_num, set_scale_as_unity);
+      return build_w_spec_const<OtherSGSizes...>(dimension_num, set_scale_as_unity);
     }
   }
 

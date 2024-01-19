@@ -106,8 +106,10 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
-  bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  detail::complex_conjugate take_conjugate_on_load =
+      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
+  detail::complex_conjugate take_conjugate_on_store =
+      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
   T scaling_factor = [&]() {
     if constexpr (std::is_same_v<T, float>) {
       return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
