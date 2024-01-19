@@ -810,7 +810,7 @@ class committed_descriptor {
       if (i == n_kernels - 1) {
         set_scale_as_unity = false;
       }
-      dimensions.push_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, set_scale_as_unity));
+      dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, set_scale_as_unity));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
           calculate_twiddles(dimensions.back().level, dimensions.back().forward_kernels), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
