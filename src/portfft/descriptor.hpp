@@ -1186,9 +1186,14 @@ class committed_descriptor {
           "To use interface with interleaved real and imaginary values, descriptor.complex_storage must be set to "
           "INTERLEAVED_COMPLEX.");
     }
-    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
-                               params.backward_strides, params.forward_distance, params.backward_distance,
-                               params.forward_offset, params.backward_offset, compute_direction);
+    if (compute_direction == direction::FORWARD) {
+      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
+                                 params.backward_strides, params.forward_distance, params.backward_distance,
+                                 params.forward_offset, params.backward_offset, compute_direction);
+    }
+    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_strides,
+                               params.forward_strides, params.backward_distance, params.forward_distance,
+                               params.backward_offset, params.forward_offset, compute_direction);
   }
 
   /**
