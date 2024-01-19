@@ -1395,7 +1395,7 @@ class committed_descriptor {
     } else {
       return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(
           in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-          output_distance, input_offset, output_offset, dimension_data);
+          output_distance, input_offset, output_offset, dimension_data, compute_direction);
     }
   }
 
