@@ -31,23 +31,26 @@ namespace detail {
  * Implements Tiled transpose for complex inputs of arbitrary size in global memory.
  * Assumes the input in INTERLEAVED_COMPLEX storage. Works out of place
  *
+ * @tparam VecSize Size of each matrix element
  * @tparam T Scalar input type
  * @param N Number of input rows
  * @param M Number of input columns
  * @param tile_size Tile Size
  * @param input Input pointer
  * @param output Output Pointer
- * @param loc 2D local memory accessor of size {tile_size, 2 * tile_size}
+ * @param loc 2D local memory accessor of size {tile_size, VecSize * tile_size}
  * @param global_data global data for the kernel
  */
-template <typename T>
+template <int VecSize = 2, typename T>
 PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_size, const T* input, T* output,
                                              const sycl::local_accessor<T, 2>& loc,
                                              detail::global_data_struct<2> global_data) {
-  using T_vec = sycl::vec<T, 2>;
+  static_assert(VecSize <= 2, "VecSize must be either 1 or 2.");
+  using T_vec = sycl::vec<T, VecSize>;
   T_vec priv;
   IdxGlobal rounded_up_n = detail::round_up_to_multiple(N, static_cast<IdxGlobal>(tile_size));
   IdxGlobal rounded_up_m = detail::round_up_to_multiple(M, static_cast<IdxGlobal>(tile_size));
+  global_data.log_message_global("VecSize: ", VecSize);
   global_data.log_message_global(__func__, "Entered transpose function with lda: ", M, "ldb: ", N,
                                  "which are rounded up to: ", rounded_up_n, ", ", rounded_up_m);
   IdxGlobal start_y = static_cast<IdxGlobal>(global_data.it.get_group(1));
@@ -66,9 +69,14 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
       IdxGlobal j = tile_id_x + tid_x;
 
       if (i < N && j < M) {
-        priv.load(0, detail::get_global_multi_ptr(&input[2 * i * M + 2 * j]));
-        loc[global_data.it.get_local_id(0)][2 * global_data.it.get_local_id(1)] = priv[0];
-        loc[global_data.it.get_local_id(0)][2 * global_data.it.get_local_id(1) + 1] = priv[1];
+        priv.load(0, detail::get_global_multi_ptr(&input[VecSize * (i * M + j)]));
+        loc[global_data.it.get_local_id(0)][VecSize * global_data.it.get_local_id(1)] = priv[0];
+        global_data.log_message(__func__, "loaded data", priv, "from global index: ", VecSize * (i * M + j),
+                                " and storing it to local index: ", global_data.it.get_local_id(0), ", ",
+                                VecSize * global_data.it.get_local_id(1));
+        if constexpr (VecSize > 1) {
+          loc[global_data.it.get_local_id(0)][VecSize * global_data.it.get_local_id(1) + 1] = priv[1];
+        }
       }
       sycl::group_barrier(global_data.it.get_group());
 
@@ -76,12 +84,14 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
       IdxGlobal j_transposed = tile_id_y + tid_x;
 
       if (j_transposed < N && i_transposed < M) {
-        priv[0] = loc[global_data.it.get_local_id(1)][2 * global_data.it.get_local_id(0)];
-        priv[1] = loc[global_data.it.get_local_id(1)][2 * global_data.it.get_local_id(0) + 1];
-        priv.store(0, detail::get_global_multi_ptr(&output[2 * i_transposed * N + 2 * j_transposed]));
-        global_data.log_message_scoped<detail::level::WORKITEM>(
-            __func__, "loaded data from global index: ", 2 * i * M + 2 * j,
-            " and storing it to global index: ", 2 * i_transposed * N + 2 * j_transposed);
+        priv[0] = loc[global_data.it.get_local_id(1)][VecSize * global_data.it.get_local_id(0)];
+        if constexpr (VecSize > 1) {
+          priv[1] = loc[global_data.it.get_local_id(1)][VecSize * global_data.it.get_local_id(0) + 1];
+        }
+        priv.store(0, detail::get_global_multi_ptr(&output[VecSize * i_transposed * N + VecSize * j_transposed]));
+        global_data.log_message(__func__, "stored data", priv, "from local index: ", global_data.it.get_local_id(1),
+                                ", ", VecSize * global_data.it.get_local_id(0), " and storing it to global index: ",
+                                VecSize * i_transposed * N + VecSize * j_transposed);
       }
       // TODO: This barrier should not required, use double buffering. Preferably use portBLAS
       sycl::group_barrier(global_data.it.get_group());

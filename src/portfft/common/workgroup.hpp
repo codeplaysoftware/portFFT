@@ -72,6 +72,7 @@ namespace detail {
  * @param dft_size Size of each DFT to calculate
  * @param stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @param ndfts_in_outer_dimension Number of DFTs in outer dimension
+ * @param storage complex storage: interleaved or split
  * @param layout_in Input Layout
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
@@ -84,10 +85,10 @@ template <Idx SubgroupSize, typename LocalT, typename T>
 __attribute__((always_inline)) inline void dimension_dft(
     LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor, Idx max_num_batches_in_local_mem,
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
-    Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, detail::layout layout_in,
-    detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
-    detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load, bool take_conjugate_on_store,
-    global_data_struct<1> global_data) {
+    Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, complex_storage storage,
+    detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
+    detail::elementwise_multiply multiply_on_store, detail::apply_scale_factor apply_scale_factor,
+    bool take_conjugate_on_load, bool take_conjugate_on_store, global_data_struct<1> global_data) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
@@ -108,6 +109,9 @@ __attribute__((always_inline)) inline void dimension_dft(
   const Idx fft_in_subgroup = static_cast<Idx>(global_data.sg.get_local_linear_id()) / fact_sg;
   // id of the work-item in the fft
   const Idx wi_id_in_fft = static_cast<Idx>(global_data.sg.get_local_linear_id()) % fact_sg;
+  // size of the workgroup dft that has been factored down into this dft - important only for local imag offset
+  const Idx wg_dft_size = dft_size * stride_within_dft * ndfts_in_outer_dimension;
+  const Idx local_imag_offset = wg_dft_size * max_num_batches_in_local_mem;
 
 #ifdef PORTFFT_USE_SCLA
   T wi_private_scratch[detail::SpecConstWIScratchSize];
@@ -136,7 +140,6 @@ __attribute__((always_inline)) inline void dimension_dft(
   for (Idx j = begin; j < end; j += step) {
     Idx j_inner = j % stride_within_dft;
     Idx j_outer = j / stride_within_dft;
-    auto loc_start_view = offset_view(loc, 2 * j_outer * outer_stride);
     bool working = true;
     if (excess_sgs) {
       working = j < total_dfts;
@@ -147,16 +150,42 @@ __attribute__((always_inline)) inline void dimension_dft(
     if (working) {
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
-        detail::strided_view local_view{
-            loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
-            std::array{2 * wi_id_in_fft * fact_wi, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
-        copy_wi<2>(global_data, local_view, priv, fact_wi);
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view local_view{
+              loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
+              std::array{2 * wi_id_in_fft * fact_wi, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
+          copy_wi<2>(global_data, local_view, priv, fact_wi);
+        } else {
+          detail::strided_view local_real_view{
+              loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
+              std::array{wi_id_in_fft * fact_wi, j_inner + j_outer * outer_stride, batch_num_in_local}};
+          detail::strided_view local_imag_view{loc, std::array{1, stride_within_dft, max_num_batches_in_local_mem},
+                                               std::array{wi_id_in_fft * fact_wi, j_inner + j_outer * outer_stride,
+                                                          batch_num_in_local + local_imag_offset}};
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          copy_wi(global_data, local_real_view, priv_real_view, fact_wi);
+          copy_wi(global_data, local_imag_view, priv_imag_view, fact_wi);
+        }
       } else {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         // transposition due to working on columns
-        detail::strided_view local_view{loc_start_view, std::array{1, stride_within_dft},
-                                        std::array{2 * fact_wi * wi_id_in_fft, 2 * j_inner}};
-        copy_wi<2>(global_data, local_view, priv, fact_wi);
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view local_view{
+              loc, std::array{1, stride_within_dft},
+              std::array{2 * fact_wi * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride)}};
+          copy_wi<2>(global_data, local_view, priv, fact_wi);
+        } else {
+          detail::strided_view local_real_view{loc, std::array{1, stride_within_dft},
+                                               std::array{fact_wi * wi_id_in_fft, j_inner + j_outer * outer_stride}};
+          detail::strided_view local_imag_view{
+              loc, std::array{1, stride_within_dft},
+              std::array{fact_wi * wi_id_in_fft, j_inner + j_outer * outer_stride + local_imag_offset}};
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          copy_wi(global_data, local_real_view, priv_real_view, fact_wi);
+          copy_wi(global_data, local_imag_view, priv_imag_view, fact_wi);
+        }
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * fact_wi);
 
@@ -221,16 +250,41 @@ __attribute__((always_inline)) inline void dimension_dft(
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
-        detail::strided_view local_view{
-            loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
-            std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
-        copy_wi<2>(global_data, priv, local_view, fact_wi);
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view local_view{
+              loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
+              std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride), 2 * batch_num_in_local}};
+          copy_wi<2>(global_data, priv, local_view, fact_wi);
+        } else {
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          detail::strided_view local_real_view{
+              loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
+              std::array{wi_id_in_fft, j_inner + j_outer * outer_stride, batch_num_in_local}};
+          detail::strided_view local_imag_view{
+              loc, std::array{fact_sg, stride_within_dft, max_num_batches_in_local_mem},
+              std::array{wi_id_in_fft, j_inner + j_outer * outer_stride, batch_num_in_local + local_imag_offset}};
+          copy_wi(global_data, priv_real_view, local_real_view, fact_wi);
+          copy_wi(global_data, priv_imag_view, local_imag_view, fact_wi);
+        }
       } else {
         global_data.log_message_global(__func__, "storing non-transposed data from private to local memory");
         // transposition due to working on columns AND transposition for SG dft
-        detail::strided_view local_view{loc, std::array{fact_sg, stride_within_dft},
-                                        std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride)}};
-        copy_wi<2>(global_data, priv, local_view, fact_wi);
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view local_view{loc, std::array{fact_sg, stride_within_dft},
+                                          std::array{2 * wi_id_in_fft, 2 * (j_inner + j_outer * outer_stride)}};
+          copy_wi<2>(global_data, priv, local_view, fact_wi);
+        } else {
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          detail::strided_view local_real_view{loc, std::array{fact_sg, stride_within_dft},
+                                               std::array{wi_id_in_fft, j_inner + j_outer * outer_stride}};
+          detail::strided_view local_imag_view{
+              loc, std::array{fact_sg, stride_within_dft},
+              std::array{wi_id_in_fft, j_inner + j_outer * outer_stride + local_imag_offset}};
+          copy_wi(global_data, priv_real_view, local_real_view, fact_wi);
+          copy_wi(global_data, priv_imag_view, local_imag_view, fact_wi);
+        }
       }
     }
   }
@@ -257,6 +311,7 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param fft_size Problem Size
  * @param N Smaller factor of the Problem size
  * @param M Larger factor of the problem size
+ * @param storage complex storage: interleaved or split
  * @param layout_in Whether or not the input is transposed
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
@@ -269,7 +324,8 @@ template <Idx SubgroupSize, typename LocalT, typename T>
 PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                            Idx max_num_batches_in_local_mem, Idx batch_num_in_local, IdxGlobal batch_num_in_kernel,
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
-                           detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
+                           complex_storage storage, detail::layout layout_in,
+                           detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
                            detail::apply_scale_factor apply_scale_factor, bool take_conjugate_on_load,
                            bool take_conjugate_on_store, detail::global_data_struct<1> global_data) {
@@ -279,14 +335,14 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
   // column-wise DFTs
   detail::dimension_dft<SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
-      store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
+      store_modifier_data, batch_num_in_kernel, N, M, 1, storage, layout_in, multiply_on_load,
       detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, take_conjugate_on_load, false,
       global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<SubgroupSize, LocalT, T>(loc, loc_twiddles, wg_twiddles, scaling_factor,
                                                  max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
-                                                 store_modifier_data, batch_num_in_kernel, M, 1, N, layout_in,
+                                                 store_modifier_data, batch_num_in_kernel, M, 1, N, storage, layout_in,
                                                  detail::elementwise_multiply::NOT_APPLIED, multiply_on_store,
                                                  apply_scale_factor, false, take_conjugate_on_store, global_data);
   global_data.log_message_global(__func__, "exited");
