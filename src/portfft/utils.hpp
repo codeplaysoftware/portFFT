@@ -42,39 +42,34 @@ class transpose_kernel;
  * @tparam SubgroupSize size of the subgroup
  * @return vector of kernel ids
  */
-template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
+template <template <typename, domain, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                \
-  try {                                                                                                         \
-    ids.push_back(                                                                                              \
-        sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, SubgroupSize>>()); \
-  } catch (...) {                                                                                               \
+#define PORTFFT_GET_ID(MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                          \
+  try {                                                                                                        \
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, MEMORY, LAYOUT_IN, LAYOUT_OUT, SubgroupSize>>()); \
+  } catch (...) {                                                                                              \
   }
 
-#define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, LAYOUT_IN) \
-  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED)   \
-  PORTFFT_GET_ID(DIR, MEM, LAYOUT_IN, layout::PACKED)
+#define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, LAYOUT_IN) \
+  PORTFFT_GET_ID(MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED)   \
+  PORTFFT_GET_ID(MEM, LAYOUT_IN, layout::PACKED)
 
-#define INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, MEM)                          \
-  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, layout::BATCH_INTERLEAVED) \
-  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, layout::PACKED)
+#define INSTANTIATE_MEM_LAYOUTS_MODIFIERS(MEM)                          \
+  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, layout::BATCH_INTERLEAVED) \
+  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, layout::PACKED)
 
 #ifdef PORTFFT_ENABLE_BUFFER_BUILDS
-#define INSTANTIATE_DIRECTION_MEM_LAYOUTS(DIR)        \
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::USM) \
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::BUFFER)
+  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::USM)
+  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::BUFFER)
 #else
-#define INSTANTIATE_DIRECTION_MEM_LAYOUTS(DIR) INSTANTIATE_MEM_LAYOUTS_MODIFIERS(DIR, memory::USM)
+  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::USM)
 #endif
 
-  INSTANTIATE_DIRECTION_MEM_LAYOUTS(direction::FORWARD)
-  INSTANTIATE_DIRECTION_MEM_LAYOUTS(direction::BACKWARD)
 #undef PORTFFT_GET_ID
 #undef INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS
 #undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
-#undef INSTANTIATE_DIRECTION_MEM_LAYOUTS
   return ids;
 }
 

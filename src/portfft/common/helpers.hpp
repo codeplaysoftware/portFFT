@@ -187,12 +187,12 @@ PORTFFT_INLINE constexpr Idx int_log2(Idx x) {
  * Takes the conjugate of the complex data in private array
  * @tparam T Scalar type
  * @param priv pointer to the data in registers
- * @param num_elements number of complex numbers in the private memory
+ * @param num_complex number of complex numbers in the private memory
  */
 template <typename T>
-PORTFFT_INLINE void take_conjugate(T* priv, Idx num_elements) {
+PORTFFT_INLINE void take_conjugate_inplace(T* priv, Idx num_complex) {
   PORTFFT_UNROLL
-  for (Idx i = 0; i < num_elements; i++) {
+  for (Idx i = 0; i < num_complex; i++) {
     priv[2 * i + 1] *= -1;
   }
 }

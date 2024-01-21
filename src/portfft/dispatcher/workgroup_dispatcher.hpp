@@ -76,7 +76,6 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
 /**
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
- * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
@@ -86,41 +85,49 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
  * @param output accessor or pointer to global memory for output data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * @param input_imag accessor or pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage
- * (from `SpecConstComplexStorage`) is split. Otherwise unused.
+ * @param output_imag accessor or pointer to global memory containing imaginary part of the input data if complex
+ * storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param loc Pointer to local memory
  * @param loc_twiddles pointer to local allocation for subgroup level twiddles
  * @param n_transforms number of fft batches
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch
  * @param twiddles Pointer to twiddles in the global memory
- * @param scaling_factor scaling factor applied to the result
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
-PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_imag*/, T* /*output_imag*/, T* loc,
-                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
+template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
+PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
+                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles,
                                    global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                    const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
-  // complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  bool take_conjugate_on_load = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
-  bool take_conjugate_on_store = kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  detail::complex_conjugate take_conjugate_on_load =
+      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
+  detail::complex_conjugate take_conjugate_on_store =
+      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  T scaling_factor = [&]() {
+    if constexpr (std::is_same_v<T, float>) {
+      return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
+    } else {
+      return kh.get_specialization_constant<detail::SpecConstScaleFactorDouble>();
+    }
+  }();
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   Idx num_workgroups = static_cast<Idx>(global_data.it.get_group_range(0));
   Idx wg_id = static_cast<Idx>(global_data.it.get_group(0));
-  IdxGlobal max_global_offset = 2 * (n_transforms - 1) * fft_size;
 
   Idx factor_n = detail::factorize(fft_size);
   Idx factor_m = fft_size / factor_n;
+  const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   const T* wg_twiddles = twiddles + 2 * (factor_m + factor_n);
   const Idx bank_lines_per_pad = detail::bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(T)) * factor_m);
   auto loc_view = padded_view(loc, bank_lines_per_pad);
@@ -131,72 +138,142 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
 
   Idx max_num_batches_in_local_mem =
       get_num_batches_in_local_mem_workgroup<LayoutIn>(static_cast<Idx>(global_data.it.get_local_range(0)));
-  Idx max_reals_in_local_memory = 2 * fft_size * max_num_batches_in_local_mem;
-  IdxGlobal global_offset = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_reals_in_local_memory);
-  IdxGlobal offset_increment =
-      static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_reals_in_local_memory);
-  for (IdxGlobal offset = global_offset; offset <= max_global_offset; offset += offset_increment) {
+
+  IdxGlobal first_batch_start = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
+  IdxGlobal num_batches_in_kernel =
+      static_cast<IdxGlobal>(num_workgroups) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
+  Idx local_imag_offset = fft_size * max_num_batches_in_local_mem;
+
+  for (IdxGlobal batch_start_idx = first_batch_start; batch_start_idx < n_transforms;
+       batch_start_idx += num_batches_in_kernel) {
+    IdxGlobal offset = static_cast<IdxGlobal>(vec_size * fft_size) * batch_start_idx;
     if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
       /**
-       * In the transposed case, the data is laid out in the local memory column-wise, veiwing it as a FFT_Size x
+       * In the transposed case, the data is laid out in the local memory column-wise, viewing it as a FFT_Size x
        * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
        * / 2 consecutive batches into the local memory
        */
-      const IdxGlobal batch_start_idx = offset / static_cast<IdxGlobal>(2 * fft_size);
       const Idx num_batches_in_local_mem =
           std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, offset / fft_size};
-      detail::md_view loc_md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}};
-      copy_group<level::WORKGROUP>(global_data, input_view, loc_md_view,
-                                   std::array{fft_size, 2 * num_batches_in_local_mem});
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * batch_start_idx};
+        detail::md_view loc_md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}};
+        copy_group<level::WORKGROUP>(global_data, input_view, loc_md_view,
+                                     std::array{fft_size, 2 * num_batches_in_local_mem});
+      } else {  // storage == complex_storage::SPLIT_COMPLEX
+        detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, batch_start_idx};
+        detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)},
+                                        batch_start_idx};
+        detail::md_view loc_real_view{loc_view, std::array{max_num_batches_in_local_mem, 1}};
+        detail::md_view loc_imag_view{loc_view, std::array{max_num_batches_in_local_mem, 1}, local_imag_offset};
+        copy_group<level::WORKGROUP>(global_data, input_real_view, loc_real_view,
+                                     std::array{fft_size, num_batches_in_local_mem});
+        copy_group<level::WORKGROUP>(global_data, input_imag_view, loc_imag_view,
+                                     std::array{fft_size, num_batches_in_local_mem});
+      }
       sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
-                                  sub_batch, offset / (2 * fft_size), load_modifier_data, store_modifier_data, fft_size,
-                                  factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
-                                  take_conjugate_on_load, take_conjugate_on_store, global_data);
+        wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
+                             sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n,
+                             factor_m, storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
+                             take_conjugate_on_load, take_conjugate_on_store, global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
         global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
-        detail::md_view loc_md_view2{
-            loc_view, std::array{2, 1, 2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m}};
-        detail::md_view output_view{output, std::array{2 * fft_size, 1, 2 * factor_n, 2}, offset};
-        copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
-                                     std::array{num_batches_in_local_mem, 2, factor_m, factor_n});
-      } else {
-        detail::md_view loc_md_view2{
-            loc_view, std::array{2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m, 1}};
-        detail::md_view output_view{
-            output, std::array{2 * n_transforms * factor_n, 2 * n_transforms, static_cast<IdxGlobal>(1)},
-            2 * batch_start_idx};
-        copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
-                                     std::array{factor_m, factor_n, 2 * num_batches_in_local_mem});
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::md_view loc_md_view2{loc_view, std::array{2, 1, 2 * max_num_batches_in_local_mem,
+                                                            2 * max_num_batches_in_local_mem * factor_m}};
+          detail::md_view output_view{output, std::array{2 * fft_size, 1, 2 * factor_n, 2}, offset};
+          copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
+                                       std::array{num_batches_in_local_mem, 2, factor_m, factor_n});
+        } else {  // storage == complex_storage::SPLIT_COMPLEX
+          detail::md_view loc_real_view{
+              loc_view, std::array{1, max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m}};
+          detail::md_view loc_imag_view{
+              loc_view, std::array{1, max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m},
+              local_imag_offset};
+          detail::md_view output_real_view{output, std::array{fft_size, factor_n, 1}, offset};
+          detail::md_view output_imag_view{output_imag, std::array{fft_size, factor_n, 1}, offset};
+          copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view,
+                                       std::array{num_batches_in_local_mem, factor_m, factor_n});
+          copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view,
+                                       std::array{num_batches_in_local_mem, factor_m, factor_n});
+        }
+      } else {  // LayoutOut == detail::layout::BATCH_INTERLEAVED
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::md_view loc_md_view2{
+              loc_view, std::array{2 * max_num_batches_in_local_mem, 2 * max_num_batches_in_local_mem * factor_m, 1}};
+          detail::md_view output_view{
+              output, std::array{2 * n_transforms * factor_n, 2 * n_transforms, static_cast<IdxGlobal>(1)},
+              2 * batch_start_idx};
+          copy_group<level::WORKGROUP>(global_data, loc_md_view2, output_view,
+                                       std::array{factor_m, factor_n, 2 * num_batches_in_local_mem});
+        } else {  // storage == complex_storage::SPLIT_COMPLEX
+          detail::md_view loc_real_view{
+              loc_view, std::array{max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m, 1}};
+          detail::md_view loc_imag_view{
+              loc_view, std::array{max_num_batches_in_local_mem, max_num_batches_in_local_mem * factor_m, 1},
+              local_imag_offset};
+          detail::md_view output_real_view{
+              output, std::array{n_transforms * factor_n, n_transforms, static_cast<IdxGlobal>(1)}, batch_start_idx};
+          detail::md_view output_imag_view{output_imag,
+                                           std::array{n_transforms * factor_n, n_transforms, static_cast<IdxGlobal>(1)},
+                                           batch_start_idx};
+          copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view,
+                                       std::array{factor_m, factor_n, num_batches_in_local_mem});
+          copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view,
+                                       std::array{factor_m, factor_n, num_batches_in_local_mem});
+        }
       }
       sycl::group_barrier(global_data.it.get_group());
-    } else {
+    } else {  // LayoutIn == detail::layout::PACKED
       global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * fft_size, offset);
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * fft_size, offset);
+      } else {
+        global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, fft_size, offset);
+        global2local<level::WORKGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size, offset,
+                                                     local_imag_offset);
+      }
       sycl::group_barrier(global_data.it.get_group());
-      wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
-                                offset / static_cast<IdxGlobal>(2 * fft_size), load_modifier_data, store_modifier_data,
-                                fft_size, factor_n, factor_m, LayoutIn, multiply_on_load, multiply_on_store,
-                                apply_scale_factor, take_conjugate_on_load, take_conjugate_on_store, global_data);
+      wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
+                           batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
+                           storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
+                           take_conjugate_on_load, take_conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
       if (LayoutOut == detail::layout::PACKED) {
-        detail::md_view local_md_view2{loc_view, std::array{1, 2, 2 * factor_m}};
-        detail::md_view output_view{output, std::array{1, 2 * factor_n, 2}, offset};
-        copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{2, factor_m, factor_n});
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::md_view local_md_view2{loc_view, std::array{1, 2, 2 * factor_m}};
+          detail::md_view output_view{output, std::array{1, 2 * factor_n, 2}, offset};
+          copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{2, factor_m, factor_n});
+        } else {
+          detail::md_view loc_real_view{loc_view, std::array{1, factor_m}};
+          detail::md_view loc_imag_view{loc_view, std::array{1, factor_m}, local_imag_offset};
+          detail::md_view output_real_view{output, std::array{factor_n, 1}, offset};
+          detail::md_view output_imag_view{output_imag, std::array{factor_n, 1}, offset};
+          copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view, std::array{factor_m, factor_n});
+          copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view, std::array{factor_m, factor_n});
+        }
       } else {
-        IdxGlobal current_batch = offset / static_cast<IdxGlobal>(2 * fft_size);
-        detail::md_view local_md_view2{loc_view, std::array{2, 1, 2 * factor_m}};
-        detail::md_view output_view{
-            output, std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms},
-            2 * current_batch};
-        copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{factor_m, 2, factor_n});
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::md_view local_md_view2{loc_view, std::array{2, 1, 2 * factor_m}};
+          detail::md_view output_view{
+              output, std::array{2 * factor_n * n_transforms, static_cast<IdxGlobal>(1), 2 * n_transforms},
+              2 * batch_start_idx};
+          copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, std::array{factor_m, 2, factor_n});
+        } else {
+          detail::md_view loc_real_view{loc_view, std::array{1, factor_m}};
+          detail::md_view loc_imag_view{loc_view, std::array{1, factor_m}, local_imag_offset};
+          detail::md_view output_real_view{output, std::array{factor_n * n_transforms, n_transforms}, batch_start_idx};
+          detail::md_view output_imag_view{output_imag, std::array{factor_n * n_transforms, n_transforms},
+                                           batch_start_idx};
+          copy_group<level::WORKGROUP>(global_data, loc_real_view, output_real_view, std::array{factor_m, factor_n});
+          copy_group<level::WORKGROUP>(global_data, loc_imag_view, output_imag_view, std::array{factor_m, factor_n});
+        }
       }
       sycl::group_barrier(global_data.it.get_group());
     }
@@ -206,16 +283,16 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* /*input_i
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
-          typename TOut>
+template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
-                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data) {
-    auto& kernel_data = dimension_data.kernels.at(0);
+                             IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
+                             direction compute_direction) {
+    auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
+                                                                : dimension_data.backward_kernels.at(0);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return kernel_data.used_sg_size * PORTFFT_SGS_IN_WG / 2;
@@ -243,9 +320,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
 #ifdef PORTFFT_LOG
-      sycl::stream s{1024 * 16, 1024, cgh};
+      sycl::stream s{1024 * 16 * 8 * 2, 1024, cgh};
 #endif
-      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
@@ -254,10 +331,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running workgroup kernel");
-            detail::workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+            detail::workgroup_impl<SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0],
-                &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
+                &loc[0] + sg_twiddles_offset, n_transforms, twiddles, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });
     });
@@ -295,8 +372,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
-    const auto& kernel_data = dimension_data.kernels.at(0);
+  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
+    const auto& kernel_data = kernels.at(0);
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];

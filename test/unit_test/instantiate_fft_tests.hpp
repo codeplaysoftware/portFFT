@@ -62,6 +62,8 @@ auto all_valid_multi_dim_placement_layouts = ::testing::ValuesIn(valid_multi_dim
 
 auto ip_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::IN_PLACE, detail::layout::PACKED, detail::layout::PACKED});
+auto ip_batch_interleaved_layout = ::testing::Values(test_placement_layouts_params{
+    placement::IN_PLACE, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED});
 
 auto oop_packed_layout = ::testing::Values(
     test_placement_layouts_params{placement::OUT_OF_PLACE, detail::layout::PACKED, detail::layout::PACKED});
@@ -99,37 +101,43 @@ INSTANTIATE_TEST_SUITE_P(SubgroupTest, FFTTest,
                              all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3, 555),
                              ::testing::Values(sizes_t{64}, sizes_t{96}, sizes_t{128}))),
                          test_params_print());
+// sizes that use subgroup implementation
+INSTANTIATE_TEST_SUITE_P(SubgroupRegressionTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             ip_batch_interleaved_layout, fwd_only, interleaved_storage, ::testing::Values(44, 100),
+                             ::testing::Values(sizes_t{80}, sizes_t{100}))),
+                         test_params_print());
 // sizes that might use subgroup or workgroup implementation depending on device
 // and configurations
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 131),
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 131),
                              ::testing::Values(sizes_t{256}, sizes_t{512}, sizes_t{1024}))),
                          test_params_print());
 // Regression test where subgroup or workgroup implemention depended on correct local memory requirement calcs.
 INSTANTIATE_TEST_SUITE_P(SubgroupOrWorkgroupRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
-                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(131),
-                                                ::testing::Values(sizes_t{1536}))),
+                             ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage,
+                                                ::testing::Values(1, 131), ::testing::Values(sizes_t{1536}))),
                          test_params_print());
 // sizes that use workgroup implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2048}, sizes_t{3072}, sizes_t{4096}))),
                          test_params_print());
 
 // Sizes that can use either workgroup or Global implementation
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobal, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_global_placement_layouts, fwd_only, interleaved_storage,
-                             ::testing::Values(1, 128), ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
+                             all_valid_global_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 128),
+                             ::testing::Values(sizes_t{8192}, sizes_t{16384}))),
                          test_params_print());
 
 // Sizes that use the global implementations
 INSTANTIATE_TEST_SUITE_P(GlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_global_placement_layouts, fwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{32768}, sizes_t{65536}, sizes_t{131072}))),
                          test_params_print());
 
@@ -142,13 +150,13 @@ INSTANTIATE_TEST_SUITE_P(PrimeSizedTest, FFTTest,
 INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(
                              ::testing::Combine(ip_packed_layout, fwd_only, interleaved_storage, ::testing::Values(3),
-                                                ::testing::Values(sizes_t{9800}, sizes_t{15360}))),
+                                                ::testing::Values(sizes_t{9800}, sizes_t{15360}, sizes_t{68640}))),
                          test_params_print());
 
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_placement_layouts, bwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{8}, sizes_t{9}, sizes_t{16}, sizes_t{32}, sizes_t{64},
                                                sizes_t{4096}))),
                          test_params_print());
@@ -157,14 +165,14 @@ INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
 // TODO: move these into the BackwardTest once the global impl supports strided layout
 INSTANTIATE_TEST_SUITE_P(BackwardGlobalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_global_placement_layouts, bwd_only, interleaved_storage, ::testing::Values(1, 3),
+                             all_valid_global_placement_layouts, bwd_only, complex_storages, ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{32768}, sizes_t{65536}))),
                          test_params_print());
 
 // Multidimensional FFT test suite
 INSTANTIATE_TEST_SUITE_P(MultidimensionalTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
-                             all_valid_multi_dim_placement_layouts, both_directions, interleaved_storage,
+                             all_valid_multi_dim_placement_layouts, both_directions, complex_storages,
                              ::testing::Values(1, 3),
                              ::testing::Values(sizes_t{2, 4}, sizes_t{4, 2}, sizes_t{16, 512}, sizes_t{64, 2048},
                                                sizes_t{2, 3, 6}, sizes_t{2, 3, 2, 3}))),

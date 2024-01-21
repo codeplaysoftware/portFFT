@@ -21,6 +21,7 @@
 #ifndef PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 #define PORTFFT_COMMON_REFERENCE_DATA_WRANGLER_HPP
 
+#include <cerrno>
 #include <complex>
 #include <cstdio>
 #include <exception>
@@ -91,11 +92,11 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
       "  inData = rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
       "  if (is_complex):\n"
       "    inData = inData + 1j * rng.uniform(-1, 1, dataGenDims).astype(scalar_type)\n"
-      "  outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
-      "  inData.reshape(-1, 1)\n"
-      "  outData.reshape(-1, 1)\n"
-      "  inData = inData.astype(complex_type)\n"
+      "    outData = np.fft.fftn(inData, axes=range(1, len(dims) + 1))\n"
+      "  else:\n"
+      "    outData = np.fft.rfftn(inData, axes=range(1, len(dims) + 1))\n"
       "  outData = outData.astype(complex_type)\n"
+      "  # input and output shape is irrelevant when outputting the buffer\n"
       "  stdout.buffer.write(inData.tobytes())\n"
       "  stdout.buffer.write(outData.tobytes())\n"
       "gen_data(";
@@ -125,7 +126,9 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   auto process_close_func = [](FILE* f) {
     if (pclose(f) != 0) {
-      throw std::runtime_error("failed to close validation sub-process");
+      // Note: strerror may output "Operation not supported" if the process is closed and we have not read all of its
+      // output with std::fread
+      throw std::runtime_error("failed to close validation sub-process, errno:" + std::string(std::strerror(errno)));
     }
   };
   std::unique_ptr<FILE, decltype(process_close_func)> file_closer(f, process_close_func);
@@ -195,13 +198,15 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   std::vector<Scalar> backward_imag;
 
   if constexpr (!IsInterleaved) {
-    if (!IsRealDomain) {
+    if constexpr (!IsRealDomain) {
       forward_real.reserve(forward.size());
       forward_imag.reserve(forward.size());
       for (auto el : forward) {
         forward_real.push_back(el.real());
         forward_imag.push_back(el.imag());
       }
+    } else {
+      forward_real = std::move(forward);
     }
     backward_real.reserve(backward.size());
     backward_imag.reserve(backward.size());
@@ -240,9 +245,10 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
  **/
 template <portfft::direction Dir, portfft::complex_storage Storage, typename ElemT, typename Scalar,
           portfft::domain Domain>
-void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<ElemT> ref_output,
+void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vector<ElemT>& ref_output,
                 const std::vector<ElemT>& actual_output, const double comparison_tolerance,
-                const char* elem_name = "") {
+                const std::vector<ElemT>& ref_output_imag = {}, const std::vector<ElemT>& actual_output_imag = {}) {
+  using namespace std::complex_literals;
   constexpr bool IsComplex = Domain == portfft::domain::COMPLEX;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
   constexpr bool IsInterleaved = Storage == portfft::complex_storage::INTERLEAVED_COMPLEX;
@@ -269,28 +275,75 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, std::vector<Ele
   for (std::size_t i = 0; i < dft_offset; ++i) {
     if (ref_output[i] != actual_output[i]) {
       if constexpr (!IsInterleaved) {
-        std::cerr << elem_name << " part:";
+        std::cerr << "real part:";
       }
       std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output[i] << " vs "
                 << actual_output[i] << std::endl;
+
       throw std::runtime_error("Verification Failed");
     }
+    if constexpr (!IsInterleaved) {
+      if (ref_output_imag[i] != actual_output_imag[i]) {
+        std::cerr << "imag part:";
+        std::cerr << "Incorrectly written value in padding at global idx " << i << ", ref " << ref_output_imag[i]
+                  << " vs " << actual_output_imag[i] << std::endl;
+      }
+    }
   }
+  portfft::detail::dump_host("ref_output:", ref_output.data(), ref_output.size());
+  portfft::detail::dump_host("actual_output:", actual_output.data(), actual_output.size());
+  if constexpr (!IsInterleaved) {
+    portfft::detail::dump_host("ref_output_imag:", ref_output_imag.data(), ref_output_imag.size());
+    portfft::detail::dump_host("actual_output_imag:", actual_output_imag.data(), actual_output_imag.size());
+  }
+
+  Scalar max_L2_rel_err = 0;
+  for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
+    const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_computed = actual_output.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_ref_imag = ref_output_imag.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_computed_imag = actual_output_imag.data() + dft_len * t + dft_offset;
+
+    Scalar L2_err = 0;
+    Scalar L2_norm = 0;
+    for (std::size_t e = 0; e != dft_len; ++e) {
+      BwdType computed_val = this_batch_computed[e];
+      BwdType ref_val = this_batch_ref[e];
+      if constexpr (!IsInterleaved) {
+        computed_val += std::complex<Scalar>(0, this_batch_computed_imag[e]);
+        ref_val += std::complex<Scalar>(0, this_batch_ref_imag[e]);
+      }
+      Scalar err = std::abs(computed_val - ref_val);
+      Scalar norm_val = std::abs(ref_val);
+      L2_err += err * err;
+      L2_norm += norm_val * norm_val;
+    }
+    L2_err = std::sqrt(L2_err);
+    L2_norm = std::sqrt(L2_norm);
+    Scalar L2_rel_err = L2_err / L2_norm;
+    max_L2_rel_err = std::max(max_L2_rel_err, L2_rel_err);
+  }
+  std::cout << "Max (across batches) relative L2 error: " << max_L2_rel_err << std::endl;
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;
     const ElemT* this_batch_computed = actual_output.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_ref_imag = ref_output_imag.data() + dft_len * t + dft_offset;
+    const ElemT* this_batch_computed_imag = actual_output_imag.data() + dft_len * t + dft_offset;
 
     for (std::size_t e = 0; e != dft_len; ++e) {
-      const auto diff = std::abs(this_batch_computed[e] - this_batch_ref[e]);
+      BwdType computed_val = this_batch_computed[e];
+      BwdType ref_val = this_batch_ref[e];
+      if constexpr (!IsInterleaved) {
+        computed_val += std::complex<Scalar>(0, this_batch_computed_imag[e]);
+        ref_val += std::complex<Scalar>(0, this_batch_ref_imag[e]);
+      }
+      Scalar diff = std::abs(computed_val - ref_val);
       if (diff > comparison_tolerance && diff / std::abs(this_batch_computed[e]) > comparison_tolerance) {
-        if constexpr (!IsInterleaved) {
-          std::cerr << elem_name << " part:";
-        }
         // std::endl is used intentionally to flush the error message before google test exits the test.
         std::cerr << "transform " << t << ", element " << e << ", with global idx " << t * dft_len + e
-                  << ", does not match\nref " << this_batch_ref[e] << " vs " << this_batch_computed[e] << "\ndiff "
-                  << diff << ", tolerance " << comparison_tolerance << std::endl;
+                  << ", does not match\nref " << ref_val << " vs " << computed_val << "\ndiff " << diff
+                  << ", tolerance " << comparison_tolerance << std::endl;
         throw std::runtime_error("Verification Failed");
       }
     }
