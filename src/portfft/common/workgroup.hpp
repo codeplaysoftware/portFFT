@@ -58,7 +58,7 @@ namespace detail {
  *
  * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
- * @tparam SubgroupSize Size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam LocalT The type of the local view
  * @tparam T Scalar type
  * @param loc local accessor containing the input
@@ -79,7 +79,7 @@ namespace detail {
  * @param ApplyScaleFactor Whether or not the scale factor is applied
  * @param global_data global data for the kernel
  */
-template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
+template <direction Dir, detail::ct_profile Config, typename LocalT, typename T>
 __attribute__((always_inline)) inline void dimension_dft(
     LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor, Idx max_num_batches_in_local_mem,
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
@@ -90,6 +90,7 @@ __attribute__((always_inline)) inline void dimension_dft(
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
                                  max_num_batches_in_local_mem, "batch_num_in_local", batch_num_in_local);
+  constexpr Idx SubgroupSize = detail::kernel_spec<Config>::SgSize;
   const Idx outer_stride = dft_size * stride_within_dft;
   // the number of work-items involved in every subgroup fft
   const Idx fact_sg = detail::factorize_sg(dft_size, SubgroupSize);
@@ -239,7 +240,7 @@ __attribute__((always_inline)) inline void dimension_dft(
  * Calculates FFT using Bailey 4 step algorithm.
  *
  * @tparam Dir Direction of the FFT
- * @tparam SubgroupSize Size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam LocalT Local memory view type
  * @tparam T Scalar type
  *
@@ -261,7 +262,7 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param apply_scale_factor Whether or not the scale factor is applied
  * @param global_data global data for the kernel
  */
-template <direction Dir, Idx SubgroupSize, typename LocalT, typename T>
+template <direction Dir, detail::ct_profile Config, typename LocalT, typename T>
 PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                            Idx max_num_batches_in_local_mem, Idx batch_num_in_local, IdxGlobal batch_num_in_kernel,
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
@@ -272,13 +273,13 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
   // column-wise DFTs
-  detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
+  detail::dimension_dft<Dir, Config, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, layout_in, multiply_on_load,
       detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
-  detail::dimension_dft<Dir, SubgroupSize, LocalT, T>(
+  detail::dimension_dft<Dir, Config, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
       load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, layout_in,
       detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor, global_data);

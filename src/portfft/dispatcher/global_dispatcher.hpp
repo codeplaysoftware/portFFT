@@ -206,6 +206,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     for (auto& kernel_data : kernels) {
       kernel_data.batch_size = sub_batches.at(counter);
       kernel_data.length = static_cast<std::size_t>(factors_idx_global.at(counter));
+      Idx used_sg_size = detail::sg_size(kernel_data.used_ct_profile);
       if (kernel_data.level == detail::level::WORKITEM) {
         // See comments in workitem_dispatcher for layout requirments.
         Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
@@ -213,31 +214,31 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
           kernel_data.local_mem_required = static_cast<std::size_t>(1);
         } else {
           kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
-              detail::level::WORKITEM, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factors_idx_global.at(counter))}, num_sgs_in_wg);
+              detail::level::WORKITEM, static_cast<std::size_t>(factors_idx_global.at(counter)), used_sg_size,
+              {static_cast<Idx>(factors_idx_global.at(counter))}, num_sgs_in_wg);
         }
         auto [global_range, local_range] =
             detail::get_launch_params(factors_idx_global.at(counter), sub_batches.at(counter), detail::level::WORKITEM,
-                                      desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
+                                      desc.dev_info.n_compute_units, used_sg_size, num_sgs_in_wg);
         kernel_data.global_range = global_range;
         kernel_data.local_range = local_range;
       } else if (kernel_data.level == detail::level::SUBGROUP) {
         Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
         // See comments in subgroup_dispatcher for layout requirements.
-        IdxGlobal factor_sg = detail::factorize_sg(factors_idx_global.at(counter), kernel_data.used_sg_size);
+        IdxGlobal factor_sg = detail::factorize_sg(factors_idx_global.at(counter), used_sg_size);
         IdxGlobal factor_wi = factors_idx_global.at(counter) / factor_sg;
         if (counter < kernels.size() - 1) {
           kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)), used_sg_size,
+              {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
         } else {
           kernel_data.local_mem_required = desc.num_scalars_in_local_mem<detail::layout::PACKED>(
-              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)),
-              kernel_data.used_sg_size, {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
+              detail::level::SUBGROUP, static_cast<std::size_t>(factors_idx_global.at(counter)), used_sg_size,
+              {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, num_sgs_in_wg);
         }
         auto [global_range, local_range] =
             detail::get_launch_params(factors_idx_global.at(counter), sub_batches.at(counter), detail::level::SUBGROUP,
-                                      desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
+                                      desc.dev_info.n_compute_units, used_sg_size, num_sgs_in_wg);
         kernel_data.global_range = global_range;
         kernel_data.local_range = local_range;
       }
@@ -279,10 +280,10 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 };
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
+template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, detail::ct_profile Config, typename TIn,
           typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, Config, TIn,
                                                                TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
@@ -311,7 +312,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
-                                        detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+                                        detail::layout::BATCH_INTERLEAVED, Config>(
           kernels.at(0), in, desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor,
           intermediate_twiddles_offset, impl_twiddle_offset,
           2 * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
@@ -324,7 +325,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
            factor_num++) {
         if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
           l2_events =
-              detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
+              detail::compute_level<Scalar, Domain, Dir, detail::layout::PACKED, detail::layout::PACKED, Config>(
                   kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
                   desc.scratch_ptr_1.get(), twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset,
                   impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
@@ -332,7 +333,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                   dimension_data.num_factors, l2_events, desc.queue);
         } else {
           l2_events = detail::compute_level<Scalar, Domain, Dir, detail::layout::BATCH_INTERLEAVED,
-                                            detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+                                            detail::layout::BATCH_INTERLEAVED, Config>(
               kernels.at(factor_num), static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
               twiddles_ptr, factors_and_scan, scale_factor, intermediate_twiddles_offset, impl_twiddle_offset, 0,
               committed_size, static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches),

@@ -41,15 +41,15 @@ class transpose_kernel;
  * @tparam SubgroupSize size of the subgroup
  * @return vector of kernel ids
  */
-template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
-          typename Scalar, domain Domain, Idx SubgroupSize>
+template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, detail::ct_profile>
+          class Kernel,
+          typename Scalar, domain Domain, detail::ct_profile Config>
 std::vector<sycl::kernel_id> get_ids() {
   std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                \
-  try {                                                                                                         \
-    ids.push_back(                                                                                              \
-        sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, SubgroupSize>>()); \
-  } catch (...) {                                                                                               \
+#define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                    \
+  try {                                                                                                             \
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT, Config>>()); \
+  } catch (...) {                                                                                                   \
   }
 
 #define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(DIR, MEM, LAYOUT_IN) \

@@ -228,15 +228,15 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
  or equal to subgroup size.
  * @tparam T type of the number to factorize
  * @param N the number to factorize
- * @param sg_size subgroup size
+ * @param SgSize subgroup size
  * @return the factor below or equal to subgroup size
  */
 template <typename T>
-PORTFFT_INLINE constexpr T factorize_sg(T N, Idx sg_size) {
+PORTFFT_INLINE constexpr T factorize_sg(T N, Idx SgSize) {
   if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
     return 1;
   } else {
-    for (T i = static_cast<T>(sg_size); i > 1; i--) {
+    for (T i = static_cast<T>(SgSize); i > 1; i--) {
       if (N % i == 0) {
         return i;
       }
@@ -250,12 +250,12 @@ PORTFFT_INLINE constexpr T factorize_sg(T N, Idx sg_size) {
  * without reg spilling.
  * @tparam Scalar type of the real scalar used for the computation
  * @param N Size of the problem, in complex values
- * @param sg_size Size of the sub-group
+ * @param SgSize Size of the sub-group
  * @return true if the problem fits in the registers
  */
 template <typename Scalar>
-constexpr bool fits_in_sg(IdxGlobal N, Idx sg_size) {
-  IdxGlobal factor_sg = factorize_sg(N, sg_size);
+constexpr bool fits_in_sg(IdxGlobal N, Idx SgSize) {
+  IdxGlobal factor_sg = factorize_sg(N, SgSize);
   IdxGlobal factor_wi = N / factor_sg;
   return fits_in_wi<Scalar>(factor_wi);
 }

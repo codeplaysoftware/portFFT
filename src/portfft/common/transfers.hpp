@@ -26,6 +26,7 @@
 #include "helpers.hpp"
 #include "logging.hpp"
 #include "memory_views.hpp"
+#include "portfft/common/compiletime_tuning_profile.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/traits.hpp"
@@ -278,12 +279,16 @@ PORTFFT_INLINE Idx subgroup_single_block_copy(detail::global_data_struct<1> glob
  *  @param n The count of reals to copy
  *  @returns The number of reals copied. May be less than n.
  */
-template <transfer_direction TransferDirection, level Level, Idx ChunkSize, Idx SubgroupSize, typename GlobalViewT,
+template <transfer_direction TransferDirection, level Level, ct_profile Config, typename GlobalViewT,
           typename LocalViewT>
 PORTFFT_INLINE Idx subgroup_block_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                        IdxGlobal global_offset, LocalViewT local, Idx local_offset, Idx n) {
-  static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
+  using profile_t = kernel_spec<Config>;
+  static_assert(profile_t::UseSgTransfers);
   using real_t = get_element_remove_cv_t<GlobalViewT>;
+  static constexpr Idx SubgroupSize = profile_t::SgSize;
+  static constexpr Idx ChunkSize = vec_load_elements<real_t, profile_t>();
+  static constexpr Idx BlockSize = ChunkSize * SubgroupSize;
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Mismatch between global and local types");
   static_assert(Level == level::SUBGROUP || Level == level::WORKGROUP, "Only subgroup and workgroup level supported");
 
@@ -377,7 +382,7 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct<1> gl
  * same for work-items in the group described by template parameter "Level".
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam SubgroupSize size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam LocalViewT The type of the local memory view
  * @tparam GlobalViewT The type of the global memory view
  * @param global_data global data for the kernel
@@ -387,7 +392,7 @@ PORTFFT_INLINE Idx vec_aligned_group_block_copy(detail::global_data_struct<1> gl
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <transfer_direction TransferDirection, level Level, Idx SubgroupSize, typename GlobalViewT,
+template <transfer_direction TransferDirection, level Level, ct_profile Config, typename GlobalViewT,
           typename LocalViewT>
 PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> global_data, GlobalViewT global,
                                                  LocalViewT local, Idx total_num_elems, IdxGlobal global_offset = 0,
@@ -397,8 +402,8 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> g
   static_assert(std::is_same_v<real_t, get_element_remove_cv_t<LocalViewT>>, "Type mismatch between global and local");
   const char* func_name = __func__;
   global_data.log_message_scoped<Level>(func_name, "global_offset", global_offset, "local_offset", local_offset);
-  static constexpr Idx ChunkSizeRaw = PORTFFT_VEC_LOAD_BYTES / sizeof(real_t);
-  static constexpr int ChunkSize = ChunkSizeRaw < 1 ? 1 : ChunkSizeRaw;
+  using kernel_config_t = kernel_spec<Config>;
+  static constexpr int ChunkSize = vec_load_elements<real_t, kernel_config_t>();
 
   using vec_t = sycl::vec<real_t, ChunkSize>;
   const real_t* global_ptr = &global[global_offset];
@@ -417,21 +422,21 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> g
   global_offset += unaligned_elements;
   total_num_elems -= unaligned_elements;
 
-#ifdef PORTFFT_USE_SG_TRANSFERS
-  // Unaligned subgroup copies cause issues when writing to buffers in some circumstances for unknown reasons.
-  Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, ChunkSize, SubgroupSize>(
-      global_data, global, global_offset, local, local_offset, total_num_elems);
-  local_offset += copied_by_sg;
-  global_offset += copied_by_sg;
-  total_num_elems -= copied_by_sg;
-#else
-  // Each workitem loads a chunk of consecutive elements. Chunks loaded by a group are consecutive.
-  Idx block_copied_elements = impl::vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize>(
-      global_data, global, global_offset, local, local_offset, total_num_elems);
-  local_offset += block_copied_elements;
-  global_offset += block_copied_elements;
-  total_num_elems -= block_copied_elements;
-#endif
+  if constexpr (kernel_config_t::UseSgTransfers) {
+    // Unaligned subgroup copies cause issues when writing to buffers in some circumstances for unknown reasons.
+    Idx copied_by_sg = impl::subgroup_block_copy<TransferDirection, Level, Config>(
+        global_data, global, global_offset, local, local_offset, total_num_elems);
+    local_offset += copied_by_sg;
+    global_offset += copied_by_sg;
+    total_num_elems -= copied_by_sg;
+  } else {
+    // Each workitem loads a chunk of consecutive elements. Chunks loaded by a group are consecutive.
+    Idx block_copied_elements = impl::vec_aligned_group_block_copy<TransferDirection, Level, ChunkSize>(
+        global_data, global, global_offset, local, local_offset, total_num_elems);
+    local_offset += block_copied_elements;
+    global_offset += block_copied_elements;
+    total_num_elems -= block_copied_elements;
+  }
   // We cannot load fixed-size blocks of data anymore, so we use naive copies.
   if constexpr (TransferDirection == transfer_direction::GLOBAL_TO_LOCAL) {
     copy_group<Level>(global_data, offset_view(global, global_offset), offset_view(local, local_offset),
@@ -448,7 +453,7 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> g
  * Copies data from global memory to local memory.
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam SubgroupSize size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam LocalViewT The type of the local memory view
  * @tparam GlobalViewT The type of the global memory view
  * @tparam T type of the scalar used for computations
@@ -459,10 +464,10 @@ PORTFFT_INLINE void global_local_contiguous_copy(detail::global_data_struct<1> g
  * @param global_offset offset to the global pointer
  * @param local_offset offset to the local pointer
  */
-template <detail::level Level, Idx SubgroupSize, typename GlobalViewT, typename LocalViewT>
+template <detail::level Level, detail::ct_profile Config, typename GlobalViewT, typename LocalViewT>
 PORTFFT_INLINE void global2local(detail::global_data_struct<1> global_data, GlobalViewT global, LocalViewT local,
                                  Idx total_num_elems, IdxGlobal global_offset = 0, Idx local_offset = 0) {
-  detail::global_local_contiguous_copy<detail::transfer_direction::GLOBAL_TO_LOCAL, Level, SubgroupSize>(
+  detail::global_local_contiguous_copy<detail::transfer_direction::GLOBAL_TO_LOCAL, Level, Config>(
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
@@ -470,7 +475,7 @@ PORTFFT_INLINE void global2local(detail::global_data_struct<1> global_data, Glob
  * Copies data from local memory to global memory.
  *
  * @tparam Level Which level (subgroup or workgroup) does the transfer.
- * @tparam SubgroupSize size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam LocalViewT The type of the local memory view
  * @tparam GlobalViewT The type of the global memory view
  * @tparam T type of the scalar used for computations
@@ -481,10 +486,10 @@ PORTFFT_INLINE void global2local(detail::global_data_struct<1> global_data, Glob
  * @param local_offset offset to the local pointer
  * @param global_offset offset to the global pointer
  */
-template <detail::level Level, Idx SubgroupSize, typename LocalViewT, typename GlobalViewT>
+template <detail::level Level, detail::ct_profile Config, typename LocalViewT, typename GlobalViewT>
 PORTFFT_INLINE void local2global(detail::global_data_struct<1> global_data, LocalViewT local, GlobalViewT global,
                                  Idx total_num_elems, Idx local_offset = 0, IdxGlobal global_offset = 0) {
-  detail::global_local_contiguous_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, Level, SubgroupSize>(
+  detail::global_local_contiguous_copy<detail::transfer_direction::LOCAL_TO_GLOBAL, Level, Config>(
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
