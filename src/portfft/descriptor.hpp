@@ -463,11 +463,7 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     in_bundle.template set_specialization_constant<detail::SpecTakeConjugateOnLoad>(conjugate_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnStore>(conjugate_on_store);
-    if constexpr (std::is_same_v<Scalar, float>) {
-      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorFloat>(scale_factor);
-    } else {
-      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorDouble>(scale_factor);
-    }
+    in_bundle.template set_specialization_constant<detail::get_spect_constant_scale<Scalar>()>(scale_factor);
 
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }

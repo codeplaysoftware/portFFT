@@ -174,6 +174,20 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
   });
 }
 
+/**
+ * Function to get the scale specialization constant.
+ * @tparam Scalar Scalar type associated with the committed descriptor
+ * @return sycl::specialization_id
+ */
+template <typename Scalar>
+constexpr const sycl::specialization_id<Scalar>& get_spect_constant_scale() {
+  if constexpr (std::is_same_v<Scalar, float>) {
+    return detail::SpecConstScaleFactorFloat;
+  } else {
+    return detail::SpecConstScaleFactorDouble;
+  }
+}
+
 }  // namespace detail
 }  // namespace portfft
 #endif
