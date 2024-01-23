@@ -106,7 +106,8 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
+  static Scalar* execute(committed_descriptor& desc, dimension_struct& /*dimension_data*/,
+                         std::vector<kernel_data_struct>& kernels) {
     std::vector<IdxGlobal> factors_idx_global;
     // Get factor sizes per level;
     for (const auto& kernel_data : kernels) {

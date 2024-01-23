@@ -356,7 +356,8 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
-  static Scalar* execute(committed_descriptor& /*desc*/, std::vector<kernel_data_struct>& /*kernels*/) {
+  static Scalar* execute(committed_descriptor& /*desc*/, dimension_struct& /*dimension_data*/,
+                         std::vector<kernel_data_struct>& /*kernels*/) {
     return nullptr;
   }
 };

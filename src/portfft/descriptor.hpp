@@ -504,18 +504,20 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels);
+      static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data,
+                             std::vector<kernel_data_struct>& kernels);
     };
   };
 
   /**
    * Calculates twiddle factors for the implementation in use.
-   *
+   * @param dimension_data dimension_struct correspoding to the dimension for which
    * @param kernels vector of kernels
    * @return Scalar* USM pointer to the twiddle factors
    */
-  Scalar* calculate_twiddles(detail::level level, std::vector<kernel_data_struct>& kernels) {
-    return dispatch<calculate_twiddles_struct>(level, kernels);
+  Scalar* calculate_twiddles(detail::level level, dimension_struct& dimension_data,
+                             std::vector<kernel_data_struct>& kernels) {
+    return dispatch<calculate_twiddles_struct>(level, dimension_data, kernels);
   }
 
   /**
@@ -805,14 +807,16 @@ class committed_descriptor {
       }
       dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, skip_scaling));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
-          calculate_twiddles(dimensions.back().level, dimensions.back().forward_kernels), [queue](Scalar* ptr) {
+          calculate_twiddles(dimensions.back().level, dimensions.at(i), dimensions.back().forward_kernels),
+          [queue](Scalar* ptr) {
             if (ptr != nullptr) {
               sycl::free(ptr, queue);
             }
           });
       // TODO: refactor multi-dimensional fft's such that they can use a single pointer for twiddles.
       dimensions.back().backward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
-          calculate_twiddles(dimensions.back().level, dimensions.back().backward_kernels), [queue](Scalar* ptr) {
+          calculate_twiddles(dimensions.back().level, dimensions.at(i), dimensions.back().backward_kernels),
+          [queue](Scalar* ptr) {
             if (ptr != nullptr) {
               sycl::free(ptr, queue);
             }

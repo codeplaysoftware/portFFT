@@ -593,7 +593,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, std::vector<kernel_data_struct>& kernels) {
+  static Scalar* execute(committed_descriptor& desc, dimension_struct& /*dimension_data*/,
+                         std::vector<kernel_data_struct>& kernels) {
     const auto& kernel_data = kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
