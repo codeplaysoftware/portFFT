@@ -77,8 +77,8 @@ namespace detail {
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @param ApplyScaleFactor Whether or not the scale factor is applied
- * @param conjugate_on_load whether or not to take conjugate of the input
- * @param conjugate_on_store whether or not to take conjugate of the output
+ * @param conjugate_on_load whether or not to conjugate the input
+ * @param conjugate_on_store whether or not to conjugate the output
  * @param global_data global data for the kernel
  */
 template <Idx SubgroupSize, typename LocalT, typename T>
@@ -317,8 +317,8 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
  * @param apply_scale_factor Whether or not the scale factor is applied
- * @param conjugate_on_load whether or not to take conjugate of the input
- * @param conjugate_on_store whether or not to take conjugate of the output
+ * @param conjugate_on_load whether or not to conjugate the input
+ * @param conjugate_on_store whether or not to conjugate the output
  * @param global_data global data for the kernel
  */
 template <Idx SubgroupSize, typename LocalT, typename T>
