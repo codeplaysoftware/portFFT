@@ -529,7 +529,7 @@ class committed_descriptor {
    * @param top_level selected level of implementation
    * @param prepared_vec vector of tuples of: implementation to use for a kernel,
    * vector of kernel ids, factors
-   * @param compute_direction direction of compute, as in forward or backward
+   * @param compute_direction direction of compute: forward or backward
    * @param dimension_num which dimension are the kernels being built for
    * @param is_compatible flag to be set if the kernels are compatible
    * @param skip_scaling whether or not to skip scaling
