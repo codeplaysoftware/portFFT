@@ -94,10 +94,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  detail::complex_conjugate take_conjugate_on_load =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
-  detail::complex_conjugate take_conjugate_on_store =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecTakeConjugateOnLoad>();
+  detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
   T scaling_factor = [&]() {
     if constexpr (std::is_same_v<T, float>) {
       return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
@@ -265,12 +263,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             }
           }
         }
-        if (take_conjugate_on_load == detail::complex_conjugate::TAKEN) {
-          take_conjugate_inplace(priv, factor_wi);
+        if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+          conjugate_inplace(priv, factor_wi);
         }
         sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
-        if (take_conjugate_on_store == detail::complex_conjugate::TAKEN) {
-          take_conjugate_inplace(priv, factor_wi);
+        if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+          conjugate_inplace(priv, factor_wi);
         }
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
@@ -462,12 +460,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
         }
       }
-      if (take_conjugate_on_load == detail::complex_conjugate::TAKEN) {
-        take_conjugate_inplace(priv, factor_wi);
+      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, factor_wi);
       }
       sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
-      if (take_conjugate_on_store == detail::complex_conjugate::TAKEN) {
-        take_conjugate_inplace(priv, factor_wi);
+      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, factor_wi);
       }
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);

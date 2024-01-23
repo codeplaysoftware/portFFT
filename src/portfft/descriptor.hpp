@@ -443,8 +443,8 @@ class committed_descriptor {
    * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation
    * @param scale_factor_applied whether or not to multiply scale factor
    * @param level sub implementation to run which will be set as a spec constant
-   * @param take_conjugate_on_load whether or not to take conjugate of the input
-   * @param take_conjugate_on_store whether or not to take conjugate of the output
+   * @param conjugate_on_load whether or not to take conjugate of the input
+   * @param conjugate_on_store whether or not to take conjugate of the output
    * @param scale_factor Scale to be applied to the result
    * @param factor_num factor number which is set as a spec constant
    * @param num_factors total number of factors of the committed size, set as a spec constant
@@ -453,9 +453,8 @@ class committed_descriptor {
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
-                          detail::complex_conjugate take_conjugate_on_load,
-                          detail::complex_conjugate take_conjugate_on_store, Scalar scale_factor, Idx factor_num = 0,
-                          Idx num_factors = 0) {
+                          detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
+                          Scalar scale_factor, Idx factor_num = 0, Idx num_factors = 0) {
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
@@ -464,13 +463,9 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
-    in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnLoad>(take_conjugate_on_load);
-    in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnStore>(take_conjugate_on_store);
-    if constexpr (std::is_same_v<Scalar, float>) {
-      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorFloat>(scale_factor);
-    } else {
-      in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorDouble>(scale_factor);
-    }
+    in_bundle.template set_specialization_constant<detail::SpecTakeConjugateOnLoad>(conjugate_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnStore>(conjugate_on_store);
+    in_bundle.template set_specialization_constant<detail::get_spect_constant_scale<Scalar>()>(scale_factor);
 
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
@@ -530,63 +525,62 @@ class committed_descriptor {
    * returned from prepare_implementation
    * @tparam SubgroupSize Subgroup size
    * @param top_level selected level of implementation
-   * @param prepared_vec vector as returned from prepare_implementation
-   * @param compute_direction direction of compute, as in forward or backward
+   * @param prepared_vec vector of tuples of: implementation to use for a kernel,
+   * vector of kernel ids, factors
+   * @param compute_direction direction of compute: forward or backward
    * @param dimension_num which dimension are the kernels being built for
    * @param is_compatible flag to be set if the kernels are compatible
-   * @param set_scale_as_unity whether or not scale factor needs to be set as unity
+   * @param skip_scaling whether or not to skip scaling
    * @return
    */
   template <Idx SubgroupSize>
   std::vector<kernel_data_struct> set_spec_constants_driver(
       detail::level top_level,
       std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>& prepared_vec,
-      direction compute_direction, std::size_t dimension_num, bool& is_compatible, bool set_scale_as_unity) {
+      direction compute_direction, std::size_t dimension_num, bool& is_compatible, bool skip_scaling) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
-    if (set_scale_as_unity) {
-      scale_factor = static_cast<Scalar>(1.0);
+    detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
+    if (skip_scaling) {
+      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
     }
     std::size_t counter = 0;
-    auto take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
-    auto take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
+    auto conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+    auto conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
     std::vector<kernel_data_struct> result;
     for (auto& [level, ids, factors] : prepared_vec) {
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
       if (top_level == detail::level::GLOBAL) {
+        std::size_t factor_size =
+            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>()));
         if (counter == prepared_vec.size() - 1) {
           if (compute_direction == direction::BACKWARD) {
-            take_conjugate_on_store = detail::complex_conjugate::TAKEN;
+            conjugate_on_store = detail::complex_conjugate::APPLIED;
           }
-          set_spec_constants(
-              detail::level::GLOBAL, in_bundle,
-              static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
-              factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-              detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
-              static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset take_conjugate_on_store
-          take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
+          set_spec_constants(detail::level::GLOBAL, in_bundle, factor_size, factors,
+                             detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
+                             detail::apply_scale_factor::APPLIED, level, conjugate_on_load, conjugate_on_store,
+                             scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+          // reset conjugate_on_store
+          conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
         } else {
           if (counter == 0 && compute_direction == direction::BACKWARD) {
-            take_conjugate_on_load = detail::complex_conjugate::TAKEN;
+            conjugate_on_load = detail::complex_conjugate::APPLIED;
           }
-          set_spec_constants(
-              detail::level::GLOBAL, in_bundle,
-              static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
-              factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-              detail::apply_scale_factor::NOT_APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
-              scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset take_conjugate_on_load
-          take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
+          set_spec_constants(detail::level::GLOBAL, in_bundle, factor_size, factors,
+                             detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
+                             detail::apply_scale_factor::NOT_APPLIED, level, conjugate_on_load, conjugate_on_store,
+                             scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+          // reset conjugate_on_load
+          conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
         }
       } else {
         if (compute_direction == direction::BACKWARD) {
-          take_conjugate_on_load = detail::complex_conjugate::TAKEN;
-          take_conjugate_on_store = detail::complex_conjugate::TAKEN;
+          conjugate_on_load = detail::complex_conjugate::APPLIED;
+          conjugate_on_store = detail::complex_conjugate::APPLIED;
         }
         set_spec_constants(level, in_bundle, params.lengths[dimension_num], factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                           detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
-                           scale_factor);
+                           scale_factor_applied, level, conjugate_on_load, conjugate_on_store, scale_factor);
       }
       try {
         result.emplace_back(sycl::build(in_bundle), factors, params.lengths[dimension_num], SubgroupSize,
@@ -650,11 +644,11 @@ class committed_descriptor {
    * @tparam SubgroupSize first subgroup size
    * @tparam OtherSGSizes other subgroup sizes
    * @param dimension_num The dimension for which the kernels are being built
-   * @param set_scale_as_unity whether or not scale factor needs to be set as unity
+   * @param skip_scaling whether or not to skip scaling
    * @return `dimension_struct` for the newly built kernels
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
-  dimension_struct build_w_spec_const(std::size_t dimension_num, bool set_scale_as_unity) {
+  dimension_struct build_w_spec_const(std::size_t dimension_num, bool skip_scaling) {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
@@ -667,9 +661,9 @@ class committed_descriptor {
 
       if (is_compatible) {
         std::vector<kernel_data_struct> forward_kernels = set_spec_constants_driver<SubgroupSize>(
-            top_level, prepared_vec, direction::FORWARD, dimension_num, is_compatible, set_scale_as_unity);
+            top_level, prepared_vec, direction::FORWARD, dimension_num, is_compatible, skip_scaling);
         std::vector<kernel_data_struct> backward_kernels = set_spec_constants_driver<SubgroupSize>(
-            top_level, prepared_vec, direction::BACKWARD, dimension_num, is_compatible, set_scale_as_unity);
+            top_level, prepared_vec, direction::BACKWARD, dimension_num, is_compatible, skip_scaling);
         if (is_compatible) {
           return {forward_kernels, backward_kernels, top_level, params.lengths[dimension_num], SubgroupSize};
         }
@@ -680,7 +674,7 @@ class committed_descriptor {
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
-      return build_w_spec_const<OtherSGSizes...>(dimension_num, set_scale_as_unity);
+      return build_w_spec_const<OtherSGSizes...>(dimension_num, skip_scaling);
     }
   }
 
@@ -891,11 +885,11 @@ class committed_descriptor {
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
-      bool set_scale_as_unity = true;
+      bool skip_scaling = true;
       if (i == n_kernels - 1) {
-        set_scale_as_unity = false;
+        skip_scaling = false;
       }
-      dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, set_scale_as_unity));
+      dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, skip_scaling));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
           calculate_twiddles(dimensions.back().level, dimensions.back().forward_kernels), [queue](Scalar* ptr) {
             if (ptr != nullptr) {

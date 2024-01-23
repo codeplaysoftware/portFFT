@@ -46,8 +46,8 @@ constexpr static sycl::specialization_id<Idx> GlobalSpecConstNumFactors{};
 
 constexpr static sycl::specialization_id<bool> SpecConstIncrementModifierPointer{};
 // Specialization constants used for IFFT, when expressed as a IFFT=(conjugate(FFT(conjugate(input))))
-constexpr static sycl::specialization_id<detail::complex_conjugate> SpecConstTakeConjugateOnLoad{};
-constexpr static sycl::specialization_id<detail::complex_conjugate> SpecConstTakeConjugateOnStore{};
+constexpr static sycl::specialization_id<detail::complex_conjugate> SpecTakeConjugateOnLoad{};
+constexpr static sycl::specialization_id<detail::complex_conjugate> SpecConstConjugateOnStore{};
 
 constexpr static sycl::specialization_id<float> SpecConstScaleFactorFloat{};
 constexpr static sycl::specialization_id<double> SpecConstScaleFactorDouble{};

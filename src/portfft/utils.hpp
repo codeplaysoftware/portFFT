@@ -192,73 +192,17 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
 }
 
 /**
- * Calculate the number of groups or bank lines of PORTFFT_N_LOCAL_BANKS between each padding in local memory,
- * specifically for reducing bank conflicts when reading values from the columns of a 2D data layout. e.g. If there are
- * 64 complex elements in a row, then the consecutive values in the same column are 128 floats apart. There are 32
- * banks, each the size of a float, so we only want a padding float every 128/32=4 bank lines to read along the column
- * without bank conflicts.
- *
- * @tparam T Input type to the function
- * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
- * @return the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
+ * Function to get the scale specialization constant.
+ * @tparam Scalar Scalar type associated with the committed descriptor
+ * @return sycl::specialization_id
  */
-template <typename T>
-constexpr T bank_lines_per_pad_wg(T row_size) {
-  constexpr T BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
-  if (row_size % BankLineSize == 0) {
-    return row_size / BankLineSize;
+template <typename Scalar>
+constexpr const sycl::specialization_id<Scalar>& get_spect_constant_scale() {
+  if constexpr (std::is_same_v<Scalar, float>) {
+    return detail::SpecConstScaleFactorFloat;
+  } else {
+    return detail::SpecConstScaleFactorDouble;
   }
-  // There is room for improvement here. E.G if row_size was half of BankLineSize then maybe you would still want 1
-  // pad every bank group.
-  return 1;
-}
-
-/**
- * @brief Gets the cumulative local memory usage for a particular level
- * @tparam Scalar Scalar type
- * @param level level to get the cumulative local memory usage for
- * @param factor_size Factor size
- * @param is_batch_interleaved Will the data be in a batch interleaved format in local memory
- * @param is_load_modifier_applied Is load modifier applied
- * @param is_store_modifier_applied Is store modifier applied
- * @param workgroup_size workgroup size with which the kernel will be launched
- * @return cumulative local memory usage in terms on number of scalars in local memory.
- */
-inline Idx get_local_memory_usage(detail::level level, Idx factor_size, bool is_batch_interleaved,
-                                  bool is_load_modifier_applied, bool is_store_modifier_applied, Idx subgroup_size,
-                                  Idx workgroup_size) {
-  Idx local_memory_usage = 0;
-  switch (level) {
-    case detail::level::WORKITEM: {
-      // This will use local memory for load / store modifiers in the future.
-      if (!is_batch_interleaved) {
-        local_memory_usage += detail::pad_local(2 * factor_size * workgroup_size, 1);
-      }
-    } break;
-    case detail::level::SUBGROUP: {
-      local_memory_usage += 2 * factor_size;
-      Idx fact_sg = factorize_sg(factor_size, subgroup_size);
-      Idx num_ffts_in_sg = subgroup_size / fact_sg;
-      Idx num_ffts_in_local_mem =
-          is_batch_interleaved ? workgroup_size / 2 : num_ffts_in_sg * (workgroup_size / subgroup_size);
-      local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
-      if (is_load_modifier_applied) {
-        local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
-      }
-      if (is_store_modifier_applied) {
-        local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
-      }
-    } break;
-    case detail::level::WORKGROUP: {
-      Idx n = detail::factorize(factor_size);
-      Idx m = factor_size / n;
-      Idx num_ffts_in_local_mem = is_batch_interleaved ? workgroup_size / 2 : 1;
-      local_memory_usage += detail::pad_local(2 * factor_size * num_ffts_in_local_mem, bank_lines_per_pad_wg(m));
-    } break;
-    default:
-      break;
-  }
-  return local_memory_usage;
 }
 
 }  // namespace detail

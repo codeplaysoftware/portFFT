@@ -107,10 +107,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  detail::complex_conjugate take_conjugate_on_load =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
-  detail::complex_conjugate take_conjugate_on_store =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecTakeConjugateOnLoad>();
+  detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
   T scaling_factor = [&]() {
     if constexpr (std::is_same_v<T, float>) {
       return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
@@ -177,7 +175,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
                              sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n,
                              factor_m, storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
-                             take_conjugate_on_load, take_conjugate_on_store, global_data);
+                             conjugate_on_load, conjugate_on_store, global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
@@ -241,7 +239,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
       wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
                            batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
                            storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
-                           take_conjugate_on_load, take_conjugate_on_store, global_data);
+                           conjugate_on_load, conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
