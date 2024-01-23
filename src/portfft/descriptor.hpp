@@ -309,6 +309,72 @@ class committed_descriptor {
   }
 
   /**
+   * @brief Gets the cumulative local memory usage for a particular level
+   * @tparam Scalar Scalar type
+   * @param level level to get the cumulative local memory usage for
+   * @param factor_size Factor size
+   * @param is_batch_interleaved Will the data be in a batch interleaved format in local memory
+   * @param is_load_modifier_applied Is load modifier applied
+   * @param is_store_modifier_applied Is store modifier applied
+   * @return cumulative local memory usage in terms on number of scalars in local memory.
+   */
+  inline Idx get_local_memory_usage(detail::level level, Idx factor_size, bool is_batch_interleaved,
+                                    bool is_load_modifier_applied, bool is_store_modifier_applied, Idx subgroup_size,
+                                    Idx workgroup_size) {
+    Idx local_memory_usage = 0;
+  std:
+    size_t factor_size_t = static_cast<std::size_t>(factor_size);
+    switch (level) {
+      case detail::level::WORKITEM: {
+        if (!is_batch_interleaved) {
+          Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+          local_memory_usage += num_scalars_in_local_mem<detail::layout::PACKED>(
+              detail::level::WORKITEM, factor_size_t, subgroup_size, {factor_size}, num_sgs_in_wg);
+        }
+      } break;
+      case detail::level::SUBGROUP: {
+        local_memory_usage += 2 * factor_size;
+        Idx fact_sg = factorize_sg(factor_size, subgroup_size);
+        Idx fact_wi = factor_size / fact_sg;
+        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+        local_memory_usage += [&]() {
+          if (is_batch_interleaved) {
+            return num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
+                detail::layout::SUBGROUP, factor_size_t, subgroup_size, {fact_wi, fact_sg}, num_sgs_in_wg);
+          }
+          return num_scalars_in_local_mem<detail::layout::PACKED>(detail::layout::SUBGROUP, factor_size_t,
+                                                                  subgroup_size, {fact_wi, fact_sg}, num_sgs_in_wg);
+        }();
+        Idx num_ffts_in_local_mem = is_batch_interleaved == detail::layout::PACKED
+                                        ? (subgroup_size / fact_sg) * num_sgs_in_wg
+                                        : num_sgs_in_wg * subgroup_size;
+        if (is_load_modifier_applied) {
+          local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
+        }
+        if (is_store_modifier_applied) {
+          local_memory_usage += detail::pad_local(2 * num_ffts_in_local_mem * factor_size, 1);
+        }
+      } break;
+      case detail::level::WORKGROUP: {
+        Idx n = detail::factorize(factor_size);
+        Idx m = factor_size / n;
+        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+        local_memory_usage += [&]() {
+          if (is_batch_interleaved) {
+            return num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(detail::layout::WORKGROUP, factor_size_t,
+                                                                               subgroup_size, {n, m}, num_sgs_in_wg);
+          }
+          return num_scalars_in_local_mem<detail::layout::PACKED>(detail::layout::WORKGROUP, factor_size_t,
+                                                                  subgroup_size, {n, m}, num_sgs_in_wg);
+        }();
+      } break;
+      default:
+        break;
+    }
+    return local_memory_usage;
+  }
+
+  /**
    * Prepares the implementation for the particular problem size. That includes factorizing it and getting ids for the
    * set of kernels that need to be JIT compiled.
    *
@@ -392,8 +458,7 @@ class committed_descriptor {
         IdxGlobal factor_wi = factor_size / factor_sg;
         if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
           return (detail::get_local_memory_usage(detail::level::SUBGROUP, static_cast<Idx>(factor_size),
-                                                 batch_interleaved_layout, load_modifier_required, true, SubgroupSize,
-                                                 PORTFFT_SGS_IN_WG * SubgroupSize) *
+                                                 batch_interleaved_layout, load_modifier_required, true, SubgroupSize) *
                   static_cast<Idx>(sizeof(Scalar))) <= local_memory_size;
         }
         return false;
