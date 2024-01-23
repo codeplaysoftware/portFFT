@@ -441,8 +441,8 @@ class committed_descriptor {
    * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation
    * @param scale_factor_applied whether or not to multiply scale factor
    * @param level sub implementation to run which will be set as a spec constant
-   * @param take_conjugate_on_load whether or not to take conjugate of the input
-   * @param take_conjugate_on_store whether or not to take conjugate of the output
+   * @param conjugate_on_load whether or not to take conjugate of the input
+   * @param conjugate_on_store whether or not to take conjugate of the output
    * @param scale_factor Scale to be applied to the result
    * @param factor_num factor number which is set as a spec constant
    * @param num_factors total number of factors of the committed size, set as a spec constant
@@ -451,9 +451,8 @@ class committed_descriptor {
                           std::size_t length, const std::vector<Idx>& factors,
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
-                          detail::complex_conjugate take_conjugate_on_load,
-                          detail::complex_conjugate take_conjugate_on_store, Scalar scale_factor, Idx factor_num = 0,
-                          Idx num_factors = 0) {
+                          detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
+                          Scalar scale_factor, Idx factor_num = 0, Idx num_factors = 0) {
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
@@ -462,8 +461,8 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
-    in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnLoad>(take_conjugate_on_load);
-    in_bundle.template set_specialization_constant<detail::SpecConstTakeConjugateOnStore>(take_conjugate_on_store);
+    in_bundle.template set_specialization_constant<detail::SpecTakeConjugateOnLoad>(conjugate_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnStore>(conjugate_on_store);
     if constexpr (std::is_same_v<Scalar, float>) {
       in_bundle.template set_specialization_constant<detail::SpecConstScaleFactorFloat>(scale_factor);
     } else {
@@ -545,45 +544,45 @@ class committed_descriptor {
       scale_factor = static_cast<Scalar>(1.0);
     }
     std::size_t counter = 0;
-    auto take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
-    auto take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
+    auto conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+    auto conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
     std::vector<kernel_data_struct> result;
     for (auto& [level, ids, factors] : prepared_vec) {
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
       if (top_level == detail::level::GLOBAL) {
         if (counter == prepared_vec.size() - 1) {
           if (compute_direction == direction::BACKWARD) {
-            take_conjugate_on_store = detail::complex_conjugate::TAKEN;
+            conjugate_on_store = detail::complex_conjugate::APPLIED;
           }
           set_spec_constants(
               detail::level::GLOBAL, in_bundle,
               static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
               factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-              detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store, scale_factor,
+              detail::apply_scale_factor::APPLIED, level, conjugate_on_load, conjugate_on_store, scale_factor,
               static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset take_conjugate_on_store
-          take_conjugate_on_store = detail::complex_conjugate::NOT_TAKEN;
+          // reset conjugate_on_store
+          conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
         } else {
           if (counter == 0 && compute_direction == direction::BACKWARD) {
-            take_conjugate_on_load = detail::complex_conjugate::TAKEN;
+            conjugate_on_load = detail::complex_conjugate::APPLIED;
           }
           set_spec_constants(
               detail::level::GLOBAL, in_bundle,
               static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>())),
               factors, detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-              detail::apply_scale_factor::NOT_APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
-              scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset take_conjugate_on_load
-          take_conjugate_on_load = detail::complex_conjugate::NOT_TAKEN;
+              detail::apply_scale_factor::NOT_APPLIED, level, conjugate_on_load, conjugate_on_store, scale_factor,
+              static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
+          // reset conjugate_on_load
+          conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
         }
       } else {
         if (compute_direction == direction::BACKWARD) {
-          take_conjugate_on_load = detail::complex_conjugate::TAKEN;
-          take_conjugate_on_store = detail::complex_conjugate::TAKEN;
+          conjugate_on_load = detail::complex_conjugate::APPLIED;
+          conjugate_on_store = detail::complex_conjugate::APPLIED;
         }
         set_spec_constants(level, in_bundle, params.lengths[dimension_num], factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                           detail::apply_scale_factor::APPLIED, level, take_conjugate_on_load, take_conjugate_on_store,
+                           detail::apply_scale_factor::APPLIED, level, conjugate_on_load, conjugate_on_store,
                            scale_factor);
       }
       try {

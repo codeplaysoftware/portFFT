@@ -190,7 +190,7 @@ PORTFFT_INLINE constexpr Idx int_log2(Idx x) {
  * @param num_complex number of complex numbers in the private memory
  */
 template <typename T>
-PORTFFT_INLINE void take_conjugate_inplace(T* priv, Idx num_complex) {
+PORTFFT_INLINE void conjugate_inplace(T* priv, Idx num_complex) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < num_complex; i++) {
     priv[2 * i + 1] *= -1;

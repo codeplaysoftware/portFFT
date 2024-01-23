@@ -107,10 +107,8 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  detail::complex_conjugate take_conjugate_on_load =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnLoad>();
-  detail::complex_conjugate take_conjugate_on_store =
-      kh.get_specialization_constant<detail::SpecConstTakeConjugateOnStore>();
+  detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecTakeConjugateOnLoad>();
+  detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
 
   T scaling_factor = [&]() {
     if constexpr (std::is_same_v<T, float>) {
@@ -213,12 +211,12 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         global_data.log_message_global(__func__, "applying load modifier");
         detail::apply_modifier(fft_size, priv, load_modifier_data, i * n_reals);
       }
-      if (take_conjugate_on_load == detail::complex_conjugate::TAKEN) {
-        take_conjugate_inplace(priv, fft_size);
+      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fft_size);
       }
       wi_dft<0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
-      if (take_conjugate_on_store == detail::complex_conjugate::TAKEN) {
-        take_conjugate_inplace(priv, fft_size);
+      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fft_size);
       }
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
