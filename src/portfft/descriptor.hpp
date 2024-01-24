@@ -192,7 +192,7 @@ class committed_descriptor {
       const std::vector<sycl::event>& events, complex_storage storage);
 
   /**
-   * vector containing the implementation level selected, and the sub-implementation level, factors, and kernel_ids
+   * vector containing the sub-implementation level, factors, and kernel_ids
    * associated with each of the factor.
    */
   using kernel_ids_and_metadata =
@@ -516,7 +516,7 @@ class committed_descriptor {
 
   /**
    * Calculates twiddle factors for the implementation in use.
-   * @param dimension_data dimension_struct correspoding to the dimension for which
+   * @param dimension_data dimension_struct correspoding to the dimension for which twiddles are being calculated
    * @param kernels vector of kernels
    * @return Scalar* USM pointer to the twiddle factors
    */
@@ -536,7 +536,7 @@ class committed_descriptor {
    * @param dimension_num which dimension are the kernels being built for
    * @param is_compatible flag to be set if the kernels are compatible
    * @param skip_scaling whether or not to skip scaling
-   * @return
+   * @return vector of kernel_data_struct if all kernel builds are successful, std::nullopt otherwise
    */
   template <Idx SubgroupSize>
   std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(detail::level top_level,
