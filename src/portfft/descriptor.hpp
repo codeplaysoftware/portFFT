@@ -192,7 +192,7 @@ class committed_descriptor {
       const std::vector<sycl::event>& events, complex_storage storage);
 
   /**
-   * vector containing the sub-implementation level, factors, and kernel_ids
+   * Vector containing the sub-implementation level, kernel_ids and the factors
    * associated with each of the factor.
    */
   using kernel_ids_and_metadata =
