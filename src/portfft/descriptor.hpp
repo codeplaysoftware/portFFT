@@ -191,6 +191,12 @@ class committed_descriptor {
       IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
       const std::vector<sycl::event>& events, complex_storage storage);
 
+  /**
+   * vector containing the implementation level selected, and the sub-implementation level, factors, and kernel_ids
+   * associated with each of the factor.
+   */
+  using kernel_ids_and_metadata =
+      std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>;
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
@@ -315,8 +321,7 @@ class committed_descriptor {
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>>
-  prepare_implementation(std::size_t kernel_num) {
+  std::tuple<detail::level, kernel_ids_and_metadata> prepare_implementation(std::size_t kernel_num) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
@@ -534,12 +539,14 @@ class committed_descriptor {
    * @return
    */
   template <Idx SubgroupSize>
-  std::vector<kernel_data_struct> set_spec_constants_driver(
-      detail::level top_level,
-      std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>& prepared_vec,
-      direction compute_direction, std::size_t dimension_num, bool& is_compatible, bool skip_scaling) {
+  std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(detail::level top_level,
+                                                                           kernel_ids_and_metadata& prepared_vec,
+                                                                           direction compute_direction,
+                                                                           std::size_t dimension_num,
+                                                                           bool skip_scaling) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
     detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
+    bool is_compatible = true;
     if (skip_scaling) {
       scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
     }
@@ -592,7 +599,10 @@ class committed_descriptor {
       }
       counter++;
     }
-    return result;
+    if (is_compatible) {
+      return result;
+    }
+    return std::nullopt;
   }
 
   /**
@@ -618,12 +628,13 @@ class committed_descriptor {
       }
 
       if (is_compatible) {
-        std::vector<kernel_data_struct> forward_kernels = set_spec_constants_driver<SubgroupSize>(
-            top_level, prepared_vec, direction::FORWARD, dimension_num, is_compatible, skip_scaling);
-        std::vector<kernel_data_struct> backward_kernels = set_spec_constants_driver<SubgroupSize>(
-            top_level, prepared_vec, direction::BACKWARD, dimension_num, is_compatible, skip_scaling);
-        if (is_compatible) {
-          return {forward_kernels, backward_kernels, top_level, params.lengths[dimension_num], SubgroupSize};
+        auto forward_kernels = set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD,
+                                                                       dimension_num, skip_scaling);
+        auto backward_kernels = set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD,
+                                                                        dimension_num, skip_scaling);
+        if (forward_kernels.has_value() && backward_kernels.has_value()) {
+          return {forward_kernels.value(), backward_kernels.value(), top_level, params.lengths[dimension_num],
+                  SubgroupSize};
         }
       }
     }
