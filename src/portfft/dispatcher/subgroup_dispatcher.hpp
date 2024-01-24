@@ -584,8 +584,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
-    Scalar* res = sycl::aligned_alloc_device<Scalar>(
-        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
+    Scalar* res = sycl::aligned_alloc_device<Scalar>(detail::get_align_of_vec_t<Scalar>(dimension_data.used_ct_profile),
+                                                     kernel_data.length * 2, desc.queue);
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
@@ -677,7 +677,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       Idx max_batches_in_local_mem = (desc.dev_info.local_memory_size - twiddle_bytes) / padded_fft_bytes;
       Idx batches_per_sg = used_sg_size / 2;
       Idx num_sgs_required =
-          std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_batches_in_local_mem / batches_per_sg));
+          std::min(Idx(desc.rt_configuration.sgs_per_wg), std::max(Idx(1), max_batches_in_local_mem / batches_per_sg));
       num_sgs_per_wg = num_sgs_required;
       Idx num_batches_in_local_mem = used_sg_size * num_sgs_per_wg / 2;
       return static_cast<std::size_t>(detail::pad_local(2 * dft_length * num_batches_in_local_mem, 1));
@@ -687,7 +687,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
       Idx num_scalars_per_sg = detail::pad_local(2 * dft_length * n_ffts_per_sg, 1);
       Idx max_n_sgs =
           (desc.dev_info.local_memory_size - twiddle_bytes) / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-      num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
+      num_sgs_per_wg = std::min(Idx(desc.rt_configuration.sgs_per_wg), std::max(Idx(1), max_n_sgs));
       Idx res = num_scalars_per_sg * num_sgs_per_wg;
       return static_cast<std::size_t>(res);
     }

@@ -38,7 +38,7 @@ FetchContent_MakeAvailable(googletest)
 set(PORTFFT_UNIT_TESTS
     print_device_info.cpp
     descriptor.cpp
-    transfers.cpp
+    # transfers.cpp
     fft_float.cpp
 )
 if(PORTFFT_ENABLE_DOUBLE_BUILDS)

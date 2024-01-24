@@ -84,7 +84,7 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @tparam Dir FFT direction, takes either direction::FORWARD or direction::BACKWARD
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
- * @tparam SubgroupSize size of the subgroup
+ * @tparam Config The compile-time kernel configuration
  * @tparam T type of the scalar used for computations
  * @param input accessor or pointer to global memory containing input data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
@@ -343,7 +343,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                              const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg) {
     Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.dev_info.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-    num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
+    num_sgs_per_wg = std::min(Idx(desc.rt_configuration.sgs_per_wg), std::max(Idx(1), max_n_sgs));
     Idx res = num_scalars_per_sg * num_sgs_per_wg;
     return static_cast<std::size_t>(res);
   }

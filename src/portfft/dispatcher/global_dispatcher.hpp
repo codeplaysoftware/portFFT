@@ -209,7 +209,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
       Idx used_sg_size = detail::sg_size(kernel_data.used_ct_profile);
       if (kernel_data.level == detail::level::WORKITEM) {
         // See comments in workitem_dispatcher for layout requirments.
-        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+        Idx num_sgs_in_wg = desc.rt_configuration.sgs_per_wg;
         if (counter < kernels.size() - 1) {
           kernel_data.local_mem_required = static_cast<std::size_t>(1);
         } else {
@@ -223,7 +223,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         kernel_data.global_range = global_range;
         kernel_data.local_range = local_range;
       } else if (kernel_data.level == detail::level::SUBGROUP) {
-        Idx num_sgs_in_wg = PORTFFT_SGS_IN_WG;
+        Idx num_sgs_in_wg = desc.rt_configuration.sgs_per_wg;
         // See comments in subgroup_dispatcher for layout requirements.
         IdxGlobal factor_sg = detail::factorize_sg(factors_idx_global.at(counter), used_sg_size);
         IdxGlobal factor_wi = factors_idx_global.at(counter) / factor_sg;

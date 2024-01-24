@@ -515,22 +515,22 @@ class committed_descriptor {
    */
   template <typename KernelSpecDefs>
   dimension_struct build_w_spec_const(std::size_t kernel_num) {
-    if (KernelSpecDefs::current != rt_configuration.preferred_ct_profile) {
+    if (KernelSpecDefs::Current != rt_configuration.preferred_ct_profile) {
       if constexpr (!KernelSpecDefs::LastProfile) {
         return build_w_spec_const<typename KernelSpecDefs::next>(kernel_num);
       } else {
         throw invalid_configuration("Could not find preferred profile for this device: " +
-                                    std::string(detail::profile_name(KernelSpecDefs::current)));
+                                    std::string(detail::profile_name(KernelSpecDefs::Current)));
       }
     }
 
     // Current is the preferred profile.
-    using profile_t = detail::kernel_spec<KernelSpecDefs::current>;
+    using profile_t = detail::kernel_spec<KernelSpecDefs::Current>;
     if constexpr (profile_t::ProfileEnabled) {
       if (!dev_info.supports_sg_size(profile_t::SgSize)) {
         throw invalid_configuration("Device did not support the subgroup size of its preferred config.");
       }
-      auto [top_level, prepared_vec] = prepare_implementation<KernelSpecDefs::current>(kernel_num);
+      auto [top_level, prepared_vec] = prepare_implementation<KernelSpecDefs::Current>(kernel_num);
       bool is_compatible = true;
       for (auto [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && dev_info.is_compatible(ids);
@@ -565,8 +565,8 @@ class committed_descriptor {
                                detail::apply_scale_factor::APPLIED, level);
           }
           try {
-            result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], KernelSpecDefs::current,
-                                PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+            result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], KernelSpecDefs::Current,
+                                rt_configuration.sgs_per_wg, std::shared_ptr<Scalar>(), level);
           } catch (std::exception& e) {
             std::cerr << "Build for preferred kernel configuration failed with:\n" << e.what() << std::endl;
             is_compatible = false;
@@ -575,18 +575,18 @@ class committed_descriptor {
           counter++;
         }
         if (is_compatible) {
-          return {result, top_level, params.lengths[kernel_num], KernelSpecDefs::current};
+          return {result, top_level, params.lengths[kernel_num], KernelSpecDefs::Current};
         } else {
           throw invalid_configuration("Preferred kernel configuration not compatible: " +
-                                      std::string(detail::profile_name(KernelSpecDefs::current)));
+                                      std::string(detail::profile_name(KernelSpecDefs::Current)));
         }
       } else {
         throw invalid_configuration("Preferred kernel configuration not compatible: " +
-                                    std::string(detail::profile_name(KernelSpecDefs::current)));
+                                    std::string(detail::profile_name(KernelSpecDefs::Current)));
       }
     } else {
       throw invalid_configuration("Preferred kernel configuration not compiled: " +
-                                  std::string(detail::profile_name(KernelSpecDefs::current)));
+                                  std::string(detail::profile_name(KernelSpecDefs::Current)));
     }
   }
 
@@ -792,7 +792,6 @@ class committed_descriptor {
     PORTFFT_COPY(dev_info)
     PORTFFT_COPY(dimensions)
     PORTFFT_COPY(scratch_space_required)
-
 #undef PORTFFT_COPY
     bool is_scratch_required = false;
     for (std::size_t i = 0; i < desc.dimensions.size(); i++) {
@@ -810,7 +809,9 @@ class committed_descriptor {
   }
 
  public:
-  committed_descriptor(const committed_descriptor& desc) : params(desc.params) { create_copy(desc); }
+  committed_descriptor(const committed_descriptor& desc) : params(desc.params), dev_info(desc.dev_info) {
+    create_copy(desc);
+  }
   committed_descriptor& operator=(const committed_descriptor& desc) {
     if (this != &desc) {
       create_copy(desc);
@@ -1284,7 +1285,7 @@ class committed_descriptor {
                                         std::size_t output_distance, std::size_t input_offset,
                                         std::size_t output_offset, Scalar scale_factor,
                                         dimension_struct& dimension_data) {
-    if (KernelSpecDefinitions::current != rt_configuration.preferred_ct_profile) {
+    if (KernelSpecDefinitions::Current != rt_configuration.preferred_ct_profile) {
       if constexpr (!KernelSpecDefinitions::LastProfile) {
         using next_t = typename KernelSpecDefinitions::next;
         return dispatch_kernel_1d_helper<Dir, TIn, TOut, next_t>(
@@ -1294,10 +1295,10 @@ class committed_descriptor {
         throw unsupported_configuration("Device's preferred profile was not available.");
       }
     }
-    constexpr detail::ct_profile profile = KernelSpecDefinitions::current;
-    using profile_info_t = detail::kernel_spec<profile>;
+    constexpr detail::ct_profile Profile = KernelSpecDefinitions::Current;
+    using profile_info_t = detail::kernel_spec<Profile>;
     if constexpr (profile_info_t::ProfileEnabled) {
-      if (profile == dimension_data.used_ct_profile) {
+      if (Profile == dimension_data.used_ct_profile) {
         const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
         const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
         const bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
@@ -1307,7 +1308,7 @@ class committed_descriptor {
           if (input_batch_interleaved) {
             minimum_local_mem_required =
                 num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-                    kernel_data.level, kernel_data.length, detail::kernel_spec<profile>::SgSize, kernel_data.factors,
+                    kernel_data.level, kernel_data.length, detail::kernel_spec<Profile>::SgSize, kernel_data.factors,
                     kernel_data.num_sgs_per_wg) *
                 sizeof(Scalar);
             if (static_cast<Idx>(minimum_local_mem_required) > dev_info.local_memory_size) {
@@ -1318,22 +1319,22 @@ class committed_descriptor {
           }
         }
         if (input_packed && output_packed) {
-          return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, profile>(
+          return run_kernel<Dir, detail::layout::PACKED, detail::layout::PACKED, Profile>(
               in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
               dimension_data);
         }
         if (input_batch_interleaved && output_packed && in != out) {
-          return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, profile>(
+          return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, Profile>(
               in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
               dimension_data);
         }
         if (input_packed && output_batch_interleaved && in != out) {
-          return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, profile>(
+          return run_kernel<Dir, detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, Profile>(
               in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
               dimension_data);
         }
         if (input_batch_interleaved && output_batch_interleaved) {
-          return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, profile>(
+          return run_kernel<Dir, detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, Profile>(
               in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, scale_factor,
               dimension_data);
         }

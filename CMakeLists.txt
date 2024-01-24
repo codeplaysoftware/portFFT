@@ -41,7 +41,6 @@ option(PORTFFT_VERIFY_BENCHMARKS "Whether to verify FFT results during benchmark
 option(PORTFFT_ENABLE_DOUBLE_BUILDS "Enable building tests and benchmarks using double precision" ON)
 option(PORTFFT_ENABLE_BUFFER_BUILDS "Enable building tests with buffers" ON)
 option(PORTFFT_ENABLE_OOP_BUILDS "Enable building tests with out-of-place configuration where an equivalent in-place configuration is supported" ON)
-option(PORTFFT_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores." OFF)
 option(PORTFFT_SLOW_SG_SHUFFLES "Whether subgroup shuffles are slow on target device and should be avoided." OFF)
 option(PORTFFT_USE_SCLA "Whether to use spec-constant length array (experimental)" OFF)
 option(PORTFFT_CLANG_TIDY "Enable clang-tidy checks on portFFT source when building tests" ON)
@@ -50,12 +49,14 @@ option(PORTFFT_LOG_DUMPS "Whether to enable logging of data dumps" OFF)
 option(PORTFFT_LOG_TRANSFERS "Whether to enable logging of memory transfers" OFF)
 option(PORTFFT_LOG_TRACE "Whether to enable tracing of function calls" OFF)
 set(PORTFFT_REGISTERS_PER_WI 128 CACHE STRING "How many 32b registers can be allocated per work item on the target device")
-set(PORTFFT_SUBGROUP_SIZES 32 CACHE STRING "Comma separated list of subgroup sizes to compile for. The first size supported by the device will be used.")
-set(PORTFFT_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once.")
-set(PORTFFT_SGS_IN_WG 2 CACHE STRING "Number of subgroups per workgroup.")
 set(PORTFFT_MAX_CONCURRENT_KERNELS 16 CACHE STRING "Maximum number of resident kernels possible on the hardware")
 set(PORTFFT_DEVICE_TRIPLE "spir64" CACHE STRING "Specify the target triple representing target device architectures")
 set(PORTFFT_CLANG_OPTIMIZATION_REMARKS_REGEX "" CACHE STRING "Use -fsave-optimization-record -Rpass-missed=<regex> -Rpass=<regex> -Rpass-analysis=<regex> to obtain optimization pass remarks. See https://llvm.org/docs/Passes.html for passes.")
+set(PORTFFT_ENABLED_KERNEL_CONFIGS "auto" CACHE STRING "The compile-time kernel congiutrations to enable. 'auto' chooses based on compilation targets. ; separated list, matched by substring.")
+# If "Custom" in PORTFFT_ENABLED_KERNEL_CONFIGS, the following may be used to specificy a custom kernel profile: 
+set(PORTFFT_BUILD_CUSTOM_KERNEL_PROFILE_SG_SIZE 32 CACHE STRING "Subgroup size to use for custom kernel configuration profile")
+option(PORTFFT_BUILD_CUSTOM_KERNEL_PROFILE_USE_SG_TRANSFERS "Whether to use intel extension for subgroup joint loads and stores in custom kernel configuration profile" OFF)
+set(PORTFFT_BUILD_CUSTOM_KERNEL_PROFILE_VEC_LOAD_BYTES 16 CACHE STRING "Number of consecutive bytes each work item should load at once in custom kernel configuration profile.")
 
 set(PORTFFT_INCLUDE_DIR
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -70,13 +71,11 @@ target_include_directories(portfft INTERFACE
     ${PORTFFT_SRC_DIR}
 )
 target_compile_definitions(portfft INTERFACE PORTFFT_REGISTERS_PER_WI=${PORTFFT_REGISTERS_PER_WI})
-target_compile_definitions(portfft INTERFACE PORTFFT_SUBGROUP_SIZES=${PORTFFT_SUBGROUP_SIZES})
-target_compile_definitions(portfft INTERFACE PORTFFT_VEC_LOAD_BYTES=${PORTFFT_VEC_LOAD_BYTES})
-target_compile_definitions(portfft INTERFACE PORTFFT_SGS_IN_WG=${PORTFFT_SGS_IN_WG})
 target_compile_definitions(portfft INTERFACE PORTFFT_MAX_CONCURRENT_KERNELS=${PORTFFT_MAX_CONCURRENT_KERNELS})
-if(${PORTFFT_USE_SG_TRANSFERS})
-  target_compile_definitions(portfft INTERFACE PORTFFT_USE_SG_TRANSFERS)
-endif()
+
+include("PortFFTManageCTProfiles")
+portfft_manage_ct_profiles()
+
 if(${PORTFFT_SLOW_SG_SHUFFLES})
   target_compile_definitions(portfft INTERFACE PORTFFT_SLOW_SG_SHUFFLES=1)
 else()

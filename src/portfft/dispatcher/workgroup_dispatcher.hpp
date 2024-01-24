@@ -217,7 +217,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
     const Idx used_sg_size = detail::sg_size(kernel_data.used_ct_profile);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
-        return used_sg_size * PORTFFT_SGS_IN_WG / 2;
+        return used_sg_size * desc.rt_configuration.sgs_per_wg / 2;
       } else {
         return 1;
       }
@@ -246,7 +246,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       sycl::stream s{1024 * 16, 1024, cgh};
 #endif
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, Config>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * desc.rt_configuration.sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
@@ -279,13 +279,13 @@ template <typename Scalar, domain Domain>
 template <typename detail::layout LayoutIn, typename Dummy>
 struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP, LayoutIn,
                                                                                     Dummy> {
-  static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, Idx used_sg_size,
+  static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/) {
     std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
     std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
     Idx num_batches_in_local_mem =
-        detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * PORTFFT_SGS_IN_WG);
+        detail::get_num_batches_in_local_mem_workgroup<LayoutIn>(used_sg_size * desc.rt_configuration.sgs_per_wg);
     return detail::pad_local(static_cast<std::size_t>(2 * num_batches_in_local_mem) * length,
                              bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m)) +
            2 * (m + n);
@@ -305,9 +305,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;
     Idx res_size = 2 * (m + n + fft_size);
-    Scalar* res =
-        sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
-                                           static_cast<std::size_t>(res_size), desc.queue);
+    Scalar* res = sycl::aligned_alloc_device<Scalar>(detail::get_align_of_vec_t<Scalar>(dimension_data.used_ct_profile),
+                                                     static_cast<std::size_t>(res_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_n), static_cast<std::size_t>(factor_wi_n)}),
                        [=](sycl::item<2> it) {
