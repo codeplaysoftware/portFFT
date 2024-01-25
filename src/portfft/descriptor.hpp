@@ -466,9 +466,9 @@ class committed_descriptor {
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
-    in_bundle.template set_specialization_constant<detail::SpecTakeConjugateOnLoad>(conjugate_on_load);
+    in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnLoad>(conjugate_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnStore>(conjugate_on_store);
-    in_bundle.template set_specialization_constant<detail::get_spect_constant_scale<Scalar>()>(scale_factor);
+    in_bundle.template set_specialization_constant<detail::get_spec_constant_scale<Scalar>()>(scale_factor);
 
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
@@ -516,6 +516,7 @@ class committed_descriptor {
 
   /**
    * Calculates twiddle factors for the implementation in use.
+   * @param level Implementation selected for the committed size
    * @param dimension_data dimension_struct correspoding to the dimension for which twiddles are being calculated
    * @param kernels vector of kernels
    * @return Scalar* USM pointer to the twiddle factors
