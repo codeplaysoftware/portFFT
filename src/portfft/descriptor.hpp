@@ -192,10 +192,10 @@ class committed_descriptor {
       const std::vector<sycl::event>& events, complex_storage storage);
 
   /**
-   * Vector containing the sub-implementation level, kernel_ids and the factors
-   * associated with each of the factor.
+   * Vector containing the sub-implementation level, kernel_ids and factors for each factor that requires a separate
+   * kernel.
    */
-  using kernel_ids_and_metadata =
+  using kernel_ids_and_metadata_t =
       std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>;
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
@@ -321,7 +321,7 @@ class committed_descriptor {
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, kernel_ids_and_metadata> prepare_implementation(std::size_t kernel_num) {
+  std::tuple<detail::level, kernel_ids_and_metadata_t> prepare_implementation(std::size_t kernel_num) {
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
@@ -535,13 +535,12 @@ class committed_descriptor {
    * vector of kernel ids, factors
    * @param compute_direction direction of compute: forward or backward
    * @param dimension_num which dimension are the kernels being built for
-   * @param is_compatible flag to be set if the kernels are compatible
    * @param skip_scaling whether or not to skip scaling
    * @return vector of kernel_data_struct if all kernel builds are successful, std::nullopt otherwise
    */
   template <Idx SubgroupSize>
   std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(detail::level top_level,
-                                                                           kernel_ids_and_metadata& prepared_vec,
+                                                                           kernel_ids_and_metadata_t& prepared_vec,
                                                                            direction compute_direction,
                                                                            std::size_t dimension_num,
                                                                            bool skip_scaling) {
