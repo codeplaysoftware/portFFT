@@ -96,13 +96,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
   detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecConstConjugateOnLoad>();
   detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
-  T scaling_factor = [&]() {
-    if constexpr (std::is_same_v<T, float>) {
-      return kh.get_specialization_constant<detail::SpecConstScaleFactorFloat>();
-    } else {
-      return kh.get_specialization_constant<detail::SpecConstScaleFactorDouble>();
-    }
-  }();
+  T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
 
   const Idx factor_wi = kh.get_specialization_constant<SubgroupFactorWISpecConst>();
   const Idx factor_sg = kh.get_specialization_constant<SubgroupFactorSGSpecConst>();

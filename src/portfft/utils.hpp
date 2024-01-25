@@ -180,7 +180,7 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
  * @return sycl::specialization_id
  */
 template <typename Scalar>
-constexpr const sycl::specialization_id<Scalar>& get_spec_constant_scale() {
+PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constant_scale() {
   if constexpr (std::is_same_v<Scalar, float>) {
     return detail::SpecConstScaleFactorFloat;
   } else {
