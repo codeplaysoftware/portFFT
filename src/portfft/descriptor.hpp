@@ -571,11 +571,12 @@ class committed_descriptor {
                                detail::apply_scale_factor::APPLIED, level);
           }
           try {
+            LOG_TRACE("Building kernel bundle with subgroup size", SubgroupSize);
             result.emplace_back(sycl::build(in_bundle), factors, params.lengths[kernel_num], SubgroupSize,
                                 PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+            LOG_TRACE("Kernel bundle build complete.");
           } catch (std::exception& e) {
-            std::cerr << "Build for subgroup size " << SubgroupSize << " failed with message:\n"
-                      << e.what() << std::endl;
+            LOG_WARNING("Build for subgroup size", SubgroupSize, "failed with message:\n", e.what());
             is_compatible = false;
             break;
           }

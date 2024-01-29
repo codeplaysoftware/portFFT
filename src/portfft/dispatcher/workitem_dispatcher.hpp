@@ -298,15 +298,19 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
       sycl::stream s{1024 * 16 * 8, 1024, cgh};
 #endif
       LOG_TRACE("Launching workitem kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
-          [=, global_logging_config=detail::global_logging_config](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+          [=
+#ifdef PORTFFT_KERNEL_LOG
+      , global_logging_config=detail::global_logging_config
+#endif
+](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
                 s, global_logging_config, 
 #endif
                 it};

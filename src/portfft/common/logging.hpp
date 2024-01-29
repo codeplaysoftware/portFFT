@@ -80,7 +80,7 @@ const logging_config global_logging_config;
  */
 template <Idx Dim = 1>
 struct global_data_struct {
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
   sycl::stream s;
   logging_config global_logging_config;
 #endif
@@ -94,12 +94,12 @@ struct global_data_struct {
    * @param it nd_item of the kernel
    */
   global_data_struct(
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
       sycl::stream s, logging_config global_logging_config,
 #endif
       sycl::nd_item<Dim> it)
       :
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
         s(s << sycl::setprecision(3)), global_logging_config(global_logging_config),
 #endif
         it(it),
@@ -119,7 +119,7 @@ struct global_data_struct {
     }
   }
 
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
   /**
    * Logs ids of workitem, subgroup and workgroup.
    */
@@ -423,7 +423,7 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]
 }
 
   /**
-   * Logs a message. Can log multiple objects/strings. They will be separated by spaces.
+   * Logs a trace. Can log multiple objects/strings. They will be separated by spaces.
    *
    * Does nothing if logging of traces is not enabled (PORTFFT_LOG_TRACE is not defined).
    *
@@ -431,7 +431,7 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]
    * @param messages objects to log
    */
   template <typename... Ts>
-  PORTFFT_INLINE void log_message([[maybe_unused]] Ts... messages) {
+  PORTFFT_INLINE void log_trace([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRACE
     if(global_logging_config.log_trace){
       log_message_impl(messages...);
@@ -439,13 +439,33 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]
 #endif
   }
 
+  /**
+   * Logs a warning. Can log multiple objects/strings. They will be separated by spaces.
+   *
+   * Does nothing if logging of warnings is not enabled (PORTFFT_LOG_WARNING is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <typename... Ts>
+  PORTFFT_INLINE void log_warning([[maybe_unused]] Ts... messages) {
+#ifdef PORTFFT_LOG_WARNING
+    if(global_logging_config.log_warnings){
+      log_message_impl("WARNING:", messages...);
+    }
+#endif
+  }
+
 #define LOGGING_LOCATION_INFORMATION __FILE__ ", line", __LINE__, "- in", __FUNCTION__, ":"
 
 #define LOG_FUNCTION_ENTRY() \
-  detail::log_message(LOGGING_LOCATION_INFORMATION, "entered")
+  portfft::detail::log_trace(LOGGING_LOCATION_INFORMATION, "entered")
 
 #define LOG_TRACE(...) \
-  detail::log_message(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
+  portfft::detail::log_trace(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
+
+#define LOG_WARNING(...) \
+  portfft::detail::log_warning(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
 
 };  // namespace portfft::detail
 

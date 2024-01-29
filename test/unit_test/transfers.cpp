@@ -72,13 +72,17 @@ void test() {
   q.submit([&](sycl::handler& h) {
     sycl::local_accessor<ftype, 1> loc1(padded_local_size + 2 * N_sentinel_values, h);
     sycl::local_accessor<ftype, 1> loc2(padded_local_size + 2 * N_sentinel_values, h);
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
     sycl::stream s{1024 * 8, 1024, h};
 #endif
     h.parallel_for<test_transfers_kernel<Pad, BankGroupsPerPad>>(
-        sycl::nd_range<1>({wg_size}, {wg_size}), [=, global_logging_config=detail::global_logging_config](sycl::nd_item<1> it) {
+        sycl::nd_range<1>({wg_size}, {wg_size}), [=
+#ifdef PORTFFT_KERNEL_LOG
+        , global_logging_config=detail::global_logging_config
+#endif
+        ](sycl::nd_item<1> it) {
           detail::global_data_struct global_data{
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
               s, global_logging_config,
 #endif
               it};
