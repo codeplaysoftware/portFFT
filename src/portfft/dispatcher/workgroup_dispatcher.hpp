@@ -63,6 +63,7 @@ PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(Idx workgrou
 template <typename T, detail::layout LayoutIn>
 IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, Idx num_sgs_per_wg,
                                     Idx n_compute_units) {
+  LOG_FUNCTION_ENTRY();
   Idx maximum_n_sgs = 8 * n_compute_units * 64;
   Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   Idx wg_size = subgroup_size * num_sgs_per_wg;
@@ -282,6 +283,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     auto& kernel_data = dimension_data.kernels.at(0);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
@@ -312,8 +314,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16 * 8 * 2, 1024, cgh};
 #endif
+      LOG_TRACE("Launching workgroup kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
@@ -337,7 +340,9 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
                       Idx /*factor_num*/, Idx /*num_factors*/) {
+    LOG_FUNCTION_ENTRY();
     const Idx length_idx = static_cast<Idx>(length);
+    LOG_TRACE("SpecConstFftSize:", length_idx);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
 };
@@ -348,6 +353,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& /*desc*/, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/) {
+    LOG_FUNCTION_ENTRY();
     std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
     std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
     // working memory + twiddles for subgroup impl for the two sizes
@@ -363,6 +369,7 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
@@ -372,10 +379,12 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;
     Idx res_size = 2 * (m + n + fft_size);
+    LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size", res_size);
     Scalar* res =
         sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
                                            static_cast<std::size_t>(res_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
+      LOG_TRACE("Launching twiddle calculation kernel for factor 1 of workgroup implementation with global size", factor_sg_n, factor_wi_n);
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_n), static_cast<std::size_t>(factor_wi_n)}),
                        [=](sycl::item<2> it) {
                          Idx n = static_cast<Idx>(it.get_id(0));
@@ -384,6 +393,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
+      LOG_TRACE("Launching twiddle calculation kernel for factor 2 of workgroup implementation with global size", factor_sg_m, factor_wi_m);
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_m), static_cast<std::size_t>(factor_wi_m)}),
                        [=](sycl::item<2> it) {
                          Idx n = static_cast<Idx>(it.get_id(0));
@@ -392,6 +402,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
+      LOG_TRACE("Launching twiddle calculation kernel for workgroup implementation with global size", n, factor_wi_m, factor_sg_m);
       cgh.parallel_for(sycl::range<3>({static_cast<std::size_t>(n), static_cast<std::size_t>(factor_wi_m),
                                        static_cast<std::size_t>(factor_sg_m)}),
                        [=](sycl::item<3> it) {

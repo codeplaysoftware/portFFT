@@ -47,6 +47,7 @@ namespace detail {
 template <typename T>
 IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx subgroup_size, Idx num_sgs_per_wg,
                                    Idx n_compute_units) {
+  LOG_FUNCTION_ENTRY();
   Idx maximum_n_sgs = 2 * n_compute_units * 64;
   Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   Idx wg_size = subgroup_size * num_sgs_per_wg;
@@ -581,13 +582,16 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::SUBGROUP, Dummy> {
   static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
+    LOG_TRACE("Allocating global memory for twiddles for subgroup implementation. Allocation size", kernel_data.length * 2);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
+      LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg, factor_wi);
       cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
         Idx n = static_cast<Idx>(it.get_id(0));
         Idx k = static_cast<Idx>(it.get_id(1));
@@ -610,6 +614,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
                              dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
     auto& kernel_data = dimension_data.kernels.at(0);
     Scalar* twiddles = kernel_data.twiddles_forward.get();
@@ -632,6 +637,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #ifdef PORTFFT_LOG
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
+      LOG_TRACE("Launching subgroup kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements, "local memory allocation for twiddles of size", twiddle_elements);
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
@@ -657,7 +663,10 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t /*length*/, const std::vector<Idx>& factors, detail::level /*level*/,
                       Idx /*factor_num*/, Idx /*num_factors*/) {
+    LOG_FUNCTION_ENTRY();
+    LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
+    LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
   }
 };
@@ -668,6 +677,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
+    LOG_FUNCTION_ENTRY();
     Idx dft_length = static_cast<Idx>(length);
     Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
     if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {

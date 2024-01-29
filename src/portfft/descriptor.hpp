@@ -76,6 +76,7 @@ class transpose_kernel;
  * @param lengths the dimensions of the dft
  */
 inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
+  LOG_FUNCTION_ENTRY();
   std::vector<std::size_t> strides(lengths.size());
   std::size_t total_size = 1;
   for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
@@ -83,6 +84,7 @@ inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_
     strides[i] = total_size;
     total_size *= lengths[i];
   }
+  LOG_TRACE("Default strides:", strides);
   return strides;
 }
 
@@ -312,6 +314,7 @@ class committed_descriptor {
   template <Idx SubgroupSize>
   std::tuple<detail::level, std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>>
   prepare_implementation(std::size_t kernel_num) {
+    LOG_FUNCTION_ENTRY();
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
@@ -322,6 +325,7 @@ class committed_descriptor {
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
+      LOG_TRACE("Prepared workitem impl for size: ", fft_size);
       return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
@@ -332,6 +336,7 @@ class committed_descriptor {
       factors.push_back(factor_wi);
       factors.push_back(factor_sg);
       ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
+      LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
       return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
@@ -362,9 +367,11 @@ class committed_descriptor {
         // This factorization of N and M is duplicated in the dispatch logic on the device.
         // The CT and spec constant factors should match.
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
+        LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n, " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
         return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
+    LOG_TRACE("Preparing global impl");
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
@@ -372,7 +379,7 @@ class committed_descriptor {
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{static_cast<Idx>(factor_size)});
-
+        LOG_TRACE("Workitem kernel for factor:", factor_size);
         return true;
       }
       bool fits_in_local_memory_subgroup = [&]() {
@@ -400,11 +407,12 @@ class committed_descriptor {
       }();
       if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup &&
           !PORTFFT_SLOW_SG_SHUFFLES) {
+        Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
+        Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
+        LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
         param_vec.emplace_back(detail::level::SUBGROUP,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
-                               std::vector<Idx>{detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize),
-                                                static_cast<Idx>(factor_size) /
-                                                    detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize)});
+                               std::vector<Idx>{factor_sg, factor_wi});
         return true;
       }
       return false;
@@ -444,13 +452,21 @@ class committed_descriptor {
                           detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level, Idx factor_num = 0,
                           Idx num_factors = 0) {
+    LOG_FUNCTION_ENTRY();
     const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
+    LOG_TRACE("Setting specialization constants:");
+    LOG_TRACE("SpecConstComplexStorage:", params.complex_storage);
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
+    LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length_idx);
     in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length_idx);
+    LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length_idx));
     in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length_idx));
+    LOG_TRACE("SpecConstMultiplyOnLoad:", multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
+    LOG_TRACE("SpecConstMultiplyOnStore:", multiply_on_store);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnStore>(multiply_on_store);
+    LOG_TRACE("SpecConstApplyScaleFactor:", scale_factor_applied);
     in_bundle.template set_specialization_constant<detail::SpecConstApplyScaleFactor>(scale_factor_applied);
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
@@ -481,6 +497,7 @@ class committed_descriptor {
   template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem(detail::level level, std::size_t length, Idx used_sg_size,
                                        const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
+    LOG_FUNCTION_ENTRY();
     return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(level, length, used_sg_size, factors, num_sgs_per_wg);
   }
 
@@ -502,6 +519,7 @@ class committed_descriptor {
    * @return Scalar* USM pointer to the twiddle factors
    */
   Scalar* calculate_twiddles(dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     return dispatch<calculate_twiddles_struct>(dimension_data.level, dimension_data);
   }
 
@@ -516,6 +534,7 @@ class committed_descriptor {
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
   dimension_struct build_w_spec_const(std::size_t kernel_num) {
+    LOG_FUNCTION_ENTRY();
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(kernel_num);
       bool is_compatible = true;
@@ -579,6 +598,7 @@ class committed_descriptor {
    * @param num_global_level_dimensions number of global level dimensions in the committed size
    */
   void allocate_scratch_and_precompute_scan(Idx num_global_level_dimensions) {
+    LOG_FUNCTION_ENTRY();
     std::size_t n_kernels = params.lengths.size();
     if (num_global_level_dimensions == 1) {
       std::size_t global_dimension = 0;
@@ -602,7 +622,7 @@ class committed_descriptor {
       }
       dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
       std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
-      // TODO: In case of mutli-dim (single dim global sized), this should be batches corresposding to that dim
+      // TODO: In case of mutli-dim (single dim global sized), this should be batches corresponding to that dim
       dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
           static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
           std::min(params.number_of_transforms,
@@ -610,14 +630,9 @@ class committed_descriptor {
                                                 (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
       scratch_space_required = 2 * dimensions.at(global_dimension).length *
                                static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
-      scratch_ptr_1 =
-          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
-                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                      queue);
-      scratch_ptr_2 =
-          detail::make_shared<Scalar>(2 * dimensions.at(global_dimension).length *
-                                          static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2),
-                                      queue);
+      LOG_TRACE("Allocating 2 scratch arrays of size", scratch_space_required, "scalars in global memory");
+      scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
+      scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
       inclusive_scan.push_back(factors.at(0));
       for (std::size_t i = 1; i < factors.size(); i++) {
         inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
@@ -637,8 +652,12 @@ class committed_descriptor {
         std::vector<sycl::kernel_id> ids;
         auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
                                                                             detail::get_transpose_kernel_ids<Scalar>());
+        LOG_TRACE("Setting specialization constants for transpose kernel", i);
+        LOG_TRACE("SpecConstComplexStorage:", params.complex_storage);
         in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
+        LOG_TRACE("GlobalSpecConstLevelNum:", i);
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+        LOG_TRACE("GlobalSpecConstNumFactors:", factors.size());
         in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
             static_cast<Idx>(factors.size()));
         dimensions.at(global_dimension)
@@ -690,7 +709,10 @@ class committed_descriptor {
           for (std::size_t j = 0; j < num_transposes_required; j++) {
             auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
                 queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
+            LOG_TRACE("Setting specilization constants for transpose kernel", j);
+            LOG_TRACE("GlobalSpecConstLevelNum:", i);
             in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+            LOG_TRACE("GlobalSpecConstNumFactors:", factors.size());
             in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
                 static_cast<Idx>(factors.size()));
             dimensions.at(i).kernels.emplace_back(
@@ -719,8 +741,14 @@ class committed_descriptor {
         supported_sg_sizes(dev.get_info<sycl::info::device::sub_group_sizes>()),
         local_memory_size(static_cast<Idx>(queue.get_device().get_info<sycl::info::device::local_mem_size>())),
         llc_size(static_cast<IdxGlobal>(queue.get_device().get_info<sycl::info::device::global_mem_cache_size>())) {
-    // check it's suitable to run
+    LOG_FUNCTION_ENTRY();
+    LOG_TRACE("Device info:");
+    LOG_TRACE("n_compute_units:", n_compute_units);
+    LOG_TRACE("supported_sg_sizes:", supported_sg_sizes);
+    LOG_TRACE("local_memory_size:", local_memory_size);
+    LOG_TRACE("llc_size:", llc_size);
 
+    // check it's suitable to run
     const auto forward_layout = detail::get_layout(params, direction::FORWARD);
     const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
     if (params.lengths.size() > 1) {
@@ -745,6 +773,7 @@ class committed_descriptor {
       dimensions.back().kernels.at(0).twiddles_forward =
           std::shared_ptr<Scalar>(calculate_twiddles(dimensions.back()), [queue](Scalar* ptr) {
             if (ptr != nullptr) {
+              LOG_TRACE("Freeing the array for twiddle factors");
               sycl::free(ptr, queue);
             }
           });
@@ -778,6 +807,7 @@ class committed_descriptor {
    * @param desc committed_descriptor of which the copy is to be made
    */
   void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
+    LOG_FUNCTION_ENTRY();
 #define PORTFFT_COPY(x) this->x = desc.x;
     PORTFFT_COPY(params)
     PORTFFT_COPY(queue)
@@ -799,6 +829,7 @@ class committed_descriptor {
       }
     }
     if (is_scratch_required) {
+      LOG_TRACE("Allocating 2 scratch arrays of size", desc.scratch_space_required, "Scalars in global memory");
       this->scratch_ptr_1 =
           detail::make_shared<Scalar>(static_cast<std::size_t>(desc.scratch_space_required), this->queue);
       this->scratch_ptr_2 =
@@ -807,13 +838,19 @@ class committed_descriptor {
   }
 
  public:
-  committed_descriptor(const committed_descriptor& desc) : params(desc.params) { create_copy(desc); }
+  committed_descriptor(const committed_descriptor& desc) : params(desc.params) {
+    LOG_FUNCTION_ENTRY();
+    create_copy(desc);
+  }
+
   committed_descriptor& operator=(const committed_descriptor& desc) {
+    LOG_FUNCTION_ENTRY();
     if (this != &desc) {
       create_copy(desc);
     }
     return *this;
   }
+
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
   /**
@@ -828,7 +865,10 @@ class committed_descriptor {
   /**
    * Destructor
    */
-  ~committed_descriptor() { queue.wait(); }
+  ~committed_descriptor() {
+    LOG_FUNCTION_ENTRY();
+    queue.wait();
+  }
 
   // default construction is not appropriate
   committed_descriptor() = delete;
@@ -839,6 +879,7 @@ class committed_descriptor {
    * @param inout buffer containing input and output data
    */
   void compute_forward(sycl::buffer<complex_type, 1>& inout) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     compute_forward(inout, inout);
@@ -851,6 +892,7 @@ class committed_descriptor {
    * @param inout_imag buffer containing imaginary part of the input and output data
    */
   void compute_forward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     compute_forward(inout_real, inout_imag, inout_real, inout_imag);
@@ -862,6 +904,7 @@ class committed_descriptor {
    * @param inout buffer containing input and output data
    */
   void compute_backward(sycl::buffer<complex_type, 1>& inout) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     compute_backward(inout, inout);
@@ -874,6 +917,7 @@ class committed_descriptor {
    * @param inout_imag buffer containing imaginary part of the input and output data
    */
   void compute_backward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     compute_backward(inout_real, inout_imag, inout_real, inout_imag);
@@ -886,6 +930,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
+    LOG_FUNCTION_ENTRY();
     dispatch_direction<direction::FORWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX);
   }
 
@@ -899,6 +944,7 @@ class committed_descriptor {
    */
   void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
                        sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    LOG_FUNCTION_ENTRY();
     dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
@@ -909,6 +955,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
+    LOG_FUNCTION_ENTRY();
     throw unsupported_configuration("Real to complex FFTs not yet implemented.");
   }
 
@@ -919,6 +966,7 @@ class committed_descriptor {
    * @param out buffer containing output data
    */
   void compute_backward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
+    LOG_FUNCTION_ENTRY();
     dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX);
   }
 
@@ -932,6 +980,7 @@ class committed_descriptor {
    */
   void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
                         sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    LOG_FUNCTION_ENTRY();
     dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX);
   }
 
@@ -943,6 +992,7 @@ class committed_descriptor {
    * @return sycl::event associated with this computation
    */
   sycl::event compute_forward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     return compute_forward(inout, inout, dependencies);
@@ -958,6 +1008,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag,
                               const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
@@ -971,6 +1022,7 @@ class committed_descriptor {
    * @return sycl::event associated with this computation
    */
   sycl::event compute_forward(Scalar* inout, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     // For now we can just call out-of-place implementation.
     // This might need to be changed once we implement support for large sizes that work in global memory.
     return compute_forward(inout, reinterpret_cast<complex_type*>(inout), dependencies);
@@ -984,6 +1036,7 @@ class committed_descriptor {
    * @return sycl::event associated with this computation
    */
   sycl::event compute_backward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return compute_backward(inout, inout, dependencies);
   }
 
@@ -997,6 +1050,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
                                const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return compute_backward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
   }
 
@@ -1010,6 +1064,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const complex_type* in, complex_type* out,
                               const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return dispatch_direction<direction::FORWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, dependencies);
   }
 
@@ -1025,6 +1080,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
                               scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return dispatch_direction<direction::FORWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
                                                   dependencies);
   }
@@ -1039,6 +1095,7 @@ class committed_descriptor {
    */
   sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
                               const std::vector<sycl::event>& /*dependencies*/ = {}) {
+    LOG_FUNCTION_ENTRY();
     throw unsupported_configuration("Real to complex FFTs not yet implemented.");
     return {};
   }
@@ -1053,6 +1110,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const complex_type* in, complex_type* out,
                                const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return dispatch_direction<direction::BACKWARD>(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX,
                                                    dependencies);
   }
@@ -1069,6 +1127,7 @@ class committed_descriptor {
    */
   sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
                                scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
     return dispatch_direction<direction::BACKWARD>(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX,
                                                    dependencies);
   }
@@ -1095,6 +1154,7 @@ class committed_descriptor {
   template <direction Dir, typename TIn, typename TOut>
   sycl::event dispatch_direction(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  complex_storage used_storage, const std::vector<sycl::event>& dependencies = {}) {
+    LOG_FUNCTION_ENTRY();
 #ifndef PORTFFT_ENABLE_BUFFER_BUILDS
     if constexpr (!std::is_pointer_v<TIn> || !std::is_pointer_v<TOut>) {
       throw invalid_configuration("Buffer interface can not be called when buffer builds are disabled.");
@@ -1153,6 +1213,7 @@ class committed_descriptor {
                                   const std::vector<std::size_t>& output_strides, std::size_t input_distance,
                                   std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
                                   Scalar scale_factor) {
+    LOG_FUNCTION_ENTRY();
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
@@ -1182,6 +1243,7 @@ class committed_descriptor {
       output_distance = params.lengths.back();
     }
 
+    LOG_TRACE("Dispatching the kernel for the last dimension");
     sycl::event previous_event = dispatch_kernel_1d<Dir>(
         in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size, input_stride_0,
         output_stride_0, input_distance, output_distance, input_offset, output_offset, scale_factor, dimensions.back());
@@ -1196,6 +1258,7 @@ class committed_descriptor {
       // TODO do everything from the next loop in a single kernel once we support more than one distance in the
       // kernels.
       std::size_t stride_between_kernels = inner_size * params.lengths[i];
+      LOG_TRACE("Dispatching the kernels for the dimension", i);
       for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
         sycl::event e = dispatch_kernel_1d<Dir, TOutConst, TOut>(
             out, out, out_imag, out_imag, previous_events, inner_size, inner_size, inner_size, 1, 1,
@@ -1242,6 +1305,7 @@ class committed_descriptor {
                                  std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
                                  std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
                                  Scalar scale_factor, dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     return dispatch_kernel_1d_helper<Dir, TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
         in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
         output_distance, input_offset, output_offset, scale_factor, dimension_data);
@@ -1282,6 +1346,7 @@ class committed_descriptor {
                                         std::size_t output_distance, std::size_t input_offset,
                                         std::size_t output_offset, Scalar scale_factor,
                                         dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     if (SubgroupSize == dimension_data.used_sg_size) {
       const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
       const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
@@ -1294,6 +1359,7 @@ class committed_descriptor {
                                            kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
                                            kernel_data.num_sgs_per_wg) *
                                        sizeof(Scalar);
+          LOG_TRACE("Local mem required:", minimum_local_mem_required ,"B. Available: ", local_memory_size, "B.");
           if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
             throw out_of_local_memory_error(
                 "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +
@@ -1386,6 +1452,7 @@ class committed_descriptor {
                          const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                          std::size_t input_offset, std::size_t output_offset, Scalar scale_factor,
                          dimension_struct& dimension_data) {
+    LOG_FUNCTION_ENTRY();
     // mixing const and non-const inputs leads to hard-to-debug linking errors, as both use the same kernel name, but
     // are called from different template instantiations.
     static_assert(!std::is_pointer_v<TIn> || std::is_const_v<std::remove_pointer_t<TIn>>,
@@ -1508,6 +1575,7 @@ struct descriptor {
    */
   explicit descriptor(const std::vector<std::size_t>& lengths)
       : lengths(lengths), forward_strides(detail::get_default_strides(lengths)), backward_strides(forward_strides) {
+    LOG_FUNCTION_ENTRY();
     // TODO: properly set default values for distances for real transforms
     std::size_t total_size = get_flattened_length();
     forward_distance = total_size;
@@ -1520,7 +1588,10 @@ struct descriptor {
    * @param queue queue to use for computations
    * @return committed_descriptor<Scalar, Domain>
    */
-  committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) { return {*this, queue}; }
+  committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) {
+    LOG_FUNCTION_ENTRY();
+    return {*this, queue};
+  }
 
   /**
    * Get the flattened length of an FFT for a single batch, ignoring strides and distance.

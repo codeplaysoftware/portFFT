@@ -26,6 +26,7 @@
 #include <limits>
 #include <vector>
 
+#include "common/logging.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 
@@ -44,6 +45,7 @@ class transpose_kernel;
 template <template <typename, domain, direction, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
+  LOG_FUNCTION_ENTRY();
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_ID(DIRECTION, MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                \
   try {                                                                                                         \
@@ -107,6 +109,7 @@ constexpr bool can_cast_safely(const InputType& x) {
  */
 template <typename F>
 IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+  LOG_FUNCTION_ENTRY();
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
     return fact_1;
@@ -134,6 +137,7 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  */
 template <typename F>
 void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+  LOG_FUNCTION_ENTRY();
   if (detail::factorize(input_size) == 1) {
     throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
   }
@@ -150,6 +154,7 @@ void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
  */
 template <typename Scalar>
 std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
+  LOG_FUNCTION_ENTRY();
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                               \
   try {                                                                       \

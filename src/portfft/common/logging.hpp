@@ -93,8 +93,7 @@ struct global_data_struct {
   }
 
   /**
-   * Implementation of log_message. End of recursion - logs the messages separated by newlines, adds a newline and
-   * flushes the stream.
+   * Implementation of log_message.
    *
    * @tparam TFirst type of the first object to log
    * @tparam Ts types of the other objects to log
@@ -261,6 +260,71 @@ struct global_data_struct {
   }
 };
 
+/*
+ * Outputs an object to std::cout. Most objects are piped directly to std::cout.
+ *
+ * @tparam T type of the object to output
+ * @param object object to output
+ */
+template <typename T, typename std::enable_if_t<!std::is_enum_v<T>>* = nullptr>
+__attribute__((always_inline)) inline void output(T object) {
+  std::cout << object;
+}
+
+/*
+ * Outputs an object to std::cout. Enums are first cast to underlying type.
+ *
+ * @tparam T type of the object to output
+ * @param object object to output
+ */
+template <typename T, typename std::enable_if_t<std::is_enum_v<T>>* = nullptr>
+__attribute__((always_inline)) inline void output(T object) {
+  output(static_cast<std::underlying_type_t<T>>(object));
+}
+
+/*
+ * Outputs an object to std::cout. A `std::vector` is output by elements.
+ *
+ * @tparam T type of the object to output
+ * @param object object to output
+ */
+template <typename T>
+__attribute__((always_inline)) inline void output(const std::vector<T>& object) {
+  std::cout << "(";
+  for(const T& element : object){
+    output(element);
+    std::cout << ", ";
+  }
+  std::cout << ")";
+}
+
+/*
+ * Logs a message. End of recursion - logs the message, adds a newline and flushes the stream.
+ *
+ * @tparam T type of the object to log
+ * @param message message to log
+ */
+template <typename T>
+__attribute__((always_inline)) inline void log_message_impl(T message) {
+  output(message);
+  std::cout << std::endl;
+}
+
+/**
+ * Logs a message.
+ *
+ * @tparam TFirst type of the first object to log
+ * @tparam Ts types of the other objects to log
+ * @param message the first message to log
+ * @param other_messages other messages to log
+ */
+template <typename TFirst, typename... Ts>
+__attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts... other_messages) {
+  output(message);
+  std::cout << " ";
+  log_message_impl(other_messages...);
+}
+
 /**
  * Prints the message and dumps data from host to standard output
  *
@@ -301,6 +365,29 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]
   dump_host(msg, tmp.data(), size);
 #endif
 }
+
+  /**
+   * Logs a message. Can log multiple objects/strings. They will be separated by spaces.
+   *
+   * Does nothing if logging of traces is not enabled (PORTFFT_LOG_TRACE is not defined).
+   *
+   * @tparam Ts types of the objects to log
+   * @param messages objects to log
+   */
+  template <typename... Ts>
+  PORTFFT_INLINE void log_message([[maybe_unused]] Ts... messages) {
+#ifdef PORTFFT_LOG_TRACE
+    log_message_impl(messages...);
+#endif
+  }
+
+#define LOGGING_LOCATION_INFORMATION __FILE__ ", line", __LINE__, "- in", __FUNCTION__, ":"
+
+#define LOG_FUNCTION_ENTRY() \
+  detail::log_message(LOGGING_LOCATION_INFORMATION, "entered")
+
+#define LOG_TRACE(...) \
+  detail::log_message(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
 
 };  // namespace portfft::detail
 
