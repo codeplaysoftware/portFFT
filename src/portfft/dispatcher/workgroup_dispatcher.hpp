@@ -76,7 +76,6 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
 /**
  * Implementation of FFT for sizes that can be done by a workgroup.
  *
- * @tparam Dir Direction of the FFT
  * @tparam LayoutIn Input Layout
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
@@ -96,19 +95,21 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch
  * @param twiddles Pointer to twiddles in the global memory
- * @param scaling_factor scaling factor applied to the result
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  */
-template <direction Dir, Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
+template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
 PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
-                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles, T scaling_factor,
+                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles,
                                    global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                    const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
   detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecConstConjugateOnLoad>();
+  detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
+  T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
 
@@ -165,10 +166,10 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
       }
       sycl::group_barrier(global_data.it.get_group());
       for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
-                                  sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size,
-                                  factor_n, factor_m, storage, LayoutIn, multiply_on_load, multiply_on_store,
-                                  apply_scale_factor, global_data);
+        wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
+                             sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n,
+                             factor_m, storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
+                             conjugate_on_load, conjugate_on_store, global_data);
         sycl::group_barrier(global_data.it.get_group());
       }
       if constexpr (LayoutOut == detail::layout::PACKED) {
@@ -229,10 +230,10 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
                                                      local_imag_offset);
       }
       sycl::group_barrier(global_data.it.get_group());
-      wg_dft<Dir, SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
-                                batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
-                                storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
-                                global_data);
+      wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
+                           batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
+                           storage, LayoutIn, multiply_on_load, multiply_on_store, apply_scale_factor,
+                           conjugate_on_load, conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
@@ -274,17 +275,17 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
 }  // namespace detail
 
 template <typename Scalar, domain Domain>
-template <direction Dir, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn,
-          typename TOut>
+template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
                                                                TOut>::inner<detail::level::WORKGROUP, Dummy> {
   static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
-                             IdxGlobal input_offset, IdxGlobal output_offset, Scalar scale_factor,
-                             dimension_struct& dimension_data) {
+                             IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
+                             direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    auto& kernel_data = dimension_data.kernels.at(0);
+    auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
+                                                                : dimension_data.backward_kernels.at(0);
     Idx num_batches_in_local_mem = [=]() {
       if constexpr (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
         return kernel_data.used_sg_size * PORTFFT_SGS_IN_WG / 2;
@@ -316,8 +317,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
       PORTFFT_LOG_TRACE("Launching workgroup kernel with global_size", global_size, "local_size",
                 SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
-      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
-          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
+      cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+          sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * PORTFFT_SGS_IN_WG)}},
           [=
 #ifdef PORTFFT_KERNEL_LOG
                ,
@@ -330,10 +331,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running workgroup kernel");
-            detail::workgroup_impl<Dir, SubgroupSize, LayoutIn, LayoutOut>(
+            detail::workgroup_impl<SubgroupSize, LayoutIn, LayoutOut>(
                 &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                 &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0],
-                &loc[0] + sg_twiddles_offset, n_transforms, twiddles, scale_factor, global_data, kh);
+                &loc[0] + sg_twiddles_offset, n_transforms, twiddles, global_data, kh);
             global_data.log_message_global("Exiting workgroup kernel");
           });
     });
@@ -374,9 +375,10 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data) {
+  static Scalar* execute(committed_descriptor& desc, dimension_struct& /*dimension_data*/,
+                         std::vector<kernel_data_struct>& kernels) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    const auto& kernel_data = dimension_data.kernels.at(0);
+    const auto& kernel_data = kernels.at(0);
     Idx factor_wi_n = kernel_data.factors[0];
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];

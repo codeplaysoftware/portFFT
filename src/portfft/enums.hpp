@@ -69,6 +69,8 @@ enum class transfer_direction {
 enum class elementwise_multiply { NOT_APPLIED, APPLIED };
 
 enum class apply_scale_factor { NOT_APPLIED, APPLIED };
+
+enum class complex_conjugate { NOT_APPLIED, APPLIED };
 }  // namespace detail
 
 }  // namespace portfft
