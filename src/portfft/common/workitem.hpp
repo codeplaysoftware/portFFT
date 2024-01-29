@@ -31,7 +31,7 @@
 namespace portfft {
 
 // forward declaration
-template <direction Dir, Idx RecursionLevel, typename T>
+template <Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch);
 
 namespace detail {
@@ -53,7 +53,6 @@ strides.
 /**
  * Calculates DFT using naive algorithm. Can work in or out of place.
  *
- * @tparam Dir direction of the FFT
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
@@ -62,7 +61,7 @@ strides.
  * @param stride_out stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
-template <direction Dir, typename T>
+template <typename T>
 PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx idx_out = 0; idx_out < fft_size; idx_out++) {
@@ -71,12 +70,8 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
     PORTFFT_UNROLL
     for (Idx idx_in = 0; idx_in < fft_size; idx_in++) {
       auto re_multiplier = twiddle<T>::Re[fft_size][idx_in * idx_out % fft_size];
-      auto im_multiplier = [&]() {
-        if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
-        }
-        return -twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
-      }();
+      auto im_multiplier = twiddle<T>::Im[fft_size][idx_in * idx_out % fft_size];
+
       // multiply in and multi
       T tmp_real;
       T tmp_complex;
@@ -98,7 +93,6 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
 /**
  * Calculates DFT using Cooley-Tukey FFT algorithm. Can work in or out of place. Size of the problem is N*M
  *
- * @tparam Dir direction of the FFT
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
@@ -108,22 +102,18 @@ PORTFFT_INLINE void naive_dft(const T* in, T* out, Idx fft_size, Idx stride_in, 
  * @param stride_in stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI. Expects 2 * dftSize size.
  */
-template <direction Dir, Idx RecursionLevel, typename T>
+template <Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx factor_m, Idx stride_in, Idx stride_out,
                                      T* privateScratch) {
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_m; i++) {
-    wi_dft<Dir, RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n,
-                                factor_m * stride_in, 1, privateScratch + 2 * factor_n * factor_m);
+    wi_dft<RecursionLevel>(in + 2 * i * stride_in, privateScratch + 2 * i * factor_n, factor_n, factor_m * stride_in, 1,
+                           privateScratch + 2 * factor_n * factor_m);
     PORTFFT_UNROLL
     for (Idx j = 0; j < factor_n; j++) {
       auto re_multiplier = twiddle<T>::Re[factor_n * factor_m][i * j];
-      auto im_multiplier = [&]() {
-        if constexpr (Dir == direction::FORWARD) {
-          return twiddle<T>::Im[factor_n * factor_m][i * j];
-        }
-        return -twiddle<T>::Im[factor_n * factor_m][i * j];
-      }();
+      auto im_multiplier = twiddle<T>::Im[factor_n * factor_m][i * j];
+
       detail::multiply_complex(privateScratch[2 * i * factor_n + 2 * j], privateScratch[2 * i * factor_n + 2 * j + 1],
                                re_multiplier, im_multiplier, privateScratch[2 * i * factor_n + 2 * j],
                                privateScratch[2 * i * factor_n + 2 * j + 1]);
@@ -131,8 +121,8 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
   }
   PORTFFT_UNROLL
   for (Idx i = 0; i < factor_n; i++) {
-    wi_dft<Dir, RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n,
-                                factor_n * stride_out, privateScratch + 2 * factor_n * factor_m);
+    wi_dft<RecursionLevel>(privateScratch + 2 * i, out + 2 * i * stride_out, factor_m, factor_n, factor_n * stride_out,
+                           privateScratch + 2 * factor_n * factor_m);
   }
 }
 
@@ -199,7 +189,6 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
 /**
  * Calculates DFT using FFT algorithm. Can work in or out of place.
  *
- * @tparam Dir direction of the FFT
  * @tparam T type of the scalar used for computations
  * @param in pointer to input
  * @param out pointer to output
@@ -208,7 +197,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
  * @param stride_out stride (in complex values) between complex values in `out`
  * @param privateScratch Scratch memory for this WI.
  */
-template <direction Dir, Idx RecursionLevel, typename T>
+template <Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
   const Idx f0 = detail::factorize(fft_size);
   constexpr Idx MaxRecursionLevel = detail::int_log2(detail::MaxComplexPerWI) - 1;
@@ -222,10 +211,9 @@ PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx
       out[0 * stride_out + 1] = b;
       out[2 * stride_out + 0] = c;
     } else if (f0 >= 2 && fft_size / f0 >= 2) {
-      detail::cooley_tukey_dft<Dir, RecursionLevel + 1>(in, out, fft_size / f0, f0, stride_in, stride_out,
-                                                        privateScratch);
+      detail::cooley_tukey_dft<RecursionLevel + 1>(in, out, fft_size / f0, f0, stride_in, stride_out, privateScratch);
     } else {
-      detail::naive_dft<Dir>(in, out, fft_size, stride_in, stride_out, privateScratch);
+      detail::naive_dft(in, out, fft_size, stride_in, stride_out, privateScratch);
     }
   }
 }

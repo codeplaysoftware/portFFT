@@ -182,6 +182,20 @@ PORTFFT_INLINE constexpr Idx int_log2(Idx x) {
   }
   return y;
 }
+
+/**
+ * Conjugates complex data in an array in place (expected to be used on private memory)
+ * @tparam T Scalar type
+ * @param priv pointer to the data
+ * @param num_complex number of complex numbers to conjugate
+ */
+template <typename T>
+PORTFFT_INLINE void conjugate_inplace(T* priv, Idx num_complex) {
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < num_complex; i++) {
+    priv[2 * i + 1] *= -1;
+  }
+}
 }  // namespace portfft::detail
 
 #endif
