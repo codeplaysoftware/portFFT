@@ -314,17 +314,19 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #ifdef PORTFFT_KERNEL_LOG
       sycl::stream s{1024 * 16 * 8 * 2, 1024, cgh};
 #endif
-      LOG_TRACE("Launching workgroup kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
+      LOG_TRACE("Launching workgroup kernel with global_size", global_size, "local_size",
+                SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+               ,
+           global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-                s, global_logging_config, 
+                s, global_logging_config,
 #endif
                 it};
             global_data.log_message_global("Running workgroup kernel");
@@ -388,7 +390,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
         sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
                                            static_cast<std::size_t>(res_size), desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
-      LOG_TRACE("Launching twiddle calculation kernel for factor 1 of workgroup implementation with global size", factor_sg_n, factor_wi_n);
+      LOG_TRACE("Launching twiddle calculation kernel for factor 1 of workgroup implementation with global size",
+                factor_sg_n, factor_wi_n);
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_n), static_cast<std::size_t>(factor_wi_n)}),
                        [=](sycl::item<2> it) {
                          Idx n = static_cast<Idx>(it.get_id(0));
@@ -397,7 +400,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
-      LOG_TRACE("Launching twiddle calculation kernel for factor 2 of workgroup implementation with global size", factor_sg_m, factor_wi_m);
+      LOG_TRACE("Launching twiddle calculation kernel for factor 2 of workgroup implementation with global size",
+                factor_sg_m, factor_wi_m);
       cgh.parallel_for(sycl::range<2>({static_cast<std::size_t>(factor_sg_m), static_cast<std::size_t>(factor_wi_m)}),
                        [=](sycl::item<2> it) {
                          Idx n = static_cast<Idx>(it.get_id(0));
@@ -406,7 +410,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
                        });
     });
     desc.queue.submit([&](sycl::handler& cgh) {
-      LOG_TRACE("Launching twiddle calculation kernel for workgroup implementation with global size", n, factor_wi_m, factor_sg_m);
+      LOG_TRACE("Launching twiddle calculation kernel for workgroup implementation with global size", n, factor_wi_m,
+                factor_sg_m);
       cgh.parallel_for(sycl::range<3>({static_cast<std::size_t>(n), static_cast<std::size_t>(factor_wi_m),
                                        static_cast<std::size_t>(factor_sg_m)}),
                        [=](sycl::item<3> it) {

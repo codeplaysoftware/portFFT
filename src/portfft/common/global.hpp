@@ -214,17 +214,18 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
 #ifdef PORTFFT_KERNEL_LOG
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
-  LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size", local_range[0]);
+  LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size",
+            local_range[0]);
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
-      sycl::nd_range<1>(global_range, local_range),
-      [=
+      sycl::nd_range<1>(global_range, local_range), [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+                                                         ,
+                                                     global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+  ](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-            s, global_logging_config, 
+            s, global_logging_config,
 #endif
             it};
         dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
@@ -275,17 +276,18 @@ void launch_kernel(const Scalar* input, Scalar* output, const Scalar* input_imag
   sycl::stream s{1024 * 16 * 16, 1024, cgh};
 #endif
   auto [global_range, local_range] = launch_params;
-  LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size", local_range[0]);
+  LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size",
+            local_range[0]);
   cgh.parallel_for<global_kernel<Scalar, Domain, Dir, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
-      sycl::nd_range<1>(global_range, local_range),
-      [=
+      sycl::nd_range<1>(global_range, local_range), [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+                                                         ,
+                                                     global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+  ](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-            s, global_logging_config, 
+            s, global_logging_config,
 #endif
             it};
         dispatch_level<Dir, Scalar, LayoutIn, LayoutOut, SubgroupSize>(
@@ -324,15 +326,15 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
   std::size_t ldb_rounded = detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16));
   LOG_TRACE("Launching transpose kernel with global_size", lda_rounded, ldb_rounded, "local_size", 16, 16);
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::BUFFER>>(
-      sycl::nd_range<2>({lda_rounded, ldb_rounded}, {16, 16}),
-      [=
+      sycl::nd_range<2>({lda_rounded, ldb_rounded}, {16, 16}), [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+                                                                    ,
+                                                                global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+  ](sycl::nd_item<2> it, sycl::kernel_handler kh) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-            s, global_logging_config, 
+            s, global_logging_config,
 #endif
             it};
         global_data.log_message_global("entering transpose kernel - buffer impl");
@@ -383,15 +385,15 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
   std::size_t ldb_rounded = detail::round_up_to_multiple(static_cast<std::size_t>(ldb), static_cast<std::size_t>(16));
   LOG_TRACE("Launching transpose kernel with global_size", lda_rounded, ldb_rounded, "local_size", 16, 16);
   cgh.parallel_for<detail::transpose_kernel<Scalar, memory::USM>>(
-      sycl::nd_range<2>({lda_rounded, ldb_rounded}, {16, 16}),
-      [=
+      sycl::nd_range<2>({lda_rounded, ldb_rounded}, {16, 16}), [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+                                                                    ,
+                                                                global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<2> it, sycl::kernel_handler kh) {
+  ](sycl::nd_item<2> it, sycl::kernel_handler kh) {
         detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-            s, global_logging_config, 
+            s, global_logging_config,
 #endif
             it};
         global_data.log_message_global("entering transpose kernel - USM impl");
@@ -440,7 +442,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
                             const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
                             IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
-                            complex_storage storage) {     
+                            complex_storage storage) {
   LOG_FUNCTION_ENTRY();
   const IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> transpose_events;

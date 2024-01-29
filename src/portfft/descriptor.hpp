@@ -367,7 +367,8 @@ class committed_descriptor {
         // This factorization of N and M is duplicated in the dispatch logic on the device.
         // The CT and spec constant factors should match.
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
-        LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n, " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
+        LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
+                  " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
         return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
@@ -409,7 +410,8 @@ class committed_descriptor {
           !PORTFFT_SLOW_SG_SHUFFLES) {
         Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
         Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
-        LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
+        LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi,
+                  "and factor_sg:", factor_sg);
         param_vec.emplace_back(detail::level::SUBGROUP,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{factor_sg, factor_wi});
@@ -1360,7 +1362,7 @@ class committed_descriptor {
                                            kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
                                            kernel_data.num_sgs_per_wg) *
                                        sizeof(Scalar);
-          LOG_TRACE("Local mem required:", minimum_local_mem_required ,"B. Available: ", local_memory_size, "B.");
+          LOG_TRACE("Local mem required:", minimum_local_mem_required, "B. Available: ", local_memory_size, "B.");
           if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
             throw out_of_local_memory_error(
                 "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +

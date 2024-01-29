@@ -586,12 +586,14 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     const auto& kernel_data = dimension_data.kernels.at(0);
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
-    LOG_TRACE("Allocating global memory for twiddles for subgroup implementation. Allocation size", kernel_data.length * 2);
+    LOG_TRACE("Allocating global memory for twiddles for subgroup implementation. Allocation size",
+              kernel_data.length * 2);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
-      LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg, factor_wi);
+      LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg,
+                factor_wi);
       cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
         Idx n = static_cast<Idx>(it.get_id(0));
         Idx k = static_cast<Idx>(it.get_id(1));
@@ -637,17 +639,20 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
 #ifdef PORTFFT_KERNEL_LOG
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
-      LOG_TRACE("Launching subgroup kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements, "local memory allocation for twiddles of size", twiddle_elements);
+      LOG_TRACE("Launching subgroup kernel with global_size", global_size, "local_size",
+                SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements,
+                "local memory allocation for twiddles of size", twiddle_elements);
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=
 #ifdef PORTFFT_KERNEL_LOG
-      , global_logging_config=detail::global_logging_config
+               ,
+           global_logging_config = detail::global_logging_config
 #endif
-](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_KERNEL_LOG
-                s, global_logging_config, 
+                s, global_logging_config,
 #endif
                 it};
             global_data.log_message_global("Running subgroup kernel");

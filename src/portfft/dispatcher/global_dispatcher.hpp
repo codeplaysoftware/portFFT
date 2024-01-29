@@ -146,7 +146,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     }
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
     std::vector<Scalar> scratch_space(static_cast<std::size_t>(mem_required_for_twiddles));
-    LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size", mem_required_for_twiddles);
+    LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size",
+              mem_required_for_twiddles);
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
@@ -268,7 +269,7 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
     LOG_TRACE("GlobalSpecConstLevelNum:", factor_num);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
     if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
-    LOG_TRACE("SpecConstFftSize:", length_idx);
+      LOG_TRACE("SpecConstFftSize:", length_idx);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
     } else if (level == detail::level::SUBGROUP) {
       LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
