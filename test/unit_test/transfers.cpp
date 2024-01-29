@@ -76,10 +76,10 @@ void test() {
     sycl::stream s{1024 * 8, 1024, h};
 #endif
     h.parallel_for<test_transfers_kernel<Pad, BankGroupsPerPad>>(
-        sycl::nd_range<1>({wg_size}, {wg_size}), [=](sycl::nd_item<1> it) {
+        sycl::nd_range<1>({wg_size}, {wg_size}), [=, global_logging_config=detail::global_logging_config](sycl::nd_item<1> it) {
           detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-              s,
+              s, global_logging_config,
 #endif
               it};
           portfft::Idx local_id = static_cast<portfft::Idx>(it.get_group().get_local_linear_id());

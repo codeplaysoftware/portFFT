@@ -317,10 +317,10 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<Dir, LayoutIn, La
       LOG_TRACE("Launching workgroup kernel with global_size", global_size, "local_size", SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workgroup_kernel<Scalar, Domain, Dir, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+          [=, global_logging_config=detail::global_logging_config](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
 #ifdef PORTFFT_LOG
-                s,
+                s, global_logging_config, 
 #endif
                 it};
             global_data.log_message_global("Running workgroup kernel");
