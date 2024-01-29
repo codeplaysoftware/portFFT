@@ -314,25 +314,18 @@ struct global_data_struct {
 };
 
 /*
- * Outputs an object to std::cout. Most objects are piped directly to std::cout.
+ * Outputs an object to std::cout.
  *
  * @tparam T type of the object to output
  * @param object object to output
  */
-template <typename T, typename std::enable_if_t<!std::is_enum_v<T>>* = nullptr>
-__attribute__((always_inline)) inline void output(T object) {
-  std::cout << object;
-}
-
-/*
- * Outputs an object to std::cout. Enums are first cast to underlying type.
- *
- * @tparam T type of the object to output
- * @param object object to output
- */
-template <typename T, typename std::enable_if_t<std::is_enum_v<T>>* = nullptr>
-__attribute__((always_inline)) inline void output(T object) {
-  output(static_cast<std::underlying_type_t<T>>(object));
+template <typename T>
+void output(const T& object) {
+  if constexpr(std::is_enum_v<T>){
+    output(static_cast<std::underlying_type_t<T>>(object));
+  } else{
+    std::cout << object;
+  }
 }
 
 /*
@@ -342,7 +335,7 @@ __attribute__((always_inline)) inline void output(T object) {
  * @param object object to output
  */
 template <typename T>
-__attribute__((always_inline)) inline void output(const std::vector<T>& object) {
+void output(const std::vector<T>& object) {
   std::cout << "(";
   for (const T& element : object) {
     output(element);
@@ -351,33 +344,17 @@ __attribute__((always_inline)) inline void output(const std::vector<T>& object) 
   std::cout << ")";
 }
 
-/*
- * Logs a message. End of recursion - logs the message, adds a newline and flushes the stream.
- *
- * @tparam T type of the object to log
- * @param message message to log
- */
-template <typename T>
-__attribute__((always_inline)) inline void log_message_impl(T message) {
-  output(message);
-  std::cout << std::endl;
-}
-
 /**
  * Logs a message.
  *
- * @tparam TFirst type of the first object to log
- * @tparam Ts types of the other objects to log
- * @param message the first message to log
- * @param other_messages other messages to log
+ * @tparam Ts types of the objects to log
+ * @param messages messages to log
  */
-template <typename TFirst, typename... Ts>
-__attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts... other_messages) {
-  output(message);
-  std::cout << " ";
-  log_message_impl(other_messages...);
+template <typename... Ts>
+void log_message_impl(Ts... messages) {
+  ((output(messages), std::cout << " "), ...);
+  std::cout << std::endl;
 }
-
 /**
  * Prints the message and dumps data from host to standard output
  *
@@ -387,7 +364,7 @@ __attribute__((always_inline)) inline void log_message_impl(TFirst message, Ts..
  * @param size number of elements to dump
  */
 template <typename T>
-PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
+void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
                               [[maybe_unused]] std::size_t size) {
 #ifdef PORTFFT_LOG_DUMPS
   if (global_logging_config.log_dumps) {
@@ -411,7 +388,7 @@ PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]]
  * @param dependencies dependencies to wait on
  */
 template <typename T>
-PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
+void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
                                 [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
                                 [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
 #ifdef PORTFFT_LOG_DUMPS
@@ -432,8 +409,8 @@ PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]
  * @param messages objects to log
  */
 template <typename... Ts>
-PORTFFT_INLINE void log_trace([[maybe_unused]] Ts... messages) {
-#ifdef PORTFFT_LOG_TRACE
+void log_trace([[maybe_unused]] const Ts&... messages) {
+#ifdef PORTFFT_LOG_TRACES
   if (global_logging_config.log_trace) {
     log_message_impl(messages...);
   }
@@ -449,21 +426,21 @@ PORTFFT_INLINE void log_trace([[maybe_unused]] Ts... messages) {
  * @param messages objects to log
  */
 template <typename... Ts>
-PORTFFT_INLINE void log_warning([[maybe_unused]] Ts... messages) {
-#ifdef PORTFFT_LOG_WARNING
+void log_warning([[maybe_unused]] const Ts&... messages) {
+#ifdef PORTFFT_LOG_WARNINGS
   if (global_logging_config.log_warnings) {
     log_message_impl("WARNING:", messages...);
   }
 #endif
 }
 
-#define LOGGING_LOCATION_INFORMATION __FILE__ ", line", __LINE__, "- in", __FUNCTION__, ":"
+#define PORTFFT_LOGGING_LOCATION_INFORMATION __FILE__ ", line", __LINE__, "- in", __FUNCTION__, ":"
 
-#define LOG_FUNCTION_ENTRY() portfft::detail::log_trace(LOGGING_LOCATION_INFORMATION, "entered")
+#define PORTFFT_LOG_FUNCTION_ENTRY() portfft::detail::log_trace(PORTFFT_LOGGING_LOCATION_INFORMATION, "entered")
 
-#define LOG_TRACE(...) portfft::detail::log_trace(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
+#define PORTFFT_LOG_TRACE(...) portfft::detail::log_trace(PORTFFT_LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
 
-#define LOG_WARNING(...) portfft::detail::log_warning(LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
+#define PORTFFT_LOG_WARNING(...) portfft::detail::log_warning(PORTFFT_LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
 
 };  // namespace portfft::detail
 
