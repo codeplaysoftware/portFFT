@@ -34,7 +34,7 @@ namespace portfft {
 
 template <typename Scalar, domain Domain>
 class committed_descriptor : private committed_descriptor_impl<Scalar, Domain> {
-  public:
+ public:
   /**
    * Alias for `Scalar`.
    */

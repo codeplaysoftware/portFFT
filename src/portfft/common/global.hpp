@@ -502,11 +502,12 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
 std::vector<sycl::event> compute_level(
-    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
-    const TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
+    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input,
+    Scalar* output, const TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr,
+    const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+    IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
+    IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
+    const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
@@ -539,8 +540,8 @@ std::vector<sycl::event> compute_level(
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
   const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
-  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers", 
-                    local_mem_for_store_modifier, "twiddles", loc_mem_for_twiddles, "total", 
+  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers",
+                    local_mem_for_store_modifier, "twiddles", loc_mem_for_twiddles, "total",
                     local_memory_for_input + local_mem_for_store_modifier + loc_mem_for_twiddles);
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {

@@ -37,7 +37,7 @@
 #include "utils.hpp"
 
 namespace portfft {
-  
+
 template <typename Scalar, domain Domain>
 class committed_descriptor_impl;
 
@@ -142,8 +142,8 @@ template <typename Scalar, domain Domain>
 struct descriptor;
 
 /*
-Compute functions in the `committed_descriptor_impl` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
-ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. The
+Compute functions in the `committed_descriptor_impl` call `dispatch_kernel` and `dispatch_kernel_helper`. These two
+functions ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. The
 `run_kernel` member function picks appropriate implementation and calls the static `run_kernel of that implementation`.
 The implementation specific `run_kernel` handles differences between forward and backward computations, casts the memory
 (USM or buffers) from complex to scalars and launches the kernel. Each function described in this doc has only one
@@ -177,16 +177,16 @@ The computational parts of the implementations are further documented in files w
  */
 template <typename Scalar, domain Domain>
 class committed_descriptor_impl {
-
   friend struct descriptor<Scalar, Domain>;
   template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
             typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
-      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
-      TIn input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple,
-      IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-      IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-      Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input,
+      Scalar1* output, TIn input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr,
+      const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+      IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
+      IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
+      const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
@@ -934,7 +934,7 @@ class committed_descriptor_impl {
   }
 
  public:
-  committed_descriptor_impl(const committed_descriptor_impl& desc) : params(desc.params) { //TODO params copied twice
+  committed_descriptor_impl(const committed_descriptor_impl& desc) : params(desc.params) {  // TODO params copied twice
     PORTFFT_LOG_FUNCTION_ENTRY();
     create_copy(desc);
   }

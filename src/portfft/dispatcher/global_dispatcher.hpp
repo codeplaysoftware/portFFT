@@ -282,8 +282,8 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
 
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, LayoutIn,
-                                                                                    Dummy> {
+struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL,
+                                                                                         LayoutIn, Dummy> {
   static std::size_t execute(committed_descriptor_impl& /*desc*/, std::size_t /*length*/, Idx /*used_sg_size*/,
                              const std::vector<Idx>& /*factors*/, Idx& /*num_sgs_per_wg*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
@@ -296,9 +296,9 @@ template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
-                                                               TOut>::inner<detail::level::GLOBAL, Dummy> {
-  static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
-                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+                                                                    TOut>::inner<detail::level::GLOBAL, Dummy> {
+  static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
+                             TOut& out_imag, const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
                              direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
