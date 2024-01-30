@@ -306,7 +306,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       sycl::stream s{1024 * 16 * 8, 1024, cgh};
 #endif
       PORTFFT_LOG_TRACE("Launching workitem kernel with global_size", global_size, "local_size",
-                SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
+                        SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=

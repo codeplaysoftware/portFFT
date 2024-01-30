@@ -147,7 +147,7 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
     std::vector<Scalar> scratch_space(static_cast<std::size_t>(mem_required_for_twiddles));
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size",
-              mem_required_for_twiddles);
+                      mem_required_for_twiddles);
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
@@ -324,7 +324,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       initial_impl_twiddle_offset += 2 * kernels.at(i).batch_size * static_cast<IdxGlobal>(kernels.at(i).length);
     }
     for (std::size_t i = 0; i < num_batches; i += max_batches_in_l2) {
-      PORTFFT_LOG_TRACE("Global implementation working on batches", i, "through", i + max_batches_in_l2, "out of", num_batches);
+      PORTFFT_LOG_TRACE("Global implementation working on batches", i, "through", i + max_batches_in_l2, "out of",
+                        num_batches);
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       auto& kernel0 = kernels.at(0);

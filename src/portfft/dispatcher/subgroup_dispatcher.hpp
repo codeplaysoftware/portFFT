@@ -595,13 +595,13 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for subgroup implementation. Allocation size",
-              kernel_data.length * 2);
+                      kernel_data.length * 2);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
       PORTFFT_LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg,
-                factor_wi);
+                        factor_wi);
       cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
         Idx n = static_cast<Idx>(it.get_id(0));
         Idx k = static_cast<Idx>(it.get_id(1));
@@ -648,8 +648,8 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
       PORTFFT_LOG_TRACE("Launching subgroup kernel with global_size", global_size, "local_size",
-                SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements,
-                "local memory allocation for twiddles of size", twiddle_elements);
+                        SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements,
+                        "local memory allocation for twiddles of size", twiddle_elements);
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=

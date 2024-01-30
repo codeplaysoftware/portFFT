@@ -321,9 +321,9 @@ struct global_data_struct {
  */
 template <typename T>
 void output(const T& object) {
-  if constexpr(std::is_enum_v<T>){
+  if constexpr (std::is_enum_v<T>) {
     output(static_cast<std::underlying_type_t<T>>(object));
-  } else{
+  } else {
     std::cout << object;
   }
 }
@@ -364,8 +364,7 @@ void log_message_impl(Ts... messages) {
  * @param size number of elements to dump
  */
 template <typename T>
-void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
-                              [[maybe_unused]] std::size_t size) {
+void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr, [[maybe_unused]] std::size_t size) {
 #ifdef PORTFFT_LOG_DUMPS
   if (global_logging_config.log_dumps) {
     std::cout << msg << " ";
@@ -388,9 +387,9 @@ void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
  * @param dependencies dependencies to wait on
  */
 template <typename T>
-void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
-                                [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
-                                [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
+void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg, [[maybe_unused]] T* dev_ptr,
+                 [[maybe_unused]] std::size_t size,
+                 [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
 #ifdef PORTFFT_LOG_DUMPS
   if (global_logging_config.log_dumps) {
     std::vector<T> tmp(size);

@@ -378,7 +378,7 @@ class committed_descriptor {
         // The CT and spec constant factors should match.
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
         PORTFFT_LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
-                  " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
+                          " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
         return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
@@ -421,7 +421,7 @@ class committed_descriptor {
         Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
         Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
         PORTFFT_LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi,
-                  "and factor_sg:", factor_sg);
+                          "and factor_sg:", factor_sg);
         param_vec.emplace_back(detail::level::SUBGROUP,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
                                std::vector<Idx>{factor_sg, factor_wi});
@@ -715,7 +715,9 @@ class committed_descriptor {
       for (std::size_t i = 1; i < factors.size(); i++) {
         inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
       }
-      PORTFFT_LOG_TRACE("Dimension:", global_dimension, "num_batches_in_l2:", dimensions.at(global_dimension).num_batches_in_l2, "scan:", inclusive_scan);
+      PORTFFT_LOG_TRACE("Dimension:", global_dimension,
+                        "num_batches_in_l2:", dimensions.at(global_dimension).num_batches_in_l2,
+                        "scan:", inclusive_scan);
       dimensions.at(global_dimension).factors_and_scan =
           detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
       queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
@@ -1448,7 +1450,8 @@ class committed_descriptor {
                                            kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
                                            kernel_data.num_sgs_per_wg) *
                                        sizeof(Scalar);
-          PORTFFT_LOG_TRACE("Local mem required:", minimum_local_mem_required, "B. Available: ", local_memory_size, "B.");
+          PORTFFT_LOG_TRACE("Local mem required:", minimum_local_mem_required, "B. Available: ", local_memory_size,
+                            "B.");
           if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
             throw out_of_local_memory_error(
                 "Insufficient amount of local memory available: " + std::to_string(local_memory_size) +

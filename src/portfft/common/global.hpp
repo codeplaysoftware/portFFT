@@ -209,10 +209,9 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   PORTFFT_LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size",
-            local_range[0]);
+                    local_range[0]);
   cgh.parallel_for<global_kernel<Scalar, Domain, memory::BUFFER, LayoutIn, LayoutOut, SubgroupSize>>(
-      sycl::nd_range<1>(global_range, local_range),
-      [=
+      sycl::nd_range<1>(global_range, local_range), [=
 #ifdef PORTFFT_KERNEL_LOG
                                                          ,
                                                      global_logging_config = detail::global_logging_config
@@ -271,10 +270,9 @@ void launch_kernel(const Scalar* input, Scalar* output, const Scalar* input_imag
   sycl::stream s{1024 * 16, 1024, cgh};
 #endif
   PORTFFT_LOG_TRACE("Launching kernel for global implementation with global_size", global_range[0], "local_size",
-            local_range[0]);
+                    local_range[0]);
   cgh.parallel_for<global_kernel<Scalar, Domain, memory::USM, LayoutIn, LayoutOut, SubgroupSize>>(
-      sycl::nd_range<1>(global_range, local_range),
-      [=
+      sycl::nd_range<1>(global_range, local_range), [=
 #ifdef PORTFFT_KERNEL_LOG
                                                          ,
                                                      global_logging_config = detail::global_logging_config
