@@ -431,7 +431,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
  * @return sycl::event
  */
 template <typename Scalar, domain Domain, typename TOut>
-sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
+sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct,
                             const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
                             IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
@@ -502,7 +502,7 @@ sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>:
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
 std::vector<sycl::event> compute_level(
-    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
+    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn input, Scalar* output,
     const TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
     IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
     IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,

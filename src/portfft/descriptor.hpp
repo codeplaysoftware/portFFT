@@ -37,20 +37,23 @@
 #include "utils.hpp"
 
 namespace portfft {
+  
 template <typename Scalar, domain Domain>
-class committed_descriptor;
+class committed_descriptor_impl;
+
 namespace detail {
+
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
 std::vector<sycl::event> compute_level(
-    const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
+    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
     TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
     IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
     IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
     Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
-sycl::event transpose_level(const typename committed_descriptor<Scalar, Domain>::kernel_data_struct& kd_struct,
+sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct,
                             const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
                             Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
                             IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
@@ -139,7 +142,7 @@ template <typename Scalar, domain Domain>
 struct descriptor;
 
 /*
-Compute functions in the `committed_descriptor` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
+Compute functions in the `committed_descriptor_impl` call `dispatch_kernel` and `dispatch_kernel_helper`. These two functions
 ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. The
 `run_kernel` member function picks appropriate implementation and calls the static `run_kernel of that implementation`.
 The implementation specific `run_kernel` handles differences between forward and backward computations, casts the memory
@@ -173,14 +176,13 @@ The computational parts of the implementations are further documented in files w
  * @tparam Domain domain of the FFT
  */
 template <typename Scalar, domain Domain>
-class committed_descriptor {
-  using complex_type = std::complex<Scalar>;
+class committed_descriptor_impl {
 
   friend struct descriptor<Scalar, Domain>;
   template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
             typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
-      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input, Scalar1* output,
       TIn input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr, const IdxGlobal* factors_triple,
       IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
       IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
@@ -188,7 +190,7 @@ class committed_descriptor {
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
-      const typename committed_descriptor<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar1* input,
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar1* input,
       TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
       IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
       const std::vector<sycl::event>& events, complex_storage storage);
@@ -440,7 +442,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static void execute(committed_descriptor& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+      static void execute(committed_descriptor_impl& desc, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                           std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                           Idx num_factors);
     };
@@ -501,7 +503,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, detail::layout LayoutIn, typename Dummy>
     struct inner {
-      static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
+      static std::size_t execute(committed_descriptor_impl& desc, std::size_t length, Idx used_sg_size,
                                  const std::vector<Idx>& factors, Idx& num_sgs_per_wg);
     };
   };
@@ -531,7 +533,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static Scalar* execute(committed_descriptor& desc, dimension_struct& dimension_data,
+      static Scalar* execute(committed_descriptor_impl& desc, dimension_struct& dimension_data,
                              std::vector<kernel_data_struct>& kernels);
     };
   };
@@ -812,7 +814,7 @@ class committed_descriptor {
    * @param params descriptor this is created from
    * @param queue queue to use when enqueueing device work
    */
-  committed_descriptor(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
+  committed_descriptor_impl(const descriptor<Scalar, Domain>& params, sycl::queue& queue)
       : params(params),
         queue(queue),
         dev(queue.get_device()),
@@ -897,10 +899,10 @@ class committed_descriptor {
   }
 
   /**
-   * Utility function fo copy constructor and copy assignment operator
-   * @param desc committed_descriptor of which the copy is to be made
+   * Utility function for copy constructor and copy assignment operator
+   * @param desc `committed_descriptor_impl` of which the copy is to be made
    */
-  void create_copy(const committed_descriptor<Scalar, Domain>& desc) {
+  void create_copy(const committed_descriptor_impl<Scalar, Domain>& desc) {
     PORTFFT_LOG_FUNCTION_ENTRY();
 #define PORTFFT_COPY(x) this->x = desc.x;
     PORTFFT_COPY(params)
@@ -913,8 +915,8 @@ class committed_descriptor {
     PORTFFT_COPY(dimensions)
     PORTFFT_COPY(scratch_space_required)
     PORTFFT_COPY(llc_size)
-
 #undef PORTFFT_COPY
+
     bool is_scratch_required = false;
     for (std::size_t i = 0; i < desc.dimensions.size(); i++) {
       if (desc.dimensions.at(i).level == detail::level::GLOBAL) {
@@ -932,12 +934,12 @@ class committed_descriptor {
   }
 
  public:
-  committed_descriptor(const committed_descriptor& desc) : params(desc.params) {
+  committed_descriptor_impl(const committed_descriptor_impl& desc) : params(desc.params) { //TODO params copied twice
     PORTFFT_LOG_FUNCTION_ENTRY();
     create_copy(desc);
   }
 
-  committed_descriptor& operator=(const committed_descriptor& desc) {
+  committed_descriptor_impl& operator=(const committed_descriptor_impl& desc) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (this != &desc) {
       create_copy(desc);
@@ -947,286 +949,19 @@ class committed_descriptor {
 
   static_assert(std::is_same_v<Scalar, float> || std::is_same_v<Scalar, double>,
                 "Scalar must be either float or double!");
-  /**
-   * Alias for `Scalar`.
-   */
-  using scalar_type = Scalar;
-  /**
-   * Alias for `Domain`.
-   */
-  static constexpr domain DomainValue = Domain;
 
   /**
    * Destructor
    */
-  ~committed_descriptor() {
+  ~committed_descriptor_impl() {
     PORTFFT_LOG_FUNCTION_ENTRY();
     queue.wait();
   }
 
   // default construction is not appropriate
-  committed_descriptor() = delete;
+  committed_descriptor_impl() = delete;
 
-  /**
-   * Computes in-place forward FFT, working on a buffer.
-   *
-   * @param inout buffer containing input and output data
-   */
-  void compute_forward(sycl::buffer<complex_type, 1>& inout) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    compute_forward(inout, inout);
-  }
-
-  /**
-   * Computes in-place forward FFT, working on buffers.
-   *
-   * @param inout_real buffer containing real part of the input and output data
-   * @param inout_imag buffer containing imaginary part of the input and output data
-   */
-  void compute_forward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    compute_forward(inout_real, inout_imag, inout_real, inout_imag);
-  }
-
-  /**
-   * Computes in-place backward FFT, working on a buffer.
-   *
-   * @param inout buffer containing input and output data
-   */
-  void compute_backward(sycl::buffer<complex_type, 1>& inout) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    compute_backward(inout, inout);
-  }
-
-  /**
-   * Computes in-place backward FFT, working on buffers.
-   *
-   * @param inout_real buffer containing real part of the input and output data
-   * @param inout_imag buffer containing imaginary part of the input and output data
-   */
-  void compute_backward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    compute_backward(inout_real, inout_imag, inout_real, inout_imag);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on buffers.
-   *
-   * @param in buffer containing input data
-   * @param out buffer containing output data
-   */
-  void compute_forward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::FORWARD);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on buffers.
-   *
-   * @param in_real buffer containing real part of the input data
-   * @param in_imag buffer containing imaginary part of the input data
-   * @param out_real buffer containing real part of the output data
-   * @param out_imag buffer containing imaginary part of the output data
-   */
-  void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
-                       sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::FORWARD);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on buffers.
-   *
-   * @param in buffer containing input data
-   * @param out buffer containing output data
-   */
-  void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
-  }
-
-  /**
-   * Compute out of place backward FFT, working on buffers
-   *
-   * @param in buffer containing input data
-   * @param out buffer containing output data
-   */
-  void compute_backward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::BACKWARD);
-  }
-
-  /**
-   * Compute out of place backward FFT, working on buffers
-   *
-   * @param in_real buffer containing real part of the input data
-   * @param in_imag buffer containing imaginary part of the input data
-   * @param out_real buffer containing real part of the output data
-   * @param out_imag buffer containing imaginary part of the output data
-   */
-  void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
-                        sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::BACKWARD);
-  }
-
-  /**
-   * Computes in-place forward FFT, working on USM memory.
-   *
-   * @param inout USM pointer to memory containing input and output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    return compute_forward(inout, inout, dependencies);
-  }
-
-  /**
-   * Computes in-place forward FFT, working on USM memory.
-   *
-   * @param inout_real USM pointer to memory containing real part of the input and output data
-   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag,
-                              const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
-  }
-
-  /**
-   * Computes in-place forward FFT, working on USM memory.
-   *
-   * @param inout USM pointer to memory containing input and output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(Scalar* inout, const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    // For now we can just call out-of-place implementation.
-    // This might need to be changed once we implement support for large sizes that work in global memory.
-    return compute_forward(inout, reinterpret_cast<complex_type*>(inout), dependencies);
-  }
-
-  /**
-   * Computes in-place backward FFT, working on USM memory.
-   *
-   * @param inout USM pointer to memory containing input and output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_backward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return compute_backward(inout, inout, dependencies);
-  }
-
-  /**
-   * Computes in-place backward FFT, working on USM memory.
-   *
-   * @param inout_real USM pointer to memory containing real part of the input and output data
-   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
-                               const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return compute_backward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on USM memory.
-   *
-   * @param in USM pointer to memory containing input data
-   * @param out USM pointer to memory containing output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(const complex_type* in, complex_type* out,
-                              const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::FORWARD, dependencies);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on USM memory.
-   *
-   * @param in_real USM pointer to memory containing real part of the input data
-   * @param in_imag USM pointer to memory containing imaginary part of the input data
-   * @param out_real USM pointer to memory containing real part of the output data
-   * @param out_imag USM pointer to memory containing imaginary part of the output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
-                              scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::FORWARD,
-                              dependencies);
-  }
-
-  /**
-   * Computes out-of-place forward FFT, working on USM memory.
-   *
-   * @param in USM pointer to memory containing input data
-   * @param out USM pointer to memory containing output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
-                              const std::vector<sycl::event>& /*dependencies*/ = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
-    return {};
-  }
-
-  /**
-   * Computes out-of-place backward FFT, working on USM memory.
-   *
-   * @param in USM pointer to memory containing input data
-   * @param out USM pointer to memory containing output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_backward(const complex_type* in, complex_type* out,
-                               const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::BACKWARD,
-                              dependencies);
-  }
-
-  /**
-   * Computes out-of-place backward FFT, working on USM memory.
-   *
-   * @param in_real USM pointer to memory containing real part of the input data
-   * @param in_imag USM pointer to memory containing imaginary part of the input data
-   * @param out_real USM pointer to memory containing real part of the output data
-   * @param out_imag USM pointer to memory containing imaginary part of the output data
-   * @param dependencies events that must complete before the computation
-   * @return sycl::event associated with this computation
-   */
-  sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
-                               scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    return dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::BACKWARD,
-                              dependencies);
-  }
-
- private:
+ protected:
   /**
    * Dispatches to the implementation for the appropriate direction.
    *
@@ -1504,7 +1239,7 @@ class committed_descriptor {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
     struct inner {
-      static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag,
+      static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
                                  TOut& out_imag, const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t forward_offset, std::size_t backward_offset,
                                  dimension_struct& dimension_data, direction compute_direction);
@@ -1558,6 +1293,284 @@ class committed_descriptor {
         detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
         static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(vec_multiplier * input_offset),
         static_cast<IdxGlobal>(vec_multiplier * output_offset), dimension_data, compute_direction);
+  }
+};
+
+template <typename Scalar, domain Domain>
+class committed_descriptor : private committed_descriptor_impl<Scalar, Domain> {
+  public:
+  /**
+   * Alias for `Scalar`.
+   */
+  using scalar_type = Scalar;
+
+  /**
+   * std::complex with `Scalar` scalar.
+   */
+  using complex_type = std::complex<Scalar>;
+
+  // Use base class constructor
+  using committed_descriptor_impl<Scalar, Domain>::committed_descriptor_impl;
+  // Use base class function without this->
+  using committed_descriptor_impl<Scalar, Domain>::dispatch_direction;
+
+  /**
+   * Computes in-place forward FFT, working on a buffer.
+   *
+   * @param inout buffer containing input and output data
+   */
+  void compute_forward(sycl::buffer<complex_type, 1>& inout) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    compute_forward(inout, inout);
+  }
+
+  /**
+   * Computes in-place forward FFT, working on buffers.
+   *
+   * @param inout_real buffer containing real part of the input and output data
+   * @param inout_imag buffer containing imaginary part of the input and output data
+   */
+  void compute_forward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    compute_forward(inout_real, inout_imag, inout_real, inout_imag);
+  }
+
+  /**
+   * Computes in-place backward FFT, working on a buffer.
+   *
+   * @param inout buffer containing input and output data
+   */
+  void compute_backward(sycl::buffer<complex_type, 1>& inout) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    compute_backward(inout, inout);
+  }
+
+  /**
+   * Computes in-place backward FFT, working on buffers.
+   *
+   * @param inout_real buffer containing real part of the input and output data
+   * @param inout_imag buffer containing imaginary part of the input and output data
+   */
+  void compute_backward(sycl::buffer<scalar_type, 1>& inout_real, sycl::buffer<scalar_type, 1>& inout_imag) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    compute_backward(inout_real, inout_imag, inout_real, inout_imag);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on buffers.
+   *
+   * @param in buffer containing input data
+   * @param out buffer containing output data
+   */
+  void compute_forward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::FORWARD);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on buffers.
+   *
+   * @param in_real buffer containing real part of the input data
+   * @param in_imag buffer containing imaginary part of the input data
+   * @param out_real buffer containing real part of the output data
+   * @param out_imag buffer containing imaginary part of the output data
+   */
+  void compute_forward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
+                       sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::FORWARD);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on buffers.
+   *
+   * @param in buffer containing input data
+   * @param out buffer containing output data
+   */
+  void compute_forward(const sycl::buffer<Scalar, 1>& /*in*/, sycl::buffer<complex_type, 1>& /*out*/) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
+  }
+
+  /**
+   * Compute out of place backward FFT, working on buffers
+   *
+   * @param in buffer containing input data
+   * @param out buffer containing output data
+   */
+  void compute_backward(const sycl::buffer<complex_type, 1>& in, sycl::buffer<complex_type, 1>& out) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::BACKWARD);
+  }
+
+  /**
+   * Compute out of place backward FFT, working on buffers
+   *
+   * @param in_real buffer containing real part of the input data
+   * @param in_imag buffer containing imaginary part of the input data
+   * @param out_real buffer containing real part of the output data
+   * @param out_imag buffer containing imaginary part of the output data
+   */
+  void compute_backward(const sycl::buffer<scalar_type, 1>& in_real, const sycl::buffer<scalar_type, 1>& in_imag,
+                        sycl::buffer<scalar_type, 1>& out_real, sycl::buffer<scalar_type, 1>& out_imag) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::BACKWARD);
+  }
+
+  /**
+   * Computes in-place forward FFT, working on USM memory.
+   *
+   * @param inout USM pointer to memory containing input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    return compute_forward(inout, inout, dependencies);
+  }
+
+  /**
+   * Computes in-place forward FFT, working on USM memory.
+   *
+   * @param inout_real USM pointer to memory containing real part of the input and output data
+   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(scalar_type* inout_real, scalar_type* inout_imag,
+                              const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    return compute_forward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
+  }
+
+  /**
+   * Computes in-place forward FFT, working on USM memory.
+   *
+   * @param inout USM pointer to memory containing input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(Scalar* inout, const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    // For now we can just call out-of-place implementation.
+    // This might need to be changed once we implement support for large sizes that work in global memory.
+    return compute_forward(inout, reinterpret_cast<complex_type*>(inout), dependencies);
+  }
+
+  /**
+   * Computes in-place backward FFT, working on USM memory.
+   *
+   * @param inout USM pointer to memory containing input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_backward(complex_type* inout, const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return compute_backward(inout, inout, dependencies);
+  }
+
+  /**
+   * Computes in-place backward FFT, working on USM memory.
+   *
+   * @param inout_real USM pointer to memory containing real part of the input and output data
+   * @param inout_imag USM pointer to memory containing imaginary part of the input and output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_backward(scalar_type* inout_real, scalar_type* inout_imag,
+                               const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return compute_backward(inout_real, inout_imag, inout_real, inout_imag, dependencies);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on USM memory.
+   *
+   * @param in USM pointer to memory containing input data
+   * @param out USM pointer to memory containing output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(const complex_type* in, complex_type* out,
+                              const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::FORWARD, dependencies);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on USM memory.
+   *
+   * @param in_real USM pointer to memory containing real part of the input data
+   * @param in_imag USM pointer to memory containing imaginary part of the input data
+   * @param out_real USM pointer to memory containing real part of the output data
+   * @param out_imag USM pointer to memory containing imaginary part of the output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
+                              scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::FORWARD,
+                              dependencies);
+  }
+
+  /**
+   * Computes out-of-place forward FFT, working on USM memory.
+   *
+   * @param in USM pointer to memory containing input data
+   * @param out USM pointer to memory containing output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_forward(const Scalar* /*in*/, complex_type* /*out*/,
+                              const std::vector<sycl::event>& /*dependencies*/ = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    throw unsupported_configuration("Real to complex FFTs not yet implemented.");
+    return {};
+  }
+
+  /**
+   * Computes out-of-place backward FFT, working on USM memory.
+   *
+   * @param in USM pointer to memory containing input data
+   * @param out USM pointer to memory containing output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_backward(const complex_type* in, complex_type* out,
+                               const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return dispatch_direction(in, out, in, out, complex_storage::INTERLEAVED_COMPLEX, direction::BACKWARD,
+                              dependencies);
+  }
+
+  /**
+   * Computes out-of-place backward FFT, working on USM memory.
+   *
+   * @param in_real USM pointer to memory containing real part of the input data
+   * @param in_imag USM pointer to memory containing imaginary part of the input data
+   * @param out_real USM pointer to memory containing real part of the output data
+   * @param out_imag USM pointer to memory containing imaginary part of the output data
+   * @param dependencies events that must complete before the computation
+   * @return sycl::event associated with this computation
+   */
+  sycl::event compute_backward(const scalar_type* in_real, const scalar_type* in_imag, scalar_type* out_real,
+                               scalar_type* out_imag, const std::vector<sycl::event>& dependencies = {}) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return dispatch_direction(in_real, out_real, in_imag, out_imag, complex_storage::SPLIT_COMPLEX, direction::BACKWARD,
+                              dependencies);
   }
 };
 
