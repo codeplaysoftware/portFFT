@@ -715,6 +715,7 @@ class committed_descriptor {
       for (std::size_t i = 1; i < factors.size(); i++) {
         inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
       }
+      PORTFFT_LOG_TRACE("Dimension:", global_dimension, "num_batches_in_l2:", dimensions.at(global_dimension).num_batches_in_l2, "scan:", inclusive_scan);
       dimensions.at(global_dimension).factors_and_scan =
           detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
       queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
