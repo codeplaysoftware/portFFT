@@ -539,6 +539,9 @@ std::vector<sycl::event> compute_level(
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
   const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
+  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers", 
+                    local_mem_for_store_modifier, "twiddles", loc_mem_for_twiddles, "total", 
+                    local_memory_for_input + local_mem_for_store_modifier + loc_mem_for_twiddles);
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
     events.push_back(queue.submit([&](sycl::handler& cgh) {
