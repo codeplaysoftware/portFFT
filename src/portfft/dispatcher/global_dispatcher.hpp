@@ -104,8 +104,6 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
   return 0;
 }
 
-}  // namespace detail
-
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
@@ -404,6 +402,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
   }
 };
 
-}  // namespace portfft
+}  // namespace detail
+}  // namespace portfft 
 
 #endif

@@ -33,7 +33,7 @@
 namespace portfft {
 
 template <typename Scalar, domain Domain>
-class committed_descriptor : private committed_descriptor_impl<Scalar, Domain> {
+class committed_descriptor : private detail::committed_descriptor_impl<Scalar, Domain> {
  public:
   /**
    * Alias for `Scalar`.
@@ -46,9 +46,9 @@ class committed_descriptor : private committed_descriptor_impl<Scalar, Domain> {
   using complex_type = std::complex<Scalar>;
 
   // Use base class constructor
-  using committed_descriptor_impl<Scalar, Domain>::committed_descriptor_impl;
+  using detail::committed_descriptor_impl<Scalar, Domain>::committed_descriptor_impl;
   // Use base class function without this->
-  using committed_descriptor_impl<Scalar, Domain>::dispatch_direction;
+  using detail::committed_descriptor_impl<Scalar, Domain>::dispatch_direction;
 
   /**
    * Computes in-place forward FFT, working on a buffer.

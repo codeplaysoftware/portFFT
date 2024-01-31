@@ -39,9 +39,12 @@
 namespace portfft {
 
 template <typename Scalar, domain Domain>
-class committed_descriptor_impl;
+struct descriptor;
 
 namespace detail {
+
+template <typename Scalar, domain Domain>
+class committed_descriptor_impl;
 
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
@@ -134,12 +137,6 @@ detail::layout get_layout(const Descriptor& desc, direction dir) {
   }
   return detail::layout::UNPACKED;
 }
-
-}  // namespace detail
-
-// forward declaration
-template <typename Scalar, domain Domain>
-struct descriptor;
 
 /*
 Compute functions in the `committed_descriptor_impl` call `dispatch_kernel` and `dispatch_kernel_helper`. These two
@@ -1296,6 +1293,7 @@ class committed_descriptor_impl {
   }
 };
 
+}  // namespace detail
 }  // namespace portfft
 
 #endif

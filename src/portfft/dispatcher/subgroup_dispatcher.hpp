@@ -583,7 +583,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   }
   global_data.log_message_global(__func__, "exited");
 }
-}  // namespace detail
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
@@ -718,6 +717,7 @@ struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struc
   }
 };
 
+}  // namespace detail
 }  // namespace portfft
 
 #endif  // PORTFFT_DISPATCHER_SUBGROUP_DISPATCHER_HPP

@@ -274,7 +274,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   }
   global_data.log_message_global(__func__, "exited");
 }
-}  // namespace detail
 
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
@@ -369,6 +368,7 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
   }
 };
 
+}  // namespace detail
 }  // namespace portfft
 
 #endif  // PORTFFT_DISPATCHER_WORKITEM_DISPATCHER_HPP
