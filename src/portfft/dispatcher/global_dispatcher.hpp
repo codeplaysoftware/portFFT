@@ -403,6 +403,6 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
 };
 
 }  // namespace detail
-}  // namespace portfft 
+}  // namespace portfft
 
 #endif
