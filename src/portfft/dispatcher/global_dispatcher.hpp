@@ -46,6 +46,7 @@ namespace detail {
  */
 inline std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, IdxGlobal num_batches, detail::level level,
                                                          Idx n_compute_units, Idx subgroup_size, Idx n_sgs_in_wg) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal n_available_sgs = 8 * n_compute_units * 64;
   IdxGlobal wg_size = n_sgs_in_wg * subgroup_size;
   if (level == detail::level::WORKITEM) {
@@ -75,6 +76,7 @@ inline std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, Idx
  */
 template <typename T>
 void complex_transpose(const T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal num_elements) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   for (IdxGlobal i = 0; i < num_elements; i++) {
     IdxGlobal j = i / ldb;
     IdxGlobal k = i % ldb;
@@ -90,6 +92,7 @@ void complex_transpose(const T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal
  * @return value to increment the pointer by
  */
 inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   if (level == detail::level::SUBGROUP) {
     return 2 * factor_size;
   }
@@ -108,6 +111,7 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
   static Scalar* execute(committed_descriptor& desc, dimension_struct& /*dimension_data*/,
                          std::vector<kernel_data_struct>& kernels) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     std::vector<IdxGlobal> factors_idx_global;
     // Get factor sizes per level;
     for (const auto& kernel_data : kernels) {
@@ -142,6 +146,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
     }
     std::vector<Scalar> host_memory(static_cast<std::size_t>(mem_required_for_twiddles));
     std::vector<Scalar> scratch_space(static_cast<std::size_t>(mem_required_for_twiddles));
+    PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size",
+                      mem_required_for_twiddles);
     Scalar* device_twiddles =
         sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
@@ -254,14 +260,21 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                       Idx num_factors) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     Idx length_idx = static_cast<Idx>(length);
+    PORTFFT_LOG_TRACE("GlobalSubImplSpecConst:", level);
     in_bundle.template set_specialization_constant<detail::GlobalSubImplSpecConst>(level);
+    PORTFFT_LOG_TRACE("GlobalSpecConstNumFactors:", num_factors);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(num_factors);
+    PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", factor_num);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
     if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
+      PORTFFT_LOG_TRACE("SpecConstFftSize:", length_idx);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
     } else if (level == detail::level::SUBGROUP) {
+      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
+      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
     }
   }
@@ -273,6 +286,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& /*desc*/, std::size_t /*length*/, Idx /*used_sg_size*/,
                              const std::vector<Idx>& /*factors*/, Idx& /*num_sgs_per_wg*/) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     // No work required as all work done in calculate_twiddles;
     return 0;
   }
@@ -287,6 +301,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
                              direction compute_direction) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     complex_storage storage = desc.params.complex_storage;
     const IdxGlobal vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
     const auto& kernels =
@@ -309,9 +324,12 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       initial_impl_twiddle_offset += 2 * kernels.at(i).batch_size * static_cast<IdxGlobal>(kernels.at(i).length);
     }
     for (std::size_t i = 0; i < num_batches; i += max_batches_in_l2) {
+      PORTFFT_LOG_TRACE("Global implementation working on batches", i, "through", i + max_batches_in_l2, "out of",
+                        num_batches);
       IdxGlobal intermediate_twiddles_offset = 0;
       IdxGlobal impl_twiddle_offset = initial_impl_twiddle_offset;
       auto& kernel0 = kernels.at(0);
+      PORTFFT_LOG_TRACE("Dispatching the kernel for factor 0 of global implementation");
       l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
                                         detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
           kernel0, in, desc.scratch_ptr_1.get(), in_imag, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
@@ -326,7 +344,9 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(dimension_data.num_factors);
            factor_num++) {
         auto& current_kernel = kernels.at(factor_num);
+        PORTFFT_LOG_TRACE("Dispatching the kernel for factor", factor_num, "of global implementation");
         if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
+          PORTFFT_LOG_TRACE("This is the last kernel");
           l2_events =
               detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
                   current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(),
@@ -354,6 +374,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
         cgh.host_task([&]() {});
       });
       for (Idx num_transpose = num_transposes - 1; num_transpose > 0; num_transpose--) {
+        PORTFFT_LOG_TRACE("Dispatching the transpose kernel", num_transpose);
         event = detail::transpose_level<Scalar, Domain>(
             dimension_data.transpose_kernels.at(static_cast<std::size_t>(num_transpose)), desc.scratch_ptr_1.get(),
             desc.scratch_ptr_2.get(), factors_and_scan, committed_size, static_cast<Idx>(max_batches_in_l2),
@@ -367,6 +388,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
         }
         desc.scratch_ptr_1.swap(desc.scratch_ptr_2);
       }
+      PORTFFT_LOG_TRACE("Dispatching the transpose kernel 0");
       event = detail::transpose_level<Scalar, Domain>(
           dimension_data.transpose_kernels.at(0), desc.scratch_ptr_1.get(), out, factors_and_scan, committed_size,
           static_cast<Idx>(max_batches_in_l2), n_transforms, static_cast<IdxGlobal>(i), num_factors,

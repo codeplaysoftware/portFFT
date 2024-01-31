@@ -45,6 +45,7 @@ namespace detail {
  */
 template <typename T>
 IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Idx num_sgs_per_wg, Idx n_compute_units) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   Idx maximum_n_sgs = 8 * n_compute_units * 64;
   Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
   Idx wg_size = subgroup_size * num_sgs_per_wg;
@@ -284,6 +285,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
                              const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
                              direction compute_direction) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
     auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
                                                                 : dimension_data.backward_kernels.at(0);
@@ -300,15 +302,22 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(static_cast<std::size_t>(local_elements), cgh);
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
       sycl::stream s{1024 * 16 * 8, 1024, cgh};
 #endif
+      PORTFFT_LOG_TRACE("Launching workitem kernel with global_size", global_size, "local_size",
+                        SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
       cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
-          [=](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
+          [=
+#ifdef PORTFFT_KERNEL_LOG
+               ,
+           global_logging_config = detail::global_logging_config
+#endif
+      ](sycl::nd_item<1> it, sycl::kernel_handler kh) PORTFFT_REQD_SUBGROUP_SIZE(SubgroupSize) {
             detail::global_data_struct global_data{
-#ifdef PORTFFT_LOG
-                s,
+#ifdef PORTFFT_KERNEL_LOG
+                s, global_logging_config,
 #endif
                 it};
             global_data.log_message_global("Running workitem kernel");
@@ -328,7 +337,9 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
   static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& /*factors*/, detail::level /*level*/,
                       Idx /*factor_num*/, Idx /*num_factors*/) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     const Idx length_idx = static_cast<Idx>(length);
+    PORTFFT_LOG_TRACE("SpecConstFftSize:", length_idx);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
   }
 };
@@ -339,6 +350,7 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
                                                                                     Dummy> {
   static std::size_t execute(committed_descriptor& desc, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
     num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
@@ -352,6 +364,7 @@ template <typename Dummy>
 struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKITEM, Dummy> {
   static Scalar* execute(committed_descriptor& /*desc*/, dimension_struct& /*dimension_data*/,
                          std::vector<kernel_data_struct>& /*kernels*/) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
     return nullptr;
   }
 };
