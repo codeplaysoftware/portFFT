@@ -763,7 +763,6 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("local_memory_size:", local_memory_size);
     PORTFFT_LOG_TRACE("llc_size:", llc_size);
 
-
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {

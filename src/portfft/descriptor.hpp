@@ -32,7 +32,6 @@
 #include "descriptor_validate.hpp"
 #include "enums.hpp"
 
-
 namespace portfft {
 
 /**
