@@ -104,12 +104,10 @@ inline IdxGlobal increment_twiddle_offset(detail::level level, Idx factor_size) 
   return 0;
 }
 
-}  // namespace detail
-
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
-  static Scalar* execute(committed_descriptor& desc, dimension_struct& /*dimension_data*/,
+struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::GLOBAL, Dummy> {
+  static Scalar* execute(committed_descriptor_impl& desc, dimension_struct& /*dimension_data*/,
                          std::vector<kernel_data_struct>& kernels) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     std::vector<IdxGlobal> factors_idx_global;
@@ -256,8 +254,8 @@ struct committed_descriptor<Scalar, Domain>::calculate_twiddles_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
-  static void execute(committed_descriptor& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
+struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
+  static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                       Idx num_factors) {
     PORTFFT_LOG_FUNCTION_ENTRY();
@@ -282,9 +280,9 @@ struct committed_descriptor<Scalar, Domain>::set_spec_constants_struct::inner<de
 
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, LayoutIn,
-                                                                                    Dummy> {
-  static std::size_t execute(committed_descriptor& /*desc*/, std::size_t /*length*/, Idx /*used_sg_size*/,
+struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL,
+                                                                                         LayoutIn, Dummy> {
+  static std::size_t execute(committed_descriptor_impl& /*desc*/, std::size_t /*length*/, Idx /*used_sg_size*/,
                              const std::vector<Idx>& /*factors*/, Idx& /*num_sgs_per_wg*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // No work required as all work done in calculate_twiddles;
@@ -295,10 +293,10 @@ struct committed_descriptor<Scalar, Domain>::num_scalars_in_local_mem_struct::in
 template <typename Scalar, domain Domain>
 template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
-                                                               TOut>::inner<detail::level::GLOBAL, Dummy> {
-  static sycl::event execute(committed_descriptor& desc, const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
-                             const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
+struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
+                                                                    TOut>::inner<detail::level::GLOBAL, Dummy> {
+  static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
+                             TOut& out_imag, const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
                              direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
@@ -404,6 +402,7 @@ struct committed_descriptor<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutO
   }
 };
 
+}  // namespace detail
 }  // namespace portfft
 
 #endif
