@@ -32,7 +32,6 @@
 #include "common/exceptions.hpp"
 #include "common/subgroup.hpp"
 #include "defines.hpp"
-#include "descriptor_validate.hpp"
 #include "enums.hpp"
 #include "specialization_constant.hpp"
 #include "utils.hpp"
@@ -764,7 +763,6 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("local_memory_size:", local_memory_size);
     PORTFFT_LOG_TRACE("llc_size:", llc_size);
 
-    detail::validate::validate_descriptor(params);
 
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
