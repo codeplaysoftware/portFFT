@@ -89,7 +89,7 @@ IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, I
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param output_imag pointer to global memory containing imaginary part of the input data if complex
  * storage (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param loc Pointer to local memory
+ * @param loc Pointer to local memory. Size requirement is determined by `num_scalars_in_local_mem_struct`.
  * @param loc_twiddles pointer to local allocation for subgroup level twiddles
  * @param n_transforms number of fft batches
  * @param global_data global data for the kernel
