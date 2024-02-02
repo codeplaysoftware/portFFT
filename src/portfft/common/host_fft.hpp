@@ -18,7 +18,6 @@
  *
  **************************************************************************/
 
-
 #ifndef PORTFFT_COMMON_HOST_FFT_HPP
 #define PORTFFT_COMMON_HOST_FFT_HPP
 
