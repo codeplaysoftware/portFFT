@@ -323,7 +323,8 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
     Scalar L2_rel_err = L2_err / L2_norm;
     max_L2_rel_err = std::max(max_L2_rel_err, L2_rel_err);
   }
-  std::cout << "Max (across batches) relative L2 error: " << max_L2_rel_err << std::endl;
+  // set to warning to make it print by default
+  PORTFFT_LOG_WARNING("Max (across batches) relative L2 error: ", max_L2_rel_err);
 
   for (std::size_t t = 0; t < desc.number_of_transforms; ++t) {
     const ElemT* this_batch_ref = ref_output.data() + dft_len * t + dft_offset;

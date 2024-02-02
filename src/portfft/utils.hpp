@@ -26,7 +26,7 @@
 #include <limits>
 #include <vector>
 
-#include "common/memory_views.hpp"
+#include "common/logging.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 
@@ -45,6 +45,7 @@ class transpose_kernel;
 template <template <typename, domain, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
           typename Scalar, domain Domain, Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_ID(MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                          \
   try {                                                                                                        \
@@ -96,32 +97,27 @@ constexpr bool can_cast_safely(const InputType& x) {
  * @param factor_size Length of the factor
  * @param check_and_select_target_level Function which checks whether the factor can fit in one of the existing
  * implementations
- * The function should accept factor size and whether the data layout in the local memory would be in a batch
- * interleaved format, and whether or not load modifers be used. and should return a boolean indicating whether or not
- * the factor size can fit in any of the implementation.
+ * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
+ * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
- * @param encountered_prime whether or not a large prime was encountered during factorization
- * @param requires_load_modifier whether or not load modifier will be required.
- * @return Largest factor that was possible to fit in either or workitem/subgroup level FFTs
+ * @return
  */
 template <typename F>
-IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed,
-                               bool& encountered_prime, bool requires_load_modifier) {
+IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal fact_1 = factor_size;
-  if (check_and_select_target_level(fact_1, transposed, requires_load_modifier)) {
+  if (check_and_select_target_level(fact_1, transposed)) {
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
-    encountered_prime = true;
-    return factor_size;
+    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
   }
   do {
     fact_1 = detail::factorize(fact_1);
     if (fact_1 == 1) {
-      encountered_prime = true;
-      return factor_size;
+      throw internal_error("Factorization Failed !");
     }
-  } while (!check_and_select_target_level(fact_1, transposed, requires_load_modifier));
+  } while (!check_and_select_target_level(fact_1));
   return fact_1;
 }
 
@@ -133,26 +129,17 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
  * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
  * implementation.
- * @param requires_load_modifier whether or not load modifier will be required.
- * @return whether or not a large prime was encounterd during factorization.
  */
 template <typename F>
-bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level, bool requires_load_modifier = false) {
-  bool encountered_prime = false;
+void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   if (detail::factorize(input_size) == 1) {
-    encountered_prime = true;
-    return encountered_prime;
+    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
   }
   IdxGlobal temp = 1;
   while (input_size / temp != 1) {
-    if (encountered_prime) {
-      return encountered_prime;
-    }
-    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true, encountered_prime,
-                                 requires_load_modifier);
-    requires_load_modifier = false;
+    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
   }
-  return encountered_prime;
 }
 
 /**
@@ -162,6 +149,7 @@ bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level, bo
  */
 template <typename Scalar>
 std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
+  PORTFFT_LOG_FUNCTION_ENTRY();
   std::vector<sycl::kernel_id> ids;
 #define PORTFFT_GET_TRANSPOSE_KERNEL_ID(MEMORY)                               \
   try {                                                                       \
@@ -197,7 +185,7 @@ inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
  * @return sycl::specialization_id
  */
 template <typename Scalar>
-constexpr const sycl::specialization_id<Scalar>& get_spect_constant_scale() {
+PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constant_scale() {
   if constexpr (std::is_same_v<Scalar, float>) {
     return detail::SpecConstScaleFactorFloat;
   } else {

@@ -23,7 +23,8 @@
 
 #include <cstdint>
 
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
+// to avoid extremely long compile times - logging from kernel kills performance anyway
 #define PORTFFT_INLINE __attribute__((noinline))
 #else
 #define PORTFFT_INLINE __attribute__((always_inline))

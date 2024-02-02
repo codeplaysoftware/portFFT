@@ -28,13 +28,61 @@
 
 namespace portfft::detail {
 
+struct logging_config {
+  bool log_transfers = true;
+  bool log_dumps = true;
+  bool log_trace = true;
+  bool log_warnings = true;
+  logging_config() {
+    char* log_transfers_str = getenv("PORTFFT_LOG_TRANSFERS");
+    if (log_transfers_str != nullptr) {
+      log_transfers = static_cast<bool>(atoi(log_transfers_str));
+#ifndef PORTFFT_LOG_TRANSFERS
+      if (log_transfers) {
+        std::cerr << "Can not enable logging of transfers if it is disabled at compile time." << std::endl;
+      }
+#endif
+    }
+    char* log_dumps_str = getenv("PORTFFT_LOG_DUMPS");
+    if (log_dumps_str != nullptr) {
+      log_dumps = static_cast<bool>(atoi(log_dumps_str));
+#ifndef PORTFFT_LOG_DUMPS
+      if (log_dumps) {
+        std::cerr << "Can not enable logging of dumps if it is disabled at compile time." << std::endl;
+      }
+#endif
+    }
+    char* log_trace_str = getenv("PORTFFT_LOG_TRACE");
+    if (log_trace_str != nullptr) {
+      log_trace = static_cast<bool>(atoi(log_trace_str));
+#ifndef PORTFFT_LOG_TRACE
+      if (log_trace) {
+        std::cerr << "Can not enable logging of traces if it is disabled at compile time." << std::endl;
+      }
+#endif
+    }
+    char* log_warnings_str = getenv("PORTFFT_LOG_WARNINGS");
+    if (log_warnings_str != nullptr) {
+      log_warnings = static_cast<bool>(atoi(log_warnings_str));
+#ifndef PORTFFT_LOG_WARNINGS
+      if (log_warnings) {
+        std::cerr << "Can not enable logging of warnings if it is disabled at compile time." << std::endl;
+      }
+#endif
+    }
+  }
+};
+
+const logging_config global_logging_config;
+
 /**
  * Struct containing objects that are used in almost all functions.
  */
 template <Idx Dim = 1>
 struct global_data_struct {
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
   sycl::stream s;
+  logging_config global_logging_config;
 #endif
   sycl::nd_item<Dim> it;
   sycl::sub_group sg;
@@ -46,13 +94,14 @@ struct global_data_struct {
    * @param it nd_item of the kernel
    */
   global_data_struct(
-#ifdef PORTFFT_LOG
-      sycl::stream s,
+#ifdef PORTFFT_KERNEL_LOG
+      sycl::stream s, logging_config global_logging_config,
 #endif
       sycl::nd_item<Dim> it)
       :
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
         s(s << sycl::setprecision(3)),
+        global_logging_config(global_logging_config),
 #endif
         it(it),
         sg(it.get_sub_group()) {
@@ -71,7 +120,7 @@ struct global_data_struct {
     }
   }
 
-#ifdef PORTFFT_LOG
+#ifdef PORTFFT_KERNEL_LOG
   /**
    * Logs ids of workitem, subgroup and workgroup.
    */
@@ -93,8 +142,7 @@ struct global_data_struct {
   }
 
   /**
-   * Implementation of log_message. End of recursion - logs the messages separated by newlines, adds a newline and
-   * flushes the stream.
+   * Implementation of log_message.
    *
    * @tparam TFirst type of the first object to log
    * @tparam Ts types of the other objects to log
@@ -122,7 +170,7 @@ struct global_data_struct {
   PORTFFT_INLINE void log_dump_local([[maybe_unused]] const char* message, [[maybe_unused]] ViewT data,
                                      [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
-    if (it.get_local_id(0) == 0) {
+    if (global_logging_config.log_dumps && it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0);
       s << " " << message << " ";
       if (num) {
@@ -150,15 +198,17 @@ struct global_data_struct {
   PORTFFT_INLINE void log_dump_private([[maybe_unused]] const char* message, [[maybe_unused]] T* ptr,
                                        [[maybe_unused]] Idx num) {
 #ifdef PORTFFT_LOG_DUMPS
-    log_ids();
-    s << message << " ";
-    if (num) {
-      s << ptr[0];
+    if (global_logging_config.log_dumps) {
+      log_ids();
+      s << message << " ";
+      if (num) {
+        s << ptr[0];
+      }
+      for (Idx i = 1; i < num; i++) {
+        s << ", " << ptr[i];
+      }
+      s << "\n" << sycl::stream_manipulator::flush;
     }
-    for (Idx i = 1; i < num; i++) {
-      s << ", " << ptr[i];
-    }
-    s << "\n" << sycl::stream_manipulator::flush;
 #endif
   }
 
@@ -173,8 +223,10 @@ struct global_data_struct {
   template <typename... Ts>
   PORTFFT_INLINE void log_message([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
-    log_ids();
-    log_message_impl(messages...);
+    if (global_logging_config.log_transfers) {
+      log_ids();
+      log_message_impl(messages...);
+    }
 #endif
   }
 
@@ -191,7 +243,7 @@ struct global_data_struct {
   template <typename... Ts>
   PORTFFT_INLINE void log_message_subgroup([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
-    if (sg.leader()) {
+    if (global_logging_config.log_transfers && sg.leader()) {
       s << "sg_id " << sg.get_group_linear_id() << " "
         << "wg_id " << it.get_group(0) << " ";
       log_message_impl(messages...);
@@ -211,7 +263,7 @@ struct global_data_struct {
   template <typename... Ts>
   PORTFFT_INLINE void log_message_local([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRANSFERS
-    if (it.get_local_id(0) == 0) {
+    if (global_logging_config.log_transfers && it.get_local_id(0) == 0) {
       s << "wg_id " << it.get_group(0) << " ";
       log_message_impl(messages...);
     }
@@ -230,7 +282,7 @@ struct global_data_struct {
   template <typename... Ts>
   PORTFFT_INLINE void log_message_global([[maybe_unused]] Ts... messages) {
 #ifdef PORTFFT_LOG_TRACE
-    if (it.get_global_id(0) == 0) {
+    if (global_logging_config.log_trace && it.get_global_id(0) == 0) {
       log_message_impl(messages...);
     }
 #endif
@@ -261,6 +313,48 @@ struct global_data_struct {
   }
 };
 
+/*
+ * Outputs an object to std::cout.
+ *
+ * @tparam T type of the object to output
+ * @param object object to output
+ */
+template <typename T>
+void output(const T& object) {
+  if constexpr (std::is_enum_v<T>) {
+    output(static_cast<std::underlying_type_t<T>>(object));
+  } else {
+    std::cout << object;
+  }
+}
+
+/*
+ * Outputs an object to std::cout. A `std::vector` is output by elements.
+ *
+ * @tparam T type of the object to output
+ * @param object object to output
+ */
+template <typename T>
+void output(const std::vector<T>& object) {
+  std::cout << "(";
+  for (const T& element : object) {
+    output(element);
+    std::cout << ", ";
+  }
+  std::cout << ")";
+}
+
+/**
+ * Logs a message.
+ *
+ * @tparam Ts types of the objects to log
+ * @param messages messages to log
+ */
+template <typename... Ts>
+void log_message_impl(Ts... messages) {
+  ((output(messages), std::cout << " "), ...);
+  std::cout << std::endl;
+}
 /**
  * Prints the message and dumps data from host to standard output
  *
@@ -270,14 +364,15 @@ struct global_data_struct {
  * @param size number of elements to dump
  */
 template <typename T>
-PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr,
-                              [[maybe_unused]] std::size_t size) {
+void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]] T* host_ptr, [[maybe_unused]] std::size_t size) {
 #ifdef PORTFFT_LOG_DUMPS
-  std::cout << msg << " ";
-  for (std::size_t i = 0; i < size; i++) {
-    std::cout << host_ptr[i] << ", ";
+  if (global_logging_config.log_dumps) {
+    std::cout << msg << " ";
+    for (std::size_t i = 0; i < size; i++) {
+      std::cout << host_ptr[i] << ", ";
+    }
+    std::cout << std::endl;
   }
-  std::cout << std::endl;
 #endif
 }
 
@@ -292,15 +387,59 @@ PORTFFT_INLINE void dump_host([[maybe_unused]] const char* msg, [[maybe_unused]]
  * @param dependencies dependencies to wait on
  */
 template <typename T>
-PORTFFT_INLINE void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg,
-                                [[maybe_unused]] T* dev_ptr, [[maybe_unused]] std::size_t size,
-                                [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
+void dump_device([[maybe_unused]] sycl::queue& q, [[maybe_unused]] const char* msg, [[maybe_unused]] T* dev_ptr,
+                 [[maybe_unused]] std::size_t size,
+                 [[maybe_unused]] const std::vector<sycl::event>& dependencies = {}) {
 #ifdef PORTFFT_LOG_DUMPS
-  std::vector<T> tmp(size);
-  q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
-  dump_host(msg, tmp.data(), size);
+  if (global_logging_config.log_dumps) {
+    std::vector<T> tmp(size);
+    q.copy(dev_ptr, tmp.data(), size, dependencies).wait();
+    dump_host(msg, tmp.data(), size);
+  }
 #endif
 }
+
+/**
+ * Logs a trace. Can log multiple objects/strings. They will be separated by spaces.
+ *
+ * Does nothing if logging of traces is not enabled (PORTFFT_LOG_TRACE is not defined).
+ *
+ * @tparam Ts types of the objects to log
+ * @param messages objects to log
+ */
+template <typename... Ts>
+void log_trace([[maybe_unused]] const Ts&... messages) {
+#ifdef PORTFFT_LOG_TRACES
+  if (global_logging_config.log_trace) {
+    log_message_impl(messages...);
+  }
+#endif
+}
+
+/**
+ * Logs a warning. Can log multiple objects/strings. They will be separated by spaces.
+ *
+ * Does nothing if logging of warnings is not enabled (PORTFFT_LOG_WARNING is not defined).
+ *
+ * @tparam Ts types of the objects to log
+ * @param messages objects to log
+ */
+template <typename... Ts>
+void log_warning([[maybe_unused]] const Ts&... messages) {
+#ifdef PORTFFT_LOG_WARNINGS
+  if (global_logging_config.log_warnings) {
+    log_message_impl("WARNING:", messages...);
+  }
+#endif
+}
+
+#define PORTFFT_LOGGING_LOCATION_INFORMATION __FILE__ ", line", __LINE__, "- in", __FUNCTION__, ":"
+
+#define PORTFFT_LOG_FUNCTION_ENTRY() portfft::detail::log_trace(PORTFFT_LOGGING_LOCATION_INFORMATION, "entered")
+
+#define PORTFFT_LOG_TRACE(...) portfft::detail::log_trace(PORTFFT_LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
+
+#define PORTFFT_LOG_WARNING(...) portfft::detail::log_warning(PORTFFT_LOGGING_LOCATION_INFORMATION, __VA_ARGS__)
 
 };  // namespace portfft::detail
 

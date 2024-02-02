@@ -39,7 +39,7 @@ enum class direction { FORWARD, BACKWARD };
 constexpr direction inv(direction dir) { return dir == direction::FORWARD ? direction::BACKWARD : direction::FORWARD; }
 
 namespace detail {
-enum class pad { DO_PAD, DONT_PAD };
+enum class pad { DONT_PAD, DO_PAD };
 
 enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
 
@@ -66,11 +66,11 @@ enum class transfer_direction {
   GLOBAL_TO_LOCAL
 };
 
-enum class elementwise_multiply { APPLIED, NOT_APPLIED };
+enum class elementwise_multiply { NOT_APPLIED, APPLIED };
 
-enum class apply_scale_factor { APPLIED, NOT_APPLIED };
+enum class apply_scale_factor { NOT_APPLIED, APPLIED };
 
-enum class complex_conjugate { APPLIED, NOT_APPLIED };
+enum class complex_conjugate { NOT_APPLIED, APPLIED };
 }  // namespace detail
 
 }  // namespace portfft
