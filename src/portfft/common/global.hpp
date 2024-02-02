@@ -45,7 +45,7 @@ namespace detail {
 /**
  * Gets the precomputed inclusive scan of the factors at a particular index.
  *
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
  * @param num_factors Number of factors
  * @param level_num factor number
  * @return Outer batch product
@@ -72,9 +72,9 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_product(const IdxGlobal* inclusi
  * required m-dimensional loop into the single loop (dispatch level), and this function calculates the offset.
  * Precomputed inclusive scans are used to further reduce the number of calculations required.
  *
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
  * @param num_factors Number of factors
  * @param iter_value Current iterator value of the flattened n-dimensional loop
  * @param outer_batch_product Inclusive Scan of factors at position level_num-1
@@ -122,14 +122,14 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @param output output pointer
  * @param input_imag input pointer for imaginary data
  * @param output_imag output pointer for imaginary data
- * @param implementation_twiddles global twiddles pointer containing twiddles for the sub implementation
+ * @param implementation_twiddles pointer to global memory containing twiddles for the sub implementation
  * @param store_modifier store modifier data
- * @param input_loc local memory for storing the input
- * @param twiddles_loc local memory for storing the twiddles for sub-implementation
- * @param store_modifier_loc local memory for store modifier data
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
+ * @param input_loc pointer to local memory for storing the input
+ * @param twiddles_loc pointer to local memory for storing the twiddles for sub-implementation
+ * @param store_modifier_loc pointer to local memory for store modifier data
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
  * @param batch_size Batch size for the corresponding input
  * @param global_data global data
  * @param kh kernel handler
@@ -187,10 +187,10 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
  * @param loc_for_store_modifier local memory for store modifier data
  * @param multipliers_between_factors twiddles to be multiplied between factors
  * @param impl_twiddles twiddles required for sub implementation
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
- * @param n_transforms batch size corresposding to the factor
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
+ * @param n_transforms batch size corresponding to the factor
  * @param input_batch_offset offset for the input pointer
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
@@ -246,10 +246,10 @@ void launch_kernel(sycl::accessor<const Scalar, 1, sycl::access::mode::read>& in
  * @param loc_for_store_modifier local memory for store modifier data
  * @param multipliers_between_factors twiddles to be multiplied between factors
  * @param impl_twiddles twiddles required for sub implementation
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
- * @param n_transforms batch size corresposding to the factor
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
+ * @param n_transforms batch size corresponding to the factor
  * @param input_batch_offset offset for the input pointer
  * @param launch_params launch configuration, the global and local range with which the kernel will get launched
  * @param cgh associated command group handler
@@ -297,9 +297,9 @@ void launch_kernel(const Scalar* input, Scalar* output, const Scalar* input_imag
  * @param input input pointer
  * @param output output accessor
  * @param loc 2D local memory
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
  * @param output_offset offset to output pointer
  * @param ldb leading dimension of the output
  * @param lda leading dimension of the input
@@ -357,9 +357,9 @@ static void dispatch_transpose_kernel_impl(const Scalar* input,
  * @param input input pointer
  * @param output output pointer
  * @param loc 2D local memory
- * @param factors global memory pointer containing factors of the input
- * @param inner_batches global memory pointer containing the inner batch for each factor
- * @param inclusive_scan global memory pointer containing the inclusive scan of the factors
+ * @param factors pointer to global memory containing factors of the input
+ * @param inner_batches pointer to global memory containing the inner batch for each factor
+ * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
  * @param output_offset offset to output pointer
  * @param ldb leading dimension of the output
  * @param lda leading dimension of the input
@@ -418,7 +418,7 @@ static void dispatch_transpose_kernel_impl(const Scalar* input, Scalar* output, 
  * @param kd_struct kernel data struct
  * @param input input pointer
  * @param output output usm/buffer
- * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
+ * @param factors_triple pointer to global memory containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors
  * @param committed_size committed size of the FFT
  * @param num_batches_in_l2 number of batches in l2
@@ -481,8 +481,8 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
  * @param output output pointer
  * @param input_imag input usm/buffer for imaginary data
  * @param output_imag output pointer for imaginary data
- * @param twiddles_ptr global pointer containing the input
- * @param factors_triple global memory pointer containing factors, inner batches corresponding per factor, and the
+ * @param twiddles_ptr pointer to global memory containing the input
+ * @param factors_triple pointer to global memory containing factors, inner batches corresponding per factor, and the
  * inclusive scan of the factors
  * @param intermediate_twiddle_offset offset value to the global pointer for twiddles in between factors
  * @param subimpl_twiddle_offset offset value to to the global pointer for obtaining the twiddles required for sub

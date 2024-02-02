@@ -138,34 +138,6 @@ detail::layout get_layout(const Descriptor& desc, direction dir) {
   return detail::layout::UNPACKED;
 }
 
-/*
-Compute functions in the `committed_descriptor_impl` call `dispatch_kernel` and `dispatch_kernel_helper`. These two
-functions ensure the kernel is run with a supported subgroup size. Next `dispatch_kernel_helper` calls `run_kernel`. The
-`run_kernel` member function picks appropriate implementation and calls the static `run_kernel of that implementation`.
-The implementation specific `run_kernel` handles differences between forward and backward computations, casts the memory
-(USM or buffers) from complex to scalars and launches the kernel. Each function described in this doc has only one
-templated overload that handles both directions of transforms and buffer and USM memory.
-
-Device functions make no assumptions on the size of a work group or the number of workgroups in a kernel. These numbers
-can be tuned for each device.
-
-Implementation-specific `run_kernel` function make the size of the FFT that is handled by the individual workitems
-compile time constant. The one for subgroup implementation also calls `cross_sg_dispatcher` that makes the
-cross-subgroup factor of FFT size compile time constant. They do that by using a switch on the FFT size for one
-workitem, before calling `workitem_impl`, `subgroup_impl` or `workgroup_impl` . The `_impl` functions take the FFT size
-for one workitem as a template  parameter. Only the calls that are determined to fit into available registers (depending
-on the value of PORTFFT_TARGET_REGS_PER_WI macro) are actually instantiated.
-
-The `_impl` functions iterate over the batch of problems, loading data for each first in
-local memory then from there into private one. This is done in these two steps to avoid non-coalesced global memory
-accesses. `workitem_impl` loads one problem per workitem, `subgroup_impl` loads one problem per subgroup and
-`workgroup_impl` loads one problem per workgroup. After doing computations by the calls to `wi_dft` for workitem,
-`sg_dft` for subgroup and `wg_dft` for workgroup, the data is written out, going through local memory again.
-
-The computational parts of the implementations are further documented in files with their implementations
-`workitem.hpp`, `subgroup.hpp` and `workgroup.hpp`.
-*/
-
 /**
  * A committed descriptor that contains everything that is needed to run FFT.
  *

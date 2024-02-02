@@ -68,10 +68,10 @@ inline std::pair<IdxGlobal, IdxGlobal> get_launch_params(IdxGlobal fft_size, Idx
 
 /**
  * Transposes A into B, for complex inputs only
- * @param a Input pointer a
- * @param b Input pointer b
- * @param lda leading dimension A
- * @param ldb leading Dimension B
+ * @param a Input pointer
+ * @param b Output pointer
+ * @param lda leading dimension of `a`
+ * @param ldb leading dimension of `b`
  * @param num_elements Total number of complex values in the matrix
  */
 template <typename T>
