@@ -49,11 +49,12 @@ class committed_descriptor_impl;
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
 std::vector<sycl::event> compute_level(
-    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn& input, Scalar* output,
-    const TIn& input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn& input,
+    Scalar* output, const TIn& input_imag, Scalar* output_imag, const Scalar* twiddles_ptr,
+    const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
+    IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
+    IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
+    const std::vector<sycl::event>& dependencies, sycl::queue& queue);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct,
