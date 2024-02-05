@@ -346,7 +346,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
         if (static_cast<Idx>(factor_num) == dimension_data.num_factors - 1) {
           PORTFFT_LOG_TRACE("This is the last kernel");
           l2_events =
-              detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
+              detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize, const Scalar*>(
                   current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(),
                   desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
                   factors_and_scan, intermediate_twiddles_offset, impl_twiddle_offset, 0, committed_size,
@@ -354,7 +354,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
                   static_cast<Idx>(factor_num), dimension_data.num_factors, storage, l2_events, desc.queue);
         } else {
           l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
-                                            detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+                                            detail::layout::BATCH_INTERLEAVED, SubgroupSize, const Scalar*>(
               current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(),
               desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
               factors_and_scan, intermediate_twiddles_offset, impl_twiddle_offset, 0, committed_size,
