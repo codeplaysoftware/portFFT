@@ -81,16 +81,15 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data. If complex storage (from
+ * @param input pointer to global memory containing input data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param output accessor or pointer to global memory for output data. If complex storage (from
+ * @param output pointer to global memory for output data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * @param input pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * @param output pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param loc local memory pointer. Must have enough space for 2*fft_size*SubgroupSize
- * values
+ * @param loc local memory pointer. Size requirement is determined by `num_scalars_in_local_mem_struct`.
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch

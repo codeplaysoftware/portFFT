@@ -60,7 +60,7 @@ namespace detail {
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT The type of the local view
  * @tparam T Scalar type
- * @param loc local accessor containing the input
+ * @param loc View of the local memory containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param scaling_factor Scalar factor with which the result is to be scaled
@@ -68,7 +68,7 @@ namespace detail {
  * @param batch_num_in_local Id of the local memory batch to work on
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
- * @param batch_num_in_kernel Absosulte batch from which batches loaded in local memory will be computed
+ * @param batch_num_in_kernel Absolute batch from which batches loaded in local memory will be computed
  * @param dft_size Size of each DFT to calculate
  * @param stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @param ndfts_in_outer_dimension Number of DFTs in outer dimension
@@ -300,13 +300,13 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @tparam LocalT Local memory view type
  * @tparam T Scalar type
  *
- * @param loc A view of a local accessor containing input
+ * @param loc View of the local memory containing the input
  * @param loc_twiddles Pointer to twiddles to be used by sub group FFTs
  * @param wg_twiddles Pointer to precalculated twiddles which are to be used before second set of FFTs
  * @param scaling_factor Scalar factor with which the result is to be scaled
  * @param max_num_batches_in_local_mem Number of batches local memory is allocated for
  * @param batch_num_in_local Id of the local memory batch to work on
- * @param batch_num_in_kernel Absosulte batch from which batches loaded in local memory will be computed
+ * @param batch_num_in_kernel Absolute batch from which batches loaded in local memory will be computed
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
  * @param fft_size Problem Size

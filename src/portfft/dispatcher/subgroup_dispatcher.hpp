@@ -64,19 +64,18 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
- * @param input accessor or pointer to global memory containing input data. If complex storage (from
+ * @param input pointer to global memory containing input data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param output accessor or pointer to global memory for output data. If complex storage (from
+ * @param output pointer to global memory for output data. If complex storage (from
  * `SpecConstComplexStorage`) is split, this is just the real part of data.
- * @param input accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * @param input pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param output accessor or pointer to global memory containing imaginary part of the input data if complex storage
+ * @param output pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param loc local accessor. Must have enough space for 2*FactorWI*FactorSG*SubgroupSize
+ * @param loc pointer to local memory. Size requirement is determined by `num_scalars_in_local_mem_struct`.
+ * @param loc_twiddles pointer to local memory for twiddle factors. Must have enough space for `2 * FactorWI * FactorSG`
  * values
- * @param loc_twiddles local accessor for twiddle factors. Must have enough space for 2*FactorWI*FactorSG
- * values
- * @param n_transforms number of FT transforms to do in one call
+ * @param n_transforms number of FFT transforms to do in one call
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch
  * @param twiddles pointer containing twiddles
