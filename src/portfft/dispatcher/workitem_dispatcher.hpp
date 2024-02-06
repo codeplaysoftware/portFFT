@@ -159,12 +159,10 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
     IdxGlobal global_input_offset = static_cast<IdxGlobal>(input_distance_in_reals) * leader_i;
     IdxGlobal global_output_offset = static_cast<IdxGlobal>(output_distance_in_reals) * leader_i;
 
-    // This is checking for LayoutIn is PACKED or UNPACKED but we don't actually ever launch kernels with LayoutIn
-    // as UNPACKED.
     if (is_packed_input) {
       // copy into local memory cooperatively as a subgroup, allowing coalesced memory access for when elements of a
-      // single FFT are sequential. BATCH_INTERLEAVED skips this step and loads straight from global to registers since
-      // the sequential work-items already access sequential elements.
+      // single FFT are sequential. When distance < stride, skip this step and load straight from global to registers
+      // since the sequential work-items already access sequential elements.
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
         global_data.log_message_global(__func__, "loading packed data from global to local memory");
         global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, n_reals * n_working, global_offset,
