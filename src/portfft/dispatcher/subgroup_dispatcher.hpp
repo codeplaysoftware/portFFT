@@ -72,8 +72,7 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param output pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param loc pointer to local memory. Must have enough space for `2 * FactorWI * FactorSG * SubgroupSize`
- * values
+ * @param loc pointer to local memory. Size requirement is determined by `num_scalars_in_local_mem_struct`.
  * @param loc_twiddles pointer to local memory for twiddle factors. Must have enough space for `2 * FactorWI * FactorSG`
  * values
  * @param n_transforms number of FFT transforms to do in one call

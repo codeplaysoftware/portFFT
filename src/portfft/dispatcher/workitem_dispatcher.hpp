@@ -89,8 +89,7 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
  * @param output pointer to global memory containing imaginary part of the input data if complex storage
  * (from `SpecConstComplexStorage`) is split. Otherwise unused.
- * @param loc local memory pointer. Must have enough space for `2 * fft_size * SubgroupSize`
- * values
+ * @param loc local memory pointer. Size requirement is determined by `num_scalars_in_local_mem_struct`.
  * @param n_transforms number of FT transforms to do in one call
  * @param global_data global data for the kernel
  * @param kh kernel handler associated with the kernel launch
