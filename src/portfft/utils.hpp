@@ -205,16 +205,6 @@ PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constan
   }
 }
 
-/**
- * Checks usm_device_allocations support on device
- * @param dev sycl::device for which USM support is to be checked
- */
-void check_usm_support(sycl::device& dev) {
-  if (!dev.has(sycl::aspect::usm_device_allocations)) {
-    throw unsupported_device("The selected device does not support device USM allocations");
-  }
-}
-
 }  // namespace detail
 }  // namespace portfft
 #endif

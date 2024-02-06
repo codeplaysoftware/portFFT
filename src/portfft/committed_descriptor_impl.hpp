@@ -891,8 +891,6 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("local_memory_size:", local_memory_size);
     PORTFFT_LOG_TRACE("llc_size:", llc_size);
 
-    detail::check_usm_support(dev);
-
     // check it's suitable to run
     const auto forward_layout = detail::get_layout(params, direction::FORWARD);
     const auto backward_layout = detail::get_layout(params, direction::BACKWARD);

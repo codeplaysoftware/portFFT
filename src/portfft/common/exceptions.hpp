@@ -76,14 +76,6 @@ struct out_of_local_memory_error : public unsupported_configuration {
   explicit out_of_local_memory_error(const Ts&... args) : unsupported_configuration(args...) {}
 };
 
-/**
- * Exception to be thrown when the device is not supported
- */
-struct unsupported_device : public internal_error {
-  template <typename... Ts>
-  explicit unsupported_device(const Ts&... args) : internal_error(args...) {}
-};
-
 };  // namespace portfft
 
 #endif
