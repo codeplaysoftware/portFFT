@@ -963,11 +963,13 @@ class committed_descriptor_impl {
     std::size_t outer_size = total_size / params.lengths.back();
     std::size_t input_stride_0 = input_strides.back();
     std::size_t output_stride_0 = output_strides.back();
+    std::size_t input_distance_0 = n_dimensions > 1 ? params.lengths.back() : input_distance;
+    std::size_t output_distance_0 = n_dimensions > 1 ? params.lengths.back() : output_distance;
 
     PORTFFT_LOG_TRACE("Dispatching the kernel for the last dimension");
     sycl::event previous_event =
         dispatch_kernel_1d(in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size,
-                           input_stride_0, output_stride_0, input_distance / outer_size, output_distance / outer_size,
+                           input_stride_0, output_stride_0, input_distance_0, output_distance_0,
                            input_offset, output_offset, dimensions.back(), compute_direction);
     if (n_dimensions == 1) {
       return previous_event;
@@ -1087,19 +1089,18 @@ class committed_descriptor_impl {
         }
       }
 
-      // UNPACKED layout is also being dispatched as PACKED layout
-      const bool is_in_place = in == out;
+      // UNPACKED is also being dispatched as PACKED, but kernels that support packed don't use the layout template parameter.
       if (!input_batch_interleaved && !output_batch_interleaved) {
         return run_kernel<detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
             in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
             compute_direction);
       }
-      if (input_batch_interleaved && !output_batch_interleaved && !is_in_place) {
+      if (input_batch_interleaved && !output_batch_interleaved && in != out) {
         return run_kernel<detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
             in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
             compute_direction);
       }
-      if (!input_batch_interleaved && output_batch_interleaved && !is_in_place) {
+      if (!input_batch_interleaved && output_batch_interleaved && in != out) {
         return run_kernel<detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
             in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
             compute_direction);
