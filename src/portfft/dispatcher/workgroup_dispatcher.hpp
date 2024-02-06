@@ -390,6 +390,9 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     Scalar* res =
         sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
                                            static_cast<std::size_t>(res_size), desc.queue);
+    if (!res) {
+      throw internal_error("Could not allocate usm memory of size: ", res_size * sizeof(Scalar), " bytes");
+    }
     desc.queue.submit([&](sycl::handler& cgh) {
       PORTFFT_LOG_TRACE(
           "Launching twiddle calculation kernel for factor 1 of workgroup implementation with global size", factor_sg_n,

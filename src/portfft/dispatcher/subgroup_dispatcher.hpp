@@ -147,7 +147,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
 
   constexpr Idx BankLinesPerPad = 1;
   auto loc_view = detail::padded_view(loc, BankLinesPerPad);
-  auto loc_load_modifier_view = detail::padded_view(loc_load_modifier, BankLinesPerPad);
   auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
@@ -182,13 +181,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       }();
       Idx rounded_up_sub_batches = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
       Idx local_imag_offset = factor_wi * factor_sg * max_num_batches_local_mem;
-      if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-        global_data.log_message_global(__func__, "loading load multipliers from global to local memory");
-        global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, load_modifier_data, loc_load_modifier_view,
-                                                             n_reals_per_fft * num_batches_in_local_mem,
-                                                             i * n_reals_per_fft);
-      }
-      // TODO: Replace this with Async DMA where the hardware supports it.
+
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
         global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
@@ -242,29 +235,24 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
           global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
         }
-        if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-          // Note: if using load modifier, this data need to be stored in the transposed fashion per batch to ensure
-          // low latency reads from shared memory, as this will result in much lesser bank conflicts.
-          // Tensor shape for load modifier in local memory = num_batches_in_local_mem x  FactorWI x FactorSG
-          // TODO: change the above mentioned layout to the following tenshor shape: num_batches_in_local_mem x
-          // n_ffts_in_sg x FactorWI x FactorSG
-          global_data.log_message_global(__func__, "multiplying load modifier data");
-          if (working_inner) {
-            PORTFFT_UNROLL
-            for (Idx j = 0; j < factor_wi; j++) {
-              Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-              multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
-                               loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
-            }
-          }
-        }
         if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
           conjugate_inplace(priv, factor_wi);
         }
-        sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
-        if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
-          conjugate_inplace(priv, factor_wi);
+        if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
+          using vec_t = sycl::vec<T, 2>;
+          vec_t modifier_vec;
+          if (working_inner) {
+            PORTFFT_UNROLL
+            for (Idx j = 0; j < factor_wi; j++) {
+              Idx base_offset = i * n_reals_per_fft + static_cast<IdxGlobal>(sub_batch * n_reals_per_fft +
+                                                                             2 * j * factor_sg + 2 * id_of_wi_in_fft);
+              modifier_vec = *reinterpret_cast<const vec_t*>(load_modifier_data[base_offset]);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                               priv[2 * j + 1]);
+            }
+          }
         }
+        sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
         if (working_inner) {
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
         }
@@ -285,6 +273,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                priv[2 * j + 1]);
             }
           }
+        }
+        if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+          conjugate_inplace(priv, factor_wi);
         }
         if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
           PORTFFT_UNROLL
@@ -410,12 +401,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             global_data, input_imag, loc_view, n_ffts_worked_on_by_sg * fft_size,
             static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
             local_imag_offset + subgroup_id * n_cplx_per_sg);
-      }
-      if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-        global_data.log_message_global(__func__, "loading load modifier data");
-        global2local<detail::level::SUBGROUP, SubgroupSize>(
-            global_data, load_modifier_data, loc_load_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
-            n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
       }
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         global_data.log_message_global(__func__, "loading store modifier data");
@@ -597,6 +582,10 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                       kernel_data.length * 2);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), kernel_data.length * 2, desc.queue);
+    if (!res) {
+      throw internal_error("Could not allocate usm memory of size: ", kernel_data.length * 2 * sizeof(Scalar),
+                           " bytes");
+    }
     sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
     desc.queue.submit([&](sycl::handler& cgh) {
       PORTFFT_LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg,

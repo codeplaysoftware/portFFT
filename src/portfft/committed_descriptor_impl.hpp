@@ -48,19 +48,21 @@ class committed_descriptor_impl;
 
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
-std::vector<sycl::event> compute_level(
-    const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, TIn input, Scalar* output,
-    TIn input_imag, Scalar* output_imag, const Scalar* twiddles_ptr, const IdxGlobal* factors_triple,
-    IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset, IdxGlobal input_global_offset,
-    IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx factor_id,
-    Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+std::vector<sycl::event> compute_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
+                                       TIn, Scalar*, TIn, Scalar*, const Scalar*, const IdxGlobal*, IdxGlobal,
+                                       IdxGlobal, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, Idx,
+                                       complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
 template <typename Scalar, domain Domain, typename TOut>
-sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct,
-                            const Scalar* input, TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size,
-                            Idx num_batches_in_l2, IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors,
-                            IdxGlobal output_offset, sycl::queue& queue, const std::vector<sycl::event>& events,
-                            complex_storage storage);
+sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
+                            const Scalar*, TOut, const IdxGlobal*, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, IdxGlobal,
+                            sycl::queue&, const std::vector<sycl::event>&, complex_storage);
+
+template <typename Scalar, domain Domain, typename Scalar, typename TIn, typename TOut>
+sycl::event global_impl_driver(TIn, TIn, TOut, TOut, committed_descriptor_impl<Scalar, Domain>&,
+                               const std::vector<kernel_data_struct>&, const std::vector<kernel_data_struct>&, Idx,
+                               IdxGlobal, IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal, IdxGlobal,
+                               IdxGlobal, detail::storage);
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -150,19 +152,21 @@ class committed_descriptor_impl {
   template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
             typename TIn>
   friend std::vector<sycl::event> detail::compute_level(
-      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, TIn input,
-      Scalar1* output, TIn input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr,
-      const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
-      IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
-      IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
-      const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, TIn, Scalar1*, TIn, Scalar1*,
+      const Scalar1*, const IdxGlobal*, IdxGlobal, IdxGlobal, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, Idx,
+      complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
-      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct& kd_struct, const Scalar1* input,
-      TOut output, const IdxGlobal* factors_triple, IdxGlobal committed_size, Idx num_batches_in_l2,
-      IdxGlobal n_transforms, IdxGlobal batch_start, Idx total_factors, IdxGlobal output_offset, sycl::queue& queue,
-      const std::vector<sycl::event>& events, complex_storage storage);
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, const Scalar1*, TOut,
+      const IdxGlobal*, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, IdxGlobal, sycl::queue&,
+      const std::vector<sycl::event>&, complex_storage);
+
+  template <typename Scalar1, domain domain1, typename Scalar, typename TIn, typename TOut>
+  friend sycl::event global_impl_driver(TIn, TIn, TOut, TOut, committed_descriptor_impl<Scalar1, Domain1>&,
+                                        const std::vector<kernel_data_struct>&, const std::vector<kernel_data_struct>&,
+                                        Idx, IdxGlobal, IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal,
+                                        IdxGlobal, IdxGlobal, detail::storage);
 
   /**
    * Vector containing the sub-implementation level, kernel_ids and factors for each factor that requires a separate
@@ -170,6 +174,12 @@ class committed_descriptor_impl {
    */
   using kernel_ids_and_metadata_t =
       std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>>;
+  /**
+   * Tuple of the level, an input kernel_bundle, and factors pertaining to each factor of the committed size
+   */
+  using input_bundles_and_metadata_t =
+      std::tuple<detail::level, sycl::kernel_bundle<sycl::bundle_state::input>, std::vector<Idx>>;
+
   descriptor<Scalar, Domain> params;
   sycl::queue queue;
   sycl::device dev;
@@ -214,17 +224,29 @@ class committed_descriptor_impl {
     std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
     std::size_t length;
+    std::size_t committed_length;
     Idx used_sg_size;
     Idx num_batches_in_l2;
-    Idx num_factors;
+    Idx num_forward_factors;
+    Idx num_backward_factors;
+    bool is_prime;
+    IdxGlobal backward_twiddles_offset;
+    IdxGlobal bluestein_modifiers_offset;
+    IdxGlobal forward_impl_twiddle_offset;
+    IdxGlobal backward_impl_twiddle_offset;
 
     dimension_struct(std::vector<kernel_data_struct> forward_kernels, std::vector<kernel_data_struct> backward_kernels,
-                     detail::level level, std::size_t length, Idx used_sg_size)
+                     detail::level level, std::size_t length, std::size_t committed_length, Idx used_sg_size,
+                     Idx num_forward_factors, Idx num_backward_factors, bool is_prime)
         : forward_kernels(std::move(forward_kernels)),
           backward_kernels(std::move(backward_kernels)),
           level(level),
           length(length),
-          used_sg_size(used_sg_size) {}
+          committed_length(committed_length),
+          used_sg_size(used_sg_size),
+          num_forward_factors(num_forward_factors),
+          num_backward_factors(num_backward_factors),
+          is_prime(is_prime) {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -294,7 +316,7 @@ class committed_descriptor_impl {
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, kernel_ids_and_metadata_t> prepare_implementation(std::size_t kernel_num) {
+  std::tuple<detail::level, std::size_t, kernel_ids_and_metadata_t> prepare_implementation(std::size_t kernel_num) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
@@ -307,7 +329,7 @@ class committed_descriptor_impl {
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       PORTFFT_LOG_TRACE("Prepared workitem impl for size: ", fft_size);
-      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
+      return {detail::level::WORKITEM, static_cast<std::size_t>(fft_size), {{detail::level::WORKITEM, ids, factors}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
@@ -318,7 +340,7 @@ class committed_descriptor_impl {
       factors.push_back(factor_sg);
       ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
       PORTFFT_LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
-      return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
+      return {detail::level::SUBGROUP, static_cast<std::size_t>(fft_size), {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
@@ -350,7 +372,8 @@ class committed_descriptor_impl {
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
         PORTFFT_LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
                           " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
-        return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+        return {
+            detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
     PORTFFT_LOG_TRACE("Preparing global impl");
@@ -400,8 +423,13 @@ class committed_descriptor_impl {
       }
       return false;
     };
-    detail::factorize_input(fft_size, check_and_select_target_level);
-    return {detail::level::GLOBAL, param_vec};
+    if (!detail::factorize_input(fft_size, check_and_select_target_level)) {
+      param_vec.clear();
+      fft_size = static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
+      detail::factorize_input(fft_size, check_and_select_target_level);
+      detail::factorize_input(fft_size, check_and_select_target_level);
+    }
+    return {detail::level::GLOBAL, static_cast<std::size_t>(fft_size), param_vec};
   }
 
   /**
@@ -521,6 +549,78 @@ class committed_descriptor_impl {
   }
 
   /**
+   * Sets the specialization constants for the global implementation
+   * @param input_kernels_and_metadata vector of input_bundles_and_metadata_t
+   * @param num_forward_factors  Number of forward factors
+   * @param num_backward_factors Number of backward factors
+   * @param compute_direction direction of compute: forward / backward
+   * @param is_prime whether or not the dimension size is a prime number
+   * @param scale_factor Scaling factor to be applied to the result
+   */
+  void set_global_impl_spec_constants(std::vector<input_bundles_and_metadata_t>& input_kernels_and_metadata,
+                                      Idx num_forward_factors, Idx num_backward_factors, direction compute_direction,
+                                      bool is_prime, Scalar scale_factor) {
+    detail::complex_conjugate conjugate_on_load;
+    detail::complex_conjugate conjugate_on_store;
+    detail::elementwise_multiply multiply_on_load;
+    detail::elementwise_multiply multiply_on_store;
+    detail::apply_scale_factor scale_factor_applied;
+
+    for (std::size_t i = 0; i < std::size_t(num_forward_factors); i++) {
+      conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+      conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
+      multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
+      multiply_on_store = detail::elementwise_multiply::APPLIED;
+      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+
+      if (i == 0 && compute_direction == direction::BACKWARD) {
+        conjugate_on_load = detail::complex_conjugate::APPLIED;
+      }
+      if (i == 0 && is_prime) {
+        multiply_on_load = detail::elementwise_multiply::APPLIED;
+      }
+      if (i == std::size_t(num_forward_factors - 1)) {
+        if (compute_direction == direction::BACKWARD && !is_prime) {
+          conjugate_on_store = detail::complex_conjugate::APPLIED;
+        }
+        if (!is_prime) {
+          multiply_on_store = detail::elementwise_multiply::NOT_APPLIED;
+        }
+        if (!is_prime) {
+          scale_factor_applied = detail::apply_scale_factor::APPLIED;
+        }
+      }
+      auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(i);
+      set_spec_constants(
+          detail::level::GLOBAL, input_bundle,
+          static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
+          multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
+          scale_factor, Idx(i), num_forward_factors);
+    }
+
+    for (std::size_t i = 0; i < std::size_t(num_backward_factors); i++) {
+      conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+      conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
+      multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
+      multiply_on_store = detail::elementwise_multiply::APPLIED;
+      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+      if (i == 0) {
+        conjugate_on_load = detail::complex_conjugate::APPLIED;
+      }
+      if (i == std::size_t(num_forward_factors - 1)) {
+        multiply_on_store = detail::elementwise_multiply::APPLIED;
+        scale_factor_applied = detail::apply_scale_factor::APPLIED;
+      }
+      auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(std::size_t(num_forward_factors) + i);
+      set_spec_constants(
+          detail::level::GLOBAL, input_bundle,
+          static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
+          multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
+          scale_factor, Idx(i), num_forward_factors);
+    }
+  }
+
+  /**
    * Sets the specialization constants for all the kernel_ids contained in the vector
    * returned from prepare_implementation
    * @tparam SubgroupSize Subgroup size
@@ -533,72 +633,53 @@ class committed_descriptor_impl {
    * @return vector of kernel_data_struct if all kernel builds are successful, std::nullopt otherwise
    */
   template <Idx SubgroupSize>
-  std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(detail::level top_level,
-                                                                           kernel_ids_and_metadata_t& prepared_vec,
-                                                                           direction compute_direction,
-                                                                           std::size_t dimension_num,
-                                                                           bool skip_scaling) {
+  std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(
+      detail::level top_level, kernel_ids_and_metadata_t& prepared_vec, direction compute_direction,
+      std::size_t dimension_num, bool skip_scaling, Idx num_forward_factors, Idx num_backward_factors) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
-    detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
-    bool is_compatible = true;
-    if (skip_scaling) {
-      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
-    }
-    std::size_t counter = 0;
-    auto conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
-    auto conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
     std::vector<kernel_data_struct> result;
-    for (auto& [level, ids, factors] : prepared_vec) {
-      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-      if (top_level == detail::level::GLOBAL) {
-        std::size_t factor_size =
-            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>()));
-        if (counter == prepared_vec.size() - 1) {
-          if (compute_direction == direction::BACKWARD) {
-            conjugate_on_store = detail::complex_conjugate::APPLIED;
-          }
-          set_spec_constants(detail::level::GLOBAL, in_bundle, factor_size, factors,
-                             detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                             detail::apply_scale_factor::APPLIED, level, conjugate_on_load, conjugate_on_store,
-                             scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset conjugate_on_store
-          conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
-        } else {
-          if (counter == 0 && compute_direction == direction::BACKWARD) {
-            conjugate_on_load = detail::complex_conjugate::APPLIED;
-          }
-          set_spec_constants(detail::level::GLOBAL, in_bundle, factor_size, factors,
-                             detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::APPLIED,
-                             detail::apply_scale_factor::NOT_APPLIED, level, conjugate_on_load, conjugate_on_store,
-                             scale_factor, static_cast<Idx>(counter), static_cast<Idx>(prepared_vec.size()));
-          // reset conjugate_on_load
-          conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
-        }
-      } else {
-        if (compute_direction == direction::BACKWARD) {
-          conjugate_on_load = detail::complex_conjugate::APPLIED;
-          conjugate_on_store = detail::complex_conjugate::APPLIED;
-        }
-        set_spec_constants(level, in_bundle, params.lengths[dimension_num], factors,
+    std::vector<input_bundles_and_metadata_t> input_kernels_and_metadata;
+    for (const auto& [level, kernel_ids, factors] : prepared_vec) {
+      input_kernels_and_metadata.emplace_back(
+          level, sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids), factors);
+    }
+    bool is_compatible = true;
+    if (top_level == detail::level::GLOBAL) {
+      set_global_impl_spec_constants(input_kernels_and_metadata, num_forward_factors, num_backward_factors,
+                                     compute_direction, num_backward_factors > 0, scale_factor);
+    } else {
+      detail::complex_conjugate conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+      detail::complex_conjugate conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
+      detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
+      if (compute_direction == direction::BACKWARD) {
+        conjugate_on_load = detail::complex_conjugate::APPLIED;
+        conjugate_on_store = detail::complex_conjugate::APPLIED;
+      }
+      if (skip_scaling) {
+        scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+      }
+      for (auto& [level, input_bundle, factors] : input_kernels_and_metadata) {
+        set_spec_constants(level, input_bundle, params.lengths[dimension_num], factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                            scale_factor_applied, level, conjugate_on_load, conjugate_on_store, scale_factor);
       }
+    }
+
+    for (const auto& [level, input_bundle, factors] : input_kernels_and_metadata) {
       try {
-        PORTFFT_LOG_TRACE("Building kernel bundle with subgroup size", SubgroupSize);
-        result.emplace_back(sycl::build(in_bundle), factors, params.lengths[dimension_num], SubgroupSize,
-                            PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
-        PORTFFT_LOG_TRACE("Kernel bundle build complete.");
-      } catch (std::exception& e) {
+        result.emplace_back(
+            sycl::build(input_bundle), factors,
+            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())),
+            SubgroupSize, PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+      } catch (const std::exception& e) {
         PORTFFT_LOG_WARNING("Build for subgroup size", SubgroupSize, "failed with message:\n", e.what());
         is_compatible = false;
-        break;
       }
-      counter++;
+      if (!is_compatible) {
+        return std::nullopt;
+      }
     }
-    if (is_compatible) {
-      return result;
-    }
-    return std::nullopt;
+    return result;
   }
 
   /**
@@ -615,23 +696,34 @@ class committed_descriptor_impl {
   dimension_struct build_w_spec_const(std::size_t dimension_num, bool skip_scaling) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
+      auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
-      for (auto [level, ids, factors] : prepared_vec) {
+      std::size_t temp = 1;
+      Idx num_forward_factors = 0;
+      for (const auto& [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
         if (!is_compatible) {
           break;
         }
+        if (temp == dimension_size) {
+          break;
+        }
+        temp *= static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
+        num_forward_factors++;
       }
-
+      Idx num_backward_factors = static_cast<Idx>(prepared_vec.size()) - num_forward_factors;
+      bool is_prime = dimension_size == params.lengths[dimension_num] ? false : true;
       if (is_compatible) {
-        auto forward_kernels = set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD,
-                                                                       dimension_num, skip_scaling);
-        auto backward_kernels = set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD,
-                                                                        dimension_num, skip_scaling);
+        auto forward_kernels =
+            set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num,
+                                                    skip_scaling, num_forward_factors, num_backward_factors);
+        auto backward_kernels =
+            set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD, dimension_num,
+                                                    skip_scaling, num_forward_factors, num_backward_factors);
         if (forward_kernels.has_value() && backward_kernels.has_value()) {
-          return {forward_kernels.value(), backward_kernels.value(), top_level, params.lengths[dimension_num],
-                  SubgroupSize};
+          return {forward_kernels.value(), backward_kernels.value(),      top_level,
+                  dimension_size,          params.lengths[dimension_num], SubgroupSize,
+                  num_forward_factors,     num_backward_factors,          is_prime};
         }
       }
     }
@@ -643,137 +735,136 @@ class committed_descriptor_impl {
   }
 
   /**
+   * Builds transpose kernels required for global implementation
+   * @param dimension_data dimension_struct associated with the dimension
+   * @param num_transpositions Number of transpose kernels to build
+   * @param ld_input vector containing leading dimensions of the inputs
+   * @param ld_output vector containing leading dimensions of the outputs
+   */
+  void build_transpose_kernels(dimension_struct& dimension_data, std::size_t num_transpositions,
+                               std::vector<IdxGlobal>& ld_input, std::vector<IdxGlobal>& ld_output) {
+    for (std::size_t i = 0; i < num_transpositions; i++) {
+      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
+                                                                          detail::get_transpose_kernel_ids<Scalar>());
+      in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
+      in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
+          static_cast<Idx>(num_transpositions + 1));
+      try {
+        dimension_data.transpose_kernels.emplace_back(
+            sycl::build(in_bundle),
+            std::vector<Idx>{static_cast<Idx>(ld_input.at(i)), static_cast<Idx>(ld_output.at(i))}, 1, 1, 1,
+            std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+      } catch (const std::exception& e) {
+        throw internal_error("Error building transpose kernel: ", e.what());
+      }
+    }
+  }
+
+  /**
+   * Precomputes the inclusive scan required for the global implementation, and populates the device pointer containing
+   * the same. Also calculates the ideal amount of llc cache size occupied by the load/store modifiers and returns the
+   * same.
+   * @param dimension_data Dimension struct for which the inclusive scan is being precomputed
+   * @param num_factors Number of factors
+   * @param kernel_offset Index from which the kernel_data_struct are to be considered
+   * @param ptr Pointer to the global memory for the precomputed data.
+   * @return cache space in number of bytes required for the load/store modifiers
+   */
+  IdxGlobal precompute_scan_impl(dimension_struct& dimension_data, std::size_t num_factors, std::size_t kernel_offset,
+                                 IdxGlobal* ptr) {
+    std::vector<IdxGlobal> factors;
+    std::vector<IdxGlobal> inner_batches;
+    std::vector<IdxGlobal> inclusive_scan;
+
+    for (std::size_t i = 0; i < num_factors; i++) {
+      const auto& kernel_data = dimension_data.forward_kernels.at(kernel_offset + i);
+      factors.push_back(static_cast<IdxGlobal>(kernel_data.length));
+      inner_batches.push_back(kernel_data.batch_size);
+    }
+
+    inclusive_scan.push_back(factors.at(0));
+    for (std::size_t i = 1; i < static_cast<std::size_t>(num_factors); i++) {
+      inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
+    }
+    queue.copy(factors.data(), ptr, factors.size());
+    queue.copy(inner_batches.data(), ptr + factors.size(), inner_batches.size());
+    queue.copy(inclusive_scan.data(), ptr + factors.size() + inner_batches.size(), inclusive_scan.size());
+
+    build_transpose_kernels(dimension_data, num_factors - 1, factors, inner_batches);
+
+    // calculate Ideal amount of llc cache required for load/store
+    std::size_t llc_cache_space_for_twiddles = 0;
+    for (std::size_t i = 0; i < num_factors - 1; i++) {
+      llc_cache_space_for_twiddles +=
+          static_cast<std::size_t>(2 * factors.at(i) * inner_batches.at(i)) * sizeof(Scalar);
+    }
+
+    if (dimension_data.is_prime) {
+      llc_cache_space_for_twiddles += 4 * dimension_data.length * sizeof(Scalar);
+    }
+    queue.wait();
+    return static_cast<IdxGlobal>(llc_cache_space_for_twiddles);
+  }
+
+  /**
+   * Gets the number of transforms to accomodate in the last level cache
+   * @param llc_cache_space_for_twiddles Amount of cache space in bytes required for load/store modifiers
+   * @param n_transforms The Batch size correspoding to the dimension size
+   * @param length length of the transform
+   * @return
+   */
+  Idx get_num_batches_in_llc(IdxGlobal llc_cache_space_for_twiddles, IdxGlobal n_transforms, std::size_t length) {
+    IdxGlobal cache_space_remaining =
+        std::max(IdxGlobal(0), static_cast<IdxGlobal>(llc_size) - llc_cache_space_for_twiddles);
+    IdxGlobal sizeof_one_transform = static_cast<IdxGlobal>(2 * length * sizeof(Scalar));
+
+    return static_cast<Idx>(
+        std::min(IdxGlobal(PORTFFT_MAX_CONCURRENT_KERNELS),
+                 std::min(n_transforms, std::max(IdxGlobal(1), cache_space_remaining / sizeof_one_transform))));
+  }
+
+  /**
    * Function which calculates the amount of scratch space required, and also pre computes the necessary scans required.
+   * Builds the transpose kernels required for the global implementation
    * @param num_global_level_dimensions number of global level dimensions in the committed size
    */
   void allocate_scratch_and_precompute_scan(Idx num_global_level_dimensions) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    std::size_t n_kernels = params.lengths.size();
+    std::size_t n_dimensions = params.lengths.size();
     if (num_global_level_dimensions == 1) {
       std::size_t global_dimension = 0;
-      for (std::size_t i = 0; i < n_kernels; i++) {
+      for (std::size_t i = 0; i < n_dimensions; i++) {
         if (dimensions.at(i).level == detail::level::GLOBAL) {
           global_dimension = i;
           break;
         }
       }
-      std::vector<IdxGlobal> factors;
-      std::vector<IdxGlobal> sub_batches;
-      std::vector<IdxGlobal> inclusive_scan;
-      std::size_t cache_required_for_twiddles = 0;
-      for (const auto& kernel_data : dimensions.at(global_dimension).forward_kernels) {
-        IdxGlobal factor_size = static_cast<IdxGlobal>(
-            std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
-        cache_required_for_twiddles +=
-            static_cast<std::size_t>(2 * factor_size * kernel_data.batch_size) * sizeof(Scalar);
-        factors.push_back(factor_size);
-        sub_batches.push_back(kernel_data.batch_size);
-      }
-      dimensions.at(global_dimension).num_factors = static_cast<Idx>(factors.size());
-      std::size_t cache_space_left_for_batches = static_cast<std::size_t>(llc_size) - cache_required_for_twiddles;
-      // TODO: In case of multi-dim (single dim global sized), this should be batches corresponding to that dim
-      dimensions.at(global_dimension).num_batches_in_l2 = static_cast<Idx>(std::min(
-          static_cast<std::size_t>(PORTFFT_MAX_CONCURRENT_KERNELS),
-          std::min(params.number_of_transforms,
-                   std::max(std::size_t(1), cache_space_left_for_batches /
-                                                (2 * dimensions.at(global_dimension).length * sizeof(Scalar))))));
-      scratch_space_required = 2 * dimensions.at(global_dimension).length *
-                               static_cast<std::size_t>(dimensions.at(global_dimension).num_batches_in_l2);
-      PORTFFT_LOG_TRACE("Allocating 2 scratch arrays of size", scratch_space_required, "scalars in global memory");
-      scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
-      scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
-      inclusive_scan.push_back(factors.at(0));
-      for (std::size_t i = 1; i < factors.size(); i++) {
-        inclusive_scan.push_back(inclusive_scan.at(i - 1) * factors.at(i));
-      }
-      PORTFFT_LOG_TRACE("Dimension:", global_dimension,
-                        "num_batches_in_l2:", dimensions.at(global_dimension).num_batches_in_l2,
-                        "scan:", inclusive_scan);
-      dimensions.at(global_dimension).factors_and_scan =
-          detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
-      queue.copy(factors.data(), dimensions.at(global_dimension).factors_and_scan.get(), factors.size());
-      queue.copy(sub_batches.data(), dimensions.at(global_dimension).factors_and_scan.get() + factors.size(),
-                 sub_batches.size());
-      queue.copy(inclusive_scan.data(),
-                 dimensions.at(global_dimension).factors_and_scan.get() + factors.size() + sub_batches.size(),
-                 inclusive_scan.size());
-      queue.wait();
-      // build transpose kernels
-      std::size_t num_transposes_required = factors.size() - 1;
-      for (std::size_t i = 0; i < num_transposes_required; i++) {
-        std::vector<sycl::kernel_id> ids;
-        auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(),
-                                                                            detail::get_transpose_kernel_ids<Scalar>());
-        PORTFFT_LOG_TRACE("Setting specialization constants for transpose kernel", i);
-        PORTFFT_LOG_TRACE("SpecConstComplexStorage:", params.complex_storage);
-        in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
-        PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", i);
-        in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
-        PORTFFT_LOG_TRACE("GlobalSpecConstNumFactors:", factors.size());
-        in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
-            static_cast<Idx>(factors.size()));
-        dimensions.at(global_dimension)
-            .transpose_kernels.emplace_back(
-                sycl::build(in_bundle),
-                std::vector<Idx>{static_cast<Idx>(factors.at(i)), static_cast<Idx>(sub_batches.at(i))}, 1, 1, 1,
-                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
+      auto& dimension_data = dimensions.at(global_dimension);
+      std::size_t space_for_scans =
+          static_cast<std::size_t>(3 * (dimension_data.num_forward_factors +
+                                        (dimension_data.is_prime ? dimension_data.num_backward_factors : 0)));
+      dimension_data.factors_and_scan = detail::make_shared<IdxGlobal>(space_for_scans, queue);
+      IdxGlobal cache_req_for_modifiers = static_cast<IdxGlobal>(
+          precompute_scan_impl(dimension_data, static_cast<std::size_t>(dimension_data.num_forward_factors), 0,
+                               dimension_data.factors_and_scan.get()));
+      Idx num_batches_in_llc = get_num_batches_in_llc(cache_req_for_modifiers, IdxGlobal(params.number_of_transforms),
+                                                      dimension_data.length);
+      scratch_ptr_1 =
+          detail::make_shared<Scalar>(2 * dimension_data.length * static_cast<std::size_t>(num_batches_in_llc), queue);
+      scratch_ptr_2 =
+          detail::make_shared<Scalar>(2 * dimension_data.length * static_cast<std::size_t>(num_batches_in_llc), queue);
+      dimension_data.num_batches_in_l2 = num_batches_in_llc;
+
+      if (dimension_data.is_prime) {
+        // only need populate the scans and build transpose kernels
+        precompute_scan_impl(dimension_data, static_cast<std::size_t>(dimension_data.num_backward_factors),
+                             static_cast<std::size_t>(dimension_data.num_forward_factors),
+                             dimension_data.factors_and_scan.get() + 3 * dimension_data.num_forward_factors);
       }
     } else {
-      std::size_t max_encountered_global_size = 0;
-      for (std::size_t i = 0; i < n_kernels; i++) {
-        if (dimensions.at(i).level == detail::level::GLOBAL) {
-          max_encountered_global_size = max_encountered_global_size > dimensions.at(i).length
-                                            ? max_encountered_global_size
-                                            : dimensions.at(i).length;
-        }
-      }
-      // TODO: max_scratch_size should be max(global_size_1 * corresponding_batches_in_l2, global_size_1 *
-      // corresponding_batches_in_l2), in the case of multi-dim global FFTs.
-      scratch_space_required = 2 * max_encountered_global_size * params.number_of_transforms;
-      scratch_ptr_1 = detail::make_shared<Scalar>(scratch_space_required, queue);
-      scratch_ptr_2 = detail::make_shared<Scalar>(scratch_space_required, queue);
-      for (std::size_t i = 0; i < n_kernels; i++) {
-        if (dimensions.at(i).level == detail::level::GLOBAL) {
-          std::vector<IdxGlobal> factors;
-          std::vector<IdxGlobal> sub_batches;
-          std::vector<IdxGlobal> inclusive_scan;
-          for (const auto& kernel_data : dimensions.at(i).forward_kernels) {
-            IdxGlobal factor_size = static_cast<IdxGlobal>(
-                std::accumulate(kernel_data.factors.begin(), kernel_data.factors.end(), 1, std::multiplies<Idx>()));
-            factors.push_back(factor_size);
-            sub_batches.push_back(kernel_data.batch_size);
-          }
-          inclusive_scan.push_back(factors.at(0));
-          for (std::size_t j = 1; j < factors.size(); j++) {
-            inclusive_scan.push_back(inclusive_scan.at(j - 1) * factors.at(j));
-          }
-          dimensions.at(i).num_factors = static_cast<Idx>(factors.size());
-          dimensions.at(i).factors_and_scan =
-              detail::make_shared<IdxGlobal>(factors.size() + sub_batches.size() + inclusive_scan.size(), queue);
-          queue.copy(factors.data(), dimensions.at(i).factors_and_scan.get(), factors.size());
-          queue.copy(sub_batches.data(), dimensions.at(i).factors_and_scan.get() + factors.size(), sub_batches.size());
-          queue.copy(inclusive_scan.data(),
-                     dimensions.at(i).factors_and_scan.get() + factors.size() + sub_batches.size(),
-                     inclusive_scan.size());
-          queue.wait();
-          // build transpose kernels
-          std::size_t num_transposes_required = factors.size() - 1;
-          for (std::size_t j = 0; j < num_transposes_required; j++) {
-            auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(
-                queue.get_context(), detail::get_transpose_kernel_ids<Scalar>());
-            PORTFFT_LOG_TRACE("Setting specilization constants for transpose kernel", j);
-            PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", i);
-            in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(static_cast<Idx>(i));
-            PORTFFT_LOG_TRACE("GlobalSpecConstNumFactors:", factors.size());
-            in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(
-                static_cast<Idx>(factors.size()));
-            dimensions.at(i).transpose_kernels.emplace_back(
-                sycl::build(in_bundle),
-                std::vector<Idx>{static_cast<Idx>(factors.at(j)), static_cast<Idx>(sub_batches.at(j))}, 1, 1, 1,
-                std::shared_ptr<Scalar>(), detail::level::GLOBAL);
-          }
-        }
-      }
+      // TODO: accuractely calculate the scratch space required when there are more than one global level sizes to
+      // ensure least amount of evictions
+      throw internal_error("Scratch space calculation for more than one global level dimensions is not handled");
     }
   }
 
@@ -799,6 +890,8 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("supported_sg_sizes:", supported_sg_sizes);
     PORTFFT_LOG_TRACE("local_memory_size:", local_memory_size);
     PORTFFT_LOG_TRACE("llc_size:", llc_size);
+
+    detail::check_usm_support(dev);
 
     // check it's suitable to run
     const auto forward_layout = detail::get_layout(params, direction::FORWARD);

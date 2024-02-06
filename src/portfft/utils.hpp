@@ -100,22 +100,27 @@ constexpr bool can_cast_safely(const InputType& x) {
  * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
  * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
- * @return
+ * @param encountered_prime_factor A flag to be set if a prime factor which cannot be dispatched to workitem
+ * implementation
+ * @return A factor of the committed size which can be dispatched to either workitem or subgroup implementation
  */
 template <typename F>
-IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed,
+                               bool& encountered_prime_factor) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
-    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
+    encountered_prime_factor = true;
+    return fact_1;
   }
   do {
     fact_1 = detail::factorize(fact_1);
     if (fact_1 == 1) {
-      throw internal_error("Factorization Failed !");
+      encountered_prime_factor = true;
+      return fact_1;
     }
   } while (!check_and_select_target_level(fact_1));
   return fact_1;
@@ -129,17 +134,20 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
  * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
  * implementation.
+ * @param Whether or not the factorization was successful
  */
 template <typename F>
-void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   if (detail::factorize(input_size) == 1) {
-    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
+    return false;
   }
   IdxGlobal temp = 1;
+  bool encountered_prime = false;
   while (input_size / temp != 1) {
-    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true, encountered_prime);
   }
+  return encountered_prime;
 }
 
 /**
@@ -172,11 +180,15 @@ std::vector<sycl::kernel_id> get_transpose_kernel_ids() {
  */
 template <typename T>
 inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
-  return std::shared_ptr<T>(sycl::malloc_device<T>(size, queue), [captured_queue = queue](T* ptr) {
-    if (ptr != nullptr) {
-      sycl::free(ptr, captured_queue);
-    }
-  });
+  T* ptr = sycl::malloc_device<T>(size, queue);
+  if (ptr != nullptr) {
+    return std::shared_ptr<T>(sycl::malloc_device<T>(size, queue), [captured_queue = queue](T* ptr) {
+      if (ptr != nullptr) {
+        sycl::free(ptr, captured_queue);
+      }
+    });
+  }
+  throw internal_error("Could not allocate usm memory of size: ", size * sizeof(T), " bytes");
 }
 
 /**
@@ -190,6 +202,16 @@ PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constan
     return detail::SpecConstScaleFactorFloat;
   } else {
     return detail::SpecConstScaleFactorDouble;
+  }
+}
+
+/**
+ * Checks usm_device_allocations support on device
+ * @param dev sycl::device for which USM support is to be checked
+ */
+void check_usm_support(sycl::device& dev) {
+  if (!dev.has(sycl::aspect::usm_device_allocations)) {
+    throw unsupported_device("The selected device does not support device USM allocations");
   }
 }
 

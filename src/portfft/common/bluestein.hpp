@@ -38,20 +38,22 @@ namespace detail {
  * @param dimension_size padded size
  */
 template <typename T>
-void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size) {
+void get_fft_chirp_signal(T* ptr, std::size_t committed_size, std::size_t dimension_size) {
   using ctype = std::complex<T>;
-  ctype* chirp_signal = (ctype*)calloc(static_cast<std::size_t>(dimension_size), sizeof(ctype));
-  ctype* chirp_fft = (ctype*)malloc(static_cast<std::size_t>(dimension_size) * sizeof(ctype));
-  for (IdxGlobal i = 0; i < committed_size; i++) {
+  ctype* chirp_signal = (ctype*)calloc(dimension_size, sizeof(ctype));
+  ctype* chirp_fft = (ctype*)malloc(dimension_size * sizeof(ctype));
+  for (std::size_t i = 0; i < committed_size; i++) {
     double theta = M_PI * static_cast<double>(i * i) / static_cast<double>(committed_size);
     chirp_signal[i] = ctype(static_cast<T>(std::cos(theta)), static_cast<T>(std::sin(theta)));
   }
-  IdxGlobal num_zeros = dimension_size - 2 * committed_size + 1;
-  for (IdxGlobal i = 0; i < committed_size; i++) {
+  std::size_t num_zeros = dimension_size - 2 * committed_size + 1;
+  for (std::size_t i = 0; i < committed_size; i++) {
     chirp_signal[committed_size + num_zeros + i - 1] = chirp_signal[committed_size - i];
   }
   naive_dft(chirp_signal, chirp_fft, dimension_size);
-  std::memcpy(ptr, reinterpret_cast<T*>(&chirp_fft[0]), static_cast<std::size_t>(2 * dimension_size) * sizeof(T));
+  std::memcpy(ptr, reinterpret_cast<T*>(&chirp_fft[0]), 2 * dimension_size * sizeof(T));
+  free(chirp_signal);
+  free(chirp_fft);
 }
 
 /**
@@ -62,14 +64,15 @@ void get_fft_chirp_signal(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_
  * @param dimension_size padded size
  */
 template <typename T>
-void populate_bluestein_input_modifiers(T* ptr, IdxGlobal committed_size, IdxGlobal dimension_size) {
+void populate_bluestein_input_modifiers(T* ptr, std::size_t committed_size, std::size_t dimension_size) {
   using ctype = std::complex<T>;
-  ctype* scratch = (ctype*)calloc(static_cast<std::size_t>(dimension_size), sizeof(ctype));
-  for (IdxGlobal i = 0; i < committed_size; i++) {
+  ctype* scratch = (ctype*)calloc(dimension_size, sizeof(ctype));
+  for (std::size_t i = 0; i < committed_size; i++) {
     double theta = -M_PI * static_cast<double>(i * i) / static_cast<double>(committed_size);
     scratch[i] = ctype(static_cast<T>(std::cos(theta)), static_cast<T>(std::sin(theta)));
   }
-  std::memcpy(ptr, reinterpret_cast<T*>(&scratch[0]), static_cast<std::size_t>(2 * dimension_size) * sizeof(T));
+  std::memcpy(ptr, reinterpret_cast<T*>(&scratch[0]), 2 * dimension_size * sizeof(T));
+  free(scratch);
 }
 }  // namespace detail
 }  // namespace portfft
