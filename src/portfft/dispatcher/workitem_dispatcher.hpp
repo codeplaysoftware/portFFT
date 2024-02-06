@@ -77,8 +77,6 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
 /**
  * Implementation of FFT for sizes that can be done by independent work items.
  *
- * @tparam LayoutIn Input Layout
- * @tparam LayoutOut Output Layout
  * @tparam SubgroupSize size of the subgroup
  * @tparam T type of the scalar used for computations
  * @param input pointer to global memory containing input data. If complex storage (from
@@ -98,7 +96,7 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @param loc_load_modifier Pointer to load modifier data in local memory
  * @param loc_store_modifier Pointer to store modifier data in local memory
  */
-template <Idx SubgroupSize, detail::layout LayoutIn, detail::layout LayoutOut, typename T>
+template <Idx SubgroupSize, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   IdxGlobal n_transforms, global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
@@ -117,6 +115,11 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   const IdxGlobal output_stride = kh.get_specialization_constant<detail::SpecConstOutputStride>();
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
+
+  const bool is_packed_input = input_stride == 1 && input_distance == fft_size;
+  const bool interleaved_transforms_input = input_distance < input_stride;
+  const bool is_packed_output = output_stride == 1 && output_distance == fft_size;
+  const bool interleaved_transforms_output = output_distance < output_stride;
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
 
@@ -158,54 +161,50 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
 
     // This is checking for LayoutIn is PACKED or UNPACKED but we don't actually ever launch kernels with LayoutIn
     // as UNPACKED.
-    if (LayoutIn == detail::layout::PACKED || LayoutIn == detail::layout::UNPACKED) {
+    if (is_packed_input) {
       // copy into local memory cooperatively as a subgroup, allowing coalesced memory access for when elements of a
       // single FFT are sequential. BATCH_INTERLEAVED skips this step and loads straight from global to registers since
       // the sequential work-items already access sequential elements.
-      if (input_stride == 1 && input_distance == fft_size) {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          global_data.log_message_global(__func__, "loading packed data from global to local memory");
-          global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, n_reals * n_working, global_offset,
-                                                      local_offset);
-        } else {
-          global_data.log_message_global(__func__, "loading packed real data from global to local memory");
-          global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, fft_size * n_working, global_offset,
-                                                      local_offset);
-          global_data.log_message_global(__func__, "loading packed imaginary data from global to local memory");
-          global2local<level::SUBGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size * n_working,
-                                                      global_offset, local_offset + local_imag_offset);
-        }
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        global_data.log_message_global(__func__, "loading packed data from global to local memory");
+        global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, n_reals * n_working, global_offset,
+                                                    local_offset);
       } else {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          // NOTE this is potentially less optimal when input_distance < input_stride. In that case, the data is not
-          // read is order of memory address and will potentially not be as coalesed as possible. For input_distance <
-          // input_stride, we could also skip loading to local memory, since each work-item will be only loading it's
-          // own data anyway.
-          std::array<IdxGlobal, 3> global_strides{input_distance * 2, input_stride * 2, 1};
-          std::array<Idx, 3> local_strides{fft_size * 2, 2, 1};
-          std::array<Idx, 3> copy_indices{n_working, fft_size, 2};
-
-          detail::md_view global_input_view{input, global_strides, global_input_offset};
-          detail::md_view local_input_view{loc_view, local_strides, local_offset};
-
-          global_data.log_message_global(__func__, "loading unpacked data from global to local memory");
-          copy_group<level::SUBGROUP>(global_data, global_input_view, local_input_view, copy_indices);
-        } else {
-          std::array<IdxGlobal, 2> global_strides{input_distance, input_stride};
-          std::array<Idx, 2> local_strides{fft_size, 1};
-          std::array<Idx, 2> copy_indices{n_working, fft_size};
-
-          detail::md_view global_input_real_view{input, global_strides, global_input_offset};
-          detail::md_view local_input_real_view{loc_view, local_strides, local_offset};
-          detail::md_view global_input_imag_view{input_imag, global_strides, global_input_offset};
-          detail::md_view local_input_imag_view{loc_view, local_strides, local_offset + local_imag_offset};
-
-          global_data.log_message_global(__func__, "loading unpacked real data from global to local memory");
-          copy_group<level::SUBGROUP>(global_data, global_input_real_view, local_input_real_view, copy_indices);
-          global_data.log_message_global(__func__, "loading unpacked imaginary data from global to local memory");
-          copy_group<level::SUBGROUP>(global_data, global_input_imag_view, local_input_imag_view, copy_indices);
-        }
+        global_data.log_message_global(__func__, "loading packed real data from global to local memory");
+        global2local<level::SUBGROUP, SubgroupSize>(global_data, input, loc_view, fft_size * n_working, global_offset,
+                                                    local_offset);
+        global_data.log_message_global(__func__, "loading packed imaginary data from global to local memory");
+        global2local<level::SUBGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size * n_working,
+                                                    global_offset, local_offset + local_imag_offset);
       }
+    } else if (!interleaved_transforms_input) {
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        std::array<IdxGlobal, 3> global_strides{input_distance * 2, input_stride * 2, 1};
+        std::array<Idx, 3> local_strides{fft_size * 2, 2, 1};
+        std::array<Idx, 3> copy_indices{n_working, fft_size, 2};
+
+        detail::md_view global_input_view{input, global_strides, global_input_offset};
+        detail::md_view local_input_view{loc_view, local_strides, local_offset};
+
+        global_data.log_message_global(__func__, "loading unpacked data from global to local memory");
+        copy_group<level::SUBGROUP>(global_data, global_input_view, local_input_view, copy_indices);
+      } else {
+        std::array<IdxGlobal, 2> global_strides{input_distance, input_stride};
+        std::array<Idx, 2> local_strides{fft_size, 1};
+        std::array<Idx, 2> copy_indices{n_working, fft_size};
+
+        detail::md_view global_input_real_view{input, global_strides, global_input_offset};
+        detail::md_view local_input_real_view{loc_view, local_strides, local_offset};
+        detail::md_view global_input_imag_view{input_imag, global_strides, global_input_offset};
+        detail::md_view local_input_imag_view{loc_view, local_strides, local_offset + local_imag_offset};
+
+        global_data.log_message_global(__func__, "loading unpacked real data from global to local memory");
+        copy_group<level::SUBGROUP>(global_data, global_input_real_view, local_input_real_view, copy_indices);
+        global_data.log_message_global(__func__, "loading unpacked imaginary data from global to local memory");
+        copy_group<level::SUBGROUP>(global_data, global_input_imag_view, local_input_imag_view, copy_indices);
+      }
+    }
+    if (is_packed_input || !interleaved_transforms_input) {
 #ifdef PORTFFT_LOG_DUMPS
       sycl::group_barrier(global_data.sg);
 #endif
@@ -215,16 +214,16 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
     sycl::group_barrier(global_data.sg);
 
     if (working) {
-      if (LayoutIn == detail::layout::BATCH_INTERLEAVED) {
+      if (interleaved_transforms_input) {
         global_data.log_message_global(__func__, "loading transposed data from global to private memory");
-        // Load directly into registers from global memory as all loads will be fully coalesced.
+        // Load directly into registers from global memory so work-items read from nearby memory addresses.
         // No need of going through local memory either as it is an unnecessary extra write step.
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          detail::strided_view input_view{input, n_transforms, i * 2};
+          detail::strided_view input_view{input, input_stride, input_distance * i * 2};
           copy_wi<2>(global_data, input_view, priv, fft_size);
         } else {
-          detail::strided_view input_real_view{input, n_transforms, i};
-          detail::strided_view input_imag_view{input_imag, n_transforms, i};
+          detail::strided_view input_real_view{input, input_stride, input_distance * i};
+          detail::strided_view input_imag_view{input_imag, input_stride, input_distance * i};
           detail::strided_view priv_real_view{priv, 2};
           detail::strided_view priv_imag_view{priv, 2, 1};
           copy_wi(global_data, input_real_view, priv_real_view, fft_size);
@@ -277,7 +276,19 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
       }
       global_data.log_dump_private("data in registers after scaling:", priv, n_reals);
 
-      if (LayoutOut == detail::layout::PACKED || LayoutOut == detail::layout::UNPACKED) {
+      if (interleaved_transforms_output) {
+        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+          detail::strided_view output_view{output, output_stride, output_distance * i * 2};
+          copy_wi<2>(global_data, priv, output_view, fft_size);
+        } else {
+          detail::strided_view priv_real_view{priv, 2};
+          detail::strided_view priv_imag_view{priv, 2, 1};
+          detail::strided_view output_real_view{output, output_stride, output_distance * i};
+          detail::strided_view output_imag_view{output_imag, output_stride, output_distance * i};
+          copy_wi(global_data, priv_real_view, output_real_view, fft_size);
+          copy_wi(global_data, priv_imag_view, output_imag_view, fft_size);
+        }
+      } else {
         global_data.log_message_global(__func__, "loading data from private to local memory");
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
           detail::offset_view offset_local_view{loc_view, local_offset + subgroup_local_id * n_reals};
@@ -291,63 +302,49 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
           copy_wi(global_data, priv_real_view, local_real_view, fft_size);
           copy_wi(global_data, priv_imag_view, local_imag_view, fft_size);
         }
-      } else {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          detail::strided_view output_view{output, n_transforms, i * 2};
-          copy_wi<2>(global_data, priv, output_view, fft_size);
-        } else {
-          detail::strided_view priv_real_view{priv, 2};
-          detail::strided_view priv_imag_view{priv, 2, 1};
-          detail::strided_view output_real_view{output, n_transforms, i};
-          detail::strided_view output_imag_view{output_imag, n_transforms, i};
-          copy_wi(global_data, priv_real_view, output_real_view, fft_size);
-          copy_wi(global_data, priv_imag_view, output_imag_view, fft_size);
-        }
       }
     }
-    // This is checking for LayoutOut is PACKED or UNPACKED but we don't actually ever launch kernels with LayoutOut
-    // as UNPACKED, but just use PACKED and check the stride.
-    if (LayoutOut == detail::layout::PACKED || LayoutOut == detail::layout::UNPACKED) {
+    if (is_packed_output) {
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("computed data local memory:", loc, n_reals * n_working);
-      if (output_stride == 1 && output_distance == fft_size) {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          global_data.log_message_global(__func__, "storing data from local to packed global memory");
-          local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, n_reals * n_working, local_offset,
-                                                      global_offset);
-        } else {
-          global_data.log_message_global(__func__, "storing real data from local to packed global memory");
-          local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, fft_size * n_working, local_offset,
-                                                      global_offset);
-          global_data.log_message_global(__func__, "storing imaginary data from local to packed global memory");
-          local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output_imag, fft_size * n_working,
-                                                      local_offset + local_imag_offset, global_output_offset);
-        }
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        global_data.log_message_global(__func__, "storing data from local to packed global memory");
+        local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, n_reals * n_working, local_offset,
+                                                    global_offset);
       } else {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          std::array<IdxGlobal, 3> global_strides{output_distance * 2, output_stride * 2, 1};
-          std::array<Idx, 3> local_strides{fft_size * 2, 2, 1};
-          std::array<Idx, 3> copy_indices{n_working, fft_size, 2};
-
-          detail::md_view global_output_view{output, global_strides, global_output_offset};
-          detail::md_view local_output_view{loc_view, local_strides, local_offset};
-          global_data.log_message_global(__func__, "storing data from local to unpacked global memory");
-          copy_group<level::SUBGROUP>(global_data, local_output_view, global_output_view, copy_indices);
-        } else {
-          std::array<IdxGlobal, 2> global_strides{output_distance, output_stride};
-          std::array<Idx, 2> local_strides{fft_size, 1};
-          std::array<Idx, 2> copy_indices{n_working, fft_size};
-
-          detail::md_view global_output_real_view{output, global_strides, global_output_offset};
-          detail::md_view local_output_real_view{loc_view, local_strides, local_offset};
-          detail::md_view global_output_imag_view{output_imag, global_strides, global_output_offset};
-          detail::md_view local_output_imag_view{loc_view, local_strides, local_offset + local_imag_offset};
-          global_data.log_message_global(__func__, "storing real data from local to unpacked global memory");
-          copy_group<level::SUBGROUP>(global_data, local_output_real_view, global_output_real_view, copy_indices);
-          global_data.log_message_global(__func__, "storing imaginary data from local to unpacked global memory");
-          copy_group<level::SUBGROUP>(global_data, local_output_imag_view, global_output_imag_view, copy_indices);
-        }
+        global_data.log_message_global(__func__, "storing real data from local to packed global memory");
+        local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output, fft_size * n_working, local_offset,
+                                                    global_offset);
+        global_data.log_message_global(__func__, "storing imaginary data from local to packed global memory");
+        local2global<level::SUBGROUP, SubgroupSize>(global_data, loc_view, output_imag, fft_size * n_working,
+                                                    local_offset + local_imag_offset, global_output_offset);
       }
+    } else if (!interleaved_transforms_output) {
+      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+        std::array<IdxGlobal, 3> global_strides{output_distance * 2, output_stride * 2, 1};
+        std::array<Idx, 3> local_strides{fft_size * 2, 2, 1};
+        std::array<Idx, 3> copy_indices{n_working, fft_size, 2};
+
+        detail::md_view global_output_view{output, global_strides, global_output_offset};
+        detail::md_view local_output_view{loc_view, local_strides, local_offset};
+        global_data.log_message_global(__func__, "storing data from local to unpacked global memory");
+        copy_group<level::SUBGROUP>(global_data, local_output_view, global_output_view, copy_indices);
+      } else {
+        std::array<IdxGlobal, 2> global_strides{output_distance, output_stride};
+        std::array<Idx, 2> local_strides{fft_size, 1};
+        std::array<Idx, 2> copy_indices{n_working, fft_size};
+
+        detail::md_view global_output_real_view{output, global_strides, global_output_offset};
+        detail::md_view local_output_real_view{loc_view, local_strides, local_offset};
+        detail::md_view global_output_imag_view{output_imag, global_strides, global_output_offset};
+        detail::md_view local_output_imag_view{loc_view, local_strides, local_offset + local_imag_offset};
+        global_data.log_message_global(__func__, "storing real data from local to unpacked global memory");
+        copy_group<level::SUBGROUP>(global_data, local_output_real_view, global_output_real_view, copy_indices);
+        global_data.log_message_global(__func__, "storing imaginary data from local to unpacked global memory");
+        copy_group<level::SUBGROUP>(global_data, local_output_imag_view, global_output_imag_view, copy_indices);
+      }
+    }
+    if (is_packed_output || !interleaved_transforms_output) {
       sycl::group_barrier(global_data.sg);
     }
   }
@@ -400,10 +397,10 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
 #endif
                 it};
             global_data.log_message_global("Running workitem kernel");
-            detail::workitem_impl<SubgroupSize, LayoutIn, LayoutOut>(
-                &in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
-                &in_imag_acc_or_usm[0] + input_offset, &out_imag_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
-                global_data, kh);
+            detail::workitem_impl<SubgroupSize>(&in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
+                                                &in_imag_acc_or_usm[0] + input_offset,
+                                                &out_imag_acc_or_usm[0] + output_offset, &loc[0], n_transforms,
+                                                global_data, kh);
             global_data.log_message_global("Exiting workitem kernel");
           });
     });

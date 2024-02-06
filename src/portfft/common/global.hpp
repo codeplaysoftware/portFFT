@@ -151,10 +151,10 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
     IdxGlobal outer_batch_offset = get_outer_batch_offset(factors, inner_batches, inclusive_scan, num_factors,
                                                           level_num, iter_value, outer_batch_product, storage);
     if (level == detail::level::WORKITEM) {
-      workitem_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, batch_size, global_data, kh, static_cast<const Scalar*>(nullptr),
-          store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
+      workitem_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                          input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
+                                          batch_size, global_data, kh, static_cast<const Scalar*>(nullptr),
+                                          store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
