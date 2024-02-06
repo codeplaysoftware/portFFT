@@ -293,9 +293,9 @@ void verify_dft(const portfft::descriptor<Scalar, Domain>& desc, const std::vect
   }
 
   const auto dft_len = desc.get_flattened_length();
-  const auto dft_offset = IsForward ? desc.backward_offset : desc.forward_offset;
-  const auto dft_stride = IsForward ? desc.backward_strides.back() : desc.forward_strides.back();
-  const auto dft_distance = IsForward ? desc.backward_distance : desc.forward_distance;
+  const auto dft_offset = desc.get_offset(inv(Dir));
+  const auto dft_stride = desc.get_strides(inv(Dir)).back();
+  const auto dft_distance = desc.get_distance(inv(Dir));
 
   for (std::size_t i = 0; i < dft_offset; ++i) {
     if (ref_output[i] != actual_output[i]) {

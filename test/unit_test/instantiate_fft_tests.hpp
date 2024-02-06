@@ -241,15 +241,14 @@ INSTANTIATE_TEST_SUITE_P(workItemStridedOOPInOrder, FFTTest,
                              ::testing::Values(layout_params{{3}, {4}, {7}}, layout_params{{8}, {11}, {2}},
                                                layout_params{{9}, {3}, {4}, 30, 40}))),
                          test_params_print());
-INSTANTIATE_TEST_SUITE_P(workItemStridedOOPLikeBatchInterleaved, FFTTest,
-                         ::testing::ConvertGenerator<layout_param_tuple>(
-                             ::testing::Combine(oop_unpacked_unpacked_layout, both_directions, complex_storages,
-                                                // keep batches below 33
-                                                ::testing::Values(1, 10, 33),
-                                                ::testing::Values(layout_params{{8}, {33}, {99}, 1, 3},
-                                                                  layout_params{{8}, {33}, {2}, 1, 16},
-                                                                  layout_params{{8}, {2}, {66}, 16, 2}))),
-                         test_params_print());
+// The LikeBatchInterleaved tests must have stride >= number of transforms
+INSTANTIATE_TEST_SUITE_P(
+    workItemStridedOOPLikeBatchInterleaved, FFTTest,
+    ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+        oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 10, 33),
+        ::testing::Values(layout_params{{8}, {33}, {99}, 1, 3}, layout_params{{8}, {33}, {2}, 1, 16},
+                          layout_params{{8}, {2}, {66}, 16, 2}))),
+    test_params_print());
 INSTANTIATE_TEST_SUITE_P(workItemStridedIP, FFTTest,
                          ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
                              ip_unpacked_unpacked_layout, both_directions, complex_storages,

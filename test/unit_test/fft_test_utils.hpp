@@ -98,7 +98,7 @@ struct test_params {
   std::optional<double> backward_scale;
   std::optional<std::size_t> forward_offset;
   std::optional<std::size_t> backward_offset;
-  std::optional<layout_params> strides;
+  std::optional<layout_params> explicit_layout;
 
   test_params() = default;
 
@@ -125,7 +125,7 @@ struct test_params {
   explicit test_params(layout_param_tuple params)
       : test_params(basic_param_tuple{std::get<0>(params), std::get<1>(params), std::get<2>(params),
                                       std::get<3>(params), std::get<4>(params).lengths}) {
-    strides = std::get<4>(params);
+    explicit_layout = std::get<4>(params);
   }
 };
 
@@ -145,17 +145,17 @@ struct test_params_print {
     ss << "__LayoutIn_" << layout_to_string(params.input_layout);
     ss << "__LayoutOut_" << layout_to_string(params.output_layout);
 
-    if (params.strides) {
+    if (params.explicit_layout) {
       ss << "__FwdStrides";
-      for (std::size_t s : params.strides.value().forward_strides) {
+      for (std::size_t s : params.explicit_layout.value().forward_strides) {
         ss << "_" << s;
       }
-      ss << "__FwdDistance_" << params.strides.value().forward_distance;
+      ss << "__FwdDistance_" << params.explicit_layout.value().forward_distance;
       ss << "__BwdStrides";
-      for (std::size_t s : params.strides.value().backward_strides) {
+      for (std::size_t s : params.explicit_layout.value().backward_strides) {
         ss << "_" << s;
       }
-      ss << "__BwdDistance_" << params.strides.value().backward_distance;
+      ss << "__BwdDistance_" << params.explicit_layout.value().backward_distance;
     }
 
     ss << "__Direction_" << (params.dir == direction::FORWARD ? "Fwd" : "Bwd");
@@ -238,12 +238,12 @@ auto get_descriptor(const test_params& params) {
   if (params.backward_offset) {
     desc.backward_offset = *params.backward_offset;
   }
-  if (params.strides) {
-    auto& strides = params.strides.value();
-    desc.forward_strides = strides.forward_strides;
-    desc.forward_distance = strides.forward_distance;
-    desc.backward_strides = strides.backward_strides;
-    desc.backward_distance = strides.backward_distance;
+  if (params.explicit_layout) {
+    auto& explicit_layout = params.explicit_layout.value();
+    desc.forward_strides = explicit_layout.forward_strides;
+    desc.forward_distance = explicit_layout.forward_distance;
+    desc.backward_strides = explicit_layout.backward_strides;
+    desc.backward_distance = explicit_layout.backward_distance;
   }
   return desc;
 }

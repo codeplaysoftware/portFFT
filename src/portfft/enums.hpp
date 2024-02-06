@@ -43,20 +43,6 @@ enum class pad { DONT_PAD, DO_PAD };
 
 enum class level { WORKITEM, SUBGROUP, WORKGROUP, GLOBAL };
 
-constexpr const char* level_to_string(level l) {
-  switch (l) {
-    case level::WORKITEM:
-      return "WORKITEM";
-    case level::SUBGROUP:
-      return "SUBGROUP";
-    case level::WORKGROUP:
-      return "WORKGROUP";
-    case level::GLOBAL:
-      return "GLOBAL";
-  }
-  return "UNKNOWN";
-}
-
 enum class layout {
   /// Packed layout represents default strides and distance.
   /// Each FFT is contiguous and each FFT is stored one after the other.
