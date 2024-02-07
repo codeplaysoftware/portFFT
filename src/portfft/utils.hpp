@@ -182,7 +182,7 @@ template <typename T>
 inline std::shared_ptr<T> make_shared(std::size_t size, sycl::queue& queue) {
   T* ptr = sycl::malloc_device<T>(size, queue);
   if (ptr != nullptr) {
-    return std::shared_ptr<T>(sycl::malloc_device<T>(size, queue), [captured_queue = queue](T* ptr) {
+    return std::shared_ptr<T>(ptr, [captured_queue = queue](T* ptr) {
       if (ptr != nullptr) {
         sycl::free(ptr, captured_queue);
       }

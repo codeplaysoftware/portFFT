@@ -89,7 +89,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles,
                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
-                                  T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+                                  [[maybe_unused]] T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+  using vec_t = sycl::vec<T, 2>;
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
@@ -238,14 +239,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           conjugate_inplace(priv, factor_wi);
         }
         if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-          using vec_t = sycl::vec<T, 2>;
           vec_t modifier_vec;
           if (working_inner) {
             PORTFFT_UNROLL
             for (Idx j = 0; j < factor_wi; j++) {
-              Idx base_offset = i * n_reals_per_fft + static_cast<IdxGlobal>(sub_batch * n_reals_per_fft +
-                                                                             2 * j * factor_sg + 2 * id_of_wi_in_fft);
-              modifier_vec = *reinterpret_cast<const vec_t*>(load_modifier_data[base_offset]);
+              IdxGlobal base_offset =
+                  static_cast<IdxGlobal>(i) * static_cast<IdxGlobal>(n_reals_per_fft) +
+                  static_cast<IdxGlobal>(sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft);
+              modifier_vec = *reinterpret_cast<const vec_t*>(&load_modifier_data[base_offset]);
               multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
                                priv[2 * j + 1]);
             }
@@ -427,25 +428,26 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
       }
       sycl::group_barrier(global_data.sg);
+      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, factor_wi);
+      }
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
+        vec_t modifier_vec;
         if (working) {
           global_data.log_message_global(__func__, "Multiplying load modifier before sg_dft");
           PORTFFT_UNROLL
           for (Idx j = 0; j < factor_wi; j++) {
-            Idx base_offset = static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
-                              id_of_fft_in_sg * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-            multiply_complex(priv[2 * j], priv[2 * j + 1], loc_load_modifier_view[base_offset],
-                             loc_load_modifier_view[base_offset + 1], priv[2 * j], priv[2 * j + 1]);
+            IdxGlobal base_offset =
+                IdxGlobal(i) * IdxGlobal(n_reals_per_fft) +
+                static_cast<IdxGlobal>(static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
+                                       id_of_fft_in_sg * n_reals_per_fft + 2 * id_of_wi_in_fft * factor_wi + 2 * j);
+            modifier_vec = *reinterpret_cast<const vec_t*>(&load_modifier_data[base_offset]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                             priv[2 * j + 1]);
           }
         }
       }
-      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
-        conjugate_inplace(priv, factor_wi);
-      }
       sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, loc_twiddles, wi_private_scratch);
-      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
-        conjugate_inplace(priv, factor_wi);
-      }
       if (working) {
         global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
       }
@@ -464,6 +466,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                              priv[2 * j + 1]);
           }
         }
+      }
+      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, factor_wi);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL

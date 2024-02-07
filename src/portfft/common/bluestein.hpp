@@ -50,7 +50,7 @@ void get_fft_chirp_signal(T* ptr, std::size_t committed_size, std::size_t dimens
   for (std::size_t i = 0; i < committed_size; i++) {
     chirp_signal[committed_size + num_zeros + i - 1] = chirp_signal[committed_size - i];
   }
-  naive_dft(chirp_signal, chirp_fft, dimension_size);
+  host_naive_dft(chirp_signal, chirp_fft, dimension_size);
   std::memcpy(ptr, reinterpret_cast<T*>(&chirp_fft[0]), 2 * dimension_size * sizeof(T));
   free(chirp_signal);
   free(chirp_fft);

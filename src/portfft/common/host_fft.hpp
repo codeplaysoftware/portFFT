@@ -35,13 +35,14 @@ namespace detail {
  * @param fft_size fft size
  */
 template <typename T>
-void naive_dft(std::complex<T>* input, std::complex<T>* output, IdxGlobal fft_size) {
+void host_naive_dft(std::complex<T>* input, std::complex<T>* output, std::size_t fft_size) {
   using ctype = std::complex<T>;
-  for (int i = 0; i < fft_size; i++) {
+  for (std::size_t i = 0; i < fft_size; i++) {
     ctype temp = ctype(0, 0);
-    for (int j = 0; j < fft_size; j++) {
-      ctype multiplier = ctype(static_cast<T>(std::cos((-2 * M_PI * i * j) / static_cast<double>(fft_size))),
-                               static_cast<T>(std::sin((-2 * M_PI * i * j) / static_cast<double>(fft_size))));
+    for (std::size_t j = 0; j < fft_size; j++) {
+      ctype multiplier =
+          ctype(static_cast<T>(std::cos((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size))),
+                static_cast<T>(std::sin((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size))));
       temp += input[j] * multiplier;
     }
     output[i] = temp;

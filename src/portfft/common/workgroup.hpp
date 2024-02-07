@@ -189,7 +189,9 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
       }
       global_data.log_dump_private("data loaded in registers:", priv, 2 * fact_wi);
-
+      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fact_wi);
+      }
       if (wg_twiddles) {
         PORTFFT_UNROLL
         for (Idx i = 0; i < fact_wi; i++) {
@@ -226,13 +228,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         }
       }
     }
-    if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
-      conjugate_inplace(priv, fact_wi);
-    }
     sg_dft<SubgroupSize>(priv, global_data.sg, fact_wi, fact_sg, loc_twiddles, wi_private_scratch);
-    if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
-      conjugate_inplace(priv, fact_wi);
-    }
     if (working) {
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Store modifier data layout in global memory - n_transforms x N x FactorSG x FactorWI
@@ -247,6 +243,9 @@ __attribute__((always_inline)) inline void dimension_dft(
           multiply_complex(priv[2 * idx], priv[2 * idx + 1], priv_modifier[0], priv_modifier[1], priv[2 * idx],
                            priv[2 * idx + 1]);
         }
+      }
+      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fact_wi);
       }
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
       if (layout_in == detail::layout::BATCH_INTERLEAVED) {

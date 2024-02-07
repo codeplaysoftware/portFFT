@@ -45,24 +45,27 @@ namespace detail {
 
 template <typename Scalar, domain Domain>
 class committed_descriptor_impl;
+template <typename Scalar, domain Domain>
+using kernels_vec = std::vector<typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct>;
 
 template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
           typename TIn>
 std::vector<sycl::event> compute_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
-                                       TIn, Scalar*, TIn, Scalar*, const Scalar*, const IdxGlobal*, IdxGlobal,
-                                       IdxGlobal, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, Idx,
-                                       complex_storage, const std::vector<sycl::event>&, sycl::queue&);
+                                       const TIn&, Scalar*, const TIn&, Scalar*, const Scalar*, const Scalar*,
+                                       const Scalar*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal,
+                                       Idx, Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
                             const Scalar*, TOut, const IdxGlobal*, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, IdxGlobal,
                             sycl::queue&, const std::vector<sycl::event>&, complex_storage);
 
-template <typename Scalar, domain Domain, typename Scalar, typename TIn, typename TOut>
-sycl::event global_impl_driver(TIn, TIn, TOut, TOut, committed_descriptor_impl<Scalar, Domain>&,
-                               const std::vector<kernel_data_struct>&, const std::vector<kernel_data_struct>&, Idx,
-                               IdxGlobal, IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal, IdxGlobal,
-                               IdxGlobal, detail::storage);
+template <Idx, typename Scalar, domain Domain, typename TIn, typename TOut>
+sycl::event global_impl_driver(const TIn&, const TIn&, TOut, TOut, committed_descriptor_impl<Scalar, Domain>&,
+                               typename committed_descriptor_impl<Scalar, Domain>::dimension_struct&,
+                               const kernels_vec<Scalar, Domain>&, const kernels_vec<Scalar, Domain>&, Idx, IdxGlobal,
+                               IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal, IdxGlobal, complex_storage,
+                               detail::elementwise_multiply, const Scalar*);
 
 // kernel names
 // TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
@@ -151,10 +154,10 @@ class committed_descriptor_impl {
   friend struct descriptor<Scalar, Domain>;
   template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
             typename TIn>
-  friend std::vector<sycl::event> detail::compute_level(
-      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, TIn, Scalar1*, TIn, Scalar1*,
-      const Scalar1*, const IdxGlobal*, IdxGlobal, IdxGlobal, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, Idx,
-      complex_storage, const std::vector<sycl::event>&, sycl::queue&);
+  friend std::vector<sycl::event> compute_level(
+      const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, const TIn&, Scalar1*, const TIn&,
+      Scalar1*, const Scalar1*, const Scalar1*, const Scalar1*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal,
+      IdxGlobal, Idx, Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
@@ -162,11 +165,13 @@ class committed_descriptor_impl {
       const IdxGlobal*, IdxGlobal, Idx, IdxGlobal, IdxGlobal, Idx, IdxGlobal, sycl::queue&,
       const std::vector<sycl::event>&, complex_storage);
 
-  template <typename Scalar1, domain domain1, typename Scalar, typename TIn, typename TOut>
-  friend sycl::event global_impl_driver(TIn, TIn, TOut, TOut, committed_descriptor_impl<Scalar1, Domain1>&,
-                                        const std::vector<kernel_data_struct>&, const std::vector<kernel_data_struct>&,
-                                        Idx, IdxGlobal, IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal,
-                                        IdxGlobal, IdxGlobal, detail::storage);
+  template <Idx, typename Scalar1, domain Domain1, typename TIn, typename TOut>
+  friend sycl::event global_impl_driver(const TIn&, const TIn&, TOut, TOut,
+                                        committed_descriptor_impl<Scalar1, Domain1>&,
+                                        typename committed_descriptor_impl<Scalar1, Domain1>::dimension_struct&,
+                                        const kernels_vec<Scalar1, Domain1>&, const kernels_vec<Scalar1, Domain1>&, Idx,
+                                        IdxGlobal, IdxGlobal, std::size_t, std::size_t, IdxGlobal, IdxGlobal, IdxGlobal,
+                                        complex_storage, detail::elementwise_multiply, const Scalar1*);
 
   /**
    * Vector containing the sub-implementation level, kernel_ids and factors for each factor that requires a separate
@@ -712,7 +717,7 @@ class committed_descriptor_impl {
         num_forward_factors++;
       }
       Idx num_backward_factors = static_cast<Idx>(prepared_vec.size()) - num_forward_factors;
-      bool is_prime = dimension_size == params.lengths[dimension_num] ? false : true;
+      bool is_prime = static_cast<bool>(dimension_size != params.lengths[dimension_num]);
       if (is_compatible) {
         auto forward_kernels =
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num,

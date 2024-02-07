@@ -198,6 +198,9 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
           copy_wi(global_data, local_imag_view, priv_imag_view, fft_size);
         }
       }
+      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fft_size);
+      }
       global_data.log_dump_private("data loaded in registers:", priv, n_reals);
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
         // Assumes load modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
@@ -205,19 +208,16 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
         global_data.log_message_global(__func__, "applying load modifier");
         detail::apply_modifier(fft_size, priv, load_modifier_data, i * n_reals);
       }
-      if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
-        conjugate_inplace(priv, fft_size);
-      }
       wi_dft<0>(priv, priv, fft_size, 1, 1, wi_private_scratch);
-      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
-        conjugate_inplace(priv, fft_size);
-      }
       global_data.log_dump_private("data in registers after computation:", priv, n_reals);
       if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
         // Assumes store modifier data is stored in a transposed fashion (fft_size x  num_batches_local_mem)
         // to ensure much lesser bank conflicts
         global_data.log_message_global(__func__, "applying store modifier");
         detail::apply_modifier(fft_size, priv, store_modifier_data, i * n_reals);
+      }
+      if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+        conjugate_inplace(priv, fft_size);
       }
       if (apply_scale_factor == detail::apply_scale_factor::APPLIED) {
         PORTFFT_UNROLL
