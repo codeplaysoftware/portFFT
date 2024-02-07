@@ -107,6 +107,8 @@ Any batch size is supported as long as the input and output data fits in global 
 
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `PORTFFT_SUBGROUP_SIZES`.
 
+Configurations that attempt to read from the same memory address from two separate batches of a transform are not supported.
+
 ## Known issues
 
 * portFFT relies on SYCL specialization constants which have some limitations currently:
