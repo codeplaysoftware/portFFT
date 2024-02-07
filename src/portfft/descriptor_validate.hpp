@@ -24,17 +24,16 @@
 #include <string_view>
 
 #include "common/exceptions.hpp"
+#include "common/workitem.hpp"
 #include "enums.hpp"
 #include "utils.hpp"
 
 namespace portfft::detail::validate {
 
-namespace detail {
-
 /**
  * Throw an exception if the lengths are invalid when looked at in isolation.
  *
- * @param lengths the dimensions of the tranform
+ * @param lengths the dimensions of the transform
  */
 inline void validate_lengths(const std::vector<std::size_t>& lengths) {
   if (lengths.empty()) {
@@ -50,10 +49,12 @@ inline void validate_lengths(const std::vector<std::size_t>& lengths) {
 /**
  * Throw an exception if the layout is unsupported.
  *
- * @param lengths the dimensions of the tranform
+ * @tparam Scalar the scalar type for the transform
+ * @param lengths the dimensions of the transform
  * @param forward_layout the layout of the forward domain
  * @param backward_layout the layout of the backward domain
  */
+template <typename Scalar>
 inline void validate_layout(const std::vector<std::size_t>& lengths, portfft::detail::layout forward_layout,
                             portfft::detail::layout backward_layout) {
   if (lengths.size() > 1) {
@@ -63,13 +64,20 @@ inline void validate_layout(const std::vector<std::size_t>& lengths, portfft::de
       throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
     }
   }
+  if (forward_layout == portfft::detail::layout::UNPACKED || backward_layout == portfft::detail::layout::UNPACKED) {
+    if (!portfft::detail::fits_in_wi<Scalar>(lengths.back())) {
+      throw unsupported_configuration(
+          "Arbitrary strides and distances are only supported for sizes that fit in the registers of a single "
+          "work-item");
+    }
+  }
 }
 
 /**
  * Throw an exception if individual stride, distance and number_of_transforms values are invalid/inconsistent.
  *
- * @param lengths the dimensions of the tranform
- * @param number_of_tranforms the number of batches
+ * @param lengths the dimensions of the transform
+ * @param number_of_transforms the number of batches
  * @param strides the strides between elements in a domain
  * @param distance the distance between batches in a domain
  * @param domain_str a string with the name of the domain being validated
@@ -99,8 +107,8 @@ inline void validate_strides_distance_basic(const std::vector<std::size_t>& leng
  * For multidimensional transforms, check that the strides are large enough so there will not be overlap within a single
  * batch. Throw when the strides are not big enough. This accounts for layouts like batch interleaved.
  *
- * @param lengths the dimensions of the tranform
- * @param number_of_tranforms the number of batches
+ * @param lengths the dimensions of the transform
+ * @param number_of_transforms the number of batches
  * @param strides the strides between elements in a domain
  * @param distance the distance between batches in a domain
  * @param domain_str a string with the name of the domain being validated
@@ -138,8 +146,8 @@ inline void strides_distance_multidim_check(const std::vector<std::size_t>& leng
 /**
  * Check that batches of 1D FFTs don't overlap.
  *
- * @param lengths the dimensions of the tranform
- * @param number_of_tranforms the number of batches
+ * @param lengths the dimensions of the transform
+ * @param number_of_transforms the number of batches
  * @param strides the strides between elements in a domain
  * @param distance the distance between batches in a domain
  * @param domain_str a string with the name of the domain being validated
@@ -190,8 +198,8 @@ inline void strides_distance_1d_check(const std::vector<std::size_t>& lengths, s
 /**
  * Throw an exception if the given strides and distance are invalid for a single domain.
  *
- * @param lengths the dimensions of the tranform
- * @param number_of_tranforms the number of batches
+ * @param lengths the dimensions of the transform
+ * @param number_of_transforms the number of batches
  * @param strides the strides between elements in a domain
  * @param distance the distance between batches in a domain
  * @param domain_str a string with the name of the domain being validated
@@ -211,8 +219,8 @@ inline void strides_distance_check(const std::vector<std::size_t>& lengths, std:
  * Throw an exception if the given strides and distances are invalid for either domain.
  *
  * @param place where the result is written with respect to where it is read (in-place vs not in-place)
- * @param lengths the dimensions of the tranform
- * @param number_of_tranforms the number of batches
+ * @param lengths the dimensions of the transform
+ * @param number_of_transforms the number of batches
  * @param forward_strides the strides between elements in the forward domain
  * @param backward_strides the strides between elements in the backward domain
  * @param forward_distance the distance between batches in the forward domain
@@ -235,7 +243,6 @@ inline void validate_strides_distance(placement place, const std::vector<std::si
     strides_distance_check(lengths, number_of_transforms, backward_strides, backward_distance, "backward");
   }
 }
-}  // namespace detail
 
 /**
  * @brief Check as much as possible if a given descriptor is valid and supported for the current capabilties of portFFT.
@@ -258,12 +265,11 @@ void validate_descriptor(const Descriptor& params) {
     throw invalid_configuration("Invalid number of transform ", params.number_of_transforms, ", must be positive");
   }
 
-  detail::validate_lengths(params.lengths);
-  detail::validate_strides_distance(params.placement, params.lengths, params.number_of_transforms,
-                                    params.forward_strides, params.backward_strides, params.forward_distance,
-                                    params.backward_distance);
-  detail::validate_layout(params.lengths, portfft::detail::get_layout(params, direction::FORWARD),
-                          portfft::detail::get_layout(params, direction::BACKWARD));
+  validate_lengths(params.lengths);
+  validate_strides_distance(params.placement, params.lengths, params.number_of_transforms, params.forward_strides,
+                            params.backward_strides, params.forward_distance, params.backward_distance);
+  validate_layout<typename Descriptor::Scalar>(params.lengths, portfft::detail::get_layout(params, direction::FORWARD),
+                                               portfft::detail::get_layout(params, direction::BACKWARD));
 }
 
 }  // namespace portfft::detail::validate
