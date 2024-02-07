@@ -428,29 +428,37 @@ std::vector<sycl::event> compute_level(
 }
 
 /**
- * Orchestrates the global implementation
- * @tparam Scalar Scalar type of the committed descriptor
+ * Run the global implementation
+ * @tparam Scalar Scalar type of committed descriptor
  * @tparam TIn Input type
- * @tparam TOut Output type
- * @tparam domain Domain
- * @param input
- * @param input_imag
- * @param output
- * @param output_imag
- * @param desc
- * @param kernels
- * @param transpose_kernels
- * @param num_factors
- * @param ptr_offset
- * @param subimpl_twiddles_offset
- * @param kd_struct_offset
- * @param i
- * @param batch_offset_input
- * @param batch_offset_output
- * @param in_offset
- * @param out_offset
- * @param storage
- * @return
+ * @tparam TOut Output Type
+ * @tparam SubgroupSize Subgroup Size
+ * @tparam Domain Domain of the committed descriptor
+ * @param input sycl::buffer / pointer containing the input data. In the case SPLIT_COMPLEX storage, it contains only
+ * the real part
+ * @param input_imag sycl::buffer / pointer containing the imaginary part of the input in the case where storage is
+ * SPLIT_COMPLEX
+ * @param output sycl::buffer / pointer containing the output data. In the case SPLIT_COMPLEX storage, it contains only
+ * the real part
+ * @param output_imag sycl::buffer / pointer containing the imaginary part of the output in the case where storage is
+ * SPLIT_COMPLEX
+ * @param desc committed descriptor
+ * @param dimension_data Dimension struct pertaining to the dimension being dispatched
+ * @param kernels vector containing the kernels for the computation
+ * @param transpose_kernels vector containing transpose kernels as required by the global implementation
+ * @param num_factors Number of factors
+ * @param ptr_offset Offset applied to the twiddles pointer to obtain the start of twiddles applied between factors.
+ * @param subimpl_twiddles_offset Offset applied to the twiddles pointer to obtain the start of twiddles required by the
+ * level specific implementation.
+ * @param kd_struct_offset offset applied to vector of kernels
+ * @param i Batch being processed
+ * @param num_batches number of transforms
+ * @param batch_offset_input offset applied to the input
+ * @param batch_offset_output offset applied to the output
+ * @param storage complex storage scheme: split_complex / complex_interleaved
+ * @param first_uses_load_modifier whether or not the very first kernel modifies data before computation
+ * @param last_kernel_store_modifier_data whether or not the very last kernel modifies the data after computation
+ * @return sycl::event waiting on the last transposes
  */
 template <Idx SubgroupSize, typename Scalar, domain Domain, typename TIn, typename TOut>
 sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut output, TOut output_imag,

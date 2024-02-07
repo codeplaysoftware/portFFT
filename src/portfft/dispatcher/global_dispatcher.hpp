@@ -87,15 +87,26 @@ void complex_transpose(const T* a, T* b, IdxGlobal lda, IdxGlobal ldb, IdxGlobal
 }
 
 /**
- * Utility function to copy data between pointers with different distances between each batch.
- * @tparam T scalar type
- * @param src source pointer
- * @param dst destination pointer
+ * Copied data from source  to the destination.
+ * @tparam TIn Input Type
+ * @tparam TOut Output Type
+ * @param src sycl::buffer / pointer containing the input data. In the case SPLIT_COMPLEX storage, it contains only the
+ * real part
+ * @param src_imag sycl::buffer / pointer containing the imaginary part of the input in the case where storage is
+ * SPLIT_COMPLEX
+ * @param dst sycl::buffer / pointer containing the output data. In the case SPLIT_COMPLEX storage, it contains only the
+ * real part
+ * @param dst_imag sycl::buffer / pointer containing the imaginary part of the output in the case where storage is
+ * SPLIT_COMPLEX
  * @param num_elements_to_copy number of elements to copy
- * @param src_stride stride of the source pointer
- * @param dst_stride stride of the destination pointer
+ * @param src_stride distance between two consecutive batches in the input
+ * @param dst_stride disance between two consecutive batches of the output
  * @param num_copies number of batches to copy
- * @param queue queue
+ * @param input_offset offset applied to the input
+ * @param output_offset offset applied to the output
+ * @param storage complex storage scheme: split_complex / complex_interleaved
+ * @param queue sycl queue associated with the commit
+ * @return
  */
 template <typename TIn, typename TOut>
 sycl::event trigger_device_copy(const TIn src, const TIn src_imag, TOut dst, TOut dst_imag,
