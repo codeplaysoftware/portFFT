@@ -261,6 +261,13 @@ INSTANTIATE_TEST_SUITE_P(
         ip_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33),
         ::testing::Values(layout_params{{3}, {66}, {66}, 2, 2}, layout_params{{6}, {40}, {40}, 1, 1}))),
     test_params_print());
+// these layouts are only valid because there is only a single batch
+INSTANTIATE_TEST_SUITE_P(WorkItemStridedStrideEqualsDistance, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             all_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1),
+                             ::testing::Values(layout_params{{8}, {2}, {2}, 2, 2},
+                                               layout_params{{8}, {1}, {1}, 1, 1}))),
+                         test_params_print());
 
 // clang-format off
 // Arbitrary interleaved FFT test suites
@@ -321,6 +328,12 @@ INSTANTIATE_TEST_SUITE_P(InvalidOverlapLarge, InvalidFFTTest,
                              ::testing::Combine(oop_unpacked_unpacked_layout, both_directions, complex_storages,
                                                 ::testing::Values(3333334),
                                                 ::testing::Values(layout_params{{8}, {3333333}, {3333333}, 1, 1}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(InvalidStrideEqualsDistance, InvalidFFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(2),
+                             ::testing::Values(layout_params{{8}, {2}, {2}, 2, 2},
+                                               layout_params{{8}, {1}, {1}, 1, 1}))),
                          test_params_print());
 
 #define INSTANTIATE_TESTS_FULL(TYPE, MEMORY)                                                                        \

@@ -170,7 +170,8 @@ inline void strides_distance_1d_check(const std::vector<std::size_t>& lengths, s
   const std::size_t stride = strides[0];
 
   const std::size_t first_batch_limit = stride * fft_size;
-  if (first_batch_limit <= distance) {
+  const std::size_t first_length_limit = distance * number_of_transforms;
+  if ((stride <= distance && first_batch_limit <= distance) || (distance <= stride && first_length_limit <= stride)) {
     return;
   }
 
