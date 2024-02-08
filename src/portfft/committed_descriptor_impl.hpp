@@ -903,13 +903,11 @@ class committed_descriptor_impl {
           "INTERLEAVED_COMPLEX.");
     }
     if (compute_direction == direction::FORWARD) {
-      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
-                                 params.backward_strides, params.forward_distance, params.backward_distance,
-                                 params.forward_offset, params.backward_offset, compute_direction);
+      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_offset,
+                                 params.backward_offset, compute_direction);
     }
-    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_strides,
-                               params.forward_strides, params.backward_distance, params.forward_distance,
-                               params.backward_offset, params.forward_offset, compute_direction);
+    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_offset, params.forward_offset,
+                               compute_direction);
   }
 
   /**
@@ -926,10 +924,6 @@ class committed_descriptor_impl {
    * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
-   * @param input_strides strides between input elements for each dimension of one FFT
-   * @param output_strides strides between output elements for each dimension of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param compute_direction direction of compute, forward / backward
@@ -937,22 +931,18 @@ class committed_descriptor_impl {
    */
   template <typename TIn, typename TOut>
   sycl::event dispatch_dimensions(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
-                                  const std::vector<sycl::event>& dependencies,
-                                  const std::vector<std::size_t>& input_strides,
-                                  const std::vector<std::size_t>& output_strides, std::size_t input_distance,
-                                  std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
-                                  direction compute_direction) {
+                                  const std::vector<sycl::event>& dependencies, std::size_t input_offset,
+                                  std::size_t output_offset, direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
 
-    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
-    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
+    const auto input_layout = detail::get_layout(params, compute_direction);
+    const auto output_layout = detail::get_layout(params, inv(compute_direction));
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    const bool multi_dim_supported =
-        forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+    const bool multi_dim_supported = input_layout == detail::layout::PACKED && output_layout == detail::layout::PACKED;
     if (n_dimensions != 1 && !multi_dim_supported) {
       throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
@@ -961,16 +951,11 @@ class committed_descriptor_impl {
     std::size_t inner_size = 1;
     // product of sizes of all dimension outer relative to the one we are currently working on
     std::size_t outer_size = total_size / params.lengths.back();
-    std::size_t input_stride_0 = input_strides.back();
-    std::size_t output_stride_0 = output_strides.back();
-    std::size_t input_distance_0 = n_dimensions > 1 ? params.lengths.back() : input_distance;
-    std::size_t output_distance_0 = n_dimensions > 1 ? params.lengths.back() : output_distance;
 
     PORTFFT_LOG_TRACE("Dispatching the kernel for the last dimension");
-    sycl::event previous_event =
-        dispatch_kernel_1d(in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size,
-                           input_stride_0, output_stride_0, input_distance_0, output_distance_0, input_offset,
-                           output_offset, dimensions.back(), compute_direction);
+    sycl::event previous_event = dispatch_kernel_1d(
+        in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size, input_layout, output_layout,
+        input_offset, output_offset, dimensions.back(), compute_direction);
     if (n_dimensions == 1) {
       return previous_event;
     }
@@ -985,9 +970,9 @@ class committed_descriptor_impl {
       PORTFFT_LOG_TRACE("Dispatching the kernels for the dimension", i);
       for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
         sycl::event e = dispatch_kernel_1d<TOutConst, TOut>(
-            out, out, out_imag, out_imag, previous_events, inner_size, inner_size, inner_size, 1, 1,
-            output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels, dimensions[i],
-            compute_direction);
+            out, out, out_imag, out_imag, previous_events, inner_size, layout::BATCH_INTERLEAVED,
+            layout::BATCH_INTERLEAVED, output_offset + j * stride_between_kernels,
+            output_offset + j * stride_between_kernels, dimensions[i], compute_direction);
         next_events.push_back(e);
       }
       inner_size *= params.lengths[i];
@@ -1012,10 +997,8 @@ class committed_descriptor_impl {
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
-   * @param input_stride stride between input elements of one FFT
-   * @param output_stride stride between output elements of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_layout the layout of the input data of the transforms
+   * @param output_layout the layout of the output data of the transforms
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param dimension_data data for the dimension this call will work on
@@ -1025,13 +1008,13 @@ class committed_descriptor_impl {
   template <typename TIn, typename TOut>
   sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                                 std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
-                                 std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
-                                 dimension_struct& dimension_data, direction compute_direction) {
+                                 layout input_layout, layout output_layout, std::size_t input_offset,
+                                 std::size_t output_offset, dimension_struct& dimension_data,
+                                 direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     return dispatch_kernel_1d_helper<TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
-        in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-        output_distance, input_offset, output_offset, dimension_data, compute_direction);
+        in, out, in_imag, out_imag, dependencies, n_transforms, input_layout, output_layout, input_offset,
+        output_offset, dimension_data, compute_direction);
   }
 
   /**
@@ -1051,10 +1034,8 @@ class committed_descriptor_impl {
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
-   * @param input_stride stride between input elements of one FFT
-   * @param output_stride stride between output elements of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_layout the layout of the input data of the transforms
+   * @param output_layout the layout of the output data of the transforms
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param dimension_data data for the dimension this call will work on
@@ -1064,14 +1045,14 @@ class committed_descriptor_impl {
   template <typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_1d_helper(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                         const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                                        std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
-                                        std::size_t output_distance, std::size_t input_offset,
+                                        layout input_layout, layout output_layout, std::size_t input_offset,
                                         std::size_t output_offset, dimension_struct& dimension_data,
                                         direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (SubgroupSize == dimension_data.used_sg_size) {
-      const bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
-      const bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
+      const bool input_batch_interleaved = input_layout == layout::BATCH_INTERLEAVED;
+      const bool output_batch_interleaved = output_layout == layout::BATCH_INTERLEAVED;
+
       for (kernel_data_struct kernel_data : dimension_data.forward_kernels) {
         std::size_t minimum_local_mem_required;
         if (input_batch_interleaved) {
@@ -1089,7 +1070,7 @@ class committed_descriptor_impl {
         }
       }
 
-      // UNPACKED is also being dispatched as PACKED, but kernels that support packed don't use the layout template
+      // UNPACKED is also being dispatched as PACKED, but kernels that support UNPACKED don't use the layout template
       // parameter.
       if (!input_batch_interleaved && !output_batch_interleaved) {
         return run_kernel<detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
@@ -1117,8 +1098,8 @@ class committed_descriptor_impl {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
       return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(
-          in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-          output_distance, input_offset, output_offset, dimension_data, compute_direction);
+          in, out, in_imag, out_imag, dependencies, n_transforms, input_layout, output_layout, input_offset,
+          output_offset, dimension_data, compute_direction);
     }
   }
 
