@@ -29,7 +29,7 @@
 
 #include "committed_descriptor.hpp"
 #include "defines.hpp"
-#include "descriptor_validate.hpp"
+#include "descriptor_validation.hpp"
 #include "enums.hpp"
 
 namespace portfft {
