@@ -27,10 +27,10 @@
 #include <numeric>
 #include <vector>
 
-#include "defines.hpp"
-#include "enums.hpp"
-
 #include "committed_descriptor.hpp"
+#include "defines.hpp"
+#include "descriptor_validation.hpp"
+#include "enums.hpp"
 
 namespace portfft {
 
@@ -151,6 +151,7 @@ struct descriptor {
    */
   committed_descriptor<Scalar, Domain> commit(sycl::queue& queue) {
     PORTFFT_LOG_FUNCTION_ENTRY();
+    detail::validate::validate_descriptor(*this);
     return {*this, queue};
   }
 

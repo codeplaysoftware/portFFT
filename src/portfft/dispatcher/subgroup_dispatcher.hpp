@@ -676,8 +676,8 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t /*length*/, const std::vector<Idx>& factors, detail::level /*level*/,
-                      Idx /*factor_num*/, Idx /*num_factors*/) {
+                      Idx /*length*/, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
+                      Idx /*num_factors*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);

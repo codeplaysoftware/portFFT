@@ -56,6 +56,18 @@ enum class layout {
   BATCH_INTERLEAVED
 };
 
+constexpr const char* layout_to_string(layout l) {
+  switch (l) {
+    case layout::PACKED:
+      return "PACKED";
+    case layout::UNPACKED:
+      return "UNPACKED";
+    case layout::BATCH_INTERLEAVED:
+      return "BATCH_INTERLEAVED";
+  }
+  return "UNKNOWN";
+}
+
 enum class memory { BUFFER, USM };
 
 enum class transfer_direction {
