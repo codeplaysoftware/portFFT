@@ -350,21 +350,22 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
 }
 
 template <typename Scalar, domain Domain>
-template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
+template <Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize, TIn,
                                                                     TOut>::inner<detail::level::WORKITEM, Dummy> {
   static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
                              TOut& out_imag, const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
-                             direction compute_direction) {
+                             direction compute_direction, layout input_layout) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
     auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
                                                                 : dimension_data.backward_kernels.at(0);
     std::size_t local_elements =
-        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, LayoutIn, Dummy>::execute(
-            desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg);
+        num_scalars_in_local_mem_struct::template inner<detail::level::WORKITEM, Dummy>::execute(
+            desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg,
+            input_layout);
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workitem<Scalar>(
         n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
 
@@ -381,7 +382,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, La
 #endif
       PORTFFT_LOG_TRACE("Launching workitem kernel with global_size", global_size, "local_size",
                         SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements);
-      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<detail::workitem_kernel<Scalar, Domain, Mem, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=
 #ifdef PORTFFT_KERNEL_LOG
@@ -418,11 +419,11 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
 };
 
 template <typename Scalar, domain Domain>
-template <detail::layout LayoutIn, typename Dummy>
+template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKITEM,
-                                                                                         LayoutIn, Dummy> {
+                                                                                         Dummy> {
   static std::size_t execute(committed_descriptor_impl& desc, std::size_t length, Idx used_sg_size,
-                             const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg) {
+                             const std::vector<Idx>& /*factors*/, Idx& num_sgs_per_wg, layout /*input_layout*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     Idx num_scalars_per_sg = detail::pad_local(2 * static_cast<Idx>(length) * used_sg_size, 1);
     Idx max_n_sgs = desc.local_memory_size / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
