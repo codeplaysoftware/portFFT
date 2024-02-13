@@ -52,10 +52,10 @@ struct logging_config {
       }
 #endif
     }
-    char* log_trace_str = getenv("PORTFFT_LOG_TRACE");
+    char* log_trace_str = getenv("PORTFFT_LOG_TRACES");
     if (log_trace_str != nullptr) {
       log_trace = static_cast<bool>(atoi(log_trace_str));
-#ifndef PORTFFT_LOG_TRACE
+#ifndef PORTFFT_LOG_TRACES
       if (log_trace) {
         std::cerr << "Can not enable logging of traces if it is disabled at compile time." << std::endl;
       }
@@ -281,7 +281,7 @@ struct global_data_struct {
    */
   template <typename... Ts>
   PORTFFT_INLINE void log_message_global([[maybe_unused]] Ts... messages) {
-#ifdef PORTFFT_LOG_TRACE
+#ifdef PORTFFT_LOG_TRACES
     if (global_logging_config.log_trace && it.get_global_id(0) == 0) {
       log_message_impl(messages...);
     }

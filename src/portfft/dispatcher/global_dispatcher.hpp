@@ -330,10 +330,9 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      std::size_t length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
+                      Idx length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
                       Idx num_factors) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    Idx length_idx = static_cast<Idx>(length);
     PORTFFT_LOG_TRACE("GlobalSubImplSpecConst:", level);
     in_bundle.template set_specialization_constant<detail::GlobalSubImplSpecConst>(level);
     PORTFFT_LOG_TRACE("GlobalSpecConstNumFactors:", num_factors);
@@ -341,8 +340,8 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
     PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", factor_num);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
     if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
-      PORTFFT_LOG_TRACE("SpecConstFftSize:", length_idx);
-      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length_idx);
+      PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
+      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
     } else if (level == detail::level::SUBGROUP) {
       PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
@@ -353,11 +352,10 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
 };
 
 template <typename Scalar, domain Domain>
-template <detail::layout LayoutIn, typename Dummy>
-struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL,
-                                                                                         LayoutIn, Dummy> {
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::GLOBAL, Dummy> {
   static std::size_t execute(committed_descriptor_impl& /*desc*/, std::size_t /*length*/, Idx /*used_sg_size*/,
-                             const std::vector<Idx>& /*factors*/, Idx& /*num_sgs_per_wg*/) {
+                             const std::vector<Idx>& /*factors*/, Idx& /*num_sgs_per_wg*/, layout /*input_layout*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // No work required as all work done in calculate_twiddles;
     return 0;
@@ -365,14 +363,14 @@ struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struc
 };
 
 template <typename Scalar, domain Domain>
-template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
+template <Idx SubgroupSize, typename TIn, typename TOut>
 template <typename Dummy>
-struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TIn,
+struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize, TIn,
                                                                     TOut>::inner<detail::level::GLOBAL, Dummy> {
   static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
                              TOut& out_imag, const std::vector<sycl::event>& dependencies, IdxGlobal n_transforms,
                              IdxGlobal input_offset, IdxGlobal output_offset, dimension_struct& dimension_data,
-                             direction compute_direction) {
+                             direction compute_direction, layout /*input_layout*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     complex_storage storage = desc.params.complex_storage;
     const std::size_t vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;

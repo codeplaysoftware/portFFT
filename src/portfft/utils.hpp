@@ -29,6 +29,7 @@
 #include "common/logging.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
+#include "specialization_constant.hpp"
 
 namespace portfft {
 namespace detail {
@@ -42,35 +43,23 @@ class transpose_kernel;
  * @tparam SubgroupSize size of the subgroup
  * @return vector of kernel ids
  */
-template <template <typename, domain, detail::memory, detail::layout, detail::layout, Idx> class Kernel,
-          typename Scalar, domain Domain, Idx SubgroupSize>
+template <template <typename, domain, detail::memory, Idx> class Kernel, typename Scalar, domain Domain,
+          Idx SubgroupSize>
 std::vector<sycl::kernel_id> get_ids() {
   PORTFFT_LOG_FUNCTION_ENTRY();
   std::vector<sycl::kernel_id> ids;
-#define PORTFFT_GET_ID(MEMORY, LAYOUT_IN, LAYOUT_OUT)                                                          \
-  try {                                                                                                        \
-    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, MEMORY, LAYOUT_IN, LAYOUT_OUT, SubgroupSize>>()); \
-  } catch (...) {                                                                                              \
+  try {
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, memory::USM, SubgroupSize>>());
+  } catch (...) {
   }
 
-#define INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, LAYOUT_IN) \
-  PORTFFT_GET_ID(MEM, LAYOUT_IN, layout::BATCH_INTERLEAVED)   \
-  PORTFFT_GET_ID(MEM, LAYOUT_IN, layout::PACKED)
-
-#define INSTANTIATE_MEM_LAYOUTS_MODIFIERS(MEM)                          \
-  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, layout::BATCH_INTERLEAVED) \
-  INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS(MEM, layout::PACKED)
-
 #ifdef PORTFFT_ENABLE_BUFFER_BUILDS
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::USM)
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::BUFFER)
-#else
-  INSTANTIATE_MEM_LAYOUTS_MODIFIERS(memory::USM)
+  try {
+    ids.push_back(sycl::get_kernel_id<Kernel<Scalar, Domain, memory::BUFFER, SubgroupSize>>());
+  } catch (...) {
+  }
 #endif
 
-#undef PORTFFT_GET_ID
-#undef INSTANTIATE_LAYOUTIN_LAYOUT_MODIFIERS
-#undef INSTANTIATE_MEM_LAYOUTS_MODIFIERS
   return ids;
 }
 
@@ -203,6 +192,69 @@ PORTFFT_INLINE constexpr const sycl::specialization_id<Scalar>& get_spec_constan
   } else {
     return detail::SpecConstScaleFactorDouble;
   }
+}
+
+/**
+ * Return the default strides for a given dft size
+ *
+ * @param lengths the dimensions of the dft
+ */
+inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
+  PORTFFT_LOG_FUNCTION_ENTRY();
+  std::vector<std::size_t> strides(lengths.size());
+  std::size_t total_size = 1;
+  for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
+    std::size_t i = i_plus1 - 1;
+    strides[i] = total_size;
+    total_size *= lengths[i];
+  }
+  PORTFFT_LOG_TRACE("Default strides:", strides);
+  return strides;
+}
+
+/**
+ * Return whether the given descriptor has default strides and distance for a given direction
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
+  const auto default_strides = get_default_strides(desc.lengths);
+  const auto default_distance = desc.get_flattened_length();
+  return desc.get_strides(dir) == default_strides && desc.get_distance(dir) == default_distance;
+}
+
+/**
+ * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+bool is_batch_interleaved(const Descriptor& desc, direction dir) {
+  return desc.lengths.size() == 1 && desc.get_distance(dir) == 1 &&
+         desc.get_strides(dir).back() == desc.number_of_transforms;
+}
+
+/**
+ * Return an enum describing the layout of the data in the descriptor
+ *
+ * @tparam Descriptor Descriptor type
+ * @param desc Descriptor to check
+ * @param dir Direction
+ */
+template <typename Descriptor>
+detail::layout get_layout(const Descriptor& desc, direction dir) {
+  if (has_default_strides_and_distance(desc, dir)) {
+    return detail::layout::PACKED;
+  }
+  if (is_batch_interleaved(desc, dir)) {
+    return detail::layout::BATCH_INTERLEAVED;
+  }
+  return detail::layout::UNPACKED;
 }
 
 }  // namespace detail

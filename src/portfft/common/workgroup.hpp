@@ -56,7 +56,6 @@ namespace detail {
 /**
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
- * @tparam LayoutIn Input Layout
  * @tparam SubgroupSize Size of the subgroup
  * @tparam LocalT The type of the local view
  * @tparam T Scalar type
@@ -73,7 +72,7 @@ namespace detail {
  * @param stride_within_dft Stride between elements of each DFT - also the number of the DFTs in the inner dimension
  * @param ndfts_in_outer_dimension Number of DFTs in outer dimension
  * @param storage complex storage: interleaved or split
- * @param layout_in Input Layout
+ * @param input_layout the layout of the input data of the transforms
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param MultiplyOnStore Whether the input data is multiplied with some data array after fft computation.
  * @param ApplyScaleFactor Whether or not the scale factor is applied
@@ -86,7 +85,7 @@ __attribute__((always_inline)) inline void dimension_dft(
     LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor, Idx max_num_batches_in_local_mem,
     Idx batch_num_in_local, const T* load_modifier_data, const T* store_modifier_data, IdxGlobal batch_num_in_kernel,
     Idx dft_size, Idx stride_within_dft, Idx ndfts_in_outer_dimension, complex_storage storage,
-    detail::layout layout_in, detail::elementwise_multiply multiply_on_load,
+    detail::layout input_layout, detail::elementwise_multiply multiply_on_load,
     detail::elementwise_multiply multiply_on_store, detail::apply_scale_factor apply_scale_factor,
     detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
     global_data_struct<1> global_data) {
@@ -149,7 +148,7 @@ __attribute__((always_inline)) inline void dimension_dft(
       working = working && static_cast<Idx>(global_data.sg.get_local_linear_id()) < max_working_tid_in_sg;
     }
     if (working) {
-      if (layout_in == detail::layout::BATCH_INTERLEAVED) {
+      if (input_layout == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "loading transposed data from local to private memory");
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
           detail::strided_view local_view{
@@ -248,7 +247,7 @@ __attribute__((always_inline)) inline void dimension_dft(
         conjugate_inplace(priv, fact_wi);
       }
       global_data.log_dump_private("data in registers after computation:", priv, 2 * fact_wi);
-      if (layout_in == detail::layout::BATCH_INTERLEAVED) {
+      if (input_layout == detail::layout::BATCH_INTERLEAVED) {
         global_data.log_message_global(__func__, "storing transposed data from private to local memory");
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
           detail::strided_view local_view{
@@ -312,7 +311,7 @@ __attribute__((always_inline)) inline void dimension_dft(
  * @param N Smaller factor of the Problem size
  * @param M Larger factor of the problem size
  * @param storage complex storage: interleaved or split
- * @param layout_in Whether or not the input is transposed
+ * @param input_layout the layout of the input data of the transforms
  * @param multiply_on_load Whether the input data is multiplied with some data array before fft computation.
  * @param multiply_on_store Whether the input data is multiplied with some data array after fft computation.
  * @param apply_scale_factor Whether or not the scale factor is applied
@@ -324,7 +323,7 @@ template <Idx SubgroupSize, typename LocalT, typename T>
 PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T scaling_factor,
                            Idx max_num_batches_in_local_mem, Idx batch_num_in_local, IdxGlobal batch_num_in_kernel,
                            const T* load_modifier_data, const T* store_modifier_data, Idx fft_size, Idx N, Idx M,
-                           complex_storage storage, detail::layout layout_in,
+                           complex_storage storage, detail::layout input_layout,
                            detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
                            detail::apply_scale_factor apply_scale_factor, detail::complex_conjugate conjugate_on_load,
@@ -335,14 +334,14 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
   // column-wise DFTs
   detail::dimension_dft<SubgroupSize, LocalT, T>(
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
-      store_modifier_data, batch_num_in_kernel, N, M, 1, storage, layout_in, multiply_on_load,
+      store_modifier_data, batch_num_in_kernel, N, M, 1, storage, input_layout, multiply_on_load,
       detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, conjugate_on_load,
       detail::complex_conjugate::NOT_APPLIED, global_data);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
-      load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, storage, layout_in,
+      load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, storage, input_layout,
       detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor,
       detail::complex_conjugate::NOT_APPLIED, conjugate_on_store, global_data);
   global_data.log_message_global(__func__, "exited");

@@ -134,8 +134,6 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * Device function responsible for calling the corresponding sub-implementation
  *
  * @tparam Scalar  Scalar type
- * @tparam LayoutIn Input layout
- * @tparam LayoutOut Output layout
  * @tparam SubgroupSize Subgroup size
  * @param input input pointer
  * @param output output pointer
@@ -153,7 +151,7 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @param global_data global data
  * @param kh kernel handler
  */
-template <typename Scalar, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize>
+template <typename Scalar, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* input_imag, Scalar* output_imag,
                                    const Scalar* implementation_twiddles, const Scalar* load_modifier_data,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
@@ -303,8 +301,6 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
  * Prepares the launch of fft compute at a particular level
  * @tparam Scalar Scalar type
  * @tparam Domain Domain of FFT
- * @tparam LayoutIn Input layout
- * @tparam LayoutOut output layout
  * @tparam SubgroupSize subgroup size
  * @tparam TIn input type
  * @param kd_struct associated kernel data struct with the factor
@@ -330,8 +326,7 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
  * @param queue queue
  * @return vector events, one for each batch in l2
  */
-template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
-          typename TIn>
+template <typename Scalar, domain Domain, Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(
     const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct& kd_struct, const TIn& input,
     Scalar* output, const TIn& input_imag, Scalar* output_imag, const Scalar* load_modifier_data,
@@ -402,7 +397,7 @@ std::vector<sycl::event> compute_level(
 #endif
       PORTFFT_LOG_TRACE("Launching kernel for global implementation with global_size", global_range, "local_size",
                         local_range);
-      cgh.parallel_for<global_kernel<Scalar, Domain, Mem, LayoutIn, LayoutOut, SubgroupSize>>(
+      cgh.parallel_for<global_kernel<Scalar, Domain, Mem, SubgroupSize>>(
           sycl::nd_range<1>(sycl::range<1>(static_cast<std::size_t>(global_range)),
                             sycl::range<1>(static_cast<std::size_t>(local_range))),
           [=

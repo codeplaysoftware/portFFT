@@ -68,80 +68,16 @@ sycl::event global_impl_driver(const TIn&, const TIn&, TOut, TOut, committed_des
                                detail::elementwise_multiply, const Scalar*);
 
 // kernel names
-// TODO: Remove all templates except Scalar, Domain and Memory and SubgroupSize
-template <typename Scalar, domain, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
+template <typename Scalar, domain, detail::memory, Idx SubgroupSize>
 class workitem_kernel;
-template <typename Scalar, domain, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
+template <typename Scalar, domain, detail::memory, Idx SubgroupSize>
 class subgroup_kernel;
-template <typename Scalar, domain, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
+template <typename Scalar, domain, detail::memory, Idx SubgroupSize>
 class workgroup_kernel;
-template <typename Scalar, domain, detail::memory, detail::layout, detail::layout, Idx SubgroupSize>
+template <typename Scalar, domain, detail::memory, Idx SubgroupSize>
 class global_kernel;
 template <typename Scalar, detail::memory>
 class transpose_kernel;
-
-/**
- * Return the default strides for a given dft size
- *
- * @param lengths the dimensions of the dft
- */
-inline std::vector<std::size_t> get_default_strides(const std::vector<std::size_t>& lengths) {
-  PORTFFT_LOG_FUNCTION_ENTRY();
-  std::vector<std::size_t> strides(lengths.size());
-  std::size_t total_size = 1;
-  for (std::size_t i_plus1 = lengths.size(); i_plus1 > 0; i_plus1--) {
-    std::size_t i = i_plus1 - 1;
-    strides[i] = total_size;
-    total_size *= lengths[i];
-  }
-  PORTFFT_LOG_TRACE("Default strides:", strides);
-  return strides;
-}
-
-/**
- * Return whether the given descriptor has default strides and distance for a given direction
- *
- * @tparam Descriptor Descriptor type
- * @param desc Descriptor to check
- * @param dir Direction
- */
-template <typename Descriptor>
-bool has_default_strides_and_distance(const Descriptor& desc, direction dir) {
-  const auto default_strides = get_default_strides(desc.lengths);
-  const auto default_distance = desc.get_flattened_length();
-  return desc.get_strides(dir) == default_strides && desc.get_distance(dir) == default_distance;
-}
-
-/**
- * Return whether the given descriptor has strides and distance consistent with the batch interleaved layout
- *
- * @tparam Descriptor Descriptor type
- * @param desc Descriptor to check
- * @param dir Direction
- */
-template <typename Descriptor>
-bool is_batch_interleaved(const Descriptor& desc, direction dir) {
-  return desc.lengths.size() == 1 && desc.get_distance(dir) == 1 &&
-         desc.get_strides(dir).back() == desc.number_of_transforms;
-}
-
-/**
- * Return an enum describing the layout of the data in the descriptor
- *
- * @tparam Descriptor Descriptor type
- * @param desc Descriptor to check
- * @param dir Direction
- */
-template <typename Descriptor>
-detail::layout get_layout(const Descriptor& desc, direction dir) {
-  if (has_default_strides_and_distance(desc, dir)) {
-    return detail::layout::PACKED;
-  }
-  if (is_batch_interleaved(desc, dir)) {
-    return detail::layout::BATCH_INTERLEAVED;
-  }
-  return detail::layout::UNPACKED;
-}
 
 /**
  * A committed descriptor that contains everything that is needed to run FFT.
@@ -273,38 +209,17 @@ class committed_descriptor_impl {
     }
   }
 
-  template <typename Impl, detail::layout LayoutIn, typename... Args>
+  template <typename Impl, Idx SubgroupSize, typename... Args>
   auto dispatch(detail::level level, Args&&... args) {
     switch (level) {
       case detail::level::WORKITEM:
-        return Impl::template inner<detail::level::WORKITEM, LayoutIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::WORKITEM, SubgroupSize, void>::execute(*this, args...);
       case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, LayoutIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::SUBGROUP, SubgroupSize, void>::execute(*this, args...);
       case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, LayoutIn, void>::execute(*this, args...);
+        return Impl::template inner<detail::level::WORKGROUP, SubgroupSize, void>::execute(*this, args...);
       case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::GLOBAL, LayoutIn, void>::execute(*this, args...);
-      default:
-        // This should be unreachable
-        throw unsupported_configuration("Unimplemented");
-    }
-  }
-
-  template <typename Impl, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename... Args>
-  auto dispatch(detail::level level, Args&&... args) {
-    switch (level) {
-      case detail::level::WORKITEM:
-        return Impl::template inner<detail::level::WORKITEM, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
-                                                                                                               args...);
-      case detail::level::SUBGROUP:
-        return Impl::template inner<detail::level::SUBGROUP, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
-                                                                                                               args...);
-      case detail::level::WORKGROUP:
-        return Impl::template inner<detail::level::WORKGROUP, LayoutIn, LayoutOut, SubgroupSize, void>::execute(
-            *this, args...);
-      case detail::level::GLOBAL:
-        return Impl::template inner<detail::level::GLOBAL, LayoutIn, LayoutOut, SubgroupSize, void>::execute(*this,
-                                                                                                             args...);
+        return Impl::template inner<detail::level::GLOBAL, SubgroupSize, void>::execute(*this, args...);
       default:
         // This should be unreachable
         throw unsupported_configuration("Unimplemented");
@@ -360,10 +275,11 @@ class committed_descriptor_impl {
       Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
       Idx factor_wi_m = m / factor_sg_m;
       Idx temp_num_sgs_in_wg;
-      std::size_t local_memory_usage = num_scalars_in_local_mem<detail::layout::PACKED>(
-                                           detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
-                                           {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg) *
-                                       sizeof(Scalar);
+      std::size_t local_memory_usage =
+          num_scalars_in_local_mem(detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
+                                   {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg,
+                                   layout::PACKED) *
+          sizeof(Scalar);
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
       if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
@@ -397,20 +313,13 @@ class committed_descriptor_impl {
         IdxGlobal factor_sg = detail::factorize_sg<IdxGlobal>(factor_size, SubgroupSize);
         IdxGlobal factor_wi = factor_size / factor_sg;
         if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
-          if (batch_interleaved_layout) {
-            return (2 *
-                        num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-                            detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                            {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
-                        sizeof(Scalar) +
-                    2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
-                   static_cast<std::size_t>(local_memory_size);
-          }
-          return (num_scalars_in_local_mem<detail::layout::PACKED>(
-                      detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                      {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg) *
-                      sizeof(Scalar) +
-                  2 * static_cast<std::size_t>(factor_size) * sizeof(Scalar)) <
+          std::size_t input_scalars =
+              num_scalars_in_local_mem(detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
+                                       {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg,
+                                       batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
+          std::size_t store_modifiers = batch_interleaved_layout ? input_scalars : 0;
+          std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
+          return (sizeof(Scalar) * (input_scalars + store_modifiers + twiddle_scalars)) <
                  static_cast<std::size_t>(local_memory_size);
         }
         return false;
@@ -467,21 +376,22 @@ class committed_descriptor_impl {
    * @param num_factors total number of factors of the committed size, set as a spec constant
    */
   void set_spec_constants(detail::level top_level, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                          std::size_t length, const std::vector<Idx>& factors,
-                          detail::elementwise_multiply multiply_on_load, detail::elementwise_multiply multiply_on_store,
+                          Idx length, const std::vector<Idx>& factors, detail::elementwise_multiply multiply_on_load,
+                          detail::elementwise_multiply multiply_on_store,
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
                           detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
-                          Scalar scale_factor, Idx factor_num = 0, Idx num_factors = 0) {
+                          Scalar scale_factor, IdxGlobal input_stride, IdxGlobal output_stride,
+                          IdxGlobal input_distance, IdxGlobal output_distance, Idx factor_num = 0,
+                          Idx num_factors = 0) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    const Idx length_idx = static_cast<Idx>(length);
     // These spec constants are used in all implementations, so we set them here
     PORTFFT_LOG_TRACE("Setting specialization constants:");
     PORTFFT_LOG_TRACE("SpecConstComplexStorage:", params.complex_storage);
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
-    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length_idx);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length_idx);
-    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length_idx));
-    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length_idx));
+    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length);
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length));
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length));
     PORTFFT_LOG_TRACE("SpecConstMultiplyOnLoad:", multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     PORTFFT_LOG_TRACE("SpecConstMultiplyOnStore:", multiply_on_store);
@@ -494,7 +404,14 @@ class committed_descriptor_impl {
     in_bundle.template set_specialization_constant<detail::SpecConstConjugateOnStore>(conjugate_on_store);
     PORTFFT_LOG_TRACE("get_spec_constant_scale:", scale_factor);
     in_bundle.template set_specialization_constant<detail::get_spec_constant_scale<Scalar>()>(scale_factor);
-
+    PORTFFT_LOG_TRACE("SpecConstInputStride:", input_stride);
+    in_bundle.template set_specialization_constant<detail::SpecConstInputStride>(input_stride);
+    PORTFFT_LOG_TRACE("SpecConstOutputStride:", output_stride);
+    in_bundle.template set_specialization_constant<detail::SpecConstOutputStride>(output_stride);
+    PORTFFT_LOG_TRACE("SpecConstInputDistance:", input_distance);
+    in_bundle.template set_specialization_constant<detail::SpecConstInputDistance>(input_distance);
+    PORTFFT_LOG_TRACE("SpecConstOutputDistance:", output_distance);
+    in_bundle.template set_specialization_constant<detail::SpecConstOutputDistance>(output_distance);
     dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
   }
 
@@ -503,10 +420,10 @@ class committed_descriptor_impl {
    */
   struct num_scalars_in_local_mem_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
-    template <detail::level Lev, detail::layout LayoutIn, typename Dummy>
+    template <detail::level Lev, typename Dummy>
     struct inner {
       static std::size_t execute(committed_descriptor_impl& desc, std::size_t length, Idx used_sg_size,
-                                 const std::vector<Idx>& factors, Idx& num_sgs_per_wg);
+                                 const std::vector<Idx>& factors, Idx& num_sgs_per_wg, layout input_layout);
     };
   };
 
@@ -519,13 +436,14 @@ class committed_descriptor_impl {
    * @param used_sg_size subgroup size the kernel will use
    * @param factors factorization of the FFT size the kernel will use
    * @param[out] num_sgs_per_wg number of subgroups in a workgroup
+   * @param input_layout the layout of the input data of the transforms
    * @return the number of scalars
    */
-  template <detail::layout LayoutIn>
   std::size_t num_scalars_in_local_mem(detail::level level, std::size_t length, Idx used_sg_size,
-                                       const std::vector<Idx>& factors, Idx& num_sgs_per_wg) {
+                                       const std::vector<Idx>& factors, Idx& num_sgs_per_wg, layout input_layout) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    return dispatch<num_scalars_in_local_mem_struct, LayoutIn>(level, length, used_sg_size, factors, num_sgs_per_wg);
+    return dispatch<num_scalars_in_local_mem_struct>(level, length, used_sg_size, factors, num_sgs_per_wg,
+                                                     input_layout);
   }
 
   /**
@@ -698,7 +616,7 @@ class committed_descriptor_impl {
    * @return `dimension_struct` for the newly built kernels
    */
   template <Idx SubgroupSize, Idx... OtherSGSizes>
-  dimension_struct build_w_spec_const(std::size_t dimension_num, bool skip_scaling) {
+  dimension_struct build_w_spec_const(std::size_t dimension_num) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
@@ -733,9 +651,9 @@ class committed_descriptor_impl {
       }
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
-      throw invalid_configuration("None of the compiled subgroup sizes are supported by the device");
+      throw unsupported_configuration("None of the compiled subgroup sizes are supported by the device");
     } else {
-      return build_w_spec_const<OtherSGSizes...>(dimension_num, skip_scaling);
+      return build_w_spec_const<OtherSGSizes...>(dimension_num);
     }
   }
 
@@ -896,32 +814,10 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("local_memory_size:", local_memory_size);
     PORTFFT_LOG_TRACE("llc_size:", llc_size);
 
-    // check it's suitable to run
-    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
-    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
-    if (params.lengths.size() > 1) {
-      const bool supported_layout =
-          forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
-      if (!supported_layout) {
-        throw unsupported_configuration("Multi-dimensional transforms are only supported with default data layout");
-      }
-    } else {
-      const bool supported_layout =
-          (forward_layout == detail::layout::PACKED || forward_layout == detail::layout::BATCH_INTERLEAVED) &&
-          (backward_layout == detail::layout::PACKED || backward_layout == detail::layout::BATCH_INTERLEAVED);
-      if (!supported_layout) {
-        throw unsupported_configuration("Arbitary strides are not supported");
-      }
-    }
-
     // compile the kernels and precalculate twiddles
     std::size_t n_kernels = params.lengths.size();
     for (std::size_t i = 0; i < n_kernels; i++) {
-      bool skip_scaling = true;
-      if (i == n_kernels - 1) {
-        skip_scaling = false;
-      }
-      dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i, skip_scaling));
+      dimensions.emplace_back(build_w_spec_const<PORTFFT_SUBGROUP_SIZES>(i));
       dimensions.back().forward_kernels.at(0).twiddles_forward = std::shared_ptr<Scalar>(
           calculate_twiddles(dimensions.back().level, dimensions.at(i), dimensions.back().forward_kernels),
           [queue](Scalar* ptr) {
@@ -940,25 +836,17 @@ class committed_descriptor_impl {
           });
     }
 
-    bool is_scratch_required = false;
-    Idx num_global_level_dimensions = 0;
-    for (std::size_t i = 0; i < n_kernels; i++) {
-      if (dimensions.at(i).level == detail::level::GLOBAL) {
-        is_scratch_required = true;
-        num_global_level_dimensions++;
-      }
-    }
+    Idx num_global_level_dimensions = static_cast<Idx>(std::count_if(
+        dimensions.cbegin(), dimensions.cend(), [](auto& d) { return d.level == detail::level::GLOBAL; }));
     if (num_global_level_dimensions != 0) {
       if (params.lengths.size() > 1) {
-        throw unsupported_configuration("Only 1D FFTs that do not fit in local memory are supported");
+        throw unsupported_configuration("For FFTs that do not fit in local memory only 1D is supported");
       }
       if (params.get_distance(direction::FORWARD) != params.lengths[0] ||
           params.get_distance(direction::BACKWARD) != params.lengths[0]) {
         throw unsupported_configuration("Large FFTs are currently only supported in non-strided format");
       }
-    }
 
-    if (is_scratch_required) {
       allocate_scratch_and_precompute_scan(num_global_level_dimensions);
     }
   }
@@ -1066,13 +954,11 @@ class committed_descriptor_impl {
           "INTERLEAVED_COMPLEX.");
     }
     if (compute_direction == direction::FORWARD) {
-      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_strides,
-                                 params.backward_strides, params.forward_distance, params.backward_distance,
-                                 params.forward_offset, params.backward_offset, compute_direction);
+      return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.forward_offset,
+                                 params.backward_offset, compute_direction);
     }
-    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_strides,
-                               params.forward_strides, params.backward_distance, params.forward_distance,
-                               params.backward_offset, params.forward_offset, compute_direction);
+    return dispatch_dimensions(in, out, in_imag, out_imag, dependencies, params.backward_offset, params.forward_offset,
+                               compute_direction);
   }
 
   /**
@@ -1089,10 +975,6 @@ class committed_descriptor_impl {
    * @param out_imag buffer or USM pointer to memory containing imaginary part of the output data. Ignored if
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
-   * @param input_strides strides between input elements for each dimension of one FFT
-   * @param output_strides strides between output elements for each dimension of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param compute_direction direction of compute, forward / backward
@@ -1100,22 +982,18 @@ class committed_descriptor_impl {
    */
   template <typename TIn, typename TOut>
   sycl::event dispatch_dimensions(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
-                                  const std::vector<sycl::event>& dependencies,
-                                  const std::vector<std::size_t>& input_strides,
-                                  const std::vector<std::size_t>& output_strides, std::size_t input_distance,
-                                  std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
-                                  direction compute_direction) {
+                                  const std::vector<sycl::event>& dependencies, std::size_t input_offset,
+                                  std::size_t output_offset, direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     using TOutConst = std::conditional_t<std::is_pointer_v<TOut>, const std::remove_pointer_t<TOut>*, const TOut>;
     std::size_t n_dimensions = params.lengths.size();
     std::size_t total_size = params.get_flattened_length();
 
-    const auto forward_layout = detail::get_layout(params, direction::FORWARD);
-    const auto backward_layout = detail::get_layout(params, direction::BACKWARD);
+    const auto input_layout = detail::get_layout(params, compute_direction);
+    const auto output_layout = detail::get_layout(params, inv(compute_direction));
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
-    const bool multi_dim_supported =
-        forward_layout == detail::layout::PACKED && backward_layout == detail::layout::PACKED;
+    const bool multi_dim_supported = input_layout == detail::layout::PACKED && output_layout == detail::layout::PACKED;
     if (n_dimensions != 1 && !multi_dim_supported) {
       throw internal_error("Only default layout is supported for multi-dimensional transforms.");
     }
@@ -1124,22 +1002,11 @@ class committed_descriptor_impl {
     std::size_t inner_size = 1;
     // product of sizes of all dimension outer relative to the one we are currently working on
     std::size_t outer_size = total_size / params.lengths.back();
-    std::size_t input_stride_0 = input_strides.back();
-    std::size_t output_stride_0 = output_strides.back();
-    // distances are currently used just in the first dimension - these changes are meant for that one
-    // TODO fix this to support non-default layouts
-    if (input_stride_0 < input_distance) {  // for example: batch interleaved input
-      input_distance = params.lengths.back();
-    }
-    if (output_stride_0 < output_distance) {  // for example: batch interleaved output
-      output_distance = params.lengths.back();
-    }
 
     PORTFFT_LOG_TRACE("Dispatching the kernel for the last dimension");
     sycl::event previous_event =
         dispatch_kernel_1d(in, out, in_imag, out_imag, dependencies, params.number_of_transforms * outer_size,
-                           input_stride_0, output_stride_0, input_distance, output_distance, input_offset,
-                           output_offset, dimensions.back(), compute_direction);
+                           input_layout, input_offset, output_offset, dimensions.back(), compute_direction);
     if (n_dimensions == 1) {
       return previous_event;
     }
@@ -1154,7 +1021,7 @@ class committed_descriptor_impl {
       PORTFFT_LOG_TRACE("Dispatching the kernels for the dimension", i);
       for (std::size_t j = 0; j < params.number_of_transforms * outer_size; j++) {
         sycl::event e = dispatch_kernel_1d<TOutConst, TOut>(
-            out, out, out_imag, out_imag, previous_events, inner_size, inner_size, inner_size, 1, 1,
+            out, out, out_imag, out_imag, previous_events, inner_size, layout::BATCH_INTERLEAVED,
             output_offset + j * stride_between_kernels, output_offset + j * stride_between_kernels, dimensions[i],
             compute_direction);
         next_events.push_back(e);
@@ -1181,10 +1048,7 @@ class committed_descriptor_impl {
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
-   * @param input_stride stride between input elements of one FFT
-   * @param output_stride stride between output elements of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_layout the layout of the input data of the transforms
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param dimension_data data for the dimension this call will work on
@@ -1194,13 +1058,12 @@ class committed_descriptor_impl {
   template <typename TIn, typename TOut>
   sycl::event dispatch_kernel_1d(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                  const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                                 std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
-                                 std::size_t output_distance, std::size_t input_offset, std::size_t output_offset,
+                                 layout input_layout, std::size_t input_offset, std::size_t output_offset,
                                  dimension_struct& dimension_data, direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     return dispatch_kernel_1d_helper<TIn, TOut, PORTFFT_SUBGROUP_SIZES>(
-        in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-        output_distance, input_offset, output_offset, dimension_data, compute_direction);
+        in, out, in_imag, out_imag, dependencies, n_transforms, input_layout, input_offset, output_offset,
+        dimension_data, compute_direction);
   }
 
   /**
@@ -1220,10 +1083,7 @@ class committed_descriptor_impl {
    * `descriptor.complex_storage` is interleaved.
    * @param dependencies events that must complete before the computation
    * @param n_transforms number of FT transforms to do in one call
-   * @param input_stride stride between input elements of one FFT
-   * @param output_stride stride between output elements of one FFT
-   * @param input_distance distance between the starts of input data for two consecutive FFTs
-   * @param output_distance distance between the starts of output data for two consecutive FFTs
+   * @param input_layout the layout of the input data of the transforms
    * @param input_offset offset into input allocation where the data for FFTs start
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param dimension_data data for the dimension this call will work on
@@ -1233,23 +1093,18 @@ class committed_descriptor_impl {
   template <typename TIn, typename TOut, Idx SubgroupSize, Idx... OtherSGSizes>
   sycl::event dispatch_kernel_1d_helper(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                                         const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
-                                        std::size_t input_stride, std::size_t output_stride, std::size_t input_distance,
-                                        std::size_t output_distance, std::size_t input_offset,
-                                        std::size_t output_offset, dimension_struct& dimension_data,
-                                        direction compute_direction) {
+                                        layout input_layout, std::size_t input_offset, std::size_t output_offset,
+                                        dimension_struct& dimension_data, direction compute_direction) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (SubgroupSize == dimension_data.used_sg_size) {
-      const bool input_packed = input_distance == dimension_data.length && input_stride == 1;
-      const bool output_packed = output_distance == dimension_data.length && output_stride == 1;
-      const bool input_batch_interleaved = input_distance == 1 && input_stride == n_transforms;
-      const bool output_batch_interleaved = output_distance == 1 && output_stride == n_transforms;
+      const bool input_batch_interleaved = input_layout == layout::BATCH_INTERLEAVED;
+
       for (kernel_data_struct kernel_data : dimension_data.forward_kernels) {
-        std::size_t minimum_local_mem_required;
         if (input_batch_interleaved) {
-          minimum_local_mem_required = num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-                                           kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
-                                           kernel_data.num_sgs_per_wg) *
-                                       sizeof(Scalar);
+          std::size_t minimum_local_mem_required =
+              num_scalars_in_local_mem(kernel_data.level, kernel_data.length, SubgroupSize, kernel_data.factors,
+                                       kernel_data.num_sgs_per_wg, layout::BATCH_INTERLEAVED) *
+              sizeof(Scalar);
           PORTFFT_LOG_TRACE("Local mem required:", minimum_local_mem_required, "B. Available: ", local_memory_size,
                             "B.");
           if (static_cast<Idx>(minimum_local_mem_required) > local_memory_size) {
@@ -1259,47 +1114,27 @@ class committed_descriptor_impl {
           }
         }
       }
-      if (input_packed && output_packed) {
-        return run_kernel<detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
-            compute_direction);
-      }
-      if (input_batch_interleaved && output_packed && in != out) {
-        return run_kernel<detail::layout::BATCH_INTERLEAVED, detail::layout::PACKED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
-            compute_direction);
-      }
-      if (input_packed && output_batch_interleaved && in != out) {
-        return run_kernel<detail::layout::PACKED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
-            compute_direction);
-      }
-      if (input_batch_interleaved && output_batch_interleaved) {
-        return run_kernel<detail::layout::BATCH_INTERLEAVED, detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
-            in, out, in_imag, out_imag, dependencies, n_transforms, input_offset, output_offset, dimension_data,
-            compute_direction);
-      }
-      throw unsupported_configuration("Only PACKED or BATCH_INTERLEAVED transforms are supported");
+
+      return run_kernel<SubgroupSize>(in, out, in_imag, out_imag, dependencies, n_transforms, input_offset,
+                                      output_offset, dimension_data, compute_direction, input_layout);
     }
     if constexpr (sizeof...(OtherSGSizes) == 0) {
       throw invalid_configuration("None of the compiled subgroup sizes are supported by the device!");
     } else {
-      return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(
-          in, out, in_imag, out_imag, dependencies, n_transforms, input_stride, output_stride, input_distance,
-          output_distance, input_offset, output_offset, dimension_data, compute_direction);
+      return dispatch_kernel_1d_helper<TIn, TOut, OtherSGSizes...>(in, out, in_imag, out_imag, dependencies,
+                                                                   n_transforms, input_layout, input_offset,
+                                                                   output_offset, dimension_data, compute_direction);
     }
   }
 
   /**
    * Struct for dispatching `run_kernel()` call.
    *
-   * @tparam LayoutIn Input Layout
-   * @tparam LayoutOut Output Layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
    */
-  template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
+  template <Idx SubgroupSize, typename TIn, typename TOut>
   struct run_kernel_struct {
     // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
     template <detail::level Lev, typename Dummy>
@@ -1307,15 +1142,13 @@ class committed_descriptor_impl {
       static sycl::event execute(committed_descriptor_impl& desc, const TIn& in, TOut& out, const TIn& in_imag,
                                  TOut& out_imag, const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                                  std::size_t forward_offset, std::size_t backward_offset,
-                                 dimension_struct& dimension_data, direction compute_direction);
+                                 dimension_struct& dimension_data, direction compute_direction, layout input_layout);
     };
   };
 
   /**
    * Common interface to run the kernel called by compute_forward and compute_backward
    *
-   * @tparam LayoutIn Input Layout
-   * @tparam LayoutOut Output Layout
    * @tparam SubgroupSize size of the subgroup
    * @tparam TIn Type of the input USM pointer or buffer
    * @tparam TOut Type of the output USM pointer or buffer
@@ -1333,13 +1166,14 @@ class committed_descriptor_impl {
    * @param output_offset offset into output allocation where the data for FFTs start
    * @param dimension_data data for the dimension this call will work on
    * @param compute_direction direction of fft, forward / backward
+   * @param input_layout the layout of the input data of the transforms
    * @return sycl::event
    */
-  template <detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize, typename TIn, typename TOut>
+  template <Idx SubgroupSize, typename TIn, typename TOut>
   sycl::event run_kernel(const TIn& in, TOut& out, const TIn& in_imag, TOut& out_imag,
                          const std::vector<sycl::event>& dependencies, std::size_t n_transforms,
                          std::size_t input_offset, std::size_t output_offset, dimension_struct& dimension_data,
-                         direction compute_direction) {
+                         direction compute_direction, layout input_layout) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // mixing const and non-const inputs leads to hard-to-debug linking errors, as both use the same kernel name, but
     // are called from different template instantiations.
@@ -1353,11 +1187,11 @@ class committed_descriptor_impl {
     using TInReinterpret = decltype(detail::reinterpret<const Scalar>(in));
     using TOutReinterpret = decltype(detail::reinterpret<Scalar>(out));
     std::size_t vec_multiplier = params.complex_storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
-    return dispatch<run_kernel_struct<LayoutIn, LayoutOut, SubgroupSize, TInReinterpret, TOutReinterpret>>(
+    return dispatch<run_kernel_struct<SubgroupSize, TInReinterpret, TOutReinterpret>>(
         dimension_data.level, detail::reinterpret<const Scalar>(in), detail::reinterpret<Scalar>(out),
         detail::reinterpret<const Scalar>(in_imag), detail::reinterpret<Scalar>(out_imag), dependencies,
         static_cast<IdxGlobal>(n_transforms), static_cast<IdxGlobal>(vec_multiplier * input_offset),
-        static_cast<IdxGlobal>(vec_multiplier * output_offset), dimension_data, compute_direction);
+        static_cast<IdxGlobal>(vec_multiplier * output_offset), dimension_data, compute_direction, input_layout);
   }
 };
 

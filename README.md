@@ -96,6 +96,7 @@ portFFT is still in early development. The supported configurations are:
   * size in each dimension must be supported by 1D transforms
 * Arbitrary forward and backward scales
 * Arbitrary forward and backward offsets
+* Arbitrary strides and distance where the problem size + auxilary data fits in the registers of a single work-item.
 
 Any 1D arbitrarily large input size that fits in global memory is supported.
 portFFT may allocate up to `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scratch memory,  in addition to memory allocated to hold precomputed values to be used during compute, depending on the configuration passed.
@@ -103,6 +104,8 @@ portFFT may allocate up to `2 * PORTFFT_MAX_CONCURRENT_KERNELS * input_size` scr
 Any batch size is supported as long as the input and output data fits in global memory.
 
 By default the library assumes subgroup size of 32 is used. If that is not supported by the device it is running on, the subgroup size can be set using `PORTFFT_SUBGROUP_SIZES`.
+
+Configurations that attempt to read from the same memory address from two separate batches of a transform are not supported.
 
 ## Known issues
 
