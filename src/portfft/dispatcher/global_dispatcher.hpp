@@ -258,12 +258,8 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
       if (kernel_data.level == detail::level::WORKITEM && layout == detail::layout::BATCH_INTERLEAVED) {
         return 0;
       }
-      if (layout == detail::layout::BATCH_INTERLEAVED) {
-        return desc.num_scalars_in_local_mem<detail::layout::BATCH_INTERLEAVED>(
-            kernel_data.level, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, num_sgs_in_wg);
-      }
-      return desc.num_scalars_in_local_mem<detail::layout::PACKED>(
-          kernel_data.level, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, num_sgs_in_wg);
+      return desc.num_scalars_in_local_mem(kernel_data.level, kernel_data.length, kernel_data.used_sg_size,
+                                           kernel_data.factors, num_sgs_in_wg, layout);
     };
 
     auto calculate_twiddles_and_populate_metadata = [&dimension_data, &kernels, &desc, &calculate_twiddles,

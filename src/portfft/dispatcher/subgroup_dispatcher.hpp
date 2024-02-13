@@ -87,7 +87,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles,
                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
-                                  [[maybe_unused]]T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+                                  [[maybe_unused]] T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
   const complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   const detail::elementwise_multiply multiply_on_load =
       kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();

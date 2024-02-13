@@ -48,8 +48,7 @@ class committed_descriptor_impl;
 template <typename Scalar, domain Domain>
 using kernels_vec = std::vector<typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct>;
 
-template <typename Scalar, domain Domain, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
-          typename TIn>
+template <typename Scalar, domain Domain, Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
                                        const TIn&, Scalar*, const TIn&, Scalar*, const Scalar*, const Scalar*,
                                        const Scalar*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal,
@@ -88,8 +87,7 @@ class transpose_kernel;
 template <typename Scalar, domain Domain>
 class committed_descriptor_impl {
   friend struct descriptor<Scalar, Domain>;
-  template <typename Scalar1, domain Domain1, detail::layout LayoutIn, detail::layout LayoutOut, Idx SubgroupSize,
-            typename TIn>
+  template <typename Scalar1, domain Domain1, Idx SubgroupSize, typename TIn>
   friend std::vector<sycl::event> compute_level(
       const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, const TIn&, Scalar1*, const TIn&,
       Scalar1*, const Scalar1*, const Scalar1*, const Scalar1*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal,
@@ -481,20 +479,48 @@ class committed_descriptor_impl {
    * @param scale_factor Scaling factor to be applied to the result
    */
   void set_global_impl_spec_constants(std::vector<input_bundles_and_metadata_t>& input_kernels_and_metadata,
-                                      Idx num_forward_factors, Idx num_backward_factors, direction compute_direction,
-                                      bool is_prime, Scalar scale_factor) {
-    detail::complex_conjugate conjugate_on_load;
-    detail::complex_conjugate conjugate_on_store;
-    detail::elementwise_multiply multiply_on_load;
-    detail::elementwise_multiply multiply_on_store;
-    detail::apply_scale_factor scale_factor_applied;
+                                      std::size_t num_forward_factors, std::size_t num_backward_factors,
+                                      direction compute_direction, bool is_prime, Scalar scale_factor) {
+    std::vector<IdxGlobal> factors;
+    std::vector<IdxGlobal> inner_batches;
+    for (std::size_t i = 0; i < num_forward_factors; i++) {
+      const auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(i);
+      factors.push_back(
+          static_cast<IdxGlobal>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())));
+    }
+    for (std::size_t i = 0; i < num_forward_factors; i++) {
+      inner_batches.push_back(std::accumulate(factors.begin() + static_cast<long>(i + 1), factors.end(), IdxGlobal(1),
+                                              std::multiplies<IdxGlobal>()));
+    }
 
-    for (std::size_t i = 0; i < std::size_t(num_forward_factors); i++) {
-      conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
-      conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
-      multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
-      multiply_on_store = detail::elementwise_multiply::APPLIED;
-      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+    for (std::size_t i = 0; i < num_backward_factors; i++) {
+      const auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(num_forward_factors + i);
+      factors.push_back(
+          static_cast<IdxGlobal>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())));
+    }
+    for (std::size_t i = 0; i < num_backward_factors; i++) {
+      inner_batches.push_back(std::accumulate(factors.begin() + static_cast<long>(num_forward_factors + i + 1),
+                                              factors.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
+    }
+
+    for (std::size_t i = 0; i < num_forward_factors; i++) {
+      auto conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+      auto conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
+      auto multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
+      auto multiply_on_store = detail::elementwise_multiply::APPLIED;
+      auto scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+
+      IdxGlobal input_stride = factors.at(i);
+      IdxGlobal output_stride = factors.at(i);
+      IdxGlobal input_distance = 1;
+      IdxGlobal output_distance = 1;
+
+      if (i == num_forward_factors - 1) {
+        input_stride = 1;
+        output_stride = 1;
+        input_distance = factors.at(i);
+        output_distance = factors.at(i);
+      }
 
       if (i == 0 && compute_direction == direction::BACKWARD) {
         conjugate_on_load = detail::complex_conjugate::APPLIED;
@@ -502,7 +528,7 @@ class committed_descriptor_impl {
       if (i == 0 && is_prime) {
         multiply_on_load = detail::elementwise_multiply::APPLIED;
       }
-      if (i == std::size_t(num_forward_factors - 1)) {
+      if (i == num_forward_factors - 1) {
         if (compute_direction == direction::BACKWARD && !is_prime) {
           conjugate_on_store = detail::complex_conjugate::APPLIED;
         }
@@ -518,28 +544,43 @@ class committed_descriptor_impl {
           detail::level::GLOBAL, input_bundle,
           static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
           multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
-          scale_factor, Idx(i), num_forward_factors);
+          scale_factor, input_stride, output_stride, input_distance, output_distance, Idx(i),
+          static_cast<Idx>(num_forward_factors));
     }
 
-    for (std::size_t i = 0; i < std::size_t(num_backward_factors); i++) {
-      conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
-      conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
-      multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
-      multiply_on_store = detail::elementwise_multiply::APPLIED;
-      scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+    for (std::size_t i = 0; i < num_backward_factors; i++) {
+      auto conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
+      auto conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
+      auto multiply_on_load = detail::elementwise_multiply::NOT_APPLIED;
+      auto multiply_on_store = detail::elementwise_multiply::APPLIED;
+      auto scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
+
+      IdxGlobal input_stride = factors.at(num_forward_factors + i);
+      IdxGlobal output_stride = factors.at(num_forward_factors + i);
+      IdxGlobal input_distance = 1;
+      IdxGlobal output_distance = 1;
+
+      if (i == num_forward_factors - 1) {
+        input_stride = 1;
+        output_stride = 1;
+        input_distance = factors.at(num_forward_factors + i);
+        output_distance = factors.at(num_forward_factors + i);
+      }
+
       if (i == 0) {
         conjugate_on_load = detail::complex_conjugate::APPLIED;
       }
-      if (i == std::size_t(num_forward_factors - 1)) {
+      if (i == num_forward_factors - 1) {
         multiply_on_store = detail::elementwise_multiply::APPLIED;
         scale_factor_applied = detail::apply_scale_factor::APPLIED;
       }
-      auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(std::size_t(num_forward_factors) + i);
+      auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(num_forward_factors + i);
       set_spec_constants(
           detail::level::GLOBAL, input_bundle,
           static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
           multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
-          scale_factor, Idx(i), num_forward_factors);
+          scale_factor, input_stride, output_stride, input_distance, output_distance, Idx(i),
+          static_cast<Idx>(num_backward_factors));
     }
   }
 
@@ -568,12 +609,18 @@ class committed_descriptor_impl {
     }
     bool is_compatible = true;
     if (top_level == detail::level::GLOBAL) {
-      set_global_impl_spec_constants(input_kernels_and_metadata, num_forward_factors, num_backward_factors,
-                                     compute_direction, num_backward_factors > 0, scale_factor);
+      set_global_impl_spec_constants(input_kernels_and_metadata, static_cast<std::size_t>(num_forward_factors),
+                                     static_cast<std::size_t>(num_backward_factors), compute_direction,
+                                     num_backward_factors > 0, scale_factor);
     } else {
       detail::complex_conjugate conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
       detail::complex_conjugate conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
       detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
+      const IdxGlobal input_stride = compute_direction == direction::FORWARD ? forward_stride : backward_stride;
+      const IdxGlobal output_stride = compute_direction == direction::FORWARD ? backward_stride : forward_stride;
+      const IdxGlobal input_distance = compute_direction == direction::FORWARD ? forward_distance : backward_distance;
+      const IdxGlobal output_distance = compute_direction == direction::FORWARD ? backward_distance : forward_distance;
+
       if (compute_direction == direction::BACKWARD) {
         conjugate_on_load = detail::complex_conjugate::APPLIED;
         conjugate_on_store = detail::complex_conjugate::APPLIED;
@@ -584,7 +631,8 @@ class committed_descriptor_impl {
       for (auto& [level, input_bundle, factors] : input_kernels_and_metadata) {
         set_spec_constants(level, input_bundle, params.lengths[dimension_num], factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
-                           scale_factor_applied, level, conjugate_on_load, conjugate_on_store, scale_factor);
+                           scale_factor_applied, level, conjugate_on_load, conjugate_on_store, scale_factor,
+                           input_stride, output_stride, input_distance, output_distance);
       }
     }
 
@@ -596,9 +644,6 @@ class committed_descriptor_impl {
             SubgroupSize, PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
       } catch (const std::exception& e) {
         PORTFFT_LOG_WARNING("Build for subgroup size", SubgroupSize, "failed with message:\n", e.what());
-        is_compatible = false;
-      }
-      if (!is_compatible) {
         return std::nullopt;
       }
     }

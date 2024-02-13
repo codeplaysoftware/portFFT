@@ -175,21 +175,21 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
       return static_cast<IdxGlobal>(0);
     }();
     if (level == detail::level::WORKITEM) {
-      workitem_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
+      workitem_impl<SubgroupSize, Scalar>(
           input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
           output_imag + outer_batch_offset, input_loc, batch_size, global_data, kh, load_modifier_data,
           store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::SUBGROUP) {
-      subgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, twiddles_loc, batch_size, implementation_twiddles, global_data,
-          kh, load_modifier_data, store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr),
-          store_modifier_loc);
+      subgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                          input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
+                                          twiddles_loc, batch_size, implementation_twiddles, global_data, kh,
+                                          load_modifier_data, store_modifier_data + store_modifier_offset,
+                                          static_cast<Scalar*>(nullptr), store_modifier_loc);
     } else if (level == detail::level::WORKGROUP) {
-      workgroup_impl<SubgroupSize, LayoutIn, LayoutOut, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, twiddles_loc, batch_size, implementation_twiddles, global_data,
-          kh, load_modifier_data, store_modifier_data + store_modifier_offset);
+      workgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
+                                           twiddles_loc, batch_size, implementation_twiddles, global_data, kh,
+                                           load_modifier_data, store_modifier_data + store_modifier_offset);
     }
     sycl::group_barrier(global_data.it.get_group());
   }
@@ -411,7 +411,7 @@ std::vector<sycl::event> compute_level(
                 s, global_logging_config,
 #endif
                 it};
-            dispatch_level<Scalar, LayoutIn, LayoutOut, SubgroupSize>(
+            dispatch_level<Scalar, SubgroupSize>(
                 &in_acc_or_usm[0] + input_batch_offset, offset_output, &in_imag_acc_or_usm[0] + input_batch_offset,
                 offset_output_imag, subimpl_twiddles, load_modifier_data, store_modifier_data, &loc_for_input[0],
                 &loc_for_twiddles[0], &loc_for_modifier[0], factors_triple, inner_batches, inclusive_scan, batch_size,
@@ -484,8 +484,7 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
                                          ? twiddles_ptr + dimension_data.bluestein_modifiers_offset
                                          : static_cast<const Scalar*>(nullptr);
 
-  l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
-                                    detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+  l2_events = detail::compute_level<Scalar, Domain, SubgroupSize>(
       kernel0, input, desc.scratch_ptr_1.get(), input_imag, desc.scratch_ptr_1.get() + imag_offset, load_modifier_data,
       twiddles_ptr + intermediate_twiddles_offset, twiddles_ptr + impl_twiddle_offset, factors_and_scan,
       batch_offset_input, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i), 0, num_factors,
@@ -496,14 +495,13 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
   for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(num_factors); factor_num++) {
     auto& current_kernel = kernels.at(kd_struct_offset + factor_num);
     if (static_cast<Idx>(factor_num) == num_factors - 1) {
-      l2_events = detail::compute_level<Scalar, Domain, detail::layout::PACKED, detail::layout::PACKED, SubgroupSize>(
+      l2_events = detail::compute_level<Scalar, Domain, SubgroupSize>(
           current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
           desc.scratch_ptr_1.get() + imag_offset, static_cast<const Scalar*>(nullptr), last_kernel_store_modifier_data,
           twiddles_ptr + impl_twiddle_offset, factors_and_scan, 0, dimension_size, max_batches_in_l2, num_batches,
           static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), num_factors, storage, l2_events, desc.queue);
     } else {
-      l2_events = detail::compute_level<Scalar, Domain, detail::layout::BATCH_INTERLEAVED,
-                                        detail::layout::BATCH_INTERLEAVED, SubgroupSize>(
+      l2_events = detail::compute_level<Scalar, Domain, SubgroupSize>(
           current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
           desc.scratch_ptr_1.get() + imag_offset, static_cast<const Scalar*>(nullptr),
           twiddles_ptr + intermediate_twiddles_offset, twiddles_ptr + impl_twiddle_offset, factors_and_scan, 0,
