@@ -96,16 +96,16 @@ std::vector<InType> reshape_to_desc(const std::vector<InType>& in, const Descrip
  * @tparam Domain domain of the FFT
  * @param desc The description of the FFT
  * @param padding_value The value to use in memory locations that are not expected to be read or written.
- * @param layout_in layout (PACKED/BATCH_INTERLEAVED) of the input data
- * @param layout_out layout (PACKED/BATCH_INTERLEAVED) of the output data
+ * @param input_layout layout (PACKED/BATCH_INTERLEAVED) of the input data
+ * @param output_layout layout (PACKED/BATCH_INTERLEAVED) of the output data
  * @return a tuple of vectors containing input and output data for a problem with the given descriptor. If `Storage` is
  *interleaved the first two tuple values contain vectors of input and output data and the last two vectors are empty. If
  *`Storage` is split, first two values contain input and output real part and the last two input and output imaginary
  *part of the data.
  **/
 template <portfft::direction Dir, portfft::complex_storage Storage, typename Scalar, portfft::domain Domain>
-auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout layout_in,
-                      portfft::detail::layout layout_out, float padding_value) {
+auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail::layout input_layout,
+                      portfft::detail::layout output_layout, float padding_value) {
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
   constexpr bool IsInterleaved = Storage == portfft::complex_storage::INTERLEAVED_COMPLEX;
@@ -209,8 +209,8 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
     std::for_each(forward.begin(), forward.end(), [scaling_factor](auto& x) { x *= scaling_factor; });
   }
 
-  const auto layout_fwd = IsForward ? layout_in : layout_out;
-  const auto layout_bwd = IsForward ? layout_out : layout_in;
+  const auto layout_fwd = IsForward ? input_layout : output_layout;
+  const auto layout_bwd = IsForward ? output_layout : input_layout;
 
   // modify layout
   forward = reshape_to_desc(forward, desc, layout_fwd, portfft::direction::FORWARD, padding_value);
