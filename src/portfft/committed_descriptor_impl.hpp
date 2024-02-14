@@ -481,26 +481,26 @@ class committed_descriptor_impl {
   void set_global_impl_spec_constants(std::vector<input_bundles_and_metadata_t>& input_kernels_and_metadata,
                                       std::size_t num_forward_factors, std::size_t num_backward_factors,
                                       direction compute_direction, bool is_prime, Scalar scale_factor) {
-    std::vector<IdxGlobal> factors;
+    std::vector<IdxGlobal> global_impl_factors;
     std::vector<IdxGlobal> inner_batches;
     for (std::size_t i = 0; i < num_forward_factors; i++) {
       const auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(i);
-      factors.push_back(
+      global_impl_factors.push_back(
           static_cast<IdxGlobal>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())));
     }
     for (std::size_t i = 0; i < num_forward_factors; i++) {
-      inner_batches.push_back(std::accumulate(factors.begin() + static_cast<long>(i + 1), factors.end(), IdxGlobal(1),
+      inner_batches.push_back(std::accumulate(global_impl_factors.begin() + static_cast<long>(i + 1), global_impl_factors.end(), IdxGlobal(1),
                                               std::multiplies<IdxGlobal>()));
     }
 
     for (std::size_t i = 0; i < num_backward_factors; i++) {
       const auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(num_forward_factors + i);
-      factors.push_back(
+      global_impl_factors.push_back(
           static_cast<IdxGlobal>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())));
     }
     for (std::size_t i = 0; i < num_backward_factors; i++) {
-      inner_batches.push_back(std::accumulate(factors.begin() + static_cast<long>(num_forward_factors + i + 1),
-                                              factors.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
+      inner_batches.push_back(std::accumulate(global_impl_factors.begin() + static_cast<long>(num_forward_factors + i + 1),
+                                              global_impl_factors.end(), IdxGlobal(1), std::multiplies<IdxGlobal>()));
     }
 
     for (std::size_t i = 0; i < num_forward_factors; i++) {
@@ -510,16 +510,16 @@ class committed_descriptor_impl {
       auto multiply_on_store = detail::elementwise_multiply::APPLIED;
       auto scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
 
-      IdxGlobal input_stride = factors.at(i);
-      IdxGlobal output_stride = factors.at(i);
+      IdxGlobal input_stride = global_impl_factors.at(i);
+      IdxGlobal output_stride = global_impl_factors.at(i);
       IdxGlobal input_distance = 1;
       IdxGlobal output_distance = 1;
 
       if (i == num_forward_factors - 1) {
         input_stride = 1;
         output_stride = 1;
-        input_distance = factors.at(i);
-        output_distance = factors.at(i);
+        input_distance = global_impl_factors.at(i);
+        output_distance = global_impl_factors.at(i);
       }
 
       if (i == 0 && compute_direction == direction::BACKWARD) {
@@ -542,7 +542,7 @@ class committed_descriptor_impl {
       auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(i);
       set_spec_constants(
           detail::level::GLOBAL, input_bundle,
-          static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
+          static_cast<Idx>(global_impl_factors.at(i)), factors,
           multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
           scale_factor, input_stride, output_stride, input_distance, output_distance, Idx(i),
           static_cast<Idx>(num_forward_factors));
@@ -555,16 +555,16 @@ class committed_descriptor_impl {
       auto multiply_on_store = detail::elementwise_multiply::APPLIED;
       auto scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
 
-      IdxGlobal input_stride = factors.at(num_forward_factors + i);
-      IdxGlobal output_stride = factors.at(num_forward_factors + i);
+      IdxGlobal input_stride = global_impl_factors.at(num_forward_factors + i);
+      IdxGlobal output_stride = global_impl_factors.at(num_forward_factors + i);
       IdxGlobal input_distance = 1;
       IdxGlobal output_distance = 1;
 
       if (i == num_forward_factors - 1) {
         input_stride = 1;
         output_stride = 1;
-        input_distance = factors.at(num_forward_factors + i);
-        output_distance = factors.at(num_forward_factors + i);
+        input_distance = global_impl_factors.at(num_forward_factors + i);
+        output_distance = global_impl_factors.at(num_forward_factors + i);
       }
 
       if (i == 0) {
@@ -577,7 +577,7 @@ class committed_descriptor_impl {
       auto& [level, input_bundle, factors] = input_kernels_and_metadata.at(num_forward_factors + i);
       set_spec_constants(
           detail::level::GLOBAL, input_bundle,
-          static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())), factors,
+          static_cast<Idx>(global_impl_factors.at(num_forward_factors + i)), factors,
           multiply_on_load, multiply_on_store, scale_factor_applied, level, conjugate_on_load, conjugate_on_store,
           scale_factor, input_stride, output_stride, input_distance, output_distance, Idx(i),
           static_cast<Idx>(num_backward_factors));
@@ -607,7 +607,7 @@ class committed_descriptor_impl {
       input_kernels_and_metadata.emplace_back(
           level, sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids), factors);
     }
-    bool is_compatible = true;
+
     if (top_level == detail::level::GLOBAL) {
       set_global_impl_spec_constants(input_kernels_and_metadata, static_cast<std::size_t>(num_forward_factors),
                                      static_cast<std::size_t>(num_backward_factors), compute_direction,
@@ -616,10 +616,10 @@ class committed_descriptor_impl {
       detail::complex_conjugate conjugate_on_load = detail::complex_conjugate::NOT_APPLIED;
       detail::complex_conjugate conjugate_on_store = detail::complex_conjugate::NOT_APPLIED;
       detail::apply_scale_factor scale_factor_applied = detail::apply_scale_factor::APPLIED;
-      const IdxGlobal input_stride = compute_direction == direction::FORWARD ? forward_stride : backward_stride;
-      const IdxGlobal output_stride = compute_direction == direction::FORWARD ? backward_stride : forward_stride;
-      const IdxGlobal input_distance = compute_direction == direction::FORWARD ? forward_distance : backward_distance;
-      const IdxGlobal output_distance = compute_direction == direction::FORWARD ? backward_distance : forward_distance;
+      const auto input_stride = compute_direction == direction::FORWARD ? params.forward_strides[dimension_num] : params.backward_strides[dimension_num];
+      const auto output_stride = compute_direction == direction::FORWARD ? params.backward_strides[dimension_num] : params.forward_strides[dimension_num];
+      const auto input_distance = compute_direction == direction::FORWARD ? params.forward_distance : params.backward_distance;
+      const auto output_distance = compute_direction == direction::FORWARD ? params.backward_distance : params.forward_distance;
 
       if (compute_direction == direction::BACKWARD) {
         conjugate_on_load = detail::complex_conjugate::APPLIED;
@@ -629,10 +629,11 @@ class committed_descriptor_impl {
         scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
       }
       for (auto& [level, input_bundle, factors] : input_kernels_and_metadata) {
-        set_spec_constants(level, input_bundle, params.lengths[dimension_num], factors,
+        set_spec_constants(level, input_bundle, static_cast<Idx>(params.lengths[dimension_num]), factors,
                            detail::elementwise_multiply::NOT_APPLIED, detail::elementwise_multiply::NOT_APPLIED,
                            scale_factor_applied, level, conjugate_on_load, conjugate_on_store, scale_factor,
-                           input_stride, output_stride, input_distance, output_distance);
+                           static_cast<IdxGlobal>(input_stride), static_cast<IdxGlobal>(output_stride),
+                           static_cast<IdxGlobal>(input_distance), static_cast<IdxGlobal>(output_distance));
       }
     }
 
@@ -663,6 +664,7 @@ class committed_descriptor_impl {
   template <Idx SubgroupSize, Idx... OtherSGSizes>
   dimension_struct build_w_spec_const(std::size_t dimension_num) {
     PORTFFT_LOG_FUNCTION_ENTRY();
+    bool skip_scaling = dimension_num == params.lengths.size() - 1;
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
