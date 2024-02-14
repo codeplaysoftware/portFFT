@@ -101,6 +101,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
   const T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
 
+  using vec_t = sycl::vec<T, 2>;
+
   const Idx factor_wi = kh.get_specialization_constant<SubgroupFactorWISpecConst>();
   const Idx factor_sg = kh.get_specialization_constant<SubgroupFactorSGSpecConst>();
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
