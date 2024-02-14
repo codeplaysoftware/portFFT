@@ -396,7 +396,8 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
             .wait();
 
         detail::global_impl_driver<SubgroupSize>(
-            desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_2.get(),
+            static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
+            static_cast<const Scalar*>(desc.scratch_ptr_1.get() + imag_offset), desc.scratch_ptr_2.get(),
             desc.scratch_ptr_2.get() + imag_offset, desc, dimension_data, kernels, dimension_data.transpose_kernels,
             dimension_data.num_forward_factors, 0, dimension_data.forward_impl_twiddle_offset, 0, i,
             static_cast<IdxGlobal>(num_batches), 0, 0, storage, detail::elementwise_multiply::APPLIED,
@@ -404,7 +405,8 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
             .wait();
         std::swap(desc.scratch_ptr_1, desc.scratch_ptr_2);
         detail::global_impl_driver<SubgroupSize>(
-            desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset, desc.scratch_ptr_2.get(),
+            static_cast<const Scalar*>(desc.scratch_ptr_1.get()),
+            static_cast<const Scalar*>(desc.scratch_ptr_1.get() + imag_offset), desc.scratch_ptr_2.get(),
             desc.scratch_ptr_2.get() + imag_offset, desc, dimension_data, kernels, dimension_data.transpose_kernels,
             dimension_data.num_backward_factors, dimension_data.backward_twiddles_offset,
             dimension_data.backward_impl_twiddle_offset, std::size_t(dimension_data.num_forward_factors), i,
