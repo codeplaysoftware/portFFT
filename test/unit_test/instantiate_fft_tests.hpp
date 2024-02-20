@@ -246,7 +246,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
         oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33000ul),
         ::testing::Values(layout_params{{64}, {1}, {7}}, layout_params{{64}, {4}, {7}},
-                          layout_params{{96}, {3}, {2}, 300, 200}, layout_params{{128}, {3}, {4}}))),
+                          layout_params{{75}, {3}, {2}, 300, 200}, layout_params{{104}, {3}, {4}}))),
     test_params_print());
 // The LikeBatchInterleaved tests must have stride >= number of transforms
 INSTANTIATE_TEST_SUITE_P(
@@ -315,7 +315,7 @@ INSTANTIATE_TEST_SUITE_P(workItemStridedArbitraryInterleaved, FFTTest,
 INSTANTIATE_TEST_SUITE_P(SubgroupStridedArbitraryInterleaved, FFTTest,
                          ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
                              all_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(13),
-                             ::testing::Values(layout_params{{64}, {13}, {13}, 12, 12}))),
+                             ::testing::Values(layout_params{{85}, {13}, {13}, 12, 12}))),
                          test_params_print());
 
 // Invalid configurations test suite
