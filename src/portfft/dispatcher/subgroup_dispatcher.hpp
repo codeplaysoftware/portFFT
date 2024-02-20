@@ -373,8 +373,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         // data is batch interleaved in local
         if (!is_output_batch_interleaved) {
           global_data.log_message_global(__func__,
-                                         "storing transposed data from local to global memory (SubgroupSize != "
-                                         "FactorSG) with packed output layout");
+                                         "storing data from batch interleaved local memory to not batch interleaved "
+                                         "global memory (SubgroupSize != FactorSG)");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             const std::array<Idx, 3> local_strides{max_num_batches_local_mem * 2, 2, 1};
             const std::array<IdxGlobal, 3> global_strides{output_stride * 2, output_distance * 2, 1};
@@ -396,7 +396,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           }
         } else {
           global_data.log_message_global(
-              __func__, "storing transposed data from local memory to global memory with batch interleaved layout");
+              __func__, "storing data from batch interleaved local memory to batch interleaved global memory");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             detail::md_view local_md_view2{loc_view, std::array{2 * max_num_batches_local_mem, 1}};
             detail::md_view output_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i};
