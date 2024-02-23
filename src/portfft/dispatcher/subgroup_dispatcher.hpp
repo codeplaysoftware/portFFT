@@ -137,10 +137,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   Idx id_of_wi_in_fft = subgroup_local_id % factor_sg;
   Idx n_ffts_per_wg = n_ffts_per_sg * n_sgs_in_wg;
 
-  // the +1 is needed for workitems not working on useful data so they also
-  // contribute to subgroup algorithms and data transfers in last iteration
-  IdxGlobal rounded_up_n_ffts = round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(n_ffts_per_wg)) +
-                                (subgroup_local_id >= max_wis_working);
+  // round up so the whole work-group enters the loop and can be used for synchronization
+  IdxGlobal rounded_up_n_ffts = round_up_to_multiple(n_transforms, static_cast<IdxGlobal>(n_ffts_per_wg));
 
   const bool is_input_batch_interleaved = input_stride == n_transforms && input_distance == 1;
   const bool is_output_batch_interleaved = output_stride == n_transforms && output_distance == 1;
