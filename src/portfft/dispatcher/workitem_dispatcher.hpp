@@ -93,14 +93,11 @@ PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifi
  * @param kh kernel handler associated with the kernel launch
  * @param load_modifier_data Pointer to the load modifier data in global memory
  * @param store_modifier_data Pointer to the store modifier data in global memory
- * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <Idx SubgroupSize, typename T>
 PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   IdxGlobal n_transforms, global_data_struct<1> global_data, sycl::kernel_handler& kh,
-                                  const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
-                                  T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+                                  const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
   detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
@@ -144,8 +141,6 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
   Idx local_imag_offset = fft_size * SubgroupSize;
   constexpr Idx BankLinesPerPad = 1;
   auto loc_view = detail::padded_view(loc, BankLinesPerPad);
-  auto loc_load_modifier_view = detail::padded_view(loc_load_modifier, BankLinesPerPad);
-  auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   const IdxGlobal transform_idx_begin = static_cast<IdxGlobal>(global_data.it.get_global_id(0));
   const IdxGlobal transform_idx_step = static_cast<IdxGlobal>(global_data.it.get_global_range(0));

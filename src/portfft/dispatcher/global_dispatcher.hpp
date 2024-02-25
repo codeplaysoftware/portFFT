@@ -156,9 +156,9 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
       }
     };
 
-    auto calculate_level_specific_twiddles = [&calculate_twiddles](Scalar* host_twiddles_ptr, Scalar* scratch_ptr,
-                                                                   const kernel_data_struct& kernel_data,
-                                                                   IdxGlobal& ptr_offset) {
+    auto calculate_level_specific_twiddles = [calculate_twiddles](Scalar* host_twiddles_ptr, Scalar* scratch_ptr,
+                                                                  const kernel_data_struct& kernel_data,
+                                                                  IdxGlobal& ptr_offset) {
       if (kernel_data.level == detail::level::SUBGROUP) {
         for (Idx i = 0; i < kernel_data.factors.at(0); i++) {
           for (Idx j = 0; j < kernel_data.factors.at(1); j++) {
@@ -198,7 +198,7 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
         for (std::size_t i = 0; i < num_factors; i++) {
           factors.push_back(static_cast<IdxGlobal>(kernels.at(offset + i).length));
         }
-        for (std::size_t i = 0; i < num_factors; i++) {
+        for (std::size_t i = 0; i < num_factors - 1; i++) {
           sub_batches.push_back(std::accumulate(factors.begin() + static_cast<long>(offset + i + 1), factors.end(),
                                                 IdxGlobal(1), std::multiplies<IdxGlobal>()));
         }
@@ -268,12 +268,8 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                                                         const idxglobal_vec_t& sub_batches) -> void {
       auto calculate_twiddles_and_populate_metadata_impl =
           [&](Scalar* scratch_ptr, std::size_t num_factors, std::size_t kd_offset, IdxGlobal& ptr_offset) -> IdxGlobal {
-        // calculate twiddles between factors
         IdxGlobal impl_twiddles_offset;
-        for (std::size_t i = 0; i < num_factors - 1; i++) {
-          calculate_twiddles(sub_batches.at(kd_offset + i), factors.at(kd_offset + i), ptr_offset, host_twiddles_ptr);
-        }
-        impl_twiddles_offset = ptr_offset;
+        // First populate metadata
         for (std::size_t i = 0; i < num_factors; i++) {
           auto& kernel_data = kernels.at(kd_offset + i);
           kernel_data.batch_size = sub_batches.at(kd_offset + i);
@@ -286,10 +282,22 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                                 desc.n_compute_units, kernel_data.used_sg_size, num_sgs_in_wg);
           kernel_data.global_range = global_range;
           kernel_data.local_range = local_range;
+        }
+
+        // Populate store modifiers
+        for (std::size_t i = 0; i < num_factors - 1; i++) {
+          calculate_twiddles(sub_batches.at(kd_offset + i), factors.at(kd_offset + i), ptr_offset, host_twiddles_ptr);
+        }
+        impl_twiddles_offset = ptr_offset;
+
+        // Populate Implementation specific twiddles
+        for (std::size_t i = 0; i < num_factors; i++) {
+          const auto& kernel_data = kernels.at(kd_offset + i);
           calculate_level_specific_twiddles(host_twiddles_ptr, scratch_ptr, kernel_data, ptr_offset);
         }
         return impl_twiddles_offset;
       };
+
       std::vector<Scalar> scratch_space(2 * dimension_data.length);
       IdxGlobal offset = 0;
       dimension_data.forward_impl_twiddle_offset = calculate_twiddles_and_populate_metadata_impl(
@@ -317,7 +325,7 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     }
     std::vector<Scalar> host_memory_twiddles(mem_required_for_twiddles);
     calculate_twiddles_and_populate_metadata(host_memory_twiddles.data(), factors, sub_batches);
-    desc.queue.copy(host_memory_twiddles.data(), device_twiddles_ptr, mem_required_for_twiddles).wait();
+    desc.queue.copy(host_memory_twiddles.data(), device_twiddles_ptr, mem_required_for_twiddles).wait_and_throw();
     return device_twiddles_ptr;
   }
 };
@@ -429,6 +437,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
             detail::elementwise_multiply::NOT_APPLIED, static_cast<const Scalar*>(nullptr));
       }
     }
+    desc.queue.wait_and_throw();
     return event;
   }
 };

@@ -79,15 +79,12 @@ IdxGlobal get_global_size_subgroup(IdxGlobal n_transforms, Idx factor_sg, Idx su
  * @param twiddles pointer containing twiddles
  * @param load_modifier_data Pointer to the load modifier data in global Memory
  * @param store_modifier_data Pointer to the store modifier data in global Memory
- * @param loc_load_modifier Pointer to load modifier data in local memory
- * @param loc_store_modifier Pointer to store modifier data in local memory
  */
 template <Idx SubgroupSize, typename T>
 PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag, T* output_imag, T* loc,
                                   T* loc_twiddles, IdxGlobal n_transforms, const T* twiddles,
                                   global_data_struct<1> global_data, sycl::kernel_handler& kh,
-                                  const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
-                                  [[maybe_unused]] T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
+                                  const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr) {
   const complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   const detail::elementwise_multiply multiply_on_load =
       kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
@@ -101,7 +98,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
   const T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
 
-  using vec_t = sycl::vec<T, 2>;
+  using vec2_t = sycl::vec<T, 2>;
+  vec2_t modifier_vec;
 
   const Idx factor_wi = kh.get_specialization_constant<SubgroupFactorWISpecConst>();
   const Idx factor_sg = kh.get_specialization_constant<SubgroupFactorSGSpecConst>();
@@ -157,7 +155,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
 
   constexpr Idx BankLinesPerPad = 1;
   auto loc_view = detail::padded_view(loc, BankLinesPerPad);
-  auto loc_store_modifier_view = detail::padded_view(loc_store_modifier, BankLinesPerPad);
 
   global_data.log_message_global(__func__, "loading sg twiddles from global to local memory");
   global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, n_reals_per_fft);
@@ -192,12 +189,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       Idx rounded_up_sub_batches = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
       Idx local_imag_offset = factor_wi * factor_sg * max_num_batches_local_mem;
 
-      if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-        global_data.log_message_global(__func__, "loading store multipliers from global to local memory");
-        global2local<detail::level::WORKGROUP, SubgroupSize>(global_data, store_modifier_data, loc_store_modifier_view,
-                                                             n_reals_per_fft * num_batches_in_local_mem,
-                                                             i * n_reals_per_fft);
-      }
       global_data.log_message_global(__func__, "loading transposed data from global to local memory");
       // load / store in a transposed manner
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -249,14 +240,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           conjugate_inplace(priv, factor_wi);
         }
         if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-          vec_t modifier_vec;
           if (working_inner) {
             PORTFFT_UNROLL
             for (Idx j = 0; j < factor_wi; j++) {
-              IdxGlobal base_offset =
-                  static_cast<IdxGlobal>(i) * static_cast<IdxGlobal>(n_reals_per_fft) +
-                  static_cast<IdxGlobal>(sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft);
-              modifier_vec = *reinterpret_cast<const vec_t*>(&load_modifier_data[base_offset]);
+              IdxGlobal idx =
+                  static_cast<IdxGlobal>(n_reals_per_fft) * (i + static_cast<IdxGlobal>(sub_batch + id_of_fft_in_sg)) +
+                  2 * static_cast<IdxGlobal>(id_of_wi_in_fft * factor_wi + j);
+              modifier_vec = *reinterpret_cast<const vec2_t*>(&load_modifier_data[idx]);
               multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
                                priv[2 * j + 1]);
             }
@@ -267,19 +257,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_dump_private("data in registers after computation:", priv, n_reals_per_wi);
         }
         if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-          // No need to store the store modifier data in a transposed fashion as data after sg_dft is already transposed
-          // Tensor Shape for store modifier is num_batches_in_local_memory x FactorSG x FactorWI
           global_data.log_message_global(__func__, "multiplying store modifier data");
           if (working_inner) {
             PORTFFT_UNROLL
             for (Idx j = 0; j < factor_wi; j++) {
-              sycl::vec<T, 2> modifier_priv;
-              Idx base_offset = sub_batch * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-              // TODO: this leads to compilation error on AMD. Revert back to this once it is resolved
-              // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
-              modifier_priv[0] = loc_store_modifier_view[base_offset];
-              modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
-              multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+              IdxGlobal idx =
+                  static_cast<IdxGlobal>(n_reals_per_fft) * (i + static_cast<IdxGlobal>(sub_batch + id_of_fft_in_sg)) +
+                  static_cast<IdxGlobal>(2 * j * factor_sg + 2 * id_of_wi_in_fft);
+              modifier_vec = *reinterpret_cast<const vec2_t*>(&store_modifier_data[idx]);
+              multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
                                priv[2 * j + 1]);
             }
           }
@@ -411,12 +397,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
             local_imag_offset + subgroup_id * n_cplx_per_sg);
       }
-      if (multiply_on_store == detail::elementwise_multiply::APPLIED) {
-        global_data.log_message_global(__func__, "loading store modifier data");
-        global2local<detail::level::SUBGROUP, SubgroupSize>(
-            global_data, store_modifier_data, loc_store_modifier_view, n_ffts_worked_on_by_sg * n_reals_per_fft,
-            n_reals_per_fft * (i - id_of_fft_in_sg), subgroup_id * n_reals_per_sg);
-      }
+
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("data in local memory:", loc_view, n_reals_per_fft);
       if (working) {
@@ -441,16 +422,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         conjugate_inplace(priv, factor_wi);
       }
       if (multiply_on_load == detail::elementwise_multiply::APPLIED) {
-        vec_t modifier_vec;
         if (working) {
           global_data.log_message_global(__func__, "Multiplying load modifier before sg_dft");
           PORTFFT_UNROLL
           for (Idx j = 0; j < factor_wi; j++) {
-            IdxGlobal base_offset =
-                IdxGlobal(i) * IdxGlobal(n_reals_per_fft) +
-                static_cast<IdxGlobal>(static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg +
-                                       id_of_fft_in_sg * n_reals_per_fft + 2 * id_of_wi_in_fft * factor_wi + 2 * j);
-            modifier_vec = *reinterpret_cast<const vec_t*>(&load_modifier_data[base_offset]);
+            IdxGlobal idx = static_cast<IdxGlobal>(n_reals_per_fft) * (i + IdxGlobal(id_of_fft_in_sg)) +
+                            2 * static_cast<IdxGlobal>(id_of_wi_in_fft * factor_wi + j);
+            modifier_vec = *reinterpret_cast<const vec2_t*>(&load_modifier_data[idx]);
             multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
                              priv[2 * j + 1]);
           }
@@ -465,13 +443,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_message_global(__func__, "Multiplying store modifier before sg_dft");
           PORTFFT_UNROLL
           for (Idx j = 0; j < factor_wi; j++) {
-            sycl::vec<T, 2> modifier_priv;
-            Idx base_offset = static_cast<Idx>(global_data.it.get_sub_group().get_group_id()) * n_ffts_per_sg +
-                              id_of_fft_in_sg * n_reals_per_fft + 2 * j * factor_sg + 2 * id_of_wi_in_fft;
-            // modifier_priv.load(0, detail::get_local_multi_ptr(&loc_store_modifier_view[base_offset]));
-            modifier_priv[0] = loc_store_modifier_view[base_offset];
-            modifier_priv[1] = loc_store_modifier_view[base_offset + 1];
-            multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_priv[0], modifier_priv[1], priv[2 * j],
+            IdxGlobal idx = static_cast<IdxGlobal>(n_reals_per_fft) * (i + IdxGlobal(id_of_fft_in_sg)) +
+                            static_cast<IdxGlobal>(2 * j * factor_sg + 2 * id_of_wi_in_fft);
+            modifier_vec = *reinterpret_cast<const vec2_t*>(&store_modifier_data[idx]);
+            multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
                              priv[2 * j + 1]);
           }
         }

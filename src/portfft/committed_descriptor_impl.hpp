@@ -52,7 +52,7 @@ template <typename Scalar, domain Domain, Idx SubgroupSize, typename TIn>
 std::vector<sycl::event> compute_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
                                        const TIn&, Scalar*, const TIn&, Scalar*, const Scalar*, const Scalar*,
                                        const Scalar*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal, IdxGlobal,
-                                       Idx, Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
+                                       Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
 template <typename Scalar, domain Domain, typename TOut>
 sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Domain>::kernel_data_struct&,
@@ -91,7 +91,7 @@ class committed_descriptor_impl {
   friend std::vector<sycl::event> compute_level(
       const typename committed_descriptor_impl<Scalar1, Domain1>::kernel_data_struct&, const TIn&, Scalar1*, const TIn&,
       Scalar1*, const Scalar1*, const Scalar1*, const Scalar1*, const IdxGlobal*, IdxGlobal, IdxGlobal, Idx, IdxGlobal,
-      IdxGlobal, Idx, Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
+      IdxGlobal, Idx, complex_storage, const std::vector<sycl::event>&, sycl::queue&);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
@@ -247,7 +247,9 @@ class committed_descriptor_impl {
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       PORTFFT_LOG_TRACE("Prepared workitem impl for size: ", fft_size);
-      return {detail::level::WORKITEM, static_cast<std::size_t>(fft_size), {{detail::level::WORKITEM, ids, factors}}};
+      return {detail::level::WORKITEM,
+              static_cast<std::size_t>(fft_size),
+              {{detail::level::WORKITEM, ids, {static_cast<Idx>(fft_size)}}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
@@ -296,7 +298,7 @@ class committed_descriptor_impl {
       }
     }
     PORTFFT_LOG_TRACE("Preparing global impl");
-    std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
+    kernel_ids_and_metadata_t param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
         // Throughout we have assumed there would always be enough local memory for the WI implementation.
@@ -313,12 +315,10 @@ class committed_descriptor_impl {
         if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
           std::size_t input_scalars =
               num_scalars_in_local_mem(detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                                       {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg,
+                                       {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
-          std::size_t store_modifiers = batch_interleaved_layout ? input_scalars : 0;
           std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
-          return (sizeof(Scalar) * (input_scalars + store_modifiers + twiddle_scalars)) <
-                 static_cast<std::size_t>(local_memory_size);
+          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) < static_cast<std::size_t>(local_memory_size);
         }
         return false;
       }();
@@ -330,7 +330,7 @@ class committed_descriptor_impl {
                           "and factor_sg:", factor_sg);
         param_vec.emplace_back(detail::level::SUBGROUP,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
-                               std::vector<Idx>{factor_sg, factor_wi});
+                               std::vector<Idx>{factor_wi, factor_sg});
         return true;
       }
       return false;
@@ -591,16 +591,16 @@ class committed_descriptor_impl {
    * vector of kernel ids, factors
    * @param compute_direction direction of compute: forward or backward
    * @param dimension_num which dimension are the kernels being built for
-   * @param skip_scaling whether or not to skip scaling
    * @return vector of kernel_data_struct if all kernel builds are successful, std::nullopt otherwise
    */
   template <Idx SubgroupSize>
   std::optional<std::vector<kernel_data_struct>> set_spec_constants_driver(
       detail::level top_level, kernel_ids_and_metadata_t& prepared_vec, direction compute_direction,
-      std::size_t dimension_num, bool skip_scaling, Idx num_forward_factors, Idx num_backward_factors) {
+      std::size_t dimension_num, Idx num_forward_factors, Idx num_backward_factors) {
     Scalar scale_factor = compute_direction == direction::FORWARD ? params.forward_scale : params.backward_scale;
     std::vector<kernel_data_struct> result;
     std::vector<input_bundles_and_metadata_t> input_kernels_and_metadata;
+    bool skip_scaling = dimension_num != params.lengths.size() - 1;
     for (const auto& [level, kernel_ids, factors] : prepared_vec) {
       input_kernels_and_metadata.emplace_back(
           level, sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), kernel_ids), factors);
@@ -624,8 +624,12 @@ class committed_descriptor_impl {
           compute_direction == direction::FORWARD ? params.backward_distance : params.forward_distance;
 
       if (compute_direction == direction::BACKWARD) {
-        conjugate_on_load = detail::complex_conjugate::APPLIED;
-        conjugate_on_store = detail::complex_conjugate::APPLIED;
+        if (dimension_num == 0) {
+          conjugate_on_load = detail::complex_conjugate::APPLIED;
+        }
+        if (dimension_num == params.lengths.size() - 1) {
+          conjugate_on_store = detail::complex_conjugate::APPLIED;
+        }
       }
       if (skip_scaling) {
         scale_factor_applied = detail::apply_scale_factor::NOT_APPLIED;
@@ -666,7 +670,6 @@ class committed_descriptor_impl {
   template <Idx SubgroupSize, Idx... OtherSGSizes>
   dimension_struct build_w_spec_const(std::size_t dimension_num) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    bool skip_scaling = dimension_num == params.lengths.size() - 1;
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
@@ -686,12 +689,10 @@ class committed_descriptor_impl {
       Idx num_backward_factors = static_cast<Idx>(prepared_vec.size()) - num_forward_factors;
       bool is_prime = static_cast<bool>(dimension_size != params.lengths[dimension_num]);
       if (is_compatible) {
-        auto forward_kernels =
-            set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num,
-                                                    skip_scaling, num_forward_factors, num_backward_factors);
-        auto backward_kernels =
-            set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD, dimension_num,
-                                                    skip_scaling, num_forward_factors, num_backward_factors);
+        auto forward_kernels = set_spec_constants_driver<SubgroupSize>(
+            top_level, prepared_vec, direction::FORWARD, dimension_num, num_forward_factors, num_backward_factors);
+        auto backward_kernels = set_spec_constants_driver<SubgroupSize>(
+            top_level, prepared_vec, direction::BACKWARD, dimension_num, num_forward_factors, num_backward_factors);
         if (forward_kernels.has_value() && backward_kernels.has_value()) {
           return {forward_kernels.value(), backward_kernels.value(),      top_level,
                   dimension_size,          params.lengths[dimension_num], SubgroupSize,
@@ -710,8 +711,8 @@ class committed_descriptor_impl {
    * Builds transpose kernels required for global implementation
    * @param dimension_data dimension_struct associated with the dimension
    * @param num_transpositions Number of transpose kernels to build
-   * @param ld_input vector containing leading dimensions of the inputs
-   * @param ld_output vector containing leading dimensions of the outputs
+   * @param ld_input vector containing leading dimensions of the inputs for transpositions at each level
+   * @param ld_output vector containing leading dimensions of the outputs for transpositions at each level
    */
   void build_transpose_kernels(dimension_struct& dimension_data, std::size_t num_transpositions,
                                std::vector<IdxGlobal>& ld_input, std::vector<IdxGlobal>& ld_output) {

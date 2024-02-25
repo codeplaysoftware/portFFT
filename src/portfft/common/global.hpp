@@ -155,7 +155,7 @@ template <typename Scalar, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* input_imag, Scalar* output_imag,
                                    const Scalar* implementation_twiddles, const Scalar* load_modifier_data,
                                    const Scalar* store_modifier_data, Scalar* input_loc, Scalar* twiddles_loc,
-                                   Scalar* store_modifier_loc, const IdxGlobal* factors, const IdxGlobal* inner_batches,
+                                   const IdxGlobal* factors, const IdxGlobal* inner_batches,
                                    const IdxGlobal* inclusive_scan, IdxGlobal batch_size,
                                    detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
@@ -175,16 +175,15 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
       return static_cast<IdxGlobal>(0);
     }();
     if (level == detail::level::WORKITEM) {
-      workitem_impl<SubgroupSize, Scalar>(
-          input + outer_batch_offset, output + outer_batch_offset, input_imag + outer_batch_offset,
-          output_imag + outer_batch_offset, input_loc, batch_size, global_data, kh, load_modifier_data,
-          store_modifier_data + store_modifier_offset, static_cast<Scalar*>(nullptr), store_modifier_loc);
+      workitem_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
+                                          input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
+                                          batch_size, global_data, kh, load_modifier_data,
+                                          store_modifier_data + store_modifier_offset);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
                                           twiddles_loc, batch_size, implementation_twiddles, global_data, kh,
-                                          load_modifier_data, store_modifier_data + store_modifier_offset,
-                                          static_cast<Scalar*>(nullptr), store_modifier_loc);
+                                          load_modifier_data, store_modifier_data + store_modifier_offset);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                            input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
@@ -332,50 +331,39 @@ std::vector<sycl::event> compute_level(
     Scalar* output, const TIn& input_imag, Scalar* output_imag, const Scalar* load_modifier_data,
     const Scalar* store_modifier_data, const Scalar* subimpl_twiddles, const IdxGlobal* factors_triple,
     IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
-    IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
-    const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
+    IdxGlobal batch_start, Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies,
+    sycl::queue& queue) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   constexpr detail::memory Mem = std::is_pointer_v<TIn> ? detail::memory::USM : detail::memory::BUFFER;
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
-  std::size_t local_mem_for_store_modifier = [&]() -> std::size_t {
-    if (factor_id < total_factors - 1) {
-      if (kd_struct.level == detail::level::WORKITEM || kd_struct.level == detail::level::WORKGROUP) {
-        return 1;
-      }
-      if (kd_struct.level == detail::level::SUBGROUP) {
-        return kd_struct.local_mem_required;
-      }
-    }
-    return std::size_t(1);
-  }();
+
   std::size_t loc_mem_for_twiddles = [&]() {
     if (kd_struct.level == detail::level::WORKITEM) {
-      return std::size_t(1);
+      return std::size_t(0);
     }
     if (kd_struct.level == detail::level::SUBGROUP) {
       return 2 * kd_struct.length;
     }
     if (kd_struct.level == detail::level::WORKGROUP) {
-      return std::size_t(1);
+      return std::size_t(0);
     }
     throw internal_error("illegal level encountered");
   }();
+
   const IdxGlobal* inner_batches = factors_triple + total_factors;
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
   const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
-  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers",
-                    local_mem_for_store_modifier, "twiddles", loc_mem_for_twiddles, "total",
-                    local_memory_for_input + local_mem_for_store_modifier + loc_mem_for_twiddles);
+  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers", "twiddles",
+                    loc_mem_for_twiddles, "total", local_memory_for_input + loc_mem_for_twiddles);
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
     events.push_back(queue.submit([&](sycl::handler& cgh) {
       sycl::local_accessor<Scalar, 1> loc_for_input(local_memory_for_input, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_twiddles(loc_mem_for_twiddles, cgh);
-      sycl::local_accessor<Scalar, 1> loc_for_modifier(local_mem_for_store_modifier, cgh);
       auto in_acc_or_usm = detail::get_access<const Scalar>(input, cgh);
       auto in_imag_acc_or_usm = detail::get_access<const Scalar>(input_imag, cgh);
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
@@ -414,8 +402,7 @@ std::vector<sycl::event> compute_level(
             dispatch_level<Scalar, SubgroupSize>(
                 &in_acc_or_usm[0] + input_batch_offset, offset_output, &in_imag_acc_or_usm[0] + input_batch_offset,
                 offset_output_imag, subimpl_twiddles, load_modifier_data, store_modifier_data, &loc_for_input[0],
-                &loc_for_twiddles[0], &loc_for_modifier[0], factors_triple, inner_batches, inclusive_scan, batch_size,
-                global_data, kh);
+                &loc_for_twiddles[0], factors_triple, inner_batches, inclusive_scan, batch_size, global_data, kh);
           });
     }));
   }
@@ -483,13 +470,12 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
   const Scalar* load_modifier_data = first_uses_load_modifier == detail::elementwise_multiply::APPLIED
                                          ? twiddles_ptr + dimension_data.bluestein_modifiers_offset
                                          : static_cast<const Scalar*>(nullptr);
-
   l2_events = detail::compute_level<Scalar, Domain, SubgroupSize>(
       kernel0, input, desc.scratch_ptr_1.get(), input_imag, desc.scratch_ptr_1.get() + imag_offset, load_modifier_data,
       twiddles_ptr + intermediate_twiddles_offset, twiddles_ptr + impl_twiddle_offset, factors_and_scan,
-      batch_offset_input, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i), 0, num_factors,
+      batch_offset_input, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i), num_factors,
       storage, {event}, desc.queue);
-
+  desc.queue.wait_and_throw();
   intermediate_twiddles_offset += 2 * kernel0.batch_size * static_cast<IdxGlobal>(kernel0.length);
   impl_twiddle_offset += increment_twiddle_offset(kernel0.level, static_cast<Idx>(kernel0.length));
   for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(num_factors); factor_num++) {
@@ -499,18 +485,19 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
           current_kernel, static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
           static_cast<const Scalar*>(desc.scratch_ptr_1.get() + imag_offset), desc.scratch_ptr_1.get() + imag_offset,
           static_cast<const Scalar*>(nullptr), last_kernel_store_modifier_data, twiddles_ptr + impl_twiddle_offset,
-          factors_and_scan, 0, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i),
-          static_cast<Idx>(factor_num), num_factors, storage, l2_events, desc.queue);
+          factors_and_scan, 0, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i), num_factors,
+          storage, l2_events, desc.queue);
     } else {
       l2_events = detail::compute_level<Scalar, Domain, SubgroupSize>(
           current_kernel, static_cast<const Scalar*>(desc.scratch_ptr_1.get()), desc.scratch_ptr_1.get(),
           static_cast<const Scalar*>(desc.scratch_ptr_1.get() + imag_offset), desc.scratch_ptr_1.get() + imag_offset,
           static_cast<const Scalar*>(nullptr), twiddles_ptr + intermediate_twiddles_offset,
           twiddles_ptr + impl_twiddle_offset, factors_and_scan, 0, dimension_size, max_batches_in_l2, num_batches,
-          static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num), num_factors, storage, l2_events, desc.queue);
+          static_cast<IdxGlobal>(i), num_factors, storage, l2_events, desc.queue);
       intermediate_twiddles_offset += 2 * current_kernel.batch_size * static_cast<IdxGlobal>(current_kernel.length);
       impl_twiddle_offset += increment_twiddle_offset(current_kernel.level, static_cast<Idx>(current_kernel.length));
     }
+    desc.queue.wait_and_throw();
   }
 
   event = desc.queue.submit([&](sycl::handler& cgh) {
@@ -529,6 +516,7 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
           desc.scratch_ptr_2.get() + imag_offset, factors_and_scan, dimension_size, static_cast<Idx>(max_batches_in_l2),
           num_batches, static_cast<IdxGlobal>(i), num_factors, 0, desc.queue, {event}, storage);
     }
+    desc.queue.wait_and_throw();
     desc.scratch_ptr_1.swap(desc.scratch_ptr_2);
   }
 
@@ -543,6 +531,7 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
         factors_and_scan, dimension_size, static_cast<Idx>(max_batches_in_l2), num_batches, static_cast<IdxGlobal>(i),
         num_factors, batch_offset_output, desc.queue, {event}, storage);
   }
+  desc.queue.wait_and_throw();
   return event;
 }
 
