@@ -230,6 +230,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg + id_of_fft_in_sg;
       for (Idx fft_idx_in_local = first_fft_in_local_for_wi; fft_idx_in_local < rounded_up_ffts_in_local;
            fft_idx_in_local += n_ffts_per_wg) {
+// private memory declaration needs to be here to avoid an AMD bug
 #ifdef PORTFFT_USE_SCLA
         T wi_private_scratch[detail::SpecConstWIScratchSize];
         T priv[detail::SpecConstNumRealsPerFFT];
