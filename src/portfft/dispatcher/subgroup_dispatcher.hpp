@@ -112,13 +112,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                  n_transforms);
   const Idx n_reals_per_wi = 2 * factor_wi;
 
-#ifdef PORTFFT_USE_SCLA
-  T wi_private_scratch[detail::SpecConstWIScratchSize];
-  T priv[detail::SpecConstNumRealsPerFFT];
-#else
-  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
-  T priv[2 * MaxComplexPerWI];
-#endif
   Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
@@ -237,6 +230,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg + id_of_fft_in_sg;
       for (Idx fft_idx_in_local = first_fft_in_local_for_wi; fft_idx_in_local < rounded_up_ffts_in_local;
            fft_idx_in_local += n_ffts_per_wg) {
+#ifdef PORTFFT_USE_SCLA
+        T wi_private_scratch[detail::SpecConstWIScratchSize];
+        T priv[detail::SpecConstNumRealsPerFFT];
+#else
+        T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+        T priv[2 * MaxComplexPerWI];
+#endif
+
         bool working_inner = fft_idx_in_local < num_batches_in_local_mem && subgroup_local_id < max_wis_working;
         if (working_inner) {
           global_data.log_message_global(__func__, "loading batch_interleaved data from local to private memory");
@@ -477,6 +478,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       }
       sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("data in local memory:", loc_view, n_reals_per_fft);
+
+#ifdef PORTFFT_USE_SCLA
+      T wi_private_scratch[detail::SpecConstWIScratchSize];
+      T priv[detail::SpecConstNumRealsPerFFT];
+#else
+      T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+      T priv[2 * MaxComplexPerWI];
+#endif
 
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
