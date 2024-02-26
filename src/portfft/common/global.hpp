@@ -318,7 +318,6 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
  * @param num_batches_in_l2 number of batches in l2
  * @param n_transforms number of transforms as set in the descriptor
  * @param batch_start start of the current global batch being processed
- * @param factor_id current factor being proccessed
  * @param total_factors total number of factors
  * @param storage complex storage: interleaved or split
  * @param dependencies dependent events
@@ -357,8 +356,8 @@ std::vector<sycl::event> compute_level(
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
   const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
-  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers", "twiddles",
-                    loc_mem_for_twiddles, "total", local_memory_for_input + loc_mem_for_twiddles);
+  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "twiddles", loc_mem_for_twiddles, "total",
+                    local_memory_for_input + loc_mem_for_twiddles);
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
     events.push_back(queue.submit([&](sycl::handler& cgh) {
@@ -475,9 +474,9 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
       twiddles_ptr + intermediate_twiddles_offset, twiddles_ptr + impl_twiddle_offset, factors_and_scan,
       batch_offset_input, dimension_size, max_batches_in_l2, num_batches, static_cast<IdxGlobal>(i), num_factors,
       storage, {event}, desc.queue);
-  desc.queue.wait_and_throw();
   intermediate_twiddles_offset += 2 * kernel0.batch_size * static_cast<IdxGlobal>(kernel0.length);
   impl_twiddle_offset += increment_twiddle_offset(kernel0.level, static_cast<Idx>(kernel0.length));
+
   for (std::size_t factor_num = 1; factor_num < static_cast<std::size_t>(num_factors); factor_num++) {
     auto& current_kernel = kernels.at(kd_struct_offset + factor_num);
     if (static_cast<Idx>(factor_num) == num_factors - 1) {
@@ -497,7 +496,6 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
       intermediate_twiddles_offset += 2 * current_kernel.batch_size * static_cast<IdxGlobal>(current_kernel.length);
       impl_twiddle_offset += increment_twiddle_offset(current_kernel.level, static_cast<Idx>(current_kernel.length));
     }
-    desc.queue.wait_and_throw();
   }
 
   event = desc.queue.submit([&](sycl::handler& cgh) {
@@ -516,7 +514,6 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
           desc.scratch_ptr_2.get() + imag_offset, factors_and_scan, dimension_size, static_cast<Idx>(max_batches_in_l2),
           num_batches, static_cast<IdxGlobal>(i), num_factors, 0, desc.queue, {event}, storage);
     }
-    desc.queue.wait_and_throw();
     desc.scratch_ptr_1.swap(desc.scratch_ptr_2);
   }
 
@@ -531,7 +528,6 @@ sycl::event global_impl_driver(const TIn& input, const TIn& input_imag, TOut out
         factors_and_scan, dimension_size, static_cast<Idx>(max_batches_in_l2), num_batches, static_cast<IdxGlobal>(i),
         num_factors, batch_offset_output, desc.queue, {event}, storage);
   }
-  desc.queue.wait_and_throw();
   return event;
 }
 

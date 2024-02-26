@@ -488,6 +488,28 @@ PORTFFT_INLINE void local2global(detail::global_data_struct<1> global_data, Loca
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
+/**
+ * Device Level copy function to copy between data between two arrays with different
+ * @tparam T Scalar type
+ * @param src source pointer of type T
+ * @param dst pointer of type T
+ * @param src_distance distance between 2 transforms in the source array
+ * @param dst_distance distance between 2 transforms in the destination array
+ * @param
+ */
+template <typename T>
+PORTFFT_INLINE void copy(const T* src, T* dst, IdxGlobal src_distance, IdxGlobal dst_distance, IdxGlobal num_elements,
+                         IdxGlobal num_copies, sycl::nd_item<1> it) {
+  for (IdxGlobal i = IdxGlobal(it.get_global_id(0)); i < num_elements * num_copies;
+       i += IdxGlobal(it.get_global_range(0))) {
+    IdxGlobal transform_id = (i / num_elements) % num_copies;
+    IdxGlobal element_in_transform = i % num_elements;
+    IdxGlobal src_index = transform_id * src_distance + element_in_transform;
+    IdxGlobal dst_index = transform_id * dst_distance + element_in_transform;
+    dst[dst_index] = src[src_index];
+  }
+}
+
 }  // namespace portfft
 
 #endif

@@ -66,10 +66,11 @@ IdxGlobal get_global_size_workitem(IdxGlobal n_transforms, Idx subgroup_size, Id
  */
 template <typename PrivT, typename T>
 PORTFFT_INLINE void apply_modifier(Idx num_elements, PrivT priv, const T* modifier_data, IdxGlobal offset) {
+  using vec2_t = sycl::vec<T, 2>;
+  vec2_t modifier_vec;
   PORTFFT_UNROLL
   for (Idx j = 0; j < num_elements; j++) {
-    sycl::vec<T, 2> modifier_vec;
-    modifier_vec.load(0, detail::get_global_multi_ptr(&modifier_data[offset + 2 * j]));
+    modifier_vec = *reinterpret_cast<const vec2_t*>(&modifier_data[offset + 2 * j]);
     multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j], priv[2 * j + 1]);
   }
 }

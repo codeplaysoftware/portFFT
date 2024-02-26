@@ -335,7 +335,8 @@ class committed_descriptor_impl {
       }
       return false;
     };
-    if (!detail::factorize_input(fft_size, check_and_select_target_level)) {
+    bool encountered_large_prime = detail::factorize_input(fft_size, check_and_select_target_level);
+    if (encountered_large_prime) {
       param_vec.clear();
       fft_size = static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
       detail::factorize_input(fft_size, check_and_select_target_level);
