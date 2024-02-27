@@ -257,6 +257,15 @@ detail::layout get_layout(const Descriptor& desc, direction dir) {
   return detail::layout::UNPACKED;
 }
 
+/**
+ * return the padded length to be used for the Bluestein implementation
+ * @param committed_length Committed problem length which needs to be padded
+ * @return The padded length to be used for the Bluestein implementation
+ */
+inline IdxGlobal get_padded_length(double committed_length) {
+  return static_cast<IdxGlobal>(std::pow(2, ceil(log(committed_length) / log(2.0))));
+}
+
 }  // namespace detail
 }  // namespace portfft
 #endif

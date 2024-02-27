@@ -160,16 +160,16 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                                                                   const kernel_data_struct& kernel_data,
                                                                   IdxGlobal& ptr_offset) {
       if (kernel_data.level == detail::level::SUBGROUP) {
-        for (Idx i = 0; i < kernel_data.factors.at(0); i++) {
-          for (Idx j = 0; j < kernel_data.factors.at(1); j++) {
+        for (Idx i = 0; i < kernel_data.factors.at(1); i++) {
+          for (Idx j = 0; j < kernel_data.factors.at(0); j++) {
             double theta = -2 * M_PI * static_cast<double>(i * j) /
-                           static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
+                           static_cast<double>(kernel_data.factors.at(1) * kernel_data.factors.at(0));
             auto twiddle =
                 std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
             host_twiddles_ptr[static_cast<std::size_t>(
-                ptr_offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(0) + i))] = twiddle.real();
+                ptr_offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(1) + i))] = twiddle.real();
             host_twiddles_ptr[static_cast<std::size_t>(
-                ptr_offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i))] =
+                ptr_offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(0)) * kernel_data.factors.at(1) + i))] =
                 twiddle.imag();
           }
         }
@@ -348,10 +348,10 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
       PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
     } else if (level == detail::level::SUBGROUP) {
-      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
-      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
     }
   }
 };

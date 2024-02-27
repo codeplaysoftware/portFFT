@@ -318,7 +318,7 @@ class committed_descriptor_impl {
                                        {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
           std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
-          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) < static_cast<std::size_t>(local_memory_size);
+          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) <= static_cast<std::size_t>(local_memory_size);
         }
         return false;
       }();
@@ -338,9 +338,12 @@ class committed_descriptor_impl {
     bool encountered_large_prime = detail::factorize_input(fft_size, check_and_select_target_level);
     if (encountered_large_prime) {
       param_vec.clear();
-      fft_size = static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(fft_size)) / log(2.0))));
-      detail::factorize_input(fft_size, check_and_select_target_level);
-      detail::factorize_input(fft_size, check_and_select_target_level);
+      auto padded_fft_size = detail::get_padded_length(static_cast<double>(fft_size));
+
+      // Forward DFT within Bluestein implementation (pre convolution).
+      detail::factorize_input(padded_fft_size, check_and_select_target_level);
+      // Backward DFT within Bluestein implementation (post convolution).
+      detail::factorize_input(padded_fft_size, check_and_select_target_level);
     }
     return {detail::level::GLOBAL, static_cast<std::size_t>(fft_size), param_vec};
   }
@@ -674,17 +677,18 @@ class committed_descriptor_impl {
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
       auto [top_level, dimension_size, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
       bool is_compatible = true;
-      std::size_t temp = 1;
+      std::size_t accumulated_size = 1;
       Idx num_forward_factors = 0;
       for (const auto& [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
         if (!is_compatible) {
           break;
         }
-        if (temp == dimension_size) {
+        if (accumulated_size == dimension_size) {
           break;
         }
-        temp *= static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
+        accumulated_size *=
+            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>()));
         num_forward_factors++;
       }
       Idx num_backward_factors = static_cast<Idx>(prepared_vec.size()) - num_forward_factors;
@@ -764,7 +768,7 @@ class committed_descriptor_impl {
     queue.copy(inner_batches.data(), ptr + factors.size(), inner_batches.size());
     queue.copy(inclusive_scan.data(), ptr + factors.size() + inner_batches.size(), inclusive_scan.size());
 
-    build_transpose_kernels(dimension_data, num_factors - 1, factors, inner_batches);
+    build_transpose_kernels(dimension_data, num_factors - 1, inner_batches, factors);
 
     // calculate Ideal amount of llc cache required for load/store
     std::size_t llc_cache_space_for_twiddles = 0;

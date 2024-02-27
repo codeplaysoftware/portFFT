@@ -156,6 +156,8 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
                                                 ::testing::Values(sizes_t{9800}, sizes_t{15360}, sizes_t{68640}))),
                          test_params_print());
 
+// Test suite contains both Prime sized values(211, 523, 65537) as well as the sizes which have prime factors that we
+// cannot handle (33012, 45232)
 INSTANTIATE_TEST_SUITE_P(PrimeSizedTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
                              all_valid_global_placement_layouts, fwd_only, interleaved_storage, ::testing::Values(1, 3),
