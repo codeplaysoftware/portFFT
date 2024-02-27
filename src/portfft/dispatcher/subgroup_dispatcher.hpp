@@ -116,6 +116,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   T wi_private_scratch[detail::SpecConstWIScratchSize];
   T priv[detail::SpecConstNumRealsPerFFT];
 #else
+  // zero initializing these arrays avoids a bug with the AMD backend
   T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)]{};
   T priv[2 * MaxComplexPerWI]{};
 #endif
