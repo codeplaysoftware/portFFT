@@ -116,6 +116,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   T wi_private_scratch[detail::SpecConstWIScratchSize];
   T priv[detail::SpecConstNumRealsPerFFT];
 #else
+  // add initialization to priv and wi_private_scratch to allow size 104 to pass
   T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
   T priv[2 * MaxComplexPerWI];
 #endif
