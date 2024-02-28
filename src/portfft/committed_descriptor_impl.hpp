@@ -31,6 +31,7 @@
 
 #include "common/exceptions.hpp"
 #include "common/subgroup.hpp"
+#include "common/workgroup.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 #include "specialization_constant.hpp"
@@ -234,18 +235,8 @@ class committed_descriptor_impl {
       PORTFFT_LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
       return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
     }
-    IdxGlobal n_idx_global = detail::factorize(fft_size);
-    if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
-        detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
-      if (n_idx_global == 1) {
-        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
-      }
-      Idx n = static_cast<Idx>(n_idx_global);
-      Idx m = static_cast<Idx>(fft_size / n_idx_global);
-      Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
-      Idx factor_wi_n = n / factor_sg_n;
-      Idx factor_sg_m = detail::factorize_sg(m, SubgroupSize);
-      Idx factor_wi_m = m / factor_sg_m;
+    if (auto wg_factorization = detail::factorize_for_wg<Scalar>(fft_size, SubgroupSize); wg_factorization) {
+      auto [factor_wi_n, factor_sg_n, factor_wi_m, factor_sg_m] = wg_factorization.value();
       Idx temp_num_sgs_in_wg;
       std::size_t local_memory_usage =
           num_scalars_in_local_mem(detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
@@ -254,8 +245,7 @@ class committed_descriptor_impl {
           sizeof(Scalar);
       // Checks for PACKED layout only at the moment, as the other layout will not be supported
       // by the global implementation. For such sizes, only PACKED layout will be supported
-      if (detail::fits_in_wi<Scalar>(factor_wi_n) && detail::fits_in_wi<Scalar>(factor_wi_m) &&
-          (local_memory_usage <= static_cast<std::size_t>(local_memory_size))) {
+      if (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) {
         factors.push_back(factor_wi_n);
         factors.push_back(factor_sg_n);
         factors.push_back(factor_wi_m);

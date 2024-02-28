@@ -109,7 +109,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   constexpr bool IsRealDomain = Domain == portfft::domain::REAL;
   constexpr bool IsForward = Dir == portfft::direction::FORWARD;
   constexpr bool IsInterleaved = Storage == portfft::complex_storage::INTERLEAVED_COMPLEX;
-  constexpr bool debug_input = false;
+  constexpr bool DebugInput = false;
 
   const auto batches = desc.number_of_transforms;
   const auto& dims = desc.lengths;
@@ -160,7 +160,7 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
 
   command << "," << (std::is_same_v<Scalar, float> ? "False" : "True");
 
-  command << "," << (debug_input ? "True" : "False");
+  command << "," << (DebugInput ? "True" : "False");
 
   command << ")\"";
 
@@ -243,15 +243,19 @@ auto gen_fourier_data(portfft::descriptor<Scalar, Domain>& desc, portfft::detail
   // Return a tuple in the expected order
   if constexpr (IsForward) {
     if constexpr (IsInterleaved) {
-      return std::make_tuple(forward, backward, forward_imag, backward_imag);
+      return std::make_tuple(std::move(forward), std::move(backward), std::move(forward_imag),
+                             std::move(backward_imag));
     } else {
-      return std::make_tuple(forward_real, backward_real, forward_imag, backward_imag);
+      return std::make_tuple(std::move(forward_real), std::move(backward_real), std::move(forward_imag),
+                             std::move(backward_imag));
     }
   } else {
     if constexpr (IsInterleaved) {
-      return std::make_tuple(backward, forward, backward_imag, forward_imag);
+      return std::make_tuple(std::move(backward), std::move(forward), std::move(backward_imag),
+                             std::move(forward_imag));
     } else {
-      return std::make_tuple(backward_real, forward_real, backward_imag, forward_imag);
+      return std::make_tuple(std::move(backward_real), std::move(forward_real), std::move(backward_imag),
+                             std::move(forward_imag));
     }
   }
 }

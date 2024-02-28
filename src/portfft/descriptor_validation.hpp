@@ -24,7 +24,7 @@
 #include <string_view>
 
 #include "common/exceptions.hpp"
-#include "common/subgroup.hpp"
+#include "common/workgroup.hpp"
 #include "enums.hpp"
 #include "utils.hpp"
 
@@ -68,7 +68,7 @@ inline void validate_layout(const std::vector<std::size_t>& lengths, portfft::de
     bool fits_subgroup = false;
     for (auto sg_size : {PORTFFT_SUBGROUP_SIZES}) {
       fits_subgroup =
-          fits_subgroup || portfft::detail::fits_in_sg<Scalar>(static_cast<IdxGlobal>(lengths.back()), sg_size);
+          fits_subgroup || portfft::detail::factorize_for_wg<Scalar>(static_cast<IdxGlobal>(lengths.back()), sg_size);
       if (fits_subgroup) {
         break;
       }

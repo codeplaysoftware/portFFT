@@ -245,8 +245,15 @@ INSTANTIATE_TEST_SUITE_P(
     SubgroupStridedOOPInOrder, FFTTest,
     ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
         oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33000ul),
-        ::testing::Values(layout_params{{64}, {1}, {7}}, layout_params{{64}, {4}, {7}},
+        ::testing::Values(layout_params{{64}, {1}, {7}}, layout_params{{64}, {4}, {1}},
                           layout_params{{75}, {3}, {2}, 300, 200}, layout_params{{104}, {3}, {4}}))),
+    test_params_print());
+INSTANTIATE_TEST_SUITE_P(
+    WorkgroupStridedOOPInOrder, FFTTest,
+    ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+        oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 12000ul),
+        ::testing::Values(layout_params{{2048}, {1}, {7}}, layout_params{{5625}, {4}, {7}},
+                          layout_params{{4096}, {3}, {2}, 12500, 9000}, layout_params{{2704}, {3}, {1}}))),
     test_params_print());
 // The LikeBatchInterleaved tests must have stride >= number of transforms
 INSTANTIATE_TEST_SUITE_P(
@@ -263,7 +270,15 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(layout_params{{64}, {33}, {99}, 1, 3}, layout_params{{96}, {33}, {2}, 1, 192},
                           layout_params{{70}, {2}, {66}, 140, 2}))),
     test_params_print());
-INSTANTIATE_TEST_SUITE_P(workItemStridedIP, FFTTest,
+INSTANTIATE_TEST_SUITE_P(
+    WorkgroupStridedOOPLikeBatchInterleaved, FFTTest,
+    ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+        oop_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 10, 33),
+        ::testing::Values(layout_params{{4096}, {33}, {99}, 1, 3}, layout_params{{4096}, {99}, {33}, 3, 1},
+                          layout_params{{5625}, {66}, {1}, 2, 5625}, layout_params{{2704}, {66}, {4}, 2, 10816},
+                          layout_params{{780}, {1}, {66}, 780, 2}, layout_params{{3072}, {2}, {33}, 6144, 1}))),
+    test_params_print());
+INSTANTIATE_TEST_SUITE_P(workItemStridedIPInOrder, FFTTest,
                          ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
                              ip_unpacked_unpacked_layout, both_directions, complex_storages,
                              ::testing::Values(1, 3, 33000ul),
@@ -271,13 +286,21 @@ INSTANTIATE_TEST_SUITE_P(workItemStridedIP, FFTTest,
                                                // no space between last element of one batch and first of the next
                                                layout_params{{9}, {3}, {3}, 25, 25}))),
                          test_params_print());
-INSTANTIATE_TEST_SUITE_P(SubgroupStridedIP, FFTTest,
+INSTANTIATE_TEST_SUITE_P(SubgroupStridedIPInOrder, FFTTest,
                          ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
                              ip_unpacked_unpacked_layout, both_directions, complex_storages,
                              ::testing::Values(1, 3, 33000ul),
                              ::testing::Values(layout_params{{75}, {4}, {4}},
                                                // no space between last element of one batch and first of the next
                                                layout_params{{96}, {3}, {3}, 286, 286}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(WorkgroupStridedIPInOrder, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             ip_unpacked_unpacked_layout, both_directions, complex_storages,
+                             ::testing::Values(1, 3, 33000ul),
+                             ::testing::Values(layout_params{{3072}, {4}, {4}},
+                                               // no space between last element of one batch and first of the next
+                                               layout_params{{780}, {3}, {3}, 2338, 2338}))),
                          test_params_print());
 INSTANTIATE_TEST_SUITE_P(
     workItemStridedIPLikeBatchInterleaved, FFTTest,
@@ -290,6 +313,12 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
         ip_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33),
         ::testing::Values(layout_params{{75}, {66}, {66}, 2, 2}, layout_params{{96}, {40}, {40}, 1, 1}))),
+    test_params_print());
+INSTANTIATE_TEST_SUITE_P(
+    WorkgroupStridedIPLikeBatchInterleaved, FFTTest,
+    ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+        ip_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(1, 3, 33),
+        ::testing::Values(layout_params{{2048}, {66}, {66}, 2, 2}, layout_params{{5625}, {40}, {40}, 1, 1}))),
     test_params_print());
 
 // these layouts are only valid because there is only a single batch
@@ -316,6 +345,11 @@ INSTANTIATE_TEST_SUITE_P(SubgroupStridedArbitraryInterleaved, FFTTest,
                          ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
                              all_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(13),
                              ::testing::Values(layout_params{{85}, {13}, {13}, 12, 12}))),
+                         test_params_print());
+INSTANTIATE_TEST_SUITE_P(WorkgroupStridedArbitraryInterleaved, FFTTest,
+                         ::testing::ConvertGenerator<layout_param_tuple>(::testing::Combine(
+                             all_unpacked_unpacked_layout, both_directions, complex_storages, ::testing::Values(13),
+                             ::testing::Values(layout_params{{780}, {13}, {13}, 12, 12}))),
                          test_params_print());
 
 // Invalid configurations test suite
