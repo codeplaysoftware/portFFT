@@ -96,7 +96,7 @@ portFFT is still in early development. The supported configurations are:
   * size in each dimension must be supported by 1D transforms
 * Arbitrary forward and backward scales
 * Arbitrary forward and backward offsets
-* Arbitrary strides and distance where the problem size + auxilary data fits in the registers of a single work-item.
+* Arbitrary strides and distance where the problem size + auxilary data fits in the registers of a single subgroup.
 
 Any 1D arbitrarily large input size that fits in global memory is supported, with a restriction that large input sizes should not have large prime factors.
 The largest prime factor depend on the device and the values set by `PORTFFT_REGISTERS_PER_WI` and `PORTFFT_SUBGROUP_SIZES`.

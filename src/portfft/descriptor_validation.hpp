@@ -24,7 +24,7 @@
 #include <string_view>
 
 #include "common/exceptions.hpp"
-#include "common/workitem.hpp"
+#include "common/subgroup.hpp"
 #include "enums.hpp"
 #include "utils.hpp"
 
@@ -65,10 +65,17 @@ inline void validate_layout(const std::vector<std::size_t>& lengths, portfft::de
     }
   }
   if (forward_layout == portfft::detail::layout::UNPACKED || backward_layout == portfft::detail::layout::UNPACKED) {
-    if (!portfft::detail::fits_in_wi<Scalar>(lengths.back())) {
+    bool fits_subgroup = false;
+    for (auto sg_size : {PORTFFT_SUBGROUP_SIZES}) {
+      fits_subgroup =
+          fits_subgroup || portfft::detail::fits_in_sg<Scalar>(static_cast<IdxGlobal>(lengths.back()), sg_size);
+      if (fits_subgroup) {
+        break;
+      }
+    }
+    if (!fits_subgroup) {
       throw unsupported_configuration(
-          "Arbitrary strides and distances are only supported for sizes that fit in the registers of a single "
-          "work-item");
+          "Arbitrary strides and distances are only supported for sizes that fit in the registers of a subgroup");
     }
   }
 }
