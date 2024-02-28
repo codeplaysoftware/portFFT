@@ -338,6 +338,12 @@ std::vector<sycl::event> compute_level(
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
+  // Backends may check pointer validity. For the WI implementation, where no subimpl_twiddles alloc is used,
+  // the subimpl_twiddles + subimpl_twiddle_offset may point to the end of the allocation and therefore be invalid.
+  // The same check is performed on the pointer containing the imag data, which would fall OOB in the
+  // INTERLEAVED_COMPLEX case
+  const Scalar* subimpl_twiddles_ptr =
+      kd_struct.level == detail::level::WORKITEM ? static_cast<const Scalar*>(nullptr) : subimpl_twiddles;
 
   std::size_t loc_mem_for_twiddles = [&]() {
     if (kd_struct.level == detail::level::WORKITEM) {
@@ -400,7 +406,7 @@ std::vector<sycl::event> compute_level(
                 it};
             dispatch_level<Scalar, SubgroupSize>(
                 &in_acc_or_usm[0] + input_batch_offset, offset_output, &in_imag_acc_or_usm[0] + input_batch_offset,
-                offset_output_imag, subimpl_twiddles, load_modifier_data, store_modifier_data, &loc_for_input[0],
+                offset_output_imag, subimpl_twiddles_ptr, load_modifier_data, store_modifier_data, &loc_for_input[0],
                 &loc_for_twiddles[0], factors_triple, inner_batches, inclusive_scan, batch_size, global_data, kh);
           });
     }));

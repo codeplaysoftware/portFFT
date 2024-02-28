@@ -162,7 +162,9 @@ class committed_descriptor_impl {
     std::vector<kernel_data_struct> transpose_kernels;
     std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
+    // The problem size for which DFT will be computed
     std::size_t length;
+    // The committed size corresponding to the dimension
     std::size_t committed_length;
     Idx used_sg_size;
     Idx num_batches_in_l2;
@@ -230,8 +232,8 @@ class committed_descriptor_impl {
    *
    * @tparam SubgroupSize size of the subgroup
    * @param kernel_num the consecutive number of the kernel to prepare
-   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel,
-   * vector of kernel ids, factors
+   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel, the
+   * size of the transform and vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
   std::tuple<detail::level, std::size_t, kernel_ids_and_metadata_t> prepare_implementation(std::size_t kernel_num) {
