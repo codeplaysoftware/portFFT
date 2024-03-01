@@ -67,14 +67,10 @@ struct wg_factorization {
   Idx factor_sg_m;
 };
 
-/**
- *
- * Calculate a valid factorization for workgroup dfts, assuming there is sufficient local memory.
- *
+/** Calculate a valid factorization for workgroup dfts, assuming there is sufficient local memory.
  * @tparam Scalar scalar type of the transform data
  * @param fft_size the number of elements in the transforms
  * @param subgroup_size the size of subgroup used for the transform
- *
  * @return a factorization for workgroup dft or null if the size won't work with the implemenation of workgroup dfts.
  */
 template <typename Scalar>
