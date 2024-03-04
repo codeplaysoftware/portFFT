@@ -74,11 +74,12 @@ struct wg_factorization {
  * @return a factorization for workgroup dft or null if the size won't work with the implemenation of workgroup dfts.
  */
 template <typename Scalar>
-inline std::optional<wg_factorization> factorize_for_wg(IdxGlobal fft_size, Idx subgroup_size) {
+std::optional<wg_factorization> factorize_for_wg(IdxGlobal fft_size, Idx subgroup_size) {
   IdxGlobal n_idx_global = detail::factorize(fft_size);
   if (n_idx_global == 1) {
-    throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
+    return std::nullopt;
   }
+
   IdxGlobal m_idx_global = fft_size / n_idx_global;
   if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) && detail::can_cast_safely<IdxGlobal, Idx>(m_idx_global)) {
     Idx n = static_cast<Idx>(n_idx_global);
