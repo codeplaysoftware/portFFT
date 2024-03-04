@@ -216,46 +216,44 @@ class committed_descriptor_impl {
       throw unsupported_configuration("portFFT only supports complex to complex transforms");
     }
 
-    std::vector<sycl::kernel_id> ids;
-    std::vector<Idx> factors;
     IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
-    if (detail::fits_in_wi<Scalar>(fft_size)) {
-      ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
-      PORTFFT_LOG_TRACE("Prepared workitem impl for size: ", fft_size);
-      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
-    }
-    if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
-      Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
-      Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
-      // This factorization is duplicated in the dispatch logic on the device.
-      // The CT and spec constant factors should match.
-      factors.push_back(factor_wi);
-      factors.push_back(factor_sg);
-      ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
-      PORTFFT_LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
-      return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
-    }
-    if (auto wg_factorization = detail::factorize_for_wg<Scalar>(fft_size, SubgroupSize); wg_factorization) {
-      auto [factor_wi_n, factor_sg_n, factor_wi_m, factor_sg_m] = wg_factorization.value();
-      Idx temp_num_sgs_in_wg;
-      std::size_t local_memory_usage =
-          num_scalars_in_local_mem(detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
-                                   {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg,
-                                   layout::PACKED) *
-          sizeof(Scalar);
-      // Checks for PACKED layout only at the moment, as the other layout will not be supported
-      // by the global implementation. For such sizes, only PACKED layout will be supported
-      if (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) {
-        factors.push_back(factor_wi_n);
-        factors.push_back(factor_sg_n);
-        factors.push_back(factor_wi_m);
-        factors.push_back(factor_sg_m);
-        // This factorization of N and M is duplicated in the dispatch logic on the device.
+    if (static_cast<size_t>(fft_size) * 2 * sizeof(Scalar) <= static_cast<size_t>(local_memory_size)) {
+      // These implementations only work if the size fits in local memory.
+      // They still may not be suitable if the extra local memory needed for the algorithm exceeds the available memory.
+
+      if (detail::fits_in_wi<Scalar>(fft_size)) {
+        auto ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
+        PORTFFT_LOG_TRACE("Prepared workitem impl for size: ", fft_size);
+        return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, {}}}};
+      }
+      if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+        Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
+        Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
+        // This factorization is duplicated in the dispatch logic on the device.
         // The CT and spec constant factors should match.
-        ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
-        PORTFFT_LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
-                          " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
-        return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+        auto ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
+        PORTFFT_LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
+        return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, {factor_wi, factor_sg}}}};
+      }
+      if (auto wg_factorization = detail::factorize_for_wg<Scalar>(fft_size, SubgroupSize); wg_factorization) {
+        auto [factor_wi_n, factor_sg_n, factor_wi_m, factor_sg_m] = wg_factorization.value();
+        Idx temp_num_sgs_in_wg;
+        std::size_t local_memory_usage =
+            num_scalars_in_local_mem(detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), SubgroupSize,
+                                     {factor_sg_n, factor_wi_n, factor_sg_m, factor_wi_m}, temp_num_sgs_in_wg,
+                                     layout::PACKED) *
+            sizeof(Scalar);
+        // Checks for PACKED layout only at the moment, as the other layout will not be supported
+        // by the global implementation. For such sizes, only PACKED layout will be supported
+        if (local_memory_usage <= static_cast<std::size_t>(local_memory_size)) {
+          // This factorization of N and M is duplicated in the dispatch logic on the device.
+          // The CT and spec constant factors should match.
+          auto ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
+          PORTFFT_LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
+                            " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
+          return {detail::level::WORKGROUP,
+                  {{detail::level::WORKGROUP, ids, {factor_wi_n, factor_sg_n, factor_wi_m, factor_sg_m}}}};
+        }
       }
     }
     PORTFFT_LOG_TRACE("Preparing global impl");
