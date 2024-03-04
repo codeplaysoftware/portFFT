@@ -108,6 +108,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
+  // ONLY for batch interleaved in
+  const Idx ffts_in_local = kh.get_specialization_constant<detail::SpecConstTransformsInLocal>();
+
   global_data.log_message_global(__func__, "entered", "FactorWI", factor_wi, "FactorSG", factor_sg, "n_transforms",
                                  n_transforms);
   const Idx n_reals_per_wi = 2 * factor_wi;
@@ -123,7 +126,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   Idx local_size = static_cast<Idx>(global_data.it.get_local_range(0));
   Idx subgroup_local_id = static_cast<Idx>(global_data.sg.get_local_linear_id());
   Idx subgroup_id = static_cast<Idx>(global_data.sg.get_group_id());
-  Idx n_sgs_in_wg = static_cast<Idx>(global_data.it.get_local_range(0)) / SubgroupSize;
+  Idx n_sgs_in_wg = local_size / SubgroupSize;
   Idx id_of_sg_in_kernel = subgroup_id + static_cast<Idx>(global_data.it.get_group_linear_id()) * n_sgs_in_wg;
   Idx n_sgs_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0)) * n_sgs_in_wg;
 
@@ -149,8 +152,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
   IdxGlobal id_of_fft_in_kernel;
   IdxGlobal n_ffts_in_kernel;
   if (is_input_batch_interleaved) {
-    id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0) * global_data.it.get_local_range(0)) / 2;
-    n_ffts_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0)) * local_size / 2;
+    id_of_fft_in_kernel = static_cast<IdxGlobal>(global_data.it.get_group(0)) * static_cast<IdxGlobal>(ffts_in_local);
+    n_ffts_in_kernel = static_cast<Idx>(global_data.it.get_group_range(0)) * ffts_in_local;
   } else {
     id_of_fft_in_kernel = id_of_sg_in_kernel * n_ffts_per_sg + id_of_fft_in_sg;
     n_ffts_in_kernel = n_sgs_in_kernel * n_ffts_per_sg;
@@ -182,16 +185,9 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
        * Going ahead with the assumption that output will not be stored in a transposed manner(always out of place), it
        * would need to transpose the final result in local memory and store it to global.
        */
-      // TODO should we make sure that: max_num_batches_local_mem >= n_ffts_per_wg ?
-      Idx max_num_batches_local_mem = n_sgs_in_wg * SubgroupSize / 2;
-      Idx num_batches_in_local_mem = [=]() {
-        if (i + static_cast<IdxGlobal>(local_size) / 2 < n_transforms) {
-          return local_size / 2;
-        }
-        return static_cast<Idx>(n_transforms - i);
-      }();
+      Idx num_batches_in_local_mem = std::min(static_cast<Idx>(n_transforms - i), ffts_in_local);
       Idx rounded_up_ffts_in_local = detail::round_up_to_multiple(num_batches_in_local_mem, n_ffts_per_sg);
-      Idx local_imag_offset = factor_wi * factor_sg * max_num_batches_local_mem;
+      Idx local_imag_offset = factor_wi * factor_sg * ffts_in_local;
 
       const bool store_directly_from_private = SubgroupSize == factor_sg && is_output_packed;
 
@@ -213,16 +209,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       // load / store in a transposed manner
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
         detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i};
-        detail::md_view local_md_view{loc_view, std::array{2 * max_num_batches_local_mem, 1}};
+        detail::md_view local_md_view{loc_view, std::array{2 * ffts_in_local, 1}};
         copy_group<level::WORKGROUP>(global_data, input_view, local_md_view,
                                      std::array{fft_size, 2 * num_batches_in_local_mem});
       } else {
         detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
         detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
-        detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
-        detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
-        global_data.log_message_global(__func__, "params", max_num_batches_local_mem, fft_size,
-                                       num_batches_in_local_mem);
+        detail::md_view local_real_view{loc_view, std::array{ffts_in_local, 1}};
+        detail::md_view local_imag_view{loc_view, std::array{ffts_in_local, 1}, local_imag_offset};
+        global_data.log_message_global(__func__, "params", ffts_in_local, fft_size, num_batches_in_local_mem);
         global_data.log_message_global(__func__, "loading transposed real data from global to local memory");
         copy_group<level::WORKGROUP>(global_data, input_real_view, local_real_view,
                                      std::array{fft_size, num_batches_in_local_mem});
@@ -231,8 +226,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                      std::array{fft_size, num_batches_in_local_mem});
       }
       sycl::group_barrier(global_data.it.get_group());
-      global_data.log_dump_local("data loaded to local memory:", loc_view,
-                                 n_reals_per_wi * factor_sg * max_num_batches_local_mem);
+      global_data.log_dump_local("data loaded to local memory:", loc_view, n_reals_per_wi * factor_sg * ffts_in_local);
 
       const Idx first_fft_in_local_for_wi =
           static_cast<Idx>(global_data.sg.get_group_id()) * n_ffts_per_sg + id_of_fft_in_sg;
@@ -242,16 +236,16 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         if (working_inner) {
           global_data.log_message_global(__func__, "loading batch_interleaved data from local to private memory");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            Idx local_stride = max_num_batches_local_mem;
+            Idx local_stride = ffts_in_local;
             const Idx fft_element = 2 * id_of_wi_in_fft * factor_wi;
-            const Idx local_offset = fft_element * max_num_batches_local_mem + 2 * fft_idx_in_local;
+            const Idx local_offset = fft_element * ffts_in_local + 2 * fft_idx_in_local;
             detail::strided_view strided_local_view{loc_view, local_stride, local_offset};
             copy_wi<2>(global_data, strided_local_view, priv, factor_wi);
           } else {
-            detail::strided_view local_real_view{loc_view, std::array{1, max_num_batches_local_mem},
+            detail::strided_view local_real_view{loc_view, std::array{1, ffts_in_local},
                                                  std::array{id_of_wi_in_fft * factor_wi, fft_idx_in_local}};
             detail::strided_view local_imag_view{
-                loc_view, std::array{1, max_num_batches_local_mem},
+                loc_view, std::array{1, ffts_in_local},
                 std::array{id_of_wi_in_fft * factor_wi, fft_idx_in_local + local_imag_offset}};
             detail::strided_view priv_real_view{priv, 2};
             detail::strided_view priv_imag_view{priv, 2, 1};
@@ -349,13 +343,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                 "FactorSG or not packed output layout)");
             // Store back to local memory only
             if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-              detail::strided_view strided_local_view{loc_view, std::array{factor_sg, max_num_batches_local_mem},
+              detail::strided_view strided_local_view{loc_view, std::array{factor_sg, ffts_in_local},
                                                       std::array{2 * id_of_wi_in_fft, 2 * fft_idx_in_local}};
               copy_wi<2>(global_data, priv, strided_local_view, factor_wi);
             } else {
-              detail::strided_view local_real_view{loc_view, std::array{factor_sg, max_num_batches_local_mem},
+              detail::strided_view local_real_view{loc_view, std::array{factor_sg, ffts_in_local},
                                                    std::array{id_of_wi_in_fft, fft_idx_in_local}};
-              detail::strided_view local_imag_view{loc_view, std::array{factor_sg, max_num_batches_local_mem},
+              detail::strided_view local_imag_view{loc_view, std::array{factor_sg, ffts_in_local},
                                                    std::array{id_of_wi_in_fft, fft_idx_in_local + local_imag_offset}};
               detail::strided_view priv_real_view{priv, 2};
               detail::strided_view priv_imag_view{priv, 2, 1};
@@ -375,14 +369,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                          "storing data from batch interleaved local memory to not batch interleaved "
                                          "global memory (SubgroupSize != FactorSG)");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            const std::array<Idx, 3> local_strides{max_num_batches_local_mem * 2, 2, 1};
+            const std::array<Idx, 3> local_strides{ffts_in_local * 2, 2, 1};
             const std::array<IdxGlobal, 3> global_strides{output_stride * 2, output_distance * 2, 1};
             const std::array<Idx, 3> copy_lengths{fft_size, num_batches_in_local_mem, 2};
             detail::md_view local_md_view2{loc_view, local_strides};
             detail::md_view output_view{output, global_strides, i * output_distance * 2};
             copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view, copy_lengths);
           } else {
-            const std::array<Idx, 2> local_strides{max_num_batches_local_mem, 1};
+            const std::array<Idx, 2> local_strides{ffts_in_local, 1};
             const std::array<IdxGlobal, 2> global_strides{output_stride, output_distance};
 
             detail::md_view local_real_view{loc_view, local_strides};
@@ -397,13 +391,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_message_global(
               __func__, "storing data from batch interleaved local memory to batch interleaved global memory");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-            detail::md_view local_md_view2{loc_view, std::array{2 * max_num_batches_local_mem, 1}};
+            detail::md_view local_md_view2{loc_view, std::array{2 * ffts_in_local, 1}};
             detail::md_view output_view{output, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * i};
             copy_group<level::WORKGROUP>(global_data, local_md_view2, output_view,
                                          std::array{factor_wi * factor_sg, 2 * num_batches_in_local_mem});
           } else {
-            detail::md_view local_real_view{loc_view, std::array{max_num_batches_local_mem, 1}};
-            detail::md_view local_imag_view{loc_view, std::array{max_num_batches_local_mem, 1}, local_imag_offset};
+            detail::md_view local_real_view{loc_view, std::array{ffts_in_local, 1}};
+            detail::md_view local_imag_view{loc_view, std::array{ffts_in_local, 1}, local_imag_offset};
             detail::md_view output_real_view{output, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
             detail::md_view output_imag_view{output_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)}, i};
             copy_group<level::WORKGROUP>(global_data, local_real_view, output_real_view,
@@ -707,13 +701,17 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
                                                                 : dimension_data.backward_kernels.at(0);
     Scalar* twiddles = kernel_data.twiddles_forward.get();
     Idx factor_sg = kernel_data.factors[1];
+
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::SUBGROUP, Dummy>::execute(
             desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg,
             input_layout);
+    std::size_t twiddle_elements = 2 * kernel_data.length;
+    std::size_t twiddles_offset = local_elements - twiddle_elements;
+
     std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_subgroup<Scalar>(
         n_transforms, factor_sg, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units));
-    std::size_t twiddle_elements = 2 * kernel_data.length;
+
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data.exec_bundle);
@@ -722,13 +720,12 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
       auto in_imag_acc_or_usm = detail::get_access(in_imag, cgh);
       auto out_imag_acc_or_usm = detail::get_access(out_imag, cgh);
       sycl::local_accessor<Scalar, 1> loc(local_elements, cgh);
-      sycl::local_accessor<Scalar, 1> loc_twiddles(twiddle_elements, cgh);
 #ifdef PORTFFT_KERNEL_LOG
       sycl::stream s{1024 * 16 * 16, 1024 * 8, cgh};
 #endif
-      PORTFFT_LOG_TRACE("Launching subgroup kernel with global_size", global_size, "local_size",
-                        SubgroupSize * kernel_data.num_sgs_per_wg, "local memory allocation of size", local_elements,
-                        "local memory allocation for twiddles of size", twiddle_elements);
+      PORTFFT_LOG_TRACE("Launching subgroup kernel with global_size", global_size, ", local_size",
+                        SubgroupSize * kernel_data.num_sgs_per_wg, ", local memory allocation of", local_elements,
+                        "scalars including", twiddle_elements, "scalars for twiddles");
       cgh.parallel_for<detail::subgroup_kernel<Scalar, Domain, Mem, SubgroupSize>>(
           sycl::nd_range<1>{{global_size}, {static_cast<std::size_t>(SubgroupSize * kernel_data.num_sgs_per_wg)}},
           [=
@@ -745,8 +742,8 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
             global_data.log_message_global("Running subgroup kernel");
             detail::subgroup_impl<SubgroupSize>(&in_acc_or_usm[0] + input_offset, &out_acc_or_usm[0] + output_offset,
                                                 &in_imag_acc_or_usm[0] + input_offset,
-                                                &out_imag_acc_or_usm[0] + output_offset, &loc[0], &loc_twiddles[0],
-                                                n_transforms, twiddles, global_data, kh);
+                                                &out_imag_acc_or_usm[0] + output_offset, &loc[0],
+                                                &loc[0] + twiddles_offset, n_transforms, twiddles, global_data, kh);
             global_data.log_message_global("Exiting subgroup kernel");
           });
     });
@@ -758,12 +755,15 @@ template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::SUBGROUP, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       Idx /*length*/, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
+                      Idx /*num_factors*/, Idx ffts_in_local) {
     PORTFFT_LOG_FUNCTION_ENTRY();
+
     PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
+    PORTFFT_LOG_TRACE("SpecConstTransformsInLocal:", ffts_in_local);
+    in_bundle.template set_specialization_constant<detail::SpecConstTransformsInLocal>(ffts_in_local);
   }
 };
 
@@ -774,27 +774,46 @@ struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struc
   static std::size_t execute(committed_descriptor_impl& desc, std::size_t length, Idx used_sg_size,
                              const std::vector<Idx>& factors, Idx& num_sgs_per_wg, layout input_layout) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    Idx dft_length = static_cast<Idx>(length);
-    Idx twiddle_bytes = 2 * dft_length * static_cast<Idx>(sizeof(Scalar));
-    if (input_layout == detail::layout::BATCH_INTERLEAVED) {
-      Idx padded_fft_bytes = detail::pad_local(2 * dft_length, Idx(1)) * static_cast<Idx>(sizeof(Scalar));
-      Idx max_batches_in_local_mem = (desc.local_memory_size - twiddle_bytes) / padded_fft_bytes;
-      Idx batches_per_sg = used_sg_size / 2;
-      Idx num_sgs_required =
-          std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_batches_in_local_mem / batches_per_sg));
-      num_sgs_per_wg = num_sgs_required;
-      Idx num_batches_in_local_mem = used_sg_size * num_sgs_per_wg / 2;
-      return static_cast<std::size_t>(detail::pad_local(2 * dft_length * num_batches_in_local_mem, 1));
-    }
 
     Idx factor_sg = factors[1];
     Idx n_ffts_per_sg = used_sg_size / factor_sg;
-    Idx num_scalars_per_sg = detail::pad_local(2 * dft_length * n_ffts_per_sg, 1);
-    Idx max_n_sgs = (desc.local_memory_size - twiddle_bytes) / static_cast<Idx>(sizeof(Scalar)) / num_scalars_per_sg;
-    num_sgs_per_wg = std::min(Idx(PORTFFT_SGS_IN_WG), std::max(Idx(1), max_n_sgs));
-    // recalculate padding since `num_scalars_per_sg` is a floored value
-    Idx res = detail::pad_local(2 * dft_length * n_ffts_per_sg * num_sgs_per_wg, 1);
-    return static_cast<std::size_t>(res);
+
+    auto transforms_in_local = num_transforms_in_local_mem_struct::template inner<level::SUBGROUP, Dummy>::execute(
+        desc, used_sg_size, input_layout, Idx(desc.local_memory_size), factors);
+
+    num_sgs_per_wg =
+        std::max(1, std::min(PORTFFT_SGS_IN_WG,
+                             transforms_in_local / n_ffts_per_sg));  // TODO careful, could leave a stray transform
+                                                                     // eg 5 transforms in local and 2 n_ffts_per_sg
+    assert(transforms_in_local % n_ffts_per_sg == 0);
+
+    const auto twiddle_scalars = 2 * factors[0] * factors[1];
+    return static_cast<std::size_t>(detail::pad_local(2 * static_cast<Idx>(length) * transforms_in_local, 1) +
+                                    twiddle_scalars);
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_transforms_in_local_mem_struct::inner<detail::level::SUBGROUP,
+                                                                                            Dummy> {
+  static Idx execute(committed_descriptor_impl&, Idx used_sg_size, layout input_layout, Idx local_mem,
+                     const std::vector<Idx>& factors) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    const auto length = factors.at(0) * factors.at(1);
+    const auto scalars_in_local = local_mem / static_cast<Idx>(sizeof(Scalar));
+    const auto local_scalars_for_ffts = scalars_in_local - 2 * length;
+
+    Idx factor_sg = factors[1];
+    Idx n_ffts_per_sg = used_sg_size / factor_sg;
+
+    Idx target_transforms_in_local =
+        input_layout == layout::BATCH_INTERLEAVED ? used_sg_size / 2 : PORTFFT_SGS_IN_WG * n_ffts_per_sg;
+
+    // slightly underestimates
+    Idx num_scalars_per_transform = detail::pad_local(2 * length, 1);
+    Idx possible_transforms_in_local = local_scalars_for_ffts / num_scalars_per_transform;
+    return std::max(1, std::min(target_transforms_in_local, possible_transforms_in_local));
   }
 };
 

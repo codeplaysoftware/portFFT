@@ -43,14 +43,15 @@ namespace portfft {
  * without bank conflicts.
  *
  * @tparam T Input type to the function
- * @param row_size the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256 bytes.
+ * @param row_size_bytes the size in bytes of the row. 32 std::complex<float> values would probably have a size of 256
+ * bytes.
  * @return the number of groups of PORTFFT_N_LOCAL_BANKS between each padding in local memory.
  */
 template <typename T>
-constexpr T bank_lines_per_pad_wg(T row_size) {
+constexpr T bank_lines_per_pad_wg(T row_size_bytes) {
   constexpr T BankLineSize = sizeof(float) * PORTFFT_N_LOCAL_BANKS;
-  if (row_size % BankLineSize == 0) {
-    return row_size / BankLineSize;
+  if (row_size_bytes % BankLineSize == 0) {
+    return row_size_bytes / BankLineSize;
   }
   // There is room for improvement here. E.G if row_size was half of BankLineSize then maybe you would still want 1
   // pad every bank group.
@@ -161,8 +162,8 @@ __attribute__((always_inline)) inline void dimension_dft(
   T wi_private_scratch[detail::SpecConstWIScratchSize];
   T priv[detail::SpecConstNumRealsPerFFT];
 #else
-  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
-  T priv[2 * MaxComplexPerWI];
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)]{};
+  T priv[2 * MaxComplexPerWI]{};
 #endif
 
   const Idx begin = static_cast<Idx>(global_data.sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;

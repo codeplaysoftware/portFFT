@@ -335,8 +335,8 @@ class committed_descriptor_impl {
                           detail::apply_scale_factor scale_factor_applied, detail::level level,
                           detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
                           Scalar scale_factor, IdxGlobal input_stride, IdxGlobal output_stride,
-                          IdxGlobal input_distance, IdxGlobal output_distance, Idx factor_num = 0,
-                          Idx num_factors = 0) {
+                          IdxGlobal input_distance, IdxGlobal output_distance, Idx factor_num, Idx num_factors,
+                          Idx ffts_in_local) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // These spec constants are used in all implementations, so we set them here
     PORTFFT_LOG_TRACE("Setting specialization constants:");
@@ -366,7 +366,23 @@ class committed_descriptor_impl {
     in_bundle.template set_specialization_constant<detail::SpecConstInputDistance>(input_distance);
     PORTFFT_LOG_TRACE("SpecConstOutputDistance:", output_distance);
     in_bundle.template set_specialization_constant<detail::SpecConstOutputDistance>(output_distance);
-    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors);
+    dispatch<set_spec_constants_struct>(top_level, in_bundle, length, factors, level, factor_num, num_factors,
+                                        ffts_in_local);
+  }
+
+  struct num_transforms_in_local_mem_struct {
+    // Dummy parameter is needed as only partial specializations are allowed without specializing the containing class
+    template <detail::level Lev, typename Dummy>
+    struct inner {
+      static Idx execute(committed_descriptor_impl& desc, Idx used_sg_size, layout input_layout, Idx local_mem,
+                         const std::vector<Idx>& factors);
+    };
+  };
+
+  Idx num_transforms_in_local_mem(detail::level level, Idx used_sg_size, layout input_layout, Idx local_mem,
+                                  const std::vector<Idx>& factors) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return dispatch<num_transforms_in_local_mem_struct>(level, used_sg_size, input_layout, local_mem, factors);
   }
 
   /**
@@ -505,10 +521,13 @@ class committed_descriptor_impl {
 
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
 
+      const Idx ffts_in_local = num_transforms_in_local_mem(
+          level, SubgroupSize, detail::get_layout(params, compute_direction), local_memory_size, factors);
+
       set_spec_constants(top_level, in_bundle, length, factors, detail::elementwise_multiply::NOT_APPLIED,
                          multiply_on_store, apply_scale, level, conjugate_on_load, conjugate_on_store, scale_factor,
                          input_stride, output_stride, input_distance, output_distance, static_cast<Idx>(counter),
-                         static_cast<Idx>(prepared_vec.size()));
+                         static_cast<Idx>(prepared_vec.size()), ffts_in_local);
       try {
         PORTFFT_LOG_TRACE("Building kernel bundle with subgroup size", SubgroupSize);
         result.emplace_back(sycl::build(in_bundle), factors, params.lengths[dimension_num], SubgroupSize,

@@ -113,8 +113,8 @@ if(${PORTFFT_KERNEL_LOG})
   target_compile_definitions(portfft INTERFACE PORTFFT_KERNEL_LOG)
 endif()
 
-target_compile_options(portfft INTERFACE -fgpu-inline-threshold=1000000)
-target_link_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
+target_compile_options(portfft INTERFACE -fgpu-inline-threshold=1000000 -fsanitize=undefined)
+target_link_options(portfft INTERFACE -fsycl-device-code-split=per_kernel -fsanitize=undefined)
 target_compile_options(portfft INTERFACE -fsycl-device-code-split=per_kernel)
 
 include(CMakePackageConfigHelpers)

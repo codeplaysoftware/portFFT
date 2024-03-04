@@ -259,8 +259,8 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::GLOBAL, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      Idx length, const std::vector<Idx>& factors, detail::level level, Idx factor_num,
-                      Idx num_factors) {
+                      Idx length, const std::vector<Idx>& factors, detail::level level, Idx factor_num, Idx num_factors,
+                      Idx ffts_in_local) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("GlobalSubImplSpecConst:", level);
     in_bundle.template set_specialization_constant<detail::GlobalSubImplSpecConst>(level);
@@ -276,6 +276,9 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
       PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
+      // TODO set for workgroup if that is used
+      PORTFFT_LOG_TRACE("SpecConstTransformsInLocal:", ffts_in_local);
+      in_bundle.template set_specialization_constant<detail::SpecConstTransformsInLocal>(ffts_in_local);
     }
   }
 };
@@ -390,6 +393,16 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
       }
     }
     return event;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_transforms_in_local_mem_struct::inner<detail::level::GLOBAL,
+                                                                                            Dummy> {
+  static Idx execute(committed_descriptor_impl&, Idx, layout, Idx, const std::vector<Idx>&) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return 1;
   }
 };
 

@@ -411,7 +411,7 @@ template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKITEM, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       Idx length, const std::vector<Idx>& /*factors*/, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
+                      Idx /*num_factors*/, Idx /*ffts_in_local*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
@@ -440,6 +440,16 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                          std::vector<kernel_data_struct>& /*kernels*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     return nullptr;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_transforms_in_local_mem_struct::inner<detail::level::WORKITEM,
+                                                                                            Dummy> {
+  static Idx execute(committed_descriptor_impl&, Idx, layout, Idx, const std::vector<Idx>&) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    return 1;
   }
 };
 

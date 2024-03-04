@@ -33,19 +33,6 @@
 
 namespace portfft {
 namespace detail {
-/**
- * Calculates the number of batches that will be loaded into local memory at any one time for the work-group
- * implementation.
- *
- * @param is_batch_interleaved is the input data layout batch interleaved
- * @param workgroup_size The size of the work-group. Must be divisible by 2.
- */
-PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(bool /*is_batch_interleaved*/,
-                                                                    Idx /*workgroup_size*/) noexcept {
-  // TODO re-enable when tests can run in the batch interleaved path
-  // return is_batch_interleaved ? workgroup_size / 2 : 1;
-  return 1;
-}
 
 /**
  * Calculates the global size needed for given problem.
@@ -55,19 +42,18 @@ PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(bool /*is_ba
  * @param subgroup_size size of subgroup used by the compute kernel
  * @param num_sgs_per_wg number of subgroups in a workgroup
  * @param n_compute_units number of compute units on target device
+ * @param ffts_in_local number of transforms loaded into memory at once
  * @return Number of elements of size T that need to fit into local memory
  */
-template <typename T>
-IdxGlobal get_global_size_workgroup(IdxGlobal n_transforms, Idx subgroup_size, Idx num_sgs_per_wg, Idx n_compute_units,
-                                    layout input_layout) {
+inline std::size_t get_global_size_workgroup(std::size_t n_transforms, std::size_t subgroup_size,
+                                             std::size_t num_sgs_per_wg, std::size_t n_compute_units,
+                                             std::size_t ffts_in_local) {
   PORTFFT_LOG_FUNCTION_ENTRY();
-  Idx maximum_n_sgs = 8 * n_compute_units * 64;
-  Idx maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
-  Idx wg_size = subgroup_size * num_sgs_per_wg;
-  Idx dfts_per_wg = get_num_batches_in_local_mem_workgroup(input_layout == layout::BATCH_INTERLEAVED, wg_size);
+  const auto maximum_n_sgs = 8 * n_compute_units * 64;
+  const auto maximum_n_wgs = maximum_n_sgs / num_sgs_per_wg;
+  const auto wg_size = subgroup_size * num_sgs_per_wg;
 
-  return static_cast<IdxGlobal>(wg_size) * sycl::min(static_cast<IdxGlobal>(maximum_n_wgs),
-                                                     divide_ceil(n_transforms, static_cast<IdxGlobal>(dfts_per_wg)));
+  return wg_size * std::min(maximum_n_wgs, divide_ceil(n_transforms, ffts_in_local));
 }
 
 /**
@@ -105,6 +91,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecConstConjugateOnLoad>();
   detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
   T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
+  const Idx ffts_in_local = kh.get_specialization_constant<detail::SpecConstTransformsInLocal>();
 
   const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
   const IdxGlobal input_stride = kh.get_specialization_constant<detail::SpecConstInputStride>();
@@ -112,8 +99,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
-  // TODO re-enable when tests can run in the batch interleaved path
-  const bool is_input_batch_interleaved = false;  // input_stride == n_transforms && input_distance == 1;
+  const bool is_input_batch_interleaved = input_stride == n_transforms && input_distance == 1;
   const bool is_input_packed = input_stride == 1 && input_distance == fft_size;
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
@@ -131,8 +117,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   global2local<level::WORKGROUP, SubgroupSize>(global_data, twiddles, loc_twiddles, 2 * (factor_m + factor_n));
   global_data.log_dump_local("twiddles loaded to local memory:", loc_twiddles, 2 * (factor_m + factor_n));
 
-  Idx max_num_batches_in_local_mem = get_num_batches_in_local_mem_workgroup(
-      is_input_batch_interleaved, static_cast<Idx>(global_data.it.get_local_range(0)));
+  Idx max_num_batches_in_local_mem = ffts_in_local;
 
   IdxGlobal first_batch_start = static_cast<IdxGlobal>(wg_id) * static_cast<IdxGlobal>(max_num_batches_in_local_mem);
   IdxGlobal num_batches_in_kernel =
@@ -283,20 +268,23 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
     PORTFFT_LOG_FUNCTION_ENTRY();
     auto& kernel_data = compute_direction == direction::FORWARD ? dimension_data.forward_kernels.at(0)
                                                                 : dimension_data.backward_kernels.at(0);
-    Idx num_batches_in_local_mem = detail::get_num_batches_in_local_mem_workgroup(
-        input_layout == layout::BATCH_INTERLEAVED, kernel_data.used_sg_size * PORTFFT_SGS_IN_WG);
     constexpr detail::memory Mem = std::is_pointer_v<TOut> ? detail::memory::USM : detail::memory::BUFFER;
     Scalar* twiddles = kernel_data.twiddles_forward.get();
     std::size_t local_elements =
         num_scalars_in_local_mem_struct::template inner<detail::level::WORKGROUP, Dummy>::execute(
             desc, kernel_data.length, kernel_data.used_sg_size, kernel_data.factors, kernel_data.num_sgs_per_wg,
             input_layout);
-    std::size_t global_size = static_cast<std::size_t>(detail::get_global_size_workgroup<Scalar>(
-        n_transforms, SubgroupSize, kernel_data.num_sgs_per_wg, desc.n_compute_units, input_layout));
+    const auto ffts_in_local =
+        num_transforms_in_local_mem_struct::template inner<detail::level::WORKGROUP, Dummy>::execute(
+            desc, kernel_data.used_sg_size, input_layout, desc.local_memory_size, kernel_data.factors);
+    std::size_t global_size = detail::get_global_size_workgroup(
+        static_cast<std::size_t>(n_transforms), SubgroupSize, static_cast<std::size_t>(kernel_data.num_sgs_per_wg),
+        static_cast<std::size_t>(desc.n_compute_units), static_cast<std::size_t>(ffts_in_local));
     const Idx bank_lines_per_pad =
         bank_lines_per_pad_wg(2 * static_cast<Idx>(sizeof(Scalar)) * kernel_data.factors[2] * kernel_data.factors[3]);
     std::size_t sg_twiddles_offset = static_cast<std::size_t>(
-        detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * num_batches_in_local_mem, bank_lines_per_pad));
+        detail::pad_local(2 * static_cast<Idx>(kernel_data.length) * ffts_in_local, bank_lines_per_pad));
+
     return desc.queue.submit([&](sycl::handler& cgh) {
       cgh.depends_on(dependencies);
       cgh.use_kernel_bundle(kernel_data.exec_bundle);
@@ -339,28 +327,12 @@ template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       Idx length, const std::vector<Idx>& /*factors*/, detail::level /*level*/, Idx /*factor_num*/,
-                      Idx /*num_factors*/) {
+                      Idx /*num_factors*/, Idx ffts_in_local) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
-  }
-};
-
-template <typename Scalar, domain Domain>
-template <typename Dummy>
-struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
-                                                                                         Dummy> {
-  static std::size_t execute(committed_descriptor_impl& /*desc*/, std::size_t length, Idx used_sg_size,
-                             const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/, layout input_layout) {
-    PORTFFT_LOG_FUNCTION_ENTRY();
-    std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
-    std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
-    // working memory + twiddles for subgroup impl for the two sizes
-    Idx num_batches_in_local_mem = detail::get_num_batches_in_local_mem_workgroup(
-        input_layout == layout::BATCH_INTERLEAVED, used_sg_size * PORTFFT_SGS_IN_WG);
-    const auto bank_lines_per_pad = bank_lines_per_pad_wg(2 * static_cast<std::size_t>(sizeof(Scalar)) * m);
-    return detail::pad_local(static_cast<std::size_t>(2 * num_batches_in_local_mem) * length, bank_lines_per_pad) +
-           2 * (m + n);
+    PORTFFT_LOG_TRACE("SpecConstTransformsInLocal:", ffts_in_local);
+    in_bundle.template set_specialization_constant<detail::SpecConstTransformsInLocal>(ffts_in_local);
   }
 };
 
@@ -424,6 +396,49 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     });
     desc.queue.wait();
     return res;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struct::inner<detail::level::WORKGROUP,
+                                                                                         Dummy> {
+  static std::size_t execute(committed_descriptor_impl& desc, std::size_t length, Idx used_sg_size,
+                             const std::vector<Idx>& factors, Idx& /*num_sgs_per_wg*/, layout input_layout) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    std::size_t n = static_cast<std::size_t>(factors[0]) * static_cast<std::size_t>(factors[1]);
+    std::size_t m = static_cast<std::size_t>(factors[2]) * static_cast<std::size_t>(factors[3]);
+    // working memory + twiddles for subgroup impl for the two sizes
+    Idx num_batches_in_local_mem = num_transforms_in_local_mem_struct::template inner<level::WORKGROUP, Dummy>::execute(
+        desc, used_sg_size, input_layout, Idx(desc.local_memory_size), factors);
+    auto bank_lines_per_pad = bank_lines_per_pad_wg(2 * sizeof(Scalar) * m);
+    const auto scalars_for_twiddles = 2 * (m + n);
+    return detail::pad_local(2 * static_cast<std::size_t>(num_batches_in_local_mem) * length, bank_lines_per_pad) +
+           scalars_for_twiddles;
+  }
+};
+
+template <typename Scalar, domain Domain>
+template <typename Dummy>
+struct committed_descriptor_impl<Scalar, Domain>::num_transforms_in_local_mem_struct::inner<detail::level::WORKGROUP,
+                                                                                            Dummy> {
+  static Idx execute(committed_descriptor_impl& /*desc*/, Idx used_sg_size, layout input_layout, Idx local_mem,
+                     const std::vector<Idx>& factors) {
+    PORTFFT_LOG_FUNCTION_ENTRY();
+    const Idx factor_n = factors[0] * factors[1];
+    const Idx factor_m = factors[2] * factors[3];
+    const Idx length = factor_n * factor_m;
+
+    const auto scalars_in_local = local_mem / static_cast<Idx>(sizeof(Scalar));
+    const auto scalars_for_twiddles = 2 * (factor_m + factor_n);
+    const auto local_scalars_for_ffts = scalars_in_local - scalars_for_twiddles;
+
+    const auto target_ffts_in_local = input_layout == layout::BATCH_INTERLEAVED ? used_sg_size / 2 : 1;
+
+    Idx bank_lines_per_pad = bank_lines_per_pad_wg(2 * Idx(sizeof(Scalar)) * factor_m);
+    Idx num_scalars_per_fft = detail::pad_local(2 * length, bank_lines_per_pad);
+    auto possible_fft_in_local = local_scalars_for_ffts / num_scalars_per_fft;
+    return std::max(1, std::min(target_ffts_in_local, possible_fft_in_local));
   }
 };
 
