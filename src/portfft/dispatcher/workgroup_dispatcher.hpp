@@ -111,7 +111,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
   const bool is_input_batch_interleaved = input_stride == n_transforms && input_distance == 1;
-  const bool is_input_packed = input_stride == 1 && input_distance == fft_size;
+  // TODO needed for optimized input copy
+  // const bool is_input_packed = input_stride == 1 && input_distance == fft_size;
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   Idx num_workgroups = static_cast<Idx>(global_data.it.get_group_range(0));
@@ -140,41 +141,59 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
        batch_start_idx += num_batches_in_kernel) {
     IdxGlobal input_global_offset = static_cast<IdxGlobal>(vec_size * input_distance) * batch_start_idx;
     IdxGlobal output_global_offset = static_cast<IdxGlobal>(vec_size * output_distance) * batch_start_idx;
-    if (is_input_batch_interleaved) {
-      /**
-       * In the transposed case, the data is laid out in the local memory column-wise, viewing it as a FFT_Size x
-       * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
-       * / 2 consecutive batches into the local memory
-       */
-      const Idx num_batches_in_local_mem =
-          std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
-      global_data.log_message_global(__func__, "loading transposed data from global to local memory");
-      if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-        detail::md_view input_view{input, std::array{2 * n_transforms, static_cast<IdxGlobal>(1)}, 2 * batch_start_idx};
-        detail::md_view loc_md_view{loc_view, std::array{2 * max_num_batches_in_local_mem, 1}};
-        copy_group<level::WORKGROUP>(global_data, input_view, loc_md_view,
-                                     std::array{fft_size, 2 * num_batches_in_local_mem});
-      } else {  // storage == complex_storage::SPLIT_COMPLEX
-        detail::md_view input_real_view{input, std::array{n_transforms, static_cast<IdxGlobal>(1)}, batch_start_idx};
-        detail::md_view input_imag_view{input_imag, std::array{n_transforms, static_cast<IdxGlobal>(1)},
-                                        batch_start_idx};
-        detail::md_view loc_real_view{loc_view, std::array{max_num_batches_in_local_mem, 1}};
-        detail::md_view loc_imag_view{loc_view, std::array{max_num_batches_in_local_mem, 1}, local_imag_offset};
-        copy_group<level::WORKGROUP>(global_data, input_real_view, loc_real_view,
-                                     std::array{fft_size, num_batches_in_local_mem});
-        copy_group<level::WORKGROUP>(global_data, input_imag_view, loc_imag_view,
-                                     std::array{fft_size, num_batches_in_local_mem});
+    /**
+     * In the transposed case, the data is laid out in the local memory column-wise, viewing it as a FFT_Size x
+     * WG_SIZE / 2 matrix, Each column contains either the real or the complex component of the batch.  Loads WG_SIZE
+     * / 2 consecutive batches into the local memory
+     */
+    const Idx num_batches_in_local_mem =
+        std::min(max_num_batches_in_local_mem, static_cast<Idx>(n_transforms - batch_start_idx));
+    global_data.log_message_global(__func__, "loading transposed data from global to local memory");
+
+    // TODO modify to be able to handle any format in
+    // TODO add special path for purely packed format
+    // TODO optimize for distance < stride
+    if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+      std::array<IdxGlobal, 3> global_strides{2 * input_distance, 2 * input_stride, 1};
+      if (is_input_batch_interleaved) {
+        std::swap(global_strides[0], global_strides[1]);
       }
+      std::array<Idx, 3> local_strides{2 * max_num_batches_in_local_mem, 2, 1};
+      std::array<Idx, 3> copy_lengths{num_batches_in_local_mem, fft_size, 2};
+
+      detail::md_view input_global_view{input, global_strides, input_global_offset};
+      detail::md_view loc_md_view{loc_view, local_strides};
+
+      copy_group<level::WORKGROUP>(global_data, input_global_view, loc_md_view, copy_lengths);
+    } else {  // storage == complex_storage::SPLIT_COMPLEX
+      std::array<IdxGlobal, 2> global_strides{input_distance, input_stride};
+      if (is_input_batch_interleaved) {
+        std::swap(global_strides[0], global_strides[1]);
+      }
+      std::array<Idx, 2> local_strides{max_num_batches_in_local_mem, 1};
+      std::array<Idx, 2> copy_lengths{num_batches_in_local_mem, fft_size};
+
+      detail::md_view input_global_real_view{input, global_strides, input_global_offset};
+      detail::md_view input_global_imag_view{input_imag, global_strides, input_global_offset};
+
+      detail::md_view loc_real_view{loc_view, local_strides};
+      detail::md_view loc_imag_view{loc_view, local_strides, local_imag_offset};
+      copy_group<level::WORKGROUP>(global_data, input_global_real_view, loc_real_view, copy_lengths);
+      copy_group<level::WORKGROUP>(global_data, input_global_imag_view, loc_imag_view, copy_lengths);
+    }
+    sycl::group_barrier(global_data.it.get_group());
+
+    for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
+      // TODO modify layout depending on strides and distances
+      wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, sub_batch,
+                           batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
+                           storage, (is_input_batch_interleaved ? layout::BATCH_INTERLEAVED : layout::PACKED),
+                           multiply_on_load, multiply_on_store, apply_scale_factor, conjugate_on_load,
+                           conjugate_on_store, global_data);
       sycl::group_barrier(global_data.it.get_group());
+    }
 
-      for (Idx sub_batch = 0; sub_batch < num_batches_in_local_mem; sub_batch++) {
-        wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
-                             sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n,
-                             factor_m, storage, layout::BATCH_INTERLEAVED, multiply_on_load, multiply_on_store,
-                             apply_scale_factor, conjugate_on_load, conjugate_on_store, global_data);
-        sycl::group_barrier(global_data.it.get_group());
-      }
-
+    if (is_input_batch_interleaved) {
       global_data.log_message_global(__func__, "storing data from local to global memory (with 2 transposes)");
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
         std::array<IdxGlobal, 4> global_strides{2 * output_distance, 2 * factor_n * output_stride, 2 * output_stride,
@@ -200,44 +219,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         copy_group<level::WORKGROUP>(global_data, local_output_real_view, global_output_real_view, copy_lengths);
         copy_group<level::WORKGROUP>(global_data, local_output_imag_view, global_output_imag_view, copy_lengths);
       }
-      sycl::group_barrier(global_data.it.get_group());
     } else {  // not batch interleaved input layout
-      global_data.log_message_global(__func__, "loading non-transposed data from global to local memory");
-      if (is_input_packed) {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, 2 * fft_size, input_global_offset);
-        } else {
-          global2local<level::WORKGROUP, SubgroupSize>(global_data, input, loc_view, fft_size, input_global_offset);
-          global2local<level::WORKGROUP, SubgroupSize>(global_data, input_imag, loc_view, fft_size, input_global_offset,
-                                                       local_imag_offset);
-        }
-      } else {
-        if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          std::array<IdxGlobal, 2> global_strides{input_stride * 2, 1};
-          std::array<Idx, 2> local_strides{2, 1};
-          std::array<Idx, 2> copy_lengths{fft_size, 2};
-          detail::md_view global_input_view{input, global_strides, input_global_offset};
-          detail::md_view local_input_view{loc_view, local_strides};
-
-          global_data.log_message_global(__func__, "storing data from unpacked global memory to local");
-          copy_group<level::WORKGROUP>(global_data, global_input_view, local_input_view, copy_lengths);
-        } else {
-          detail::strided_view global_input_real_view{input, input_stride, input_global_offset};
-          detail::strided_view global_input_imag_view{input_imag, input_stride, input_global_offset};
-          detail::offset_view local_input_imag_view{loc_view, local_imag_offset};
-
-          global_data.log_message_global(__func__, "storing real data from unpacked global memory to local");
-          copy_group<level::WORKGROUP>(global_data, global_input_real_view, loc_view, fft_size);
-          global_data.log_message_global(__func__, "storing imaginary data from unpacked global memory to local");
-          copy_group<level::WORKGROUP>(global_data, global_input_imag_view, local_input_imag_view, fft_size);
-        }
-      }
-      sycl::group_barrier(global_data.it.get_group());
-      wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
-                           batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
-                           storage, layout::PACKED, multiply_on_load, multiply_on_store, apply_scale_factor,
-                           conjugate_on_load, conjugate_on_store, global_data);
-      sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -262,8 +244,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         copy_group<level::WORKGROUP>(global_data, loc_output_real_view, global_output_real_view, copy_lengths);
         copy_group<level::WORKGROUP>(global_data, loc_output_imag_view, global_output_imag_view, copy_lengths);
       }
-      sycl::group_barrier(global_data.it.get_group());
     }
+    sycl::group_barrier(global_data.it.get_group());
   }
   global_data.log_message_global(__func__, "exited");
 }
