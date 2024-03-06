@@ -206,7 +206,7 @@ template <Idx SubgroupSize, Idx RecursionLevel, typename T>
 PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, sycl::sub_group& sg) {
   constexpr Idx MaxRecursionLevel = detail::int_log2(SubgroupSize);
   if constexpr (RecursionLevel < MaxRecursionLevel) {
-    const Idx f0 = detail::factorize(fft_size);
+    const Idx f0 = detail::factorize_small(fft_size);
     if (f0 >= 2 && fft_size / f0 >= 2) {
       cross_sg_cooley_tukey_dft<SubgroupSize, RecursionLevel + 1>(real, imag, fft_size / f0, f0, stride, sg);
     } else {
@@ -215,6 +215,7 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
   }
 }
 
+constexpr int FactorizeSgMaxRecursionLevel=63;
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
@@ -223,17 +224,15 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
  * @param sg_size subgroup size
  * @return the factor below or equal to subgroup size
  */
-template <typename T>
+template <typename T, int RecursionLevel = 0>
 PORTFFT_INLINE constexpr T factorize_sg(T N, Idx sg_size) {
-  if constexpr (PORTFFT_SLOW_SG_SHUFFLES) {
+  if constexpr (PORTFFT_SLOW_SG_SHUFFLES || RecursionLevel>=FactorizeSgMaxRecursionLevel) {
     return 1;
   } else {
-    for (T i = static_cast<T>(sg_size); i > 1; i--) {
-      if (N % i == 0) {
-        return i;
-      }
+    if(N % sg_size == 0){
+      return sg_size;
     }
-    return 1;
+    return factorize_sg<T, RecursionLevel+1>(N, sg_size-1);
   }
 }
 

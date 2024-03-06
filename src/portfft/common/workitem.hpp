@@ -126,6 +126,44 @@ PORTFFT_INLINE void cooley_tukey_dft(const T* in, T* out, Idx factor_n, Idx fact
   }
 }
 
+// Maximum of the smaller factor
+static constexpr Idx FactorizeSmallMaxRecursionLevel = 7;
+
+/**
+ * Implementation of factorize_small.
+ * 
+ * @tparam RecursionLevel current level of recursion
+ * @tparam T type of the number to factorize
+ * @param N number to factorize
+ * @param cur_max_factor max factor of `N` found so far
+ * @param next_val_to_test next value to test whether it is a factor of N.
+ * @return max factor of N, not greater than `sqrt(N)`
+ */
+template <Idx RecursionLevel = 0, typename T>
+constexpr T factorize_small_impl(const T N, const T cur_max_factor, const T next_val_to_test) {
+  if constexpr (RecursionLevel < FactorizeSmallMaxRecursionLevel) {
+    if (next_val_to_test * next_val_to_test > N){
+      return cur_max_factor;
+    }
+    if (N % next_val_to_test == 0){
+      return factorize_small_impl<RecursionLevel + 1, T>(N, next_val_to_test, next_val_to_test + 1);
+    }
+    return factorize_small_impl<RecursionLevel + 1, T>(N, cur_max_factor, next_val_to_test + 1);
+  }
+  return cur_max_factor;
+}
+
+/**
+ * Factorizes a number into two roughly equal factors. Only works for numbers up to 64. Faster with IGC.
+ * @tparam T type of the number to factorize
+ * @param N the number to factorize
+ * @return the smaller of the factors
+ */
+template <typename T>
+PORTFFT_INLINE constexpr T factorize_small(T N) {
+  return factorize_small_impl<0,T>(N,1,2);
+}
+
 /**
  * Factorizes a number into two roughly equal factors.
  * @tparam T type of the number to factorize
@@ -153,7 +191,7 @@ PORTFFT_INLINE constexpr T factorize(T N) {
  */
 template <typename TIdx, Idx RecursionLevel = 0>
 PORTFFT_INLINE constexpr TIdx wi_temps(TIdx N) {
-  TIdx f0 = factorize(N);
+  TIdx f0 = factorize_small(N);
   TIdx f1 = N / f0;
   if (f0 < 2 || f1 < 2) {
     return N;
@@ -199,7 +237,7 @@ PORTFFT_INLINE constexpr bool fits_in_wi(TIdx N) {
  */
 template <Idx RecursionLevel, typename T>
 PORTFFT_INLINE void wi_dft(const T* in, T* out, Idx fft_size, Idx stride_in, Idx stride_out, T* privateScratch) {
-  const Idx f0 = detail::factorize(fft_size);
+  const Idx f0 = detail::factorize_small(fft_size);
   constexpr Idx MaxRecursionLevel = detail::int_log2(detail::MaxComplexPerWI) - 1;
   if constexpr (RecursionLevel < MaxRecursionLevel) {
     if (fft_size == 2) {
