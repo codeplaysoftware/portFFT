@@ -215,7 +215,7 @@ PORTFFT_INLINE void cross_sg_dft(T& real, T& imag, Idx fft_size, Idx stride, syc
   }
 }
 
-constexpr int FactorizeSgMaxRecursionLevel=63;
+constexpr int FactorizeSgMaxRecursionLevel = 63;
 /**
  * Factorizes a number into two factors, so that one of them will maximal below
  or equal to subgroup size.
@@ -226,13 +226,13 @@ constexpr int FactorizeSgMaxRecursionLevel=63;
  */
 template <typename T, int RecursionLevel = 0>
 PORTFFT_INLINE constexpr T factorize_sg(T N, Idx sg_size) {
-  if constexpr (PORTFFT_SLOW_SG_SHUFFLES || RecursionLevel>=FactorizeSgMaxRecursionLevel) {
+  if constexpr (PORTFFT_SLOW_SG_SHUFFLES || RecursionLevel >= FactorizeSgMaxRecursionLevel) {
     return 1;
   } else {
-    if(N % sg_size == 0){
+    if (N % sg_size == 0) {
       return sg_size;
     }
-    return factorize_sg<T, RecursionLevel+1>(N, sg_size-1);
+    return factorize_sg<T, RecursionLevel + 1>(N, sg_size - 1);
   }
 }
 

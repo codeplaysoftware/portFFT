@@ -131,7 +131,7 @@ static constexpr Idx FactorizeSmallMaxRecursionLevel = 7;
 
 /**
  * Implementation of factorize_small.
- * 
+ *
  * @tparam RecursionLevel current level of recursion
  * @tparam T type of the number to factorize
  * @param N number to factorize
@@ -142,10 +142,10 @@ static constexpr Idx FactorizeSmallMaxRecursionLevel = 7;
 template <Idx RecursionLevel = 0, typename T>
 constexpr T factorize_small_impl(const T N, const T cur_max_factor, const T next_val_to_test) {
   if constexpr (RecursionLevel < FactorizeSmallMaxRecursionLevel) {
-    if (next_val_to_test * next_val_to_test > N){
+    if (next_val_to_test * next_val_to_test > N) {
       return cur_max_factor;
     }
-    if (N % next_val_to_test == 0){
+    if (N % next_val_to_test == 0) {
       return factorize_small_impl<RecursionLevel + 1, T>(N, next_val_to_test, next_val_to_test + 1);
     }
     return factorize_small_impl<RecursionLevel + 1, T>(N, cur_max_factor, next_val_to_test + 1);
@@ -161,7 +161,7 @@ constexpr T factorize_small_impl(const T N, const T cur_max_factor, const T next
  */
 template <typename T>
 PORTFFT_INLINE constexpr T factorize_small(T N) {
-  return factorize_small_impl<0,T>(N,1,2);
+  return factorize_small_impl<0, T>(N, 1, 2);
 }
 
 /**
