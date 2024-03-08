@@ -114,7 +114,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
 
   // TODO reable when tests are passing
   const bool is_input_batch_interleaved = false;  // input_stride == n_transforms && input_distance == 1;
-  const bool is_input_packed =  input_stride == 1 && input_distance == fft_size;
+  const bool is_input_packed = input_stride == 1 && input_distance == fft_size;
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
   Idx num_workgroups = static_cast<Idx>(global_data.it.get_group_range(0));
