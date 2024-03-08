@@ -42,7 +42,7 @@ namespace detail {
  */
 PORTFFT_INLINE constexpr Idx get_num_batches_in_local_mem_workgroup(bool /*is_batch_interleaved*/,
                                                                     Idx /*workgroup_size*/) noexcept {
-  // TODO reenable when tests are passing
+  // TODO re-enable when tests can run in the batch interleaved path
   // return is_batch_interleaved ? workgroup_size / 2 : 1;
   return 1;
 }
@@ -112,7 +112,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
-  // TODO reable when tests are passing
+  // TODO re-enable when tests can run in the batch interleaved path
   const bool is_input_batch_interleaved = false;  // input_stride == n_transforms && input_distance == 1;
   const bool is_input_packed = input_stride == 1 && input_distance == fft_size;
 
