@@ -89,8 +89,8 @@ class committed_descriptor_impl {
       Scalar1* output, const TIn& input_imag, Scalar1* output_imag, const Scalar1* twiddles_ptr,
       const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
       IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
-      IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
-      const std::vector<sycl::event>& dependencies, sycl::queue& queue);
+      IdxGlobal batch_start, Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies,
+      sycl::queue& queue);
 
   template <typename Scalar1, domain Domain1, typename TOut>
   friend sycl::event detail::transpose_level(
@@ -490,7 +490,6 @@ class committed_descriptor_impl {
       const auto apply_scale = is_final_factor && is_final_dim ? detail::apply_scale_factor::APPLIED
                                                                : detail::apply_scale_factor::NOT_APPLIED;
 
-      Idx length{};
       IdxGlobal forward_stride{};
       IdxGlobal backward_stride{};
       IdxGlobal forward_distance{};

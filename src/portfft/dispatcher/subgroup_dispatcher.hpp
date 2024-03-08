@@ -394,7 +394,6 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         }
       }
 
-      // sycl::group_barrier(global_data.sg);
       global_data.log_dump_local("data in local memory:", loc_view, n_reals_per_fft);
 
       if (working) {
