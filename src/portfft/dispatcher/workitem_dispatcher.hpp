@@ -449,7 +449,8 @@ struct committed_descriptor_impl<Scalar, Domain>::num_transforms_in_local_mem_st
                                                                                             Dummy> {
   static Idx execute(committed_descriptor_impl&, Idx, layout, Idx, const std::vector<Idx>&) {
     PORTFFT_LOG_FUNCTION_ENTRY();
-    return 1;
+    // TODO
+    return 0;
   }
 };
 

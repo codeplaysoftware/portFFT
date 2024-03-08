@@ -517,10 +517,11 @@ class committed_descriptor_impl {
       const IdxGlobal input_distance = compute_direction == direction::FORWARD ? forward_distance : backward_distance;
       const IdxGlobal output_distance = compute_direction == direction::FORWARD ? backward_distance : forward_distance;
 
-      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
-
+      // TODO layout is wrong, factors is wrong
       const Idx ffts_in_local = num_transforms_in_local_mem(
           level, SubgroupSize, detail::get_layout(params, compute_direction), local_memory_size, factors);
+
+      auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
 
       set_spec_constants(top_level, in_bundle, length, factors, detail::elementwise_multiply::NOT_APPLIED,
                          multiply_on_store, apply_scale, level, conjugate_on_load, conjugate_on_store, scale_factor,
