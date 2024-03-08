@@ -267,7 +267,7 @@ class committed_descriptor_impl {
         PORTFFT_LOG_TRACE("Workitem kernel for factor:", factor_size);
         return true;
       }
-      bool fits_in_local_memory_subgroup = [&]() {
+      auto fits_in_local_memory_subgroup = [&](IdxGlobal factor_size) {
         Idx temp_num_sgs_in_wg;
         IdxGlobal factor_sg = detail::factorize_sg<IdxGlobal>(factor_size, SubgroupSize);
         IdxGlobal factor_wi = factor_size / factor_sg;
@@ -277,13 +277,11 @@ class committed_descriptor_impl {
                                        {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
           std::size_t store_modifiers = batch_interleaved_layout ? input_scalars : 0;
-          std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
-          return (sizeof(Scalar) * (input_scalars + store_modifiers + twiddle_scalars)) <
-                 static_cast<std::size_t>(local_memory_size);
+          return (sizeof(Scalar) * (input_scalars + store_modifiers)) < static_cast<std::size_t>(local_memory_size);
         }
         return false;
-      }();
-      if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup &&
+      };
+      if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup(factor_size) &&
           !PORTFFT_SLOW_SG_SHUFFLES) {
         Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
         Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
