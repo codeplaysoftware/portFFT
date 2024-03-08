@@ -101,29 +101,29 @@ PORTFFT_INLINE void workitem_impl(const T* input, T* output, const T* input_imag
                                   IdxGlobal n_transforms, global_data_struct<1> global_data, sycl::kernel_handler& kh,
                                   const T* load_modifier_data = nullptr, const T* store_modifier_data = nullptr,
                                   T* loc_load_modifier = nullptr, T* loc_store_modifier = nullptr) {
-  complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
-  detail::elementwise_multiply multiply_on_load = kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
-  detail::elementwise_multiply multiply_on_store = kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
-  detail::apply_scale_factor apply_scale_factor = kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
-  detail::complex_conjugate conjugate_on_load = kh.get_specialization_constant<detail::SpecConstConjugateOnLoad>();
-  detail::complex_conjugate conjugate_on_store = kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
+  complex_storage storage = complex_storage::INTERLEAVED_COMPLEX; //kh.get_specialization_constant<detail::SpecConstComplexStorage>();
+  detail::elementwise_multiply multiply_on_load = detail::elementwise_multiply::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstMultiplyOnLoad>();
+  detail::elementwise_multiply multiply_on_store = detail::elementwise_multiply::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstMultiplyOnStore>();
+  detail::apply_scale_factor apply_scale_factor = detail::apply_scale_factor::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstApplyScaleFactor>();
+  detail::complex_conjugate conjugate_on_load = detail::complex_conjugate::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstConjugateOnLoad>();
+  detail::complex_conjugate conjugate_on_store = detail::complex_conjugate::NOT_APPLIED; //kh.get_specialization_constant<detail::SpecConstConjugateOnStore>();
 
-  T scaling_factor = kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
+  T scaling_factor = 1; //kh.get_specialization_constant<detail::get_spec_constant_scale<T>()>();
 
-  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>();
-  const IdxGlobal input_stride = kh.get_specialization_constant<detail::SpecConstInputStride>();
-  const IdxGlobal output_stride = kh.get_specialization_constant<detail::SpecConstOutputStride>();
-  const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
-  const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
+  const Idx fft_size = kh.get_specialization_constant<detail::SpecConstFftSize>(); // THIS WE NEED OPTIMIZATIONS ON
+  const IdxGlobal input_stride = 1; //kh.get_specialization_constant<detail::SpecConstInputStride>();
+  const IdxGlobal output_stride = 1; //kh.get_specialization_constant<detail::SpecConstOutputStride>();
+  const IdxGlobal input_distance = fft_size; //kh.get_specialization_constant<detail::SpecConstInputDistance>();
+  const IdxGlobal output_distance = fft_size; //kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
-  const bool is_packed_input = input_stride == 1 && input_distance == fft_size;
-  const bool interleaved_transforms_input = input_distance < input_stride;
-  const bool is_packed_output = output_stride == 1 && output_distance == fft_size;
-  const bool interleaved_transforms_output = output_distance < output_stride;
+  const bool is_packed_input = true; //input_stride == 1 && input_distance == fft_size;
+  const bool interleaved_transforms_input = false; //input_distance < input_stride;
+  const bool is_packed_output = true; //output_stride == 1 && output_distance == fft_size;
+  const bool interleaved_transforms_output = false; //output_distance < output_stride;
 
   global_data.log_message_global(__func__, "entered", "fft_size", fft_size, "n_transforms", n_transforms);
 
-  bool interleaved_storage = storage == complex_storage::INTERLEAVED_COMPLEX;
+  bool interleaved_storage = true; //storage == complex_storage::INTERLEAVED_COMPLEX;
   const Idx n_reals = 2 * fft_size;
   const Idx n_io_reals = interleaved_storage ? n_reals : fft_size;
   const IdxGlobal input_distance_in_reals = interleaved_storage ? 2 * input_distance : input_distance;
