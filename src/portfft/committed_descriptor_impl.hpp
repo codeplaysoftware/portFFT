@@ -148,18 +148,26 @@ class committed_descriptor_impl {
     std::vector<kernel_data_struct> transpose_kernels;
     std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
+    // The size of DFT transform which will be computed for the given dimension
     std::size_t length;
+    // The committed length for the particular dimension, will be different from length in the case of bluestein and
+    // radar fft algorithms
+    std::size_t committed_length;
     Idx used_sg_size;
     Idx num_batches_in_l2;
     Idx num_factors;
+    bool is_prime;
 
     dimension_struct(std::vector<kernel_data_struct> forward_kernels, std::vector<kernel_data_struct> backward_kernels,
-                     detail::level level, std::size_t length, Idx used_sg_size)
+                     detail::level level, std::size_t length, std::size_t committed_length, Idx used_sg_size,
+                     bool is_prime)
         : forward_kernels(std::move(forward_kernels)),
           backward_kernels(std::move(backward_kernels)),
           level(level),
           length(length),
-          used_sg_size(used_sg_size) {}
+          committed_length(committed_length),
+          used_sg_size(used_sg_size),
+          is_prime(is_prime) {}
   };
 
   std::vector<dimension_struct> dimensions;
@@ -203,12 +211,12 @@ class committed_descriptor_impl {
    * set of kernels that need to be JIT compiled.
    *
    * @tparam SubgroupSize size of the subgroup
-   * @param kernel_num the consecutive number of the kernel to prepare
+   * @param fft_size The size of the dft transform
    * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel,
    * vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
-  std::tuple<detail::level, kernel_ids_and_metadata_t> prepare_implementation(std::size_t kernel_num) {
+  std::tuple<detail::level, std::size_t, kernel_ids_and_metadata_t> prepare_implementation(IdxGlobal fft_size) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     // TODO: check and support all the parameter values
     if constexpr (Domain != domain::COMPLEX) {
@@ -217,11 +225,12 @@ class committed_descriptor_impl {
 
     std::vector<sycl::kernel_id> ids;
     std::vector<Idx> factors;
-    IdxGlobal fft_size = static_cast<IdxGlobal>(params.lengths[kernel_num]);
     if (detail::fits_in_wi<Scalar>(fft_size)) {
       ids = detail::get_ids<detail::workitem_kernel, Scalar, Domain, SubgroupSize>();
       PORTFFT_LOG_TRACE("Prepared workitem impl for size: ", fft_size);
-      return {detail::level::WORKITEM, {{detail::level::WORKITEM, ids, factors}}};
+      return {detail::level::WORKITEM,
+              static_cast<std::size_t>(fft_size),
+              {{detail::level::WORKITEM, ids, {static_cast<Idx>(fft_size)}}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
@@ -232,14 +241,11 @@ class committed_descriptor_impl {
       factors.push_back(factor_sg);
       ids = detail::get_ids<detail::subgroup_kernel, Scalar, Domain, SubgroupSize>();
       PORTFFT_LOG_TRACE("Prepared subgroup impl with factor_wi:", factor_wi, "and factor_sg:", factor_sg);
-      return {detail::level::SUBGROUP, {{detail::level::SUBGROUP, ids, factors}}};
+      return {detail::level::SUBGROUP, static_cast<std::size_t>(fft_size), {{detail::level::SUBGROUP, ids, factors}}};
     }
     IdxGlobal n_idx_global = detail::factorize(fft_size);
     if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) &&
         detail::can_cast_safely<IdxGlobal, Idx>(fft_size / n_idx_global)) {
-      if (n_idx_global == 1) {
-        throw unsupported_configuration("FFT size ", fft_size, " : Large Prime sized FFT currently is unsupported");
-      }
       Idx n = static_cast<Idx>(n_idx_global);
       Idx m = static_cast<Idx>(fft_size / n_idx_global);
       Idx factor_sg_n = detail::factorize_sg(n, SubgroupSize);
@@ -265,7 +271,8 @@ class committed_descriptor_impl {
         ids = detail::get_ids<detail::workgroup_kernel, Scalar, Domain, SubgroupSize>();
         PORTFFT_LOG_TRACE("Prepared workgroup impl with factor_wi_n:", factor_wi_n, " factor_sg_n:", factor_sg_n,
                           " factor_wi_m:", factor_wi_m, " factor_sg_m:", factor_sg_m);
-        return {detail::level::WORKGROUP, {{detail::level::WORKGROUP, ids, factors}}};
+        return {
+            detail::level::WORKGROUP, static_cast<std::size_t>(fft_size), {{detail::level::WORKGROUP, ids, factors}}};
       }
     }
     PORTFFT_LOG_TRACE("Preparing global impl");
@@ -288,10 +295,8 @@ class committed_descriptor_impl {
               num_scalars_in_local_mem(detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
                                        {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
-          std::size_t store_modifiers = batch_interleaved_layout ? input_scalars : 0;
           std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
-          return (sizeof(Scalar) * (input_scalars + store_modifiers + twiddle_scalars)) <
-                 static_cast<std::size_t>(local_memory_size);
+          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) < static_cast<std::size_t>(local_memory_size);
         }
         return false;
       }();
@@ -308,8 +313,15 @@ class committed_descriptor_impl {
       }
       return false;
     };
-    detail::factorize_input(fft_size, check_and_select_target_level);
-    return {detail::level::GLOBAL, param_vec};
+    bool encountered_large_prime = detail::factorize_input(fft_size, check_and_select_target_level);
+    std::cout << "encountered_large_prime = " << encountered_large_prime << std::endl;
+    if (encountered_large_prime) {
+      std::cout << "I HAVE ENCOUNTERED A LARGE PRIME, fft size = " << fft_size << std::endl;
+      IdxGlobal padded_size = detail::get_bluestein_padded_size(fft_size);
+      std::cout << "PADDED FFT SIZE = " << padded_size << std::endl;
+      return prepare_implementation<SubgroupSize>(padded_size);
+    }
+    return {detail::level::GLOBAL, static_cast<std::size_t>(fft_size), param_vec};
   }
 
   /**
@@ -463,6 +475,7 @@ class committed_descriptor_impl {
       const bool is_global = top_level == detail::level::GLOBAL;
       const bool is_final_factor = counter == (prepared_vec.size() - 1);
       const bool is_final_dim = dimension_num == (params.lengths.size() - 1);
+      const Idx factor_size = std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>());
       const bool is_backward = compute_direction == direction::BACKWARD;
       if (is_multi_dim && is_global) {
         throw unsupported_configuration("multidimensional global transforms are not supported.");
@@ -484,22 +497,20 @@ class committed_descriptor_impl {
       IdxGlobal backward_distance{};
 
       if (is_global) {
-        length = std::accumulate(factors.begin(), factors.end(), Idx(1), std::multiplies<Idx>());
-
-        remaining_factors_prod /= length;
+        remaining_factors_prod /= factor_size;
         forward_stride = remaining_factors_prod;
         backward_stride = remaining_factors_prod;
-        forward_distance = is_final_factor ? length : 1;
-        backward_distance = is_final_factor ? length : 1;
+        forward_distance = is_final_factor ? factor_size : 1;
+        backward_distance = is_final_factor ? factor_size : 1;
 
       } else {
-        length = static_cast<Idx>(params.lengths[dimension_num]);
+        Idx committed_length = static_cast<Idx>(params.lengths[dimension_num]);
         forward_stride = static_cast<IdxGlobal>(params.forward_strides[dimension_num]);
         backward_stride = static_cast<IdxGlobal>(params.backward_strides[dimension_num]);
         if (is_multi_dim) {
           if (is_final_dim) {
-            forward_distance = length;
-            backward_distance = length;
+            forward_distance = committed_length;
+            backward_distance = committed_length;
           } else {
             forward_distance = 1;
             backward_distance = 1;
@@ -517,14 +528,28 @@ class committed_descriptor_impl {
 
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
 
-      set_spec_constants(top_level, in_bundle, length, factors, detail::elementwise_multiply::NOT_APPLIED,
+      if (factor_size != static_cast<Idx>(params.lengths[dimension_num])) {
+        in_bundle.template set_specialization_constant<detail::SpecConstFFTAlgorithm>(detail::fft_algorithm::BLUESTEIN);
+        in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
+            static_cast<Idx>(params.lengths[dimension_num]));
+      } else {
+        // TODO: This needs to change in the case of global
+        in_bundle.template set_specialization_constant<detail::SpecConstFFTAlgorithm>(
+            detail::fft_algorithm::COOLEY_TUKEY);
+        in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
+            static_cast<Idx>(params.lengths[dimension_num]));
+      }
+
+      set_spec_constants(top_level, in_bundle, factor_size, factors, detail::elementwise_multiply::NOT_APPLIED,
                          multiply_on_store, apply_scale, level, conjugate_on_load, conjugate_on_store, scale_factor,
                          input_stride, output_stride, input_distance, output_distance, static_cast<Idx>(counter),
                          static_cast<Idx>(prepared_vec.size()));
       try {
         PORTFFT_LOG_TRACE("Building kernel bundle with subgroup size", SubgroupSize);
-        result.emplace_back(sycl::build(in_bundle), factors, params.lengths[dimension_num], SubgroupSize,
-                            PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
+        result.emplace_back(
+            sycl::build(in_bundle), factors,
+            static_cast<std::size_t>(std::accumulate(factors.begin(), factors.end(), 1, std::multiplies<Idx>())),
+            SubgroupSize, PORTFFT_SGS_IN_WG, std::shared_ptr<Scalar>(), level);
         PORTFFT_LOG_TRACE("Kernel bundle build complete.");
       } catch (std::exception& e) {
         PORTFFT_LOG_WARNING("Build for subgroup size", SubgroupSize, "failed with message:\n", e.what());
@@ -549,7 +574,8 @@ class committed_descriptor_impl {
   dimension_struct build_w_spec_const(std::size_t dimension_num) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     if (std::count(supported_sg_sizes.begin(), supported_sg_sizes.end(), SubgroupSize)) {
-      auto [top_level, prepared_vec] = prepare_implementation<SubgroupSize>(dimension_num);
+      auto [top_level, fft_size, prepared_vec] =
+          prepare_implementation<SubgroupSize>(static_cast<IdxGlobal>(params.lengths[dimension_num]));
       bool is_compatible = true;
       for (auto [level, ids, factors] : prepared_vec) {
         is_compatible = is_compatible && sycl::is_compatible(ids, dev);
@@ -558,14 +584,24 @@ class committed_descriptor_impl {
         }
       }
 
+      std::cout << "FFT SIZE = " << fft_size << std::endl;
+      if (top_level == detail::level::SUBGROUP) {
+        std::cout << "PADDED FFT SIZE LEVEL is SUBGROUP " << std::endl;
+      }
+      // exit(-10);
       if (is_compatible) {
         auto forward_kernels =
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num);
         auto backward_kernels =
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD, dimension_num);
         if (forward_kernels.has_value() && backward_kernels.has_value()) {
-          return {forward_kernels.value(), backward_kernels.value(), top_level, params.lengths[dimension_num],
-                  SubgroupSize};
+          return {forward_kernels.value(),
+                  backward_kernels.value(),
+                  top_level,
+                  fft_size,
+                  params.lengths[dimension_num],
+                  SubgroupSize,
+                  fft_size != params.lengths[dimension_num]};
         }
       }
     }

@@ -24,6 +24,10 @@
 #include <sycl/sycl.hpp>
 
 #include "helpers.hpp"
+#include "portfft/common/logging.hpp"
+#include "portfft/common/memory_views.hpp"
+#include "portfft/common/transfers.hpp"
+#include "portfft/common/transpose.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "twiddle.hpp"
@@ -305,6 +309,295 @@ void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles
   std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, factor_sg * factor_wi);
   sg_twiddles[k * factor_sg + n] = twiddle.real();
   sg_twiddles[(k + factor_wi) * factor_sg + n] = twiddle.imag();
+}
+
+template <detail::level Group, std::size_t GlobalDim, std::size_t LocalDim, std::size_t CopyDims, typename T,
+          typename LocView>
+PORTFFT_INLINE void subgroup_impl_local2global_strided_copy(T* global_ptr, LocView& loc_view,
+                                                            std::array<IdxGlobal, GlobalDim> strides_global,
+                                                            std::array<Idx, LocalDim> strides_local,
+                                                            IdxGlobal offset_global, Idx offset_local,
+                                                            std::array<Idx, CopyDims> copy_strides,
+                                                            detail::global_data_struct<1> global_data,
+                                                            detail::transfer_direction direction) {
+  detail::md_view global_md_view{global_ptr, strides_global, offset_global};
+  detail::md_view local_md_view{loc_view, strides_local, offset_local};
+  if (direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group<Group>(global_data, global_md_view, local_md_view, copy_strides);
+  } else if (direction == detail::transfer_direction::LOCAL_TO_GLOBAL) {
+    copy_group<Group>(global_data, local_md_view, global_md_view, copy_strides);
+  }
+}
+
+template <detail::level Group, std::size_t GlobalDim, std::size_t LocalDim, std::size_t CopyDims, typename T,
+          typename LocView>
+PORTFFT_INLINE void subgroup_impl_local2global_strided_copy(
+    T* global_ptr, T* global_imag_ptr, LocView& loc_view, std::array<IdxGlobal, GlobalDim> strides_global,
+    std::array<Idx, LocalDim> strides_local, IdxGlobal offset_global, Idx local_offset, Idx local_imag_offset,
+    std::array<Idx, CopyDims> copy_strides, detail::global_data_struct<1> global_data,
+    detail::transfer_direction direction) {
+  detail::md_view global_md_real_view{global_ptr, strides_global, offset_global};
+  detail::md_view global_md_imag_view{global_imag_ptr, strides_global, offset_global};
+  detail::md_view local_md_real_view{loc_view, strides_local, local_offset};
+  detail::md_view local_md_imag_view{loc_view, strides_local, local_offset + local_imag_offset};
+  if (direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group<Group>(global_data, global_md_real_view, local_md_real_view, copy_strides);
+    copy_group<Group>(global_data, global_md_imag_view, local_md_imag_view, copy_strides);
+  } else if (direction == detail::transfer_direction::LOCAL_TO_GLOBAL) {
+    copy_group<Group>(global_data, local_md_real_view, global_md_real_view, copy_strides);
+    copy_group<Group>(global_data, local_md_imag_view, global_md_imag_view, copy_strides);
+  }
+}
+
+template <Idx PtrViewNDim, Idx PrivViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void subgroup_impl_local_private_copy(
+    PtrView& ptr_view, PtrView& ptr_imag_view, T* priv,
+    std::array<std::array<IdxType, PtrViewNDim>, 2> ptr_view_strides_offsets,
+    std::array<std::array<Idx, PrivViewNDim>, 2> priv_view_strides_offsets,
+    std::array<std::array<IdxType, PtrViewNDim>, 2> ptr_imag_view_strides_offsets,
+    std::array<std::array<Idx, PrivViewNDim>, 2> priv_imag_view_strides_offsets, Idx num_elements_to_copy,
+    detail::global_data_struct<1> global_data, detail::transfer_direction direction) {
+  detail::strided_view ptr_strided_real_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
+                                             std::get<1>(ptr_view_strides_offsets)};
+  detail::strided_view ptr_strided_imag_view{ptr_imag_view, std::get<0>(ptr_imag_view_strides_offsets),
+                                             std::get<1>(ptr_imag_view_strides_offsets)};
+  detail::strided_view priv_strided_real_view{priv, std::get<0>(priv_view_strides_offsets),
+                                              std::get<1>(priv_view_strides_offsets)};
+  detail::strided_view priv_strided_imag_view{priv, std::get<0>(priv_imag_view_strides_offsets),
+                                              std::get<1>(priv_imag_view_strides_offsets)};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi(global_data, ptr_strided_real_view, priv_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, ptr_strided_imag_view, priv_strided_imag_view, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi(global_data, priv_strided_real_view, ptr_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, priv_strided_imag_view, ptr_strided_imag_view, num_elements_to_copy);
+  }
+}
+
+template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void subgroup_impl_local_private_copy(
+    PtrView& ptr_view, T* priv, std::array<std::array<IdxType, PtrViewNDim>, 2> ptr_view_strides_offsets,
+    Idx num_elements_to_copy, detail::global_data_struct<1> global_data, detail::transfer_direction direction) {
+  detail::strided_view ptr_strided_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
+                                        std::get<1>(ptr_view_strides_offsets)};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi<2>(global_data, ptr_strided_view, priv, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi<2>(global_data, priv, ptr_strided_view, num_elements_to_copy);
+  }
+}
+
+template <Idx SubgroupSize, typename TIn, typename LocView>
+PORTFFT_INLINE void subgroup_impl_bluestein_localglobal_packed_copy(
+    TIn* global_ptr, TIn* global_imag_ptr, LocView& loc_view, Idx committed_size, Idx fft_size,
+    IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, sycl::sub_group& sg,
+    complex_storage storage, detail::transfer_direction direction, detail::global_data_struct<1>& global_data) {
+  if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+    PORTFFT_UNROLL
+    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+      if (direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+        global2local<detail::level::SUBGROUP, SubgroupSize>(
+            global_data, global_ptr, loc_view, 2 * committed_size,
+            static_cast<IdxGlobal>(2 * i * committed_size) + global_ptr_offset, 2 * i * fft_size + loc_offset);
+      } else if (direction == detail::transfer_direction::LOCAL_TO_GLOBAL) {
+        local2global<detail::level::SUBGROUP, SubgroupSize>(global_data, loc_view, global_ptr, 2 * committed_size,
+                                                            2 * i * fft_size + loc_offset,
+                                                            global_ptr_offset + 2 * i * committed_size);
+      }
+    }
+  } else {
+    PORTFFT_UNROLL
+    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+      if (direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+        global2local<detail::level::SUBGROUP, SubgroupSize>(
+            global_data, global_ptr, loc_view, committed_size,
+            static_cast<IdxGlobal>(i * committed_size) + global_ptr_offset, i * fft_size + loc_offset);
+        global2local<detail::level::SUBGROUP, SubgroupSize>(
+            global_data, global_imag_ptr, loc_view, committed_size,
+            static_cast<IdxGlobal>(i * committed_size) + global_ptr_offset,
+            i * fft_size + loc_offset + local_imag_offset);
+      } else if (direction == detail::transfer_direction::LOCAL_TO_GLOBAL) {
+        local2global<detail::level::SUBGROUP, SubgroupSize>(global_data, loc_view, global_ptr, committed_size,
+                                                            i * fft_size + loc_offset,
+                                                            global_ptr_offset + i * committed_size);
+        local2global<detail::level::SUBGROUP, SubgroupSize>(global_data, loc_view, global_imag_ptr, committed_size,
+                                                            i * fft_size + loc_offset + local_imag_offset,
+                                                            global_ptr_offset + i * committed_size);
+      }
+    }
+  }
+
+  sycl::group_barrier(sg);
+}
+
+template <Idx SubgroupSize, typename T, typename LocView>
+PORTFFT_INLINE void sg_dft_compute(T* priv, T* private_scratch, detail::elementwise_multiply apply_load_modifier,
+                                   detail::elementwise_multiply apply_store_modifier,
+                                   detail::complex_conjugate conjugate_on_load,
+                                   detail::complex_conjugate conjugate_on_store,
+                                   detail::apply_scale_factor scale_factor_applied, const T* load_modifier_data,
+                                   const T* store_modifier_data, LocView& twiddles_loc_view, T scale_factor,
+                                   IdxGlobal modifier_start_offset, Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi,
+                                   sycl::sub_group& sg) {
+  using vec2_t = sycl::vec<T, 2>;
+  vec2_t modifier_vec;
+  if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+    detail::conjugate_inplace(priv, factor_wi);
+  }
+  if (apply_load_modifier == detail::elementwise_multiply::APPLIED) {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_wi; j++) {
+      modifier_vec = *reinterpret_cast<const vec2_t*>(
+          &load_modifier_data[modifier_start_offset + 2 * factor_wi * id_of_wi_in_fft + 2 * j]);
+      detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                               priv[2 * j + 1]);
+    }
+  }
+  sg_dft<SubgroupSize>(priv, sg, factor_wi, factor_sg, twiddles_loc_view, private_scratch);
+
+  if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+    detail::conjugate_inplace(priv, factor_wi);
+  }
+
+  if (apply_store_modifier == detail::elementwise_multiply::APPLIED) {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_wi; j++) {
+      modifier_vec = *reinterpret_cast<const vec2_t*>(
+          &store_modifier_data[modifier_start_offset + 2 * j * factor_sg + 2 * id_of_wi_in_fft]);
+      detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                               priv[2 * j + 1]);
+    }
+  }
+
+  if (scale_factor_applied == detail::apply_scale_factor::APPLIED) {
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_wi; j++) {
+      priv[2 * j] *= scale_factor;
+      priv[2 * j + 1] *= scale_factor;
+    }
+  }
+}
+
+template <Idx SubgroupSize, typename T, typename LocTwiddlesView, typename LocView>
+PORTFFT_INLINE void sg_bluestein_batch_interleaved(T* priv, T* priv_scratch, LocView& loc_view, const T* load_modifier,
+                                                   const T* store_modifier, LocTwiddlesView& twiddles_loc,
+                                                   detail::complex_conjugate conjugate_on_load,
+                                                   detail::complex_conjugate conjugate_on_store,
+                                                   detail::apply_scale_factor scale_applied, T scale_factor,
+                                                   Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi,
+                                                   complex_storage storage, bool wi_working, Idx local_imag_offset,
+                                                   Idx max_num_batches_local_mem, Idx fft_idx_in_local,
+                                                   sycl::sub_group& sg, detail::global_data_struct<1>& global_data) {
+  sg_dft_compute<SubgroupSize>(
+      priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
+      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, load_modifier,
+      store_modifier, twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < 2 * factor_wi; i++) {
+    priv[i] = (priv[i] / (static_cast<T>(factor_sg * factor_wi)));
+  }
+
+  if (wi_working) {
+    // Store back to local memory only
+    if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+      subgroup_impl_local_private_copy<2, Idx>(
+          loc_view, priv, {{{factor_sg, max_num_batches_local_mem}, {2 * id_of_wi_in_fft, 2 * fft_idx_in_local}}},
+          factor_wi, global_data, detail::transfer_direction::PRIVATE_TO_LOCAL);
+    } else {
+      subgroup_impl_local_private_copy<2, 1, Idx>(
+          loc_view, loc_view, priv, {{{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local}}},
+          {{{2}, {0}}},
+          {{{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local + local_imag_offset}}},
+          {{{2}, {1}}}, factor_wi, global_data, detail::transfer_direction::PRIVATE_TO_LOCAL);
+    }
+  }
+
+  sycl::group_barrier(sg);
+  if (wi_working) {
+    if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+      const Idx fft_element = 2 * id_of_wi_in_fft * factor_wi;
+      subgroup_impl_local_private_copy<1, Idx>(
+          loc_view, priv,
+          {{{max_num_batches_local_mem}, {fft_element * max_num_batches_local_mem + 2 * fft_idx_in_local}}}, factor_wi,
+          global_data, detail::transfer_direction::LOCAL_TO_PRIVATE);
+    } else {
+      subgroup_impl_local_private_copy<2, 1, Idx>(
+          loc_view, loc_view, priv, {{{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local}}},
+          {{{2}, {0}}},
+          {{{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local + local_imag_offset}}},
+          {{{2}, {1}}}, factor_wi, global_data, detail::transfer_direction::LOCAL_TO_PRIVATE);
+    }
+  }
+
+  auto conjugate_on_output = conjugate_on_store == detail::complex_conjugate::APPLIED
+                                 ? detail::complex_conjugate::NOT_APPLIED
+                                 : detail::complex_conjugate::APPLIED;
+
+  sg_dft_compute<SubgroupSize>(priv, priv_scratch, detail::elementwise_multiply::NOT_APPLIED,
+                               detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
+                               conjugate_on_output, scale_applied, static_cast<const T*>(nullptr), load_modifier,
+                               twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+}
+
+template <Idx SubgroupSize, typename T, typename LocTwiddlesView, typename LocView>
+void sg_bluestein(T* priv, T* priv_scratch, LocView& loc_view, LocTwiddlesView& loc_twiddles, const T* load_modifier,
+                  const T* store_modifier, detail::complex_conjugate conjugate_on_load,
+                  detail::complex_conjugate conjugate_on_store, detail::apply_scale_factor scale_applied,
+                  T scale_factor, Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi, complex_storage storage,
+                  bool wi_working, Idx loc_offset_store_view, Idx loc_offset_load_view, Idx local_imag_offset,
+                  sycl::sub_group sg, detail::global_data_struct<1>& global_data) {
+  // for (Idx i = 0; i < 2 * factor_wi; i++) {
+  //   priv[i] = 2;
+  // }
+  sg_dft_compute<SubgroupSize>(
+      priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
+      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, load_modifier,
+      store_modifier, loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+
+  PORTFFT_UNROLL
+  for (Idx i = 0; i < 2 * factor_wi; i++) {
+    priv[i] = (priv[i] / (static_cast<T>(factor_sg * factor_wi)));
+  }
+
+  if (wi_working) {
+    if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+      subgroup_impl_local_private_copy<1, Idx>(loc_view, priv, {{{factor_sg}, {loc_offset_store_view}}}, factor_wi,
+                                               global_data, detail::transfer_direction::PRIVATE_TO_LOCAL);
+    } else {
+      detail::strided_view priv_real_view{priv, 2};
+      detail::strided_view priv_imag_view{priv, 2, 1};
+      detail::strided_view local_real_view{loc_view, factor_sg, loc_offset_store_view};
+      detail::strided_view local_imag_view{loc_view, factor_sg, loc_offset_store_view + local_imag_offset};
+      copy_wi(global_data, priv_real_view, local_real_view, factor_wi);
+      copy_wi(global_data, priv_imag_view, local_imag_view, factor_wi);
+    }
+  }
+
+  sycl::group_barrier(sg);
+
+  if (wi_working) {
+    if (storage == complex_storage::INTERLEAVED_COMPLEX) {
+      subgroup_impl_local_private_copy<1, Idx>(loc_view, priv, {{{1}, {loc_offset_load_view}}}, factor_wi, global_data,
+                                               detail::transfer_direction::LOCAL_TO_PRIVATE);
+    } else {
+      subgroup_impl_local_private_copy<1, 1, Idx>(loc_view, loc_view, priv, {{{1}, {loc_offset_load_view}}},
+                                                  {{{2}, {0}}}, {{{1}, {loc_offset_load_view + local_imag_offset}}},
+                                                  {{{2}, {1}}}, factor_wi, global_data,
+                                                  detail::transfer_direction::LOCAL_TO_PRIVATE);
+    }
+  }
+
+  auto conjugate_on_output = conjugate_on_store == detail::complex_conjugate::APPLIED
+                                 ? detail::complex_conjugate::NOT_APPLIED
+                                 : detail::complex_conjugate::APPLIED;
+
+  sg_dft_compute<SubgroupSize>(priv, priv_scratch, detail::elementwise_multiply::NOT_APPLIED,
+                               detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
+                               conjugate_on_output, scale_applied, static_cast<const T*>(nullptr), load_modifier,
+                               loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
 }
 
 };  // namespace portfft

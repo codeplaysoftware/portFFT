@@ -152,13 +152,12 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
       workitem_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
                                           batch_size, global_data, kh, static_cast<const Scalar*>(nullptr),
-                                          store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
+                                          store_modifier_data);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
                                           twiddles_loc, batch_size, implementation_twiddles, global_data, kh,
-                                          static_cast<const Scalar*>(nullptr), store_modifier_data,
-                                          static_cast<Scalar*>(nullptr), store_modifier_loc);
+                                          static_cast<const Scalar*>(nullptr), store_modifier_data);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                            input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
@@ -317,10 +316,10 @@ std::vector<sycl::event> compute_level(
   std::size_t local_mem_for_store_modifier = [&]() -> std::size_t {
     if (factor_id < total_factors - 1) {
       if (kd_struct.level == detail::level::WORKITEM || kd_struct.level == detail::level::WORKGROUP) {
-        return 1;
+        return 0;
       }
       if (kd_struct.level == detail::level::SUBGROUP) {
-        return kd_struct.local_mem_required;
+        return 0;
       }
     }
     return std::size_t(1);
