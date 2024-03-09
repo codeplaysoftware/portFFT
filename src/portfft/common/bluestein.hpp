@@ -38,7 +38,6 @@ namespace detail {
  */
 template <typename T>
 void populate_fft_chirp_signal(T* ptr, std::size_t committed_size, std::size_t dimension_size) {
-  std::cout << "committed_size = " << committed_size << " padded size = " << dimension_size << std::endl;
   using complex_t = std::complex<T>;
   std::vector<complex_t> chirp_signal(dimension_size, 0);
   std::vector<complex_t> chirp_fft(dimension_size, 0);
@@ -63,7 +62,6 @@ void populate_fft_chirp_signal(T* ptr, std::size_t committed_size, std::size_t d
  */
 template <typename T>
 void populate_bluestein_input_modifiers(T* ptr, std::size_t committed_size, std::size_t dimension_size) {
-  std::cout << "committed_size = " << committed_size << " padded size = " << dimension_size << std::endl;
   using complex_t = std::complex<T>;
   std::vector<complex_t> scratch(dimension_size, 0);
   for (std::size_t i = 0; i < committed_size; i++) {

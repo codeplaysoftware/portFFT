@@ -432,6 +432,32 @@ PORTFFT_INLINE void subgroup_impl_bluestein_localglobal_packed_copy(
   sycl::group_barrier(sg);
 }
 
+/**
+ * Performs all the computations to be done in the private memory for the subgroup implementation
+ *
+ * @tparam SubgroupSize Subgroup Size
+ * @tparam T Scalar Type
+ * @tparam LocView View of the local memory
+ * @param priv private memory array on which the computations will be done
+ * @param private_scratch Scratch private memory to be passed to the wi_dft as a part of sg_dft
+ * @param apply_load_modifier Whether or not modifiers need to be applied before the fft computation
+ * @param apply_store_modifier Whether or not the modifiers need to be applied after the fft computation
+ * @param conjugate_on_load Whether or not conjugation of the input is to be done before the fft computation
+ * @param conjugate_on_store Whether or not conjugation of the input is to be done after the fft computation
+ * @param scale_factor_applied Whether or not scale factor is applied
+ * @param load_modifier_data Global memory pointer containing the load modifier data, assumed aligned to at least
+ * sycl::vec<T, 2>
+ * @param store_modifier_data Global memory pointer containing the store modifier data, assumed aligned to at least
+ * sycl::vec<T, 2>
+ * @param twiddles_loc_view View of the local memory containing the twiddles
+ * @param scale_factor Value of the scale factor
+ * @param modifier_start_offset offset to be applied to the load/store modifier pointers
+ * @param id_of_wi_in_fft workitem id withing the fft
+ * @param factor_sg Number of workitems participating for one transform
+ * @param factor_wi Number of complex elements per workitem for each transform
+ * @param sg sub group
+ * @return PORTFFT_INLINE
+ */
 template <Idx SubgroupSize, typename T, typename LocView>
 PORTFFT_INLINE void sg_dft_compute(T* priv, T* private_scratch, detail::elementwise_multiply apply_load_modifier,
                                    detail::elementwise_multiply apply_store_modifier,
@@ -492,16 +518,11 @@ PORTFFT_INLINE void sg_bluestein_batch_interleaved(T* priv, T* priv_scratch, Loc
                                                    sycl::sub_group& sg, detail::global_data_struct<1>& global_data) {
   sg_dft_compute<SubgroupSize>(
       priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
-      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, load_modifier,
-      store_modifier, twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
-
-  PORTFFT_UNROLL
-  for (Idx i = 0; i < 2 * factor_wi; i++) {
-    priv[i] = (priv[i] / (static_cast<T>(factor_sg * factor_wi)));
-  }
+      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::APPLIED, load_modifier,
+      store_modifier, twiddles_loc, static_cast<T>(1. / (static_cast<T>(factor_sg * factor_wi))), 0, id_of_wi_in_fft,
+      factor_sg, factor_wi, sg);
 
   if (wi_working) {
-    // Store back to local memory only
     if (storage == complex_storage::INTERLEAVED_COMPLEX) {
       subgroup_impl_local_private_copy<2, Idx>(
           loc_view, priv, {{{factor_sg, max_num_batches_local_mem}, {2 * id_of_wi_in_fft, 2 * fft_idx_in_local}}},
@@ -532,14 +553,14 @@ PORTFFT_INLINE void sg_bluestein_batch_interleaved(T* priv, T* priv_scratch, Loc
     }
   }
 
-  auto conjugate_on_output = conjugate_on_store == detail::complex_conjugate::APPLIED
-                                 ? detail::complex_conjugate::NOT_APPLIED
-                                 : detail::complex_conjugate::APPLIED;
-
   sg_dft_compute<SubgroupSize>(priv, priv_scratch, detail::elementwise_multiply::NOT_APPLIED,
                                detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
-                               conjugate_on_output, scale_applied, static_cast<const T*>(nullptr), load_modifier,
-                               twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+                               detail::complex_conjugate::APPLIED, scale_applied, static_cast<const T*>(nullptr),
+                               load_modifier, twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+
+  if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+    detail::conjugate_inplace(priv, factor_wi);
+  }
 }
 
 template <Idx SubgroupSize, typename T, typename LocTwiddlesView, typename LocView>
@@ -548,19 +569,14 @@ void sg_bluestein(T* priv, T* priv_scratch, LocView& loc_view, LocTwiddlesView& 
                   detail::complex_conjugate conjugate_on_store, detail::apply_scale_factor scale_applied,
                   T scale_factor, Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi, complex_storage storage,
                   bool wi_working, Idx loc_offset_store_view, Idx loc_offset_load_view, Idx local_imag_offset,
-                  sycl::sub_group sg, detail::global_data_struct<1>& global_data) {
-  // for (Idx i = 0; i < 2 * factor_wi; i++) {
-  //   priv[i] = 2;
-  // }
+                  sycl::sub_group& sg, detail::global_data_struct<1>& global_data) {
   sg_dft_compute<SubgroupSize>(
       priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
-      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, load_modifier,
-      store_modifier, loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+      conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::APPLIED, load_modifier,
+      store_modifier, loc_twiddles, static_cast<T>(1. / static_cast<T>(factor_sg * factor_wi)), 0, id_of_wi_in_fft,
+      factor_sg, factor_wi, sg);
 
-  PORTFFT_UNROLL
-  for (Idx i = 0; i < 2 * factor_wi; i++) {
-    priv[i] = (priv[i] / (static_cast<T>(factor_sg * factor_wi)));
-  }
+  sycl::group_barrier(sg);
 
   if (wi_working) {
     if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -590,14 +606,13 @@ void sg_bluestein(T* priv, T* priv_scratch, LocView& loc_view, LocTwiddlesView& 
     }
   }
 
-  auto conjugate_on_output = conjugate_on_store == detail::complex_conjugate::APPLIED
-                                 ? detail::complex_conjugate::NOT_APPLIED
-                                 : detail::complex_conjugate::APPLIED;
-
   sg_dft_compute<SubgroupSize>(priv, priv_scratch, detail::elementwise_multiply::NOT_APPLIED,
                                detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
-                               conjugate_on_output, scale_applied, static_cast<const T*>(nullptr), load_modifier,
-                               loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+                               detail::complex_conjugate::APPLIED, scale_applied, static_cast<const T*>(nullptr),
+                               load_modifier, loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi, sg);
+  if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+    detail::conjugate_inplace(priv, factor_wi);
+  }
 }
 
 };  // namespace portfft

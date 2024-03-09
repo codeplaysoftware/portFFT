@@ -391,6 +391,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               const_cast<T*>(input), const_cast<T*>(input_imag), loc_view, committed_length, factor_sg * factor_wi,
               global_ptr_offset, loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage,
               detail::transfer_direction::GLOBAL_TO_LOCAL, global_data);
+        } else {
+          // TODO: Bluestein Strided copy
         }
       }
 
@@ -461,7 +463,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                 detail::transfer_direction::PRIVATE_TO_GLOBAL);
           }
         }
-      } else if (is_output_batch_interleaved) {
+      } else if (is_output_batch_interleaved && algorithm == detail::fft_algorithm::COOLEY_TUKEY) {
         if (working) {
           global_data.log_message_global(__func__, "Storing data from private to Global with batch interleaved layout");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
@@ -554,6 +556,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                 output, output_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset,
                 loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage,
                 detail::transfer_direction::LOCAL_TO_GLOBAL, global_data);
+          } else {
+            // TODO: Blustein Strided Copy
           }
         }
         sycl::group_barrier(global_data.sg);
@@ -574,7 +578,6 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     Idx factor_sg = kernel_data.factors[1];
     std::size_t twiddles_alloc_size = [&]() {
       if (dimension_data.is_prime) {
-        std::cout << "DIMENSION IS INDEED PRIME " << std::endl;
         // sg twiddles + load_modifiers + store_modifiers
         return 6 * dimension_data.length;
       }

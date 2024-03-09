@@ -167,7 +167,11 @@ class committed_descriptor_impl {
           length(length),
           committed_length(committed_length),
           used_sg_size(used_sg_size),
-          is_prime(is_prime) {}
+          is_prime(is_prime) {
+      if (is_prime && level != detail::level::SUBGROUP) {
+        throw unsupported_configuration("Prime sizes that not fit in the subgroup implementation are not supported");
+      }
+    }
   };
 
   std::vector<dimension_struct> dimensions;
@@ -233,6 +237,8 @@ class committed_descriptor_impl {
               {{detail::level::WORKITEM, ids, {static_cast<Idx>(fft_size)}}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
+      std::cout << "I AM NOW SELECTING SG IMPLEMENTATION " << std::endl;
+      ;
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
@@ -279,6 +285,7 @@ class committed_descriptor_impl {
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
+        std::cout << "I AM SELECTING THE WI IMPLEMENTATION " << std::endl;
         // Throughout we have assumed there would always be enough local memory for the WI implementation.
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
@@ -293,7 +300,7 @@ class committed_descriptor_impl {
         if (detail::can_cast_safely<IdxGlobal, Idx>(factor_sg) && detail::can_cast_safely<IdxGlobal, Idx>(factor_wi)) {
           std::size_t input_scalars =
               num_scalars_in_local_mem(detail::level::SUBGROUP, static_cast<std::size_t>(factor_size), SubgroupSize,
-                                       {static_cast<Idx>(factor_sg), static_cast<Idx>(factor_wi)}, temp_num_sgs_in_wg,
+                                       {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
           std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
           return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) < static_cast<std::size_t>(local_memory_size);
@@ -302,6 +309,7 @@ class committed_descriptor_impl {
       }();
       if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup &&
           !PORTFFT_SLOW_SG_SHUFFLES) {
+        std::cout << "I AM SELECTING THE SG IMPLEMENTATION " << std::endl;
         Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
         Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
         PORTFFT_LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi,
@@ -314,11 +322,8 @@ class committed_descriptor_impl {
       return false;
     };
     bool encountered_large_prime = detail::factorize_input(fft_size, check_and_select_target_level);
-    std::cout << "encountered_large_prime = " << encountered_large_prime << std::endl;
     if (encountered_large_prime) {
-      std::cout << "I HAVE ENCOUNTERED A LARGE PRIME, fft size = " << fft_size << std::endl;
       IdxGlobal padded_size = detail::get_bluestein_padded_size(fft_size);
-      std::cout << "PADDED FFT SIZE = " << padded_size << std::endl;
       return prepare_implementation<SubgroupSize>(padded_size);
     }
     return {detail::level::GLOBAL, static_cast<std::size_t>(fft_size), param_vec};
@@ -527,16 +532,22 @@ class committed_descriptor_impl {
 
       auto in_bundle = sycl::get_kernel_bundle<sycl::bundle_state::input>(queue.get_context(), ids);
 
-      if (factor_size != static_cast<Idx>(params.lengths[dimension_num])) {
+      if (factor_size != static_cast<Idx>(params.lengths[dimension_num]) && !is_global) {
         in_bundle.template set_specialization_constant<detail::SpecConstFFTAlgorithm>(detail::fft_algorithm::BLUESTEIN);
         in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
             static_cast<Idx>(params.lengths[dimension_num]));
       } else {
         // TODO: This needs to change in the case of global
+        if (is_global) {
+          in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
+              static_cast<Idx>(factor_size));
+        } else {
+          in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
+              static_cast<Idx>(params.lengths[dimension_num]));
+        }
+
         in_bundle.template set_specialization_constant<detail::SpecConstFFTAlgorithm>(
             detail::fft_algorithm::COOLEY_TUKEY);
-        in_bundle.template set_specialization_constant<detail::SpecConstCommittedLength>(
-            static_cast<Idx>(params.lengths[dimension_num]));
       }
 
       set_spec_constants(top_level, in_bundle, factor_size, factors, detail::elementwise_multiply::NOT_APPLIED,
@@ -583,11 +594,6 @@ class committed_descriptor_impl {
         }
       }
 
-      std::cout << "FFT SIZE = " << fft_size << std::endl;
-      if (top_level == detail::level::SUBGROUP) {
-        std::cout << "PADDED FFT SIZE LEVEL is SUBGROUP " << std::endl;
-      }
-      // exit(-10);
       if (is_compatible) {
         auto forward_kernels =
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num);
@@ -946,6 +952,15 @@ class committed_descriptor_impl {
 
     const auto input_layout = detail::get_layout(params, compute_direction);
     const auto output_layout = detail::get_layout(params, inv(compute_direction));
+
+    if (dimensions.back().is_prime) {
+      if (input_layout == detail::layout::UNPACKED || output_layout == detail::layout::UNPACKED) {
+        throw unsupported_configuration("Unsupported configuration for prime sized DFTs");
+      }
+      if (input_layout == detail::layout::PACKED && output_layout != detail::layout::PACKED) {
+        throw unsupported_configuration("Unsupported configuration for prime sized DFTs");
+      }
+    }
 
     // currently multi-dimensional transforms are implemented just for default (PACKED) data layout
     const bool multi_dim_supported = input_layout == detail::layout::PACKED && output_layout == detail::layout::PACKED;

@@ -147,7 +147,8 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size",
                       mem_required_for_twiddles);
     Scalar* device_twiddles =
-        sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
+        sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
+                                           static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
     // Helper Lambda to calculate twiddles
     auto calculate_twiddles = [](IdxGlobal N, IdxGlobal M, IdxGlobal& offset, Scalar* ptr) {
