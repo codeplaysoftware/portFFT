@@ -235,7 +235,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
         }
         IdxGlobal modifier_offset =
-            static_cast<IdxGlobal>(n_reals_per_fft) * (i + static_cast<IdxGlobal>(fft_idx_in_local + id_of_fft_in_sg));
+            static_cast<IdxGlobal>(n_reals_per_fft) * (i + static_cast<IdxGlobal>(fft_idx_in_local));
         if (algorithm == detail::fft_algorithm::COOLEY_TUKEY) {
           sg_dft_compute<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store, conjugate_on_load,
                                        conjugate_on_store, apply_scale_factor, load_modifier_data, store_modifier_data,
@@ -397,6 +397,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       }
 
       global_data.log_dump_local("data in local memory:", loc_view, n_reals_per_fft);
+      sycl::group_barrier(global_data.sg);
 
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");

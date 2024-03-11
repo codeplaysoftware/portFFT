@@ -97,7 +97,6 @@ std::optional<IdxGlobal> factorize_input_impl(IdxGlobal factor_size, F&& check_a
   PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
-    std::cout << fact_1 << std::endl;
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
@@ -109,7 +108,6 @@ std::optional<IdxGlobal> factorize_input_impl(IdxGlobal factor_size, F&& check_a
       return std::nullopt;
     }
   } while (!check_and_select_target_level(fact_1));
-  std::cout << fact_1 << std::endl;
   return fact_1;
 }
 

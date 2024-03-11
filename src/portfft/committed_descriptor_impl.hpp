@@ -237,8 +237,6 @@ class committed_descriptor_impl {
               {{detail::level::WORKITEM, ids, {static_cast<Idx>(fft_size)}}}};
     }
     if (detail::fits_in_sg<Scalar>(fft_size, SubgroupSize)) {
-      std::cout << "I AM NOW SELECTING SG IMPLEMENTATION " << std::endl;
-      ;
       Idx factor_sg = detail::factorize_sg(static_cast<Idx>(fft_size), SubgroupSize);
       Idx factor_wi = static_cast<Idx>(fft_size) / factor_sg;
       // This factorization is duplicated in the dispatch logic on the device.
@@ -285,7 +283,6 @@ class committed_descriptor_impl {
     std::vector<std::tuple<detail::level, std::vector<sycl::kernel_id>, std::vector<Idx>>> param_vec;
     auto check_and_select_target_level = [&](IdxGlobal factor_size, bool batch_interleaved_layout = true) -> bool {
       if (detail::fits_in_wi<Scalar>(factor_size)) {
-        std::cout << "I AM SELECTING THE WI IMPLEMENTATION " << std::endl;
         // Throughout we have assumed there would always be enough local memory for the WI implementation.
         param_vec.emplace_back(detail::level::WORKITEM,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
@@ -303,20 +300,19 @@ class committed_descriptor_impl {
                                        {static_cast<Idx>(factor_wi), static_cast<Idx>(factor_sg)}, temp_num_sgs_in_wg,
                                        batch_interleaved_layout ? layout::BATCH_INTERLEAVED : layout::PACKED);
           std::size_t twiddle_scalars = 2 * static_cast<std::size_t>(factor_size);
-          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) < static_cast<std::size_t>(local_memory_size);
+          return (sizeof(Scalar) * (input_scalars + twiddle_scalars)) <= static_cast<std::size_t>(local_memory_size);
         }
         return false;
       }();
       if (detail::fits_in_sg<Scalar>(factor_size, SubgroupSize) && fits_in_local_memory_subgroup &&
           !PORTFFT_SLOW_SG_SHUFFLES) {
-        std::cout << "I AM SELECTING THE SG IMPLEMENTATION " << std::endl;
         Idx factor_sg = detail::factorize_sg(static_cast<Idx>(factor_size), SubgroupSize);
         Idx factor_wi = static_cast<Idx>(factor_size) / factor_sg;
         PORTFFT_LOG_TRACE("Subgroup kernel for factor:", factor_size, "with factor_wi:", factor_wi,
                           "and factor_sg:", factor_sg);
         param_vec.emplace_back(detail::level::SUBGROUP,
                                detail::get_ids<detail::global_kernel, Scalar, Domain, SubgroupSize>(),
-                               std::vector<Idx>{factor_sg, factor_wi});
+                               std::vector<Idx>{factor_wi, factor_sg});
         return true;
       }
       return false;

@@ -147,8 +147,7 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size",
                       mem_required_for_twiddles);
     Scalar* device_twiddles =
-        sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
-                                           static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
+        sycl::malloc_device<Scalar>(static_cast<std::size_t>(mem_required_for_twiddles), desc.queue);
 
     // Helper Lambda to calculate twiddles
     auto calculate_twiddles = [](IdxGlobal N, IdxGlobal M, IdxGlobal& offset, Scalar* ptr) {
@@ -170,16 +169,16 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     counter = 0;
     for (const auto& kernel_data : kernels) {
       if (kernel_data.level == detail::level::SUBGROUP) {
-        for (Idx i = 0; i < kernel_data.factors.at(0); i++) {
-          for (Idx j = 0; j < kernel_data.factors.at(1); j++) {
+        for (Idx i = 0; i < kernel_data.factors.at(1); i++) {
+          for (Idx j = 0; j < kernel_data.factors.at(0); j++) {
             double theta = -2 * M_PI * static_cast<double>(i * j) /
                            static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
             auto twiddle =
                 std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
-            host_memory[static_cast<std::size_t>(offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(0) + i))] =
+            host_memory[static_cast<std::size_t>(offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(1) + i))] =
                 twiddle.real();
             host_memory[static_cast<std::size_t>(
-                offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i))] =
+                offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(0)) * kernel_data.factors.at(1) + i))] =
                 twiddle.imag();
           }
         }
@@ -273,10 +272,10 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
       PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
     } else if (level == detail::level::SUBGROUP) {
-      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
-      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
     }
   }
 };

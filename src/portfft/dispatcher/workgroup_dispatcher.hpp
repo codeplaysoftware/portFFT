@@ -380,9 +380,6 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;
     std::size_t res_size = 2 * static_cast<std::size_t>((m + n + fft_size));
-    if (dimension_data.is_prime) {
-      res_size += 4 * dimension_data.length;
-    }
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size", res_size);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), res_size, desc.queue);
