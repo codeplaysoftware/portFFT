@@ -198,13 +198,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       // load / store in a transposed manner
       if (storage == complex_storage::INTERLEAVED_COMPLEX) {
         subgroup_impl_global2local_strided_copy<detail::level::WORKGROUP, 2, 2, 2>(
-            input, loc_view, {2 * n_transforms, static_cast<IdxGlobal>(1)},
-            {2 * max_num_batches_local_mem, 1}, 2 * i, 0, {committed_length, 2 * num_batches_in_local_mem}, global_data);
+            input, loc_view, {2 * n_transforms, static_cast<IdxGlobal>(1)}, {2 * max_num_batches_local_mem, 1}, 2 * i,
+            0, {committed_length, 2 * num_batches_in_local_mem}, global_data);
       } else {
         subgroup_impl_global2local_strided_copy<detail::level::WORKGROUP, 2, 2, 2>(
-            input, input_imag, loc_view, {n_transforms, static_cast<IdxGlobal>(1)},
-            {max_num_batches_local_mem, 1}, i, 0, local_imag_offset, {committed_length, num_batches_in_local_mem},
-            global_data);
+            input, input_imag, loc_view, {n_transforms, static_cast<IdxGlobal>(1)}, {max_num_batches_local_mem, 1}, i,
+            0, local_imag_offset, {committed_length, num_batches_in_local_mem}, global_data);
       }
 
       sycl::group_barrier(global_data.it.get_group());
@@ -327,7 +326,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           } else {
             subgroup_impl_local2global_strided_copy<detail::level::WORKGROUP, 2, 2, 2>(
                 output, output_imag, loc_view, {n_transforms, static_cast<IdxGlobal>(1)},
-                {max_num_batches_local_mem, 1}, i, 0, local_imag_offset, {committed_length, num_batches_in_local_mem}, global_data);
+                {max_num_batches_local_mem, 1}, i, 0, local_imag_offset, {committed_length, num_batches_in_local_mem},
+                global_data);
           }
         }
       }
@@ -361,14 +361,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             global_data.log_message_global(__func__, "storing data from unpacked global memory to local");
             subgroup_impl_global2local_strided_copy<level::SUBGROUP, 3, 3, 3>(
-                input, loc_view, {input_distance * 2, input_stride * 2, 1},
-                {committed_length * 2, 2, 1}, input_distance * 2 * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
-                local_offset, {n_ffts_worked_on_by_sg, committed_length, 2}, global_data);
+                input, loc_view, {input_distance * 2, input_stride * 2, 1}, {committed_length * 2, 2, 1},
+                input_distance * 2 * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)), local_offset,
+                {n_ffts_worked_on_by_sg, committed_length, 2}, global_data);
           } else {
             subgroup_impl_global2local_strided_copy<level::SUBGROUP, 2, 2, 2>(
-                input, input_imag, loc_view, {input_distance, input_stride},
-                {committed_length, 1}, input_distance * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)), local_offset,
-                local_imag_offset, {n_ffts_worked_on_by_sg, committed_length}, global_data);
+                input, input_imag, loc_view, {input_distance, input_stride}, {committed_length, 1},
+                input_distance * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)), local_offset, local_imag_offset,
+                {n_ffts_worked_on_by_sg, committed_length}, global_data);
           }
         }
       } else {
@@ -381,9 +381,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                      : factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
           auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
           subgroup_impl_bluestein_global2local_packed_copy<SubgroupSize>(
-              input, input_imag, loc_view, committed_length, factor_sg * factor_wi,
-              global_ptr_offset, loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage,
-              global_data);
+              input, input_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset, loc_view_offset,
+              loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage, global_data);
         } else {
           // TODO: Bluestein Strided copy
         }
@@ -532,7 +531,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
               const IdxGlobal global_output_offset = output_distance * (i - static_cast<IdxGlobal>(id_of_fft_in_sg));
               subgroup_impl_local2global_strided_copy<level::SUBGROUP, 2, 2, 2>(
                   output, output_imag, loc_view, {output_distance, output_stride}, {committed_length, 1},
-                  global_output_offset, local_offset, local_imag_offset, {n_ffts_worked_on_by_sg, committed_length}, global_data);
+                  global_output_offset, local_offset, local_imag_offset, {n_ffts_worked_on_by_sg, committed_length},
+                  global_data);
             }
           }
         } else {
@@ -546,8 +546,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
             subgroup_impl_bluestein_local2global_packed_copy<SubgroupSize>(
                 output, output_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset,
-                loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage,
-                 global_data);
+                loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage, global_data);
           } else {
             // TODO: Blustein Strided Copy
           }
@@ -664,7 +663,8 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
                                                   n_transforms, twiddles, global_data, kh);
             } else {
               auto loc_ptr = &loc[0];
-              for(auto idx = global_data.it.get_local_id(0); idx < local_elements; idx += global_data.it.get_local_range(0)) {
+              for (auto idx = global_data.it.get_local_id(0); idx < local_elements;
+                   idx += global_data.it.get_local_range(0)) {
                 loc_ptr[idx] = 0;
               }
               sycl::group_barrier(global_data.it.get_group());
