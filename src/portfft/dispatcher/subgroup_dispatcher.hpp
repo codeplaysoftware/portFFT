@@ -32,6 +32,8 @@
 #include "portfft/enums.hpp"
 #include "portfft/specialization_constant.hpp"
 
+#include <memory>
+
 namespace portfft {
 namespace detail {
 /**
@@ -578,27 +580,24 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
                       kernel_data.length * 2);
     Scalar* res = sycl::aligned_alloc_device<Scalar>(
         alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), twiddles_alloc_size, desc.queue);
-    sycl::range<2> kernel_range({static_cast<std::size_t>(factor_sg), static_cast<std::size_t>(factor_wi)});
-    desc.queue.submit([&](sycl::handler& cgh) {
-      PORTFFT_LOG_TRACE("Launching twiddle calculation kernel for subgroup implementation with global size", factor_sg,
-                        factor_wi);
-      cgh.parallel_for(kernel_range, [=](sycl::item<2> it) {
-        Idx n = static_cast<Idx>(it.get_id(0));
-        Idx k = static_cast<Idx>(it.get_id(1));
-        sg_calc_twiddles(factor_sg, factor_wi, n, k, res);
-      });
-    });
-    if (dimension_data.is_prime) {
-      std::vector<Scalar> bluestein_twiddles_host_ptr(4 * dimension_data.length, 0);
-      detail::populate_bluestein_input_modifiers(bluestein_twiddles_host_ptr.data(), dimension_data.committed_length,
-                                                 dimension_data.length);
-      detail::populate_fft_chirp_signal(bluestein_twiddles_host_ptr.data() + 2 * dimension_data.length,
-                                        dimension_data.committed_length, dimension_data.length);
-      desc.queue.copy(bluestein_twiddles_host_ptr.data(), res + 2 * dimension_data.length, 4 * dimension_data.length)
-          .wait();
+    std::vector<Scalar> host_twiddles(twiddles_alloc_size);
+
+    for (Idx i = 0; i < factor_sg; i++) {
+      for (Idx j = 0; j < factor_wi; j++) {
+        double theta = -2 * M_PI * static_cast<double>(i * j) / static_cast<double>(factor_wi * factor_sg);
+        auto twiddle = std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
+        host_twiddles[static_cast<std::size_t>(j * factor_sg + i)] = twiddle.real();
+        host_twiddles[static_cast<std::size_t>((j + factor_wi) * factor_sg + i)] = twiddle.imag();
+      }
     }
-    desc.queue.wait();  // waiting once here can be better than depending on the event
-                        // for all future calls to compute
+    if (dimension_data.is_prime) {
+      detail::populate_bluestein_input_modifiers(host_twiddles.data() + 2 * factor_sg * factor_wi,
+                                                 dimension_data.committed_length, dimension_data.length);
+      detail::populate_fft_chirp_signal(host_twiddles.data() + 4 * factor_sg * factor_wi,
+                                        dimension_data.committed_length, dimension_data.length);
+    }
+
+    desc.queue.copy(host_twiddles.data(), res, twiddles_alloc_size).wait();
     return res;
   }
 };
