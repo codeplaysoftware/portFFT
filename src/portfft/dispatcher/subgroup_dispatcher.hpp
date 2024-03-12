@@ -382,9 +382,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                      ? 2 * factor_sg * factor_wi * subgroup_id * n_ffts_per_sg
                                      : factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
           auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
+          auto n_ffts_to_copy = [=]() {
+            if (i + static_cast<IdxGlobal>(n_ffts_worked_on_by_sg) < n_transforms) {
+              return n_ffts_worked_on_by_sg;
+            }
+            return static_cast<Idx>(n_transforms - i);
+          }();
           subgroup_impl_bluestein_global2local_packed_copy<SubgroupSize>(
               input, input_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset, loc_view_offset,
-              loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage, global_data);
+              loc_view_imag_offset, n_ffts_to_copy, global_data.sg, storage, global_data);
         } else {
           // TODO: Bluestein Strided copy
         }
@@ -546,9 +552,15 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                        ? 2 * factor_sg * factor_wi * subgroup_id
                                        : factor_sg * factor_wi * subgroup_id;
             auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
+            auto n_ffts_to_copy = [=]() {
+              if (i + static_cast<IdxGlobal>(n_ffts_worked_on_by_sg) < n_transforms) {
+                return n_ffts_worked_on_by_sg;
+              }
+              return static_cast<Idx>(n_transforms - i);
+            }();
             subgroup_impl_bluestein_local2global_packed_copy<SubgroupSize>(
                 output, output_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset,
-                loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, global_data.sg, storage, global_data);
+                loc_view_offset, loc_view_imag_offset, n_ffts_to_copy, global_data.sg, storage, global_data);
           } else {
             // TODO: Blustein Strided Copy
           }
