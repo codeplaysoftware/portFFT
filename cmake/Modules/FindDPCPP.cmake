@@ -30,16 +30,18 @@ include(FindPackageHandleStandardArgs)
 get_filename_component(DPCPP_BIN_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
 find_library(DPCPP_LIB NAMES sycl sycl6 PATHS "${DPCPP_BIN_DIR}/../lib")
 
-find_package_handle_standard_args(DPCPP
-  FOUND_VAR     DPCPP_FOUND
-  REQUIRED_VARS DPCPP_LIB
+# Look for the include directory containing SYCL headers in multiple possible locations
+find_path(DPCPP_INCLUDE_DIR sycl
+  HINTS ${DPCPP_BIN_DIR}/../include ${DPCPP_BIN_DIR}/../../include
+  NO_DEFAULT_PATH
 )
 
-if(NOT DPCPP_FOUND)
-  return()
-endif()
+find_package_handle_standard_args(DPCPP
+  FOUND_VAR     DPCPP_FOUND
+  REQUIRED_VARS DPCPP_LIB DPCPP_INCLUDE_DIR
+)
 
-mark_as_advanced(DPCPP_FOUND DPCPP_LIB)
+mark_as_advanced(DPCPP_FOUND DPCPP_LIB DPCPP_INCLUDE_DIR)
 
 if(DPCPP_FOUND AND NOT TARGET DPCPP::DPCPP)
   set(CMAKE_CXX_STANDARD 17)
@@ -49,7 +51,8 @@ if(DPCPP_FOUND AND NOT TARGET DPCPP::DPCPP)
     INTERFACE_COMPILE_OPTIONS ${COMPILE_FLAGS}
     INTERFACE_LINK_OPTIONS ${COMPILE_FLAGS}
     INTERFACE_LINK_LIBRARIES ${DPCPP_LIB}
-    INTERFACE_INCLUDE_DIRECTORIES "${DPCPP_BIN_DIR}/../include/sycl;${DPCPP_BIN_DIR}/../include")
+    INTERFACE_INCLUDE_DIRECTORIES "${DPCPP_INCLUDE_DIR}"
+  )
 endif()
 
 function(add_sycl_to_target)
