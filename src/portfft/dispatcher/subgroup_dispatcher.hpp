@@ -372,8 +372,8 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                 input, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset, local_view_offset,
                 n_ffts_worked_on_by_sg, i, n_transforms, global_data);
           } else {
-            auto global_ptr_offset = 2 * committed_length * (i - static_cast<IdxGlobal>(id_of_fft_in_sg));
-            auto local_view_offset = 2 * factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
+            auto global_ptr_offset = committed_length * (i - static_cast<IdxGlobal>(id_of_fft_in_sg));
+            auto local_view_offset = factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
             auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
             subgroup_impl_bluestein_local_global_packed_copy<SubgroupSize, detail::transfer_direction::GLOBAL_TO_LOCAL>(
                 input, input_imag, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset,
@@ -521,14 +521,14 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           if (is_output_packed) {
             if (storage == complex_storage::INTERLEAVED_COMPLEX) {
               auto global_ptr_offset = 2 * committed_length * (i - static_cast<IdxGlobal>(id_of_fft_in_sg));
-              auto loc_view_offset = 2 * factor_sg * factor_wi * subgroup_id;
+              auto loc_view_offset = 2 * factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
               subgroup_impl_bluestein_local_global_packed_copy<SubgroupSize,
                                                                detail::transfer_direction::LOCAL_TO_GLOBAL>(
                   output, loc_view, committed_length, factor_sg * factor_wi, global_ptr_offset, loc_view_offset,
                   n_ffts_worked_on_by_sg, i, n_transforms, global_data);
             } else {
               auto global_ptr_offset = committed_length * (i - static_cast<IdxGlobal>(id_of_fft_in_sg));
-              auto loc_view_offset = factor_sg * factor_wi * subgroup_id;
+              auto loc_view_offset = factor_sg * factor_wi * subgroup_id * n_ffts_per_sg;
               auto loc_view_imag_offset = factor_sg * factor_wi * n_sgs_in_wg;
               subgroup_impl_bluestein_local_global_packed_copy<SubgroupSize,
                                                                detail::transfer_direction::LOCAL_TO_GLOBAL>(
