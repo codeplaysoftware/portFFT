@@ -408,18 +408,18 @@ PORTFFT_INLINE void subgroup_impl_local_private_copy(
 template <Idx SubgroupSize, typename TIn, typename LocView>
 PORTFFT_INLINE void subgroup_impl_bluestein_local2global_packed_copy(
     TIn* global_ptr, TIn* global_imag_ptr, LocView& loc_view, Idx committed_size, Idx fft_size,
-    IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, sycl::sub_group& sg,
-    complex_storage storage, detail::global_data_struct<1>& global_data) {
+    IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, IdxGlobal batch_start,
+    IdxGlobal n_transforms, sycl::sub_group& sg, complex_storage storage, detail::global_data_struct<1>& global_data) {
   if (storage == complex_storage::INTERLEAVED_COMPLEX) {
     PORTFFT_UNROLL
-    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+    for (Idx i = 0; i < n_ffts_in_sg && ((i + batch_start) < n_transforms); i++) {
       local2global<detail::level::SUBGROUP, SubgroupSize>(global_data, loc_view, global_ptr, 2 * committed_size,
                                                           2 * i * fft_size + loc_offset,
                                                           global_ptr_offset + 2 * i * committed_size);
     }
   } else {
     PORTFFT_UNROLL
-    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+    for (Idx i = 0; i < n_ffts_in_sg && ((i + batch_start) < n_transforms); i++) {
       local2global<detail::level::SUBGROUP, SubgroupSize>(global_data, loc_view, global_ptr, committed_size,
                                                           i * fft_size + loc_offset,
                                                           global_ptr_offset + i * committed_size);
@@ -435,18 +435,18 @@ PORTFFT_INLINE void subgroup_impl_bluestein_local2global_packed_copy(
 template <Idx SubgroupSize, typename TIn, typename LocView>
 PORTFFT_INLINE void subgroup_impl_bluestein_global2local_packed_copy(
     const TIn* global_ptr, const TIn* global_imag_ptr, LocView& loc_view, Idx committed_size, Idx fft_size,
-    IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, sycl::sub_group& sg,
-    complex_storage storage, detail::global_data_struct<1>& global_data) {
+    IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, IdxGlobal batch_start,
+    IdxGlobal n_transforms, sycl::sub_group& sg, complex_storage storage, detail::global_data_struct<1>& global_data) {
   if (storage == complex_storage::INTERLEAVED_COMPLEX) {
     PORTFFT_UNROLL
-    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+    for (Idx i = 0; i < n_ffts_in_sg && ((i + batch_start) < n_transforms); i++) {
       global2local<detail::level::SUBGROUP, SubgroupSize>(
           global_data, global_ptr, loc_view, 2 * committed_size,
           static_cast<IdxGlobal>(2 * i * committed_size) + global_ptr_offset, 2 * i * fft_size + loc_offset);
     }
   } else {
     PORTFFT_UNROLL
-    for (Idx i = 0; i < n_ffts_in_sg; i++) {
+    for (Idx i = 0; i < n_ffts_in_sg && (i + batch_start < n_transforms); i++) {
       global2local<detail::level::SUBGROUP, SubgroupSize>(
           global_data, global_ptr, loc_view, committed_size,
           static_cast<IdxGlobal>(i * committed_size) + global_ptr_offset, i * fft_size + loc_offset);
