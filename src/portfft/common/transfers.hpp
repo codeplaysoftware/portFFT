@@ -488,6 +488,110 @@ PORTFFT_INLINE void local2global(detail::global_data_struct<1> global_data, Loca
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
+template <detail::level Group, detail::transfer_direction Direction, Idx SubgroupSize, typename LocView, typename T>
+PORTFFT_INLINE void local_global_packed_copy(T* global_ptr, LocView& loc_view, IdxGlobal global_offset,
+                                             Idx local_offset, Idx n_elements_to_copy,
+                                             detail::global_data_struct<1>& global_data) {
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global2local<Group, SubgroupSize>(global_data, global_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset);
+  } else {
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_ptr, n_elements_to_copy, local_offset,
+                                      global_offset);
+  }
+}
+
+template <detail::level Group, detail::transfer_direction Direction, Idx SubgroupSize, typename LocView, typename T>
+PORTFFT_INLINE void local_global_packed_copy(T* global_ptr, T* global_imag_ptr, LocView& loc_view,
+                                             IdxGlobal global_offset, Idx local_offset, Idx local_imag_offset,
+                                             Idx n_elements_to_copy, detail::global_data_struct<1>& global_data) {
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global2local<Group, SubgroupSize>(global_data, global_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset);
+    global2local<Group, SubgroupSize>(global_data, global_imag_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset + local_imag_offset);
+  } else {
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_ptr, n_elements_to_copy, local_offset,
+                                      global_offset);
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_imag_ptr, n_elements_to_copy,
+                                      local_offset + local_imag_offset, global_offset);
+  }
+}
+
+template <detail::level Group, detail::transfer_direction Direction, std::size_t GlobalDim, std::size_t LocalDim,
+          std::size_t CopyDims, typename T, typename LocView>
+PORTFFT_INLINE void local_global_strided_copy(T* global_ptr, LocView& loc_view,
+                                              std::array<IdxGlobal, GlobalDim> strides_global,
+                                              std::array<Idx, LocalDim> strides_local, IdxGlobal offset_global,
+                                              Idx offset_local, std::array<Idx, CopyDims> copy_lengths,
+                                              detail::global_data_struct<1> global_data) {
+  detail::md_view global_md_view{global_ptr, strides_global, offset_global};
+  detail::md_view local_md_view{loc_view, strides_local, offset_local};
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group<Group>(global_data, global_md_view, local_md_view, copy_lengths);
+  } else {
+    copy_group<Group>(global_data, local_md_view, global_md_view, copy_lengths);
+  }
+}
+
+template <detail::level Group, detail::transfer_direction Direction, std::size_t GlobalDim, std::size_t LocalDim,
+          std::size_t CopyDims, typename T, typename LocView>
+PORTFFT_INLINE void local_global_strided_copy(T* global_ptr, T* global_imag_ptr, LocView& loc_view,
+                                              std::array<IdxGlobal, GlobalDim> strides_global,
+                                              std::array<Idx, LocalDim> strides_local, IdxGlobal offset_global,
+                                              Idx local_offset, Idx local_imag_offset,
+                                              std::array<Idx, CopyDims> copy_lengths,
+                                              detail::global_data_struct<1> global_data) {
+  detail::md_view global_md_real_view{global_ptr, strides_global, offset_global};
+  detail::md_view global_md_imag_view{global_imag_ptr, strides_global, offset_global};
+  detail::md_view local_md_real_view{loc_view, strides_local, local_offset};
+  detail::md_view local_md_imag_view{loc_view, strides_local, local_offset + local_imag_offset};
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    copy_group<Group>(global_data, global_md_real_view, local_md_real_view, copy_lengths);
+    copy_group<Group>(global_data, global_md_imag_view, local_md_imag_view, copy_lengths);
+  } else {
+    copy_group<Group>(global_data, local_md_real_view, global_md_real_view, copy_lengths);
+    copy_group<Group>(global_data, local_md_imag_view, global_md_imag_view, copy_lengths);
+  }
+}
+
+template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, T* priv,
+                                               so_array<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               Idx num_elements_to_copy, detail::global_data_struct<1> global_data,
+                                               detail::transfer_direction direction) {
+  detail::strided_view ptr_strided_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
+                                        std::get<1>(ptr_view_strides_offsets)};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi<2>(global_data, ptr_strided_view, priv, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi<2>(global_data, priv, ptr_strided_view, num_elements_to_copy);
+  }
+}
+
+template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, PtrView& ptr_imag_view, T* priv,
+                                               so_array<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               so_array<IdxType, PtrViewNDim> ptr_imag_view_strides_offsets,
+                                               Idx num_elements_to_copy, detail::global_data_struct<1> global_data,
+                                               detail::transfer_direction direction) {
+  detail::strided_view ptr_strided_real_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
+                                             std::get<1>(ptr_view_strides_offsets)};
+  detail::strided_view ptr_strided_imag_view{ptr_imag_view, std::get<0>(ptr_imag_view_strides_offsets),
+                                             std::get<1>(ptr_imag_view_strides_offsets)};
+  detail::strided_view priv_strided_real_view{priv, 2};
+  detail::strided_view priv_strided_imag_view{priv, 2, 1};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi(global_data, ptr_strided_real_view, priv_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, ptr_strided_imag_view, priv_strided_imag_view, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi(global_data, priv_strided_real_view, ptr_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, priv_strided_imag_view, ptr_strided_imag_view, num_elements_to_copy);
+  }
+}
+
 }  // namespace portfft
 
 #endif

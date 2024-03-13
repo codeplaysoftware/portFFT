@@ -48,6 +48,14 @@ namespace portfft {
 using Idx = std::int32_t;
 using IdxGlobal = std::int64_t;
 
+/**
+ * An array of 2 arrays containing N elements of Type, containing strides (s) and offset (o) for a view
+ * @tparam Type Type of elements
+ * @tparam N Number of elements in each of the two arrays
+ */
+template <typename Type, Idx N>
+using so_array = std::array<std::array<Type, N>, 2>;
+
 }  // namespace portfft
 
 #endif
