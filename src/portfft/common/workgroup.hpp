@@ -21,12 +21,17 @@
 #ifndef PORTFFT_COMMON_WORKGROUP_HPP
 #define PORTFFT_COMMON_WORKGROUP_HPP
 
+#include <optional>
+
 #include "helpers.hpp"
 #include "logging.hpp"
+#include "memory_views.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/traits.hpp"
+#include "portfft/utils.hpp"
 #include "subgroup.hpp"
+#include "transfers.hpp"
 
 namespace portfft {
 
@@ -53,6 +58,45 @@ constexpr T bank_lines_per_pad_wg(T row_size) {
 }
 
 namespace detail {
+
+// struct for the result of factorize_for_wg
+struct wg_factorization {
+  Idx factor_wi_n;
+  Idx factor_sg_n;
+  Idx factor_wi_m;
+  Idx factor_sg_m;
+};
+
+/** Calculate a valid factorization for workgroup dfts, assuming there is sufficient local memory.
+ * @tparam Scalar scalar type of the transform data
+ * @param fft_size the number of elements in the transforms
+ * @param subgroup_size the size of subgroup used for the transform
+ * @return a factorization for workgroup dft or null if the size won't work with the implemenation of workgroup dfts.
+ */
+template <typename Scalar>
+std::optional<wg_factorization> factorize_for_wg(IdxGlobal fft_size, Idx subgroup_size) {
+  IdxGlobal n_idx_global = detail::factorize(fft_size);
+  if (n_idx_global == 1) {
+    return std::nullopt;
+  }
+
+  IdxGlobal m_idx_global = fft_size / n_idx_global;
+  if (detail::can_cast_safely<IdxGlobal, Idx>(n_idx_global) && detail::can_cast_safely<IdxGlobal, Idx>(m_idx_global)) {
+    Idx n = static_cast<Idx>(n_idx_global);
+    Idx m = static_cast<Idx>(m_idx_global);
+    Idx factor_sg_n = detail::factorize_sg(n, subgroup_size);
+    Idx factor_wi_n = n / factor_sg_n;
+    Idx factor_sg_m = detail::factorize_sg(m, subgroup_size);
+    Idx factor_wi_m = m / factor_sg_m;
+
+    if (fits_in_wi<Scalar>(factor_wi_n) && fits_in_wi<Scalar>(factor_wi_m)) {
+      return wg_factorization{factor_wi_n, factor_sg_n, factor_wi_m, factor_sg_m};
+    }
+  }
+
+  return std::nullopt;
+}
+
 /**
  * Calculate all dfts in one dimension of the data stored in local memory.
  *
