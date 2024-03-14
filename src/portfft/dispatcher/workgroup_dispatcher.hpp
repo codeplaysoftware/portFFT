@@ -21,7 +21,6 @@
 #ifndef PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 #define PORTFFT_DISPATCHER_WORKGROUP_DISPATCHER_HPP
 
-#include "portfft/common/bluestein.hpp"
 #include "portfft/common/helpers.hpp"
 #include "portfft/common/logging.hpp"
 #include "portfft/common/memory_views.hpp"
