@@ -21,6 +21,7 @@
 #ifndef PORTFFT_DEFINES_HPP
 #define PORTFFT_DEFINES_HPP
 
+#include <array>
 #include <cstdint>
 
 #ifdef PORTFFT_KERNEL_LOG
