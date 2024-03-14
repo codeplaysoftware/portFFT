@@ -98,29 +98,6 @@ PORTFFT_INLINE inline void generic_transpose(IdxGlobal N, IdxGlobal M, Idx tile_
     }
   }
 }
-
-template <Idx SubgroupSize, typename T>
-PORTFFT_INLINE void shuffle_transpose(T* priv, T* output, Idx lda, Idx ldb, sycl::sub_group sg) {
-  Idx sg_local_linear_id = static_cast<Idx>(sg.get_local_linear_id());
-  Idx id_of_thread_in_fft = sg_local_linear_id % lda;
-  Idx matrix_start_lane_id = (sg_local_linear_id - id_of_thread_in_fft) & (SubgroupSize - 1);
-  Idx lane_id_relative_to_start = id_of_thread_in_fft & (lda - 1);
-
-  PORTFFT_UNROLL
-  for (Idx id_of_element_in_wi = 0; id_of_element_in_wi < ldb; id_of_element_in_wi++) {
-    Idx relative_target_lane_id = ((lane_id_relative_to_start + id_of_element_in_wi) & (ldb - 1)) * (lda / ldb) +
-                                  (lane_id_relative_to_start / ldb);
-    Idx target_lane_id = matrix_start_lane_id + relative_target_lane_id;
-    Idx store_address = (sg_local_linear_id + id_of_element_in_wi) & (ldb - 1);
-    Idx target_address = ((ldb - id_of_element_in_wi) + (sg_local_linear_id / (lda / ldb))) & (ldb - 1);
-    T& real_value = priv[2 * target_address];
-    T& complex_value = priv[2 * target_address + 1];
-    output[2 * store_address] = sycl::select_from_group(sg, real_value, static_cast<std::size_t>(target_lane_id));
-    output[2 * store_address + 1] =
-        sycl::select_from_group(sg, complex_value, static_cast<std::size_t>(target_lane_id));
-  }
-}
-
 }  // namespace detail
 }  // namespace portfft
 #endif
