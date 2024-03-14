@@ -25,9 +25,7 @@
 
 #include "helpers.hpp"
 #include "portfft/common/logging.hpp"
-#include "portfft/common/memory_views.hpp"
 #include "portfft/common/transfers.hpp"
-#include "portfft/common/transpose.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "twiddle.hpp"
