@@ -119,7 +119,8 @@ std::optional<IdxGlobal> factorize_input_impl(IdxGlobal factor_size, F&& check_a
  * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
  * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
  * implementation.
- * @return Whether or not a prime sized that does not fit in workitem implementation was encountered
+ * @return Whether or not a prime sized value that does not fit in workitem implementation was encountered during
+ * factorization
  */
 template <typename F>
 bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {

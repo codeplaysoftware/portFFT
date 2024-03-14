@@ -41,9 +41,9 @@ void host_naive_dft(std::complex<T>* input, std::complex<T>* output, std::size_t
   for (std::size_t i = 0; i < fft_size; i++) {
     complex_t temp = complex_t(0, 0);
     for (std::size_t j = 0; j < fft_size; j++) {
-      complex_t multiplier =
-          complex_t(static_cast<T>(std::cos((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size))),
-                    static_cast<T>(std::sin((-2 * M_PI * static_cast<double>(i * j)) / static_cast<double>(fft_size))));
+      // Not using sycl::cospi / sycl::sinpi as std::cos/std::sin provides better accuracy in float and double tests
+      double theta = -2 * M_PI * static_cast<double>(i * j) / static_cast<double>(fft_size);
+      complex_t multiplier = complex_t(static_cast<T>(std::cos(theta)), static_cast<T>(std::sin(theta)));
       temp += input[j] * multiplier;
     }
     output[i] = temp;
@@ -83,6 +83,7 @@ void host_cooley_tukey(std::complex<T>* input, std::complex<T>* output, std::siz
 
   for (std::size_t i = 0; i < n; i++) {
     for (std::size_t j = 0; j < m; j++) {
+      // Not using sycl::cospi / sycl::sinpi as std::cos/std::sin provides better accuracy in float and double tests
       double theta = -2 * M_PI * static_cast<double>(i * j) / static_cast<double>(n * m);
       output[i * m + j] *= std::complex<T>(static_cast<T>(std::cos(theta)), static_cast<T>(std::sin(theta)));
     }

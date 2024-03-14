@@ -339,14 +339,6 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
                host_output_imag.size(), {fft_event});
   }
   queue.wait_and_throw();
-  // std::cout << "PRINTING REFERENCE DATA " << std::endl;
-  // for (auto n : host_reference_output) {
-  //   std::cout << n << " ";
-  // }
-  // std::cout << std::endl;
-  // for (auto n : host_output) {
-  //   std::cout << n << " ";
-  // }
   if constexpr (Storage == complex_storage::SPLIT_COMPLEX) {
     verify_dft<Dir, Storage>(desc, host_reference_output, host_output, tolerance, host_reference_output_imag,
                              host_output_imag);
@@ -474,7 +466,7 @@ void run_test(const test_params& params) {
   auto num_prime_sizes = std::count_if(params.lengths.begin(), params.lengths.end(),
                                        [](const std::size_t l) { return detail::factorize(l) == std::size_t(1); });
   if (num_prime_sizes > 0) {
-    tolerance *= 10;
+    tolerance *= 5;
   }
   portfft::detail::dump_host("host_input:", host_input.data(), host_input.size());
   portfft::detail::dump_host("host_input_imag:", host_input.data(), host_input.size());
