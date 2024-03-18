@@ -260,7 +260,7 @@ detail::layout get_layout(const Descriptor& desc, direction dir) {
  * @return The padded input size for which the FFT transform will run
  */
 inline IdxGlobal get_bluestein_padded_size(IdxGlobal input_size) {
-  return static_cast<IdxGlobal>(std::pow(2, ceil(log(static_cast<double>(2 * input_size)) / log(2.0))));
+  return static_cast<IdxGlobal>(std::pow(2, ceil(std::log2(2 * input_size))));
 }
 
 }  // namespace detail

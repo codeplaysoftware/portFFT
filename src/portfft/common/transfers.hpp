@@ -675,12 +675,11 @@ PORTFFT_INLINE void local_global_strided_copy(T* global_ptr, T* global_imag_ptr,
  */
 template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
 PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, T* priv,
-                                               so_array<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_view_strides_offsets,
                                                Idx num_elements_to_copy, detail::transfer_direction direction,
                                                detail::global_data_struct<1> global_data) {
   global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
-  detail::strided_view ptr_strided_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
-                                        std::get<1>(ptr_view_strides_offsets)};
+  detail::strided_view ptr_strided_view{ptr_view, ptr_view_strides_offsets.strides, ptr_view_strides_offsets.offsets};
   if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
     copy_wi<2>(global_data, ptr_strided_view, priv, num_elements_to_copy);
   } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
@@ -711,15 +710,15 @@ PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, T* priv,
  */
 template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
 PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, PtrView& ptr_imag_view, T* priv,
-                                               so_array<IdxType, PtrViewNDim> ptr_view_strides_offsets,
-                                               so_array<IdxType, PtrViewNDim> ptr_imag_view_strides_offsets,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_imag_view_strides_offsets,
                                                Idx num_elements_to_copy, detail::transfer_direction direction,
                                                detail::global_data_struct<1> global_data) {
   global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
-  detail::strided_view ptr_strided_real_view{ptr_view, std::get<0>(ptr_view_strides_offsets),
-                                             std::get<1>(ptr_view_strides_offsets)};
-  detail::strided_view ptr_strided_imag_view{ptr_imag_view, std::get<0>(ptr_imag_view_strides_offsets),
-                                             std::get<1>(ptr_imag_view_strides_offsets)};
+  detail::strided_view ptr_strided_real_view{ptr_view, ptr_view_strides_offsets.strides,
+                                             ptr_view_strides_offsets.offsets};
+  detail::strided_view ptr_strided_imag_view{ptr_imag_view, ptr_imag_view_strides_offsets.strides,
+                                             ptr_imag_view_strides_offsets.offsets};
   detail::strided_view priv_strided_real_view{priv, 2};
   detail::strided_view priv_strided_imag_view{priv, 2, 1};
   if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {

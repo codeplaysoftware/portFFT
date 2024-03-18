@@ -26,7 +26,7 @@
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/traits.hpp"
-#include "subgroup.hpp"
+#include "subgroup_ct.hpp"
 
 namespace portfft {
 

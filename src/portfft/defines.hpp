@@ -54,8 +54,14 @@ using IdxGlobal = std::int64_t;
  * @tparam Type Type of elements
  * @tparam N Number of elements in each of the two arrays
  */
-template <typename Type, Idx N>
-using so_array = std::array<std::array<Type, N>, 2>;
+template <typename T, std::size_t N>
+struct stride_offset_struct {
+  std::array<T, N> strides;
+  std::array<T, N> offsets;
+  __attribute__((always_inline)) inline constexpr stride_offset_struct(const std::array<T, N> strides,
+                                                                       const std::array<T, N> offsets)
+      : strides(strides), offsets(offsets) {}
+};
 
 }  // namespace portfft
 

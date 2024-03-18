@@ -24,7 +24,7 @@
 #include <string_view>
 
 #include "common/exceptions.hpp"
-#include "common/subgroup.hpp"
+#include "common/subgroup_ct.hpp"
 #include "enums.hpp"
 #include "utils.hpp"
 

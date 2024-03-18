@@ -25,7 +25,8 @@
 #include "portfft/common/helpers.hpp"
 #include "portfft/common/logging.hpp"
 #include "portfft/common/memory_views.hpp"
-#include "portfft/common/subgroup.hpp"
+#include "portfft/common/subgroup_bluestein.hpp"
+#include "portfft/common/subgroup_ct.hpp"
 #include "portfft/common/transfers.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/descriptor.hpp"
@@ -223,13 +224,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             const Idx fft_element = 2 * id_of_wi_in_fft * factor_wi;
             local_private_strided_copy<1, Idx>(
                 loc_view, priv,
-                {{{max_num_batches_local_mem}, {fft_element * max_num_batches_local_mem + 2 * fft_idx_in_local}}},
+                {{max_num_batches_local_mem}, {fft_element * max_num_batches_local_mem + 2 * fft_idx_in_local}},
                 factor_wi, detail::transfer_direction::LOCAL_TO_PRIVATE, global_data);
           } else {
             local_private_strided_copy<2, Idx>(
                 loc_view, loc_view, priv,
-                {{{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local}}},
-                {{{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local + local_imag_offset}}},
+                {{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local}},
+                {{1, max_num_batches_local_mem}, {id_of_wi_in_fft * factor_wi, fft_idx_in_local + local_imag_offset}},
                 factor_wi, detail::transfer_direction::LOCAL_TO_PRIVATE, global_data);
           }
           global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
@@ -237,10 +238,10 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
         IdxGlobal modifier_offset =
             static_cast<IdxGlobal>(n_reals_per_fft) * (i + static_cast<IdxGlobal>(fft_idx_in_local));
         if (algorithm == detail::fft_algorithm::COOLEY_TUKEY) {
-          sg_dft_compute<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store, conjugate_on_load,
-                                       conjugate_on_store, apply_scale_factor, load_modifier_data, store_modifier_data,
-                                       loc_twiddles, scaling_factor, modifier_offset, id_of_wi_in_fft, factor_sg,
-                                       factor_wi, global_data);
+          sg_cooley_tukey<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store,
+                                        conjugate_on_load, conjugate_on_store, apply_scale_factor, load_modifier_data,
+                                        store_modifier_data, loc_twiddles, scaling_factor, modifier_offset,
+                                        id_of_wi_in_fft, factor_sg, factor_wi, global_data);
         } else {
           sg_bluestein_batch_interleaved<SubgroupSize>(
               priv, wi_private_scratch, loc_view, load_modifier_data, store_modifier_data, loc_twiddles,
@@ -261,11 +262,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                           static_cast<IdxGlobal>(2 * fft_size) +
                                       static_cast<IdxGlobal>(2 * id_of_wi_in_fft);
             if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-              so_array<IdxGlobal, 1> output_stride_offset{{{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}};
+              stride_offset_struct<IdxGlobal, 1> output_stride_offset{{static_cast<IdxGlobal>(factor_sg)},
+                                                                      {output_offset}};
               local_private_strided_copy<1, IdxGlobal>(output, priv, output_stride_offset, factor_wi,
                                                        detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
             } else {
-              so_array<IdxGlobal, 1> output_stride_offset{{{static_cast<IdxGlobal>(factor_sg)}, {output_offset / 2}}};
+              stride_offset_struct<IdxGlobal, 1> output_stride_offset{{static_cast<IdxGlobal>(factor_sg)},
+                                                                      {output_offset / 2}};
               local_private_strided_copy<1, IdxGlobal>(output, output_imag, priv, output_stride_offset,
                                                        output_stride_offset, factor_wi,
                                                        detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
@@ -280,14 +283,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             // Store back to local memory only
             if (storage == complex_storage::INTERLEAVED_COMPLEX) {
               local_private_strided_copy<2, Idx>(
-                  loc_view, priv,
-                  {{{factor_sg, max_num_batches_local_mem}, {2 * id_of_wi_in_fft, 2 * fft_idx_in_local}}}, factor_wi,
-                  detail::transfer_direction::PRIVATE_TO_LOCAL, global_data);
+                  loc_view, priv, {{factor_sg, max_num_batches_local_mem}, {2 * id_of_wi_in_fft, 2 * fft_idx_in_local}},
+                  factor_wi, detail::transfer_direction::PRIVATE_TO_LOCAL, global_data);
             } else {
               local_private_strided_copy<2, Idx>(
                   loc_view, loc_view, priv,
-                  {{{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local}}},
-                  {{{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local + local_imag_offset}}},
+                  {{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local}},
+                  {{factor_sg, max_num_batches_local_mem}, {id_of_wi_in_fft, fft_idx_in_local + local_imag_offset}},
                   factor_wi, detail::transfer_direction::PRIVATE_TO_LOCAL, global_data);
             }
           }
@@ -390,24 +392,24 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
       if (working) {
         global_data.log_message_global(__func__, "loading non-transposed data from local to private memory");
         if (storage == complex_storage::INTERLEAVED_COMPLEX) {
-          local_private_strided_copy<1, Idx>(
-              loc_view, priv, {{{1}, {subgroup_id * n_reals_per_sg + subgroup_local_id * n_reals_per_wi}}}, factor_wi,
-              detail::transfer_direction::LOCAL_TO_PRIVATE, global_data);
+          local_private_strided_copy<1, Idx>(loc_view, priv,
+                                             {{1}, {subgroup_id * n_reals_per_sg + subgroup_local_id * n_reals_per_wi}},
+                                             factor_wi, detail::transfer_direction::LOCAL_TO_PRIVATE, global_data);
         } else {
           local_private_strided_copy<1, Idx>(
-              loc_view, loc_view, priv, {{{1}, {subgroup_id * n_cplx_per_sg + subgroup_local_id * factor_wi}}},
-              {{{1}, {subgroup_id * n_cplx_per_sg + subgroup_local_id * factor_wi + local_imag_offset}}}, factor_wi,
+              loc_view, loc_view, priv, {{1}, {subgroup_id * n_cplx_per_sg + subgroup_local_id * factor_wi}},
+              {{1}, {subgroup_id * n_cplx_per_sg + subgroup_local_id * factor_wi + local_imag_offset}}, factor_wi,
               detail::transfer_direction::LOCAL_TO_PRIVATE, global_data);
         }
         global_data.log_dump_private("data loaded in registers:", priv, n_reals_per_wi);
       }
       sycl::group_barrier(global_data.sg);
       if (algorithm == detail::fft_algorithm::COOLEY_TUKEY) {
-        sg_dft_compute<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store, conjugate_on_load,
-                                     conjugate_on_store, apply_scale_factor, load_modifier_data, store_modifier_data,
-                                     loc_twiddles, scaling_factor,
-                                     static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
-                                     id_of_wi_in_fft, factor_sg, factor_wi, global_data);
+        sg_cooley_tukey<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store, conjugate_on_load,
+                                      conjugate_on_store, apply_scale_factor, load_modifier_data, store_modifier_data,
+                                      loc_twiddles, scaling_factor,
+                                      static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
+                                      id_of_wi_in_fft, factor_sg, factor_wi, global_data);
       } else {
         Idx loc_offset_store_view;
         Idx loc_offset_load_view;
@@ -438,17 +440,17 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
             IdxGlobal output_offset = i * static_cast<IdxGlobal>(n_reals_per_sg) +
                                       static_cast<IdxGlobal>(id_of_fft_in_sg * n_reals_per_fft) +
                                       static_cast<IdxGlobal>(id_of_wi_in_fft * 2);
-            local_private_strided_copy<1, IdxGlobal>(
-                output, priv, {{{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}}, factor_wi,
-                detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
+            local_private_strided_copy<1, IdxGlobal>(output, priv,
+                                                     {{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}, factor_wi,
+                                                     detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
           } else {
             IdxGlobal output_offset = i * static_cast<IdxGlobal>(n_cplx_per_sg) +
                                       static_cast<IdxGlobal>(id_of_fft_in_sg * fft_size) +
                                       static_cast<IdxGlobal>(id_of_wi_in_fft);
-            local_private_strided_copy<1, IdxGlobal>(
-                output, output_imag, priv, {{{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}},
-                {{{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}}, factor_wi,
-                detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
+            local_private_strided_copy<1, IdxGlobal>(output, output_imag, priv,
+                                                     {{static_cast<IdxGlobal>(factor_sg)}, {output_offset}},
+                                                     {{static_cast<IdxGlobal>(factor_sg)}, {output_offset}}, factor_wi,
+                                                     detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
           }
         }
       } else if (is_output_batch_interleaved && algorithm == detail::fft_algorithm::COOLEY_TUKEY) {
@@ -456,13 +458,13 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           global_data.log_message_global(__func__, "Storing data from private to Global with batch interleaved layout");
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             local_private_strided_copy<2, IdxGlobal>(output, priv,
-                                                     {{{static_cast<IdxGlobal>(factor_sg), n_transforms},
-                                                       {static_cast<IdxGlobal>(2 * id_of_wi_in_fft), 2 * i}}},
+                                                     {{static_cast<IdxGlobal>(factor_sg), n_transforms},
+                                                      {static_cast<IdxGlobal>(2 * id_of_wi_in_fft), 2 * i}},
                                                      factor_wi, detail::transfer_direction::PRIVATE_TO_GLOBAL,
                                                      global_data);
           } else {
-            so_array<IdxGlobal, 2> global_stride_offset{
-                {{static_cast<IdxGlobal>(factor_sg), n_transforms}, {static_cast<IdxGlobal>(id_of_wi_in_fft), i}}};
+            stride_offset_struct<IdxGlobal, 2> global_stride_offset{{static_cast<IdxGlobal>(factor_sg), n_transforms},
+                                                                    {static_cast<IdxGlobal>(id_of_wi_in_fft), i}};
             local_private_strided_copy<2, IdxGlobal>(output, output_imag, priv, global_stride_offset,
                                                      global_stride_offset, factor_wi,
                                                      detail::transfer_direction::PRIVATE_TO_GLOBAL, global_data);
@@ -475,12 +477,12 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           if (storage == complex_storage::INTERLEAVED_COMPLEX) {
             Idx loc_view_offset =
                 subgroup_id * n_reals_per_sg + id_of_fft_in_sg * n_reals_per_fft + 2 * id_of_wi_in_fft;
-            local_private_strided_copy<1, Idx>(loc_view, priv, {{{factor_sg}, {loc_view_offset}}}, factor_wi,
+            local_private_strided_copy<1, Idx>(loc_view, priv, {{factor_sg}, {loc_view_offset}}, factor_wi,
                                                detail::transfer_direction::PRIVATE_TO_LOCAL, global_data);
           } else {
             Idx loc_view_offset = subgroup_id * n_cplx_per_sg + id_of_fft_in_sg * fft_size + id_of_wi_in_fft;
-            local_private_strided_copy<1, Idx>(loc_view, loc_view, priv, {{{factor_sg}, {loc_view_offset}}},
-                                               {{{factor_sg}, {loc_view_offset + local_imag_offset}}}, factor_wi,
+            local_private_strided_copy<1, Idx>(loc_view, loc_view, priv, {{factor_sg}, {loc_view_offset}},
+                                               {{factor_sg}, {loc_view_offset + local_imag_offset}}, factor_wi,
                                                detail::transfer_direction::PRIVATE_TO_LOCAL, global_data);
           }
         }
@@ -535,7 +537,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                   loc_view_offset, loc_view_imag_offset, n_ffts_worked_on_by_sg, i, n_transforms, global_data);
             }
           } else {
-            // TODO: Blustein Strided Copy
+            // TODO: Bluestein Strided Copy
           }
         }
         sycl::group_barrier(global_data.sg);
@@ -555,8 +557,9 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     Idx factor_wi = kernel_data.factors[0];
     Idx factor_sg = kernel_data.factors[1];
     std::size_t twiddles_alloc_size = [&]() {
-      if (dimension_data.is_prime) {
+      if (dimension_data.algorithm == detail::fft_algorithm::BLUESTEIN) {
         // sg twiddles + load_modifiers + store_modifiers
+        // NOLINTNEXTLINE
         return 6 * dimension_data.length;
       }
       return 2 * dimension_data.length;
@@ -577,7 +580,7 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
         host_twiddles[static_cast<std::size_t>((j + factor_wi) * factor_sg + i)] = twiddle.imag();
       }
     }
-    if (dimension_data.is_prime) {
+    if (dimension_data.algorithm == detail::fft_algorithm::BLUESTEIN) {
       detail::populate_bluestein_input_modifiers(host_twiddles.data() + 2 * factor_sg * factor_wi,
                                                  dimension_data.committed_length, dimension_data.length);
       detail::populate_fft_chirp_signal(host_twiddles.data() + 4 * factor_sg * factor_wi,

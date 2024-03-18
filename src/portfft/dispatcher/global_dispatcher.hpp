@@ -26,7 +26,7 @@
 #include <cstring>
 
 #include "portfft/common/global.hpp"
-#include "portfft/common/subgroup.hpp"
+#include "portfft/common/subgroup_ct.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/specialization_constant.hpp"

@@ -30,7 +30,7 @@
 #include <vector>
 
 #include "common/exceptions.hpp"
-#include "common/subgroup.hpp"
+#include "common/subgroup_ct.hpp"
 #include "defines.hpp"
 #include "enums.hpp"
 #include "specialization_constant.hpp"
@@ -148,28 +148,28 @@ class committed_descriptor_impl {
     std::vector<kernel_data_struct> transpose_kernels;
     std::shared_ptr<IdxGlobal> factors_and_scan;
     detail::level level;
-    // The size of DFT transform which will be computed for the given dimension
+    // The size of DFT transform which will be computed for the given dimension. Will be different from the
+    // committed_length when the Bluestein / Rader algorithms are used
     std::size_t length;
-    // The committed length for the particular dimension, will be different from length in the case of bluestein and
-    // radar fft algorithms
+    // The committed length (as in the user specified length) for the particular dimension
     std::size_t committed_length;
     Idx used_sg_size;
     Idx num_batches_in_l2;
     Idx num_factors;
-    bool is_prime;
+    detail::fft_algorithm algorithm;
 
     dimension_struct(std::vector<kernel_data_struct> forward_kernels, std::vector<kernel_data_struct> backward_kernels,
                      detail::level level, std::size_t length, std::size_t committed_length, Idx used_sg_size,
-                     bool is_prime)
+                     detail::fft_algorithm algorithm)
         : forward_kernels(std::move(forward_kernels)),
           backward_kernels(std::move(backward_kernels)),
           level(level),
           length(length),
           committed_length(committed_length),
           used_sg_size(used_sg_size),
-          is_prime(is_prime) {
-      if (is_prime && level != detail::level::SUBGROUP) {
-        throw unsupported_configuration("Prime sizes that not fit in the subgroup implementation are not supported");
+          algorithm(algorithm) {
+      if (algorithm == detail::fft_algorithm::BLUESTEIN && level != detail::level::SUBGROUP) {
+        throw unsupported_configuration("Prime sizes that do not fit in the subgroup implementation are not supported");
       }
     }
   };
@@ -215,9 +215,9 @@ class committed_descriptor_impl {
    * set of kernels that need to be JIT compiled.
    *
    * @tparam SubgroupSize size of the subgroup
-   * @param fft_size The size of the dft transform
-   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel,
-   * vector of kernel ids, factors
+   * @param fft_size The size for which kernel needs to be prepared
+   * @return implementation to use for the dimension and a vector of tuples of: implementation to use for a kernel, the
+   * size of the fft for which the implementation was prepared and the vector of kernel ids, factors
    */
   template <Idx SubgroupSize>
   std::tuple<detail::level, std::size_t, kernel_ids_and_metadata_t> prepare_implementation(IdxGlobal fft_size) {
@@ -595,6 +595,15 @@ class committed_descriptor_impl {
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::FORWARD, dimension_num);
         auto backward_kernels =
             set_spec_constants_driver<SubgroupSize>(top_level, prepared_vec, direction::BACKWARD, dimension_num);
+        detail::fft_algorithm algorithm;
+        if (fft_size == params.lengths[dimension_num]) {
+          algorithm = detail::fft_algorithm::COOLEY_TUKEY;
+        } else if (fft_size > params.lengths[dimension_num]) {
+          algorithm = detail::fft_algorithm::BLUESTEIN;
+        } else {
+          throw internal_error("Invalid FFT size encountered while preparing the implementation");
+        }
+
         if (forward_kernels.has_value() && backward_kernels.has_value()) {
           return {forward_kernels.value(),
                   backward_kernels.value(),
@@ -602,7 +611,7 @@ class committed_descriptor_impl {
                   fft_size,
                   params.lengths[dimension_num],
                   SubgroupSize,
-                  fft_size != params.lengths[dimension_num]};
+                  algorithm};
         }
       }
     }
@@ -949,7 +958,7 @@ class committed_descriptor_impl {
     const auto input_layout = detail::get_layout(params, compute_direction);
     const auto output_layout = detail::get_layout(params, inv(compute_direction));
 
-    if (dimensions.back().is_prime) {
+    if (dimensions.back().algorithm == detail::fft_algorithm::BLUESTEIN) {
       if (input_layout == detail::layout::UNPACKED || output_layout == detail::layout::UNPACKED) {
         throw unsupported_configuration("Unsupported configuration for prime sized DFTs");
       }

@@ -273,7 +273,6 @@ std::enable_if_t<TestMemory == test_memory::usm> check_fft(
     const std::vector<OutputFType>& host_reference_output, const std::vector<RealFType>& host_input_imag,
     std::vector<RealFType>& host_output_imag, const std::vector<RealFType>& host_reference_output_imag,
     double tolerance) {
-  // std::cout << "I AM IN CHECK FFT USM " << std::endl;
   auto committed_descriptor = desc.commit(queue);
 
   const bool is_oop = desc.placement == placement::OUT_OF_PLACE;
