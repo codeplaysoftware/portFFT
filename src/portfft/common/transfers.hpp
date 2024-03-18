@@ -699,9 +699,9 @@ PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, T* priv,
  * @param ptr_view View of the local / global memory containing the real component of the data
  * @param ptr_imag_view View of the local / global memory containing the imaginary component of the data
  * @param priv Pointer to the private memory array
- * @param ptr_view_strides_offsets An array of 2 arrays containing PtrViewNDim elements of IdxType, containing strides
+ * @param ptr_view_strides_offsets Struct containing strides
  * and offsets for the strided view to be constructed for the local / global memory containing the real part of the data
- * @param ptr_imag_view_strides_offsets An array of 2 arrays containing PtrViewNDim elements of IdxType, containing
+ * @param ptr_imag_view_strides_offsets Struct containing
  * strides and offsets for the strided view to be constructed for the local / global memory containing the imaginary
  * part of the data
  * @param num_elements_to_copy Number of elements to copy

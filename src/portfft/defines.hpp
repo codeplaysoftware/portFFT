@@ -50,7 +50,7 @@ using Idx = std::int32_t;
 using IdxGlobal = std::int64_t;
 
 /**
- * An array of 2 arrays containing N elements of Type, containing strides (s) and offset (o) for a view
+ * Struct containing the strides and offsets for a view
  * @tparam Type Type of elements
  * @tparam N Number of elements in each of the two arrays
  */
