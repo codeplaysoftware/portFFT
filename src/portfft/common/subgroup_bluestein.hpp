@@ -31,8 +31,10 @@
 namespace portfft {
 
 /**
- * Function to copy data between local and global memory as required by the subgroup level Bluestein algorithm,
- * when the data in both local and global memory is in packed format,when the storage scheme is INTERLEAVED_COMPLEX
+ * Function to copy data between local and global memory as required by the subgroup level bluestein algorithm
+ * when the data in both local and global memory is in packed format,when the storage scheme is INTERLEAVED_COMPLEX.
+ * The number of complex elements per transform in the global memory will be equal to the committed_length, and the
+ * number of complex elements per transform in local memory will be equal to the padded length.
  *
  * @tparam SubgroupSize Subgroup size
  * @tparam Direction  Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
@@ -57,7 +59,7 @@ PORTFFT_INLINE void subgroup_impl_bluestein_local_global_packed_copy(
     TIn global_ptr, LocView& loc_view, Idx committed_size, Idx fft_size, IdxGlobal global_ptr_offset, Idx loc_offset,
     Idx n_ffts_in_sg, IdxGlobal transform_id, IdxGlobal n_transforms, detail::global_data_struct<1>& global_data) {
   PORTFFT_UNROLL
-  for (Idx i = 0; i < n_ffts_in_sg && ((i + transform_id) < n_transforms); i++) {
+  for (Idx i = 0; i < n_ffts_in_sg && i + transform_id < n_transforms; i++) {
     local_global_packed_copy<detail::level::SUBGROUP, Direction, SubgroupSize>(
         global_ptr, loc_view, global_ptr_offset + static_cast<IdxGlobal>(2 * i * committed_size),
         2 * i * fft_size + loc_offset, 2 * committed_size, global_data);
@@ -67,6 +69,8 @@ PORTFFT_INLINE void subgroup_impl_bluestein_local_global_packed_copy(
 /**
  * Function to copy data between local and global memory as required by the subgroup level Bluestein algorithm,
  * when the data in both local and global memory is in packed format,when the storage scheme is SPLIT_COMPLEX
+ * The number of complex elements per transform in the global memory will be equal to the committed_length, and the
+ * number of complex elements per transform in local memory will be equal to the padded length.
  *
  * @tparam SubgroupSize Subgroup size
  * @tparam Direction  Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
@@ -95,7 +99,7 @@ PORTFFT_INLINE void subgroup_impl_bluestein_local_global_packed_copy(
     IdxGlobal global_ptr_offset, Idx loc_offset, Idx local_imag_offset, Idx n_ffts_in_sg, IdxGlobal transform_id,
     IdxGlobal n_transforms, detail::global_data_struct<1>& global_data) {
   PORTFFT_UNROLL
-  for (Idx i = 0; i < n_ffts_in_sg && (i + transform_id < n_transforms); i++) {
+  for (Idx i = 0; i < n_ffts_in_sg && i + transform_id < n_transforms; i++) {
     local_global_packed_copy<detail::level::SUBGROUP, Direction, SubgroupSize>(
         global_ptr, global_imag_ptr, loc_view, static_cast<IdxGlobal>(i * committed_size) + global_ptr_offset,
         i * fft_size + loc_offset, local_imag_offset, committed_size, global_data);

@@ -316,6 +316,7 @@ void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles
  * call to sg_dft
  * Applying the store modifiers
  * Taking conjugate of the output
+ * Applying the scaling factor
  *
  * @tparam SubgroupSize Subgroup Size
  * @tparam T Scalar Type
