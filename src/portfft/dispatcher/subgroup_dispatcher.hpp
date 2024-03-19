@@ -241,7 +241,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
           sg_cooley_tukey<SubgroupSize>(priv, wi_private_scratch, multiply_on_load, multiply_on_store,
                                         conjugate_on_load, conjugate_on_store, apply_scale_factor, load_modifier_data,
                                         store_modifier_data, loc_twiddles, scaling_factor, modifier_offset,
-                                        id_of_wi_in_fft, factor_sg, factor_wi, global_data);
+                                        id_of_wi_in_fft, factor_sg, factor_wi, working_inner, global_data);
         } else {
           sg_bluestein_batch_interleaved<SubgroupSize>(
               priv, wi_private_scratch, loc_view, load_modifier_data, store_modifier_data, loc_twiddles,
@@ -409,7 +409,7 @@ PORTFFT_INLINE void subgroup_impl(const T* input, T* output, const T* input_imag
                                       conjugate_on_store, apply_scale_factor, load_modifier_data, store_modifier_data,
                                       loc_twiddles, scaling_factor,
                                       static_cast<IdxGlobal>(fft_size) * (i - static_cast<IdxGlobal>(id_of_fft_in_sg)),
-                                      id_of_wi_in_fft, factor_sg, factor_wi, global_data);
+                                      id_of_wi_in_fft, factor_sg, factor_wi, working, global_data);
       } else {
         Idx loc_offset_store_view;
         Idx loc_offset_load_view;

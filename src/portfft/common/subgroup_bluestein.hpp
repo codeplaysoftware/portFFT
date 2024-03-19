@@ -149,7 +149,7 @@ PORTFFT_INLINE void sg_bluestein_batch_interleaved(
       priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
       conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::APPLIED, load_modifier,
       store_modifier, twiddles_loc, static_cast<T>(1. / (static_cast<T>(factor_sg * factor_wi))), 0, id_of_wi_in_fft,
-      factor_sg, factor_wi, global_data);
+      factor_sg, factor_wi, wi_working, global_data);
 
   // TODO: Currently local memory is being used to load the data back in natural order for the backward phase, as the
   // result of sg_dft is transposed. However, the ideal way to this is using shuffles. Implement a batched matrix
@@ -190,7 +190,7 @@ PORTFFT_INLINE void sg_bluestein_batch_interleaved(
                                 detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
                                 detail::complex_conjugate::APPLIED, scale_applied, static_cast<const T*>(nullptr),
                                 load_modifier, twiddles_loc, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi,
-                                global_data);
+                                wi_working, global_data);
 
   if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
     global_data.log_message(__func__, "Applying complex conjugate on the output");
@@ -244,7 +244,7 @@ void sg_bluestein_packed(T* priv, T* priv_scratch, LocView& loc_view, LocTwiddle
       priv, priv_scratch, detail::elementwise_multiply::APPLIED, detail::elementwise_multiply::APPLIED,
       conjugate_on_load, detail::complex_conjugate::NOT_APPLIED, detail::apply_scale_factor::APPLIED, load_modifier,
       store_modifier, loc_twiddles, static_cast<T>(1. / static_cast<T>(factor_sg * factor_wi)), 0, id_of_wi_in_fft,
-      factor_sg, factor_wi, global_data);
+      factor_sg, factor_wi, wi_working, global_data);
 
   if (wi_working) {
     global_data.log_message(__func__, "storing result of the forward phase back to local memory");
@@ -276,7 +276,7 @@ void sg_bluestein_packed(T* priv, T* priv_scratch, LocView& loc_view, LocTwiddle
                                 detail::elementwise_multiply::APPLIED, detail::complex_conjugate::APPLIED,
                                 detail::complex_conjugate::APPLIED, scale_applied, static_cast<const T*>(nullptr),
                                 load_modifier, loc_twiddles, scale_factor, 0, id_of_wi_in_fft, factor_sg, factor_wi,
-                                global_data);
+                                wi_working, global_data);
   if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
     global_data.log_message(__func__, "Applying complex conjugate on the output");
     detail::conjugate_inplace(priv, factor_wi);

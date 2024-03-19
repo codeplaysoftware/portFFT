@@ -338,6 +338,7 @@ void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles
  * @param id_of_wi_in_fft workitem id withing the fft
  * @param factor_sg Number of workitems participating for one transform
  * @param factor_wi Number of complex elements per workitem for each transform
+ * @param wi_working Whether or not the workitem participates in the data transfers
  * @param global_data global_data_struct associated with the kernel launch
  */
 template <Idx SubgroupSize, typename T, typename LocView>
@@ -348,7 +349,7 @@ PORTFFT_INLINE void sg_cooley_tukey(T* priv, T* private_scratch, detail::element
                                     detail::apply_scale_factor scale_factor_applied, const T* load_modifier_data,
                                     const T* store_modifier_data, LocView& twiddles_loc_view, T scale_factor,
                                     IdxGlobal modifier_start_offset, Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi,
-                                    detail::global_data_struct<1>& global_data) {
+                                    bool wi_working, detail::global_data_struct<1>& global_data) {
   using vec2_t = sycl::vec<T, 2>;
   vec2_t modifier_vec;
   if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
@@ -356,13 +357,15 @@ PORTFFT_INLINE void sg_cooley_tukey(T* priv, T* private_scratch, detail::element
     detail::conjugate_inplace(priv, factor_wi);
   }
   if (apply_load_modifier == detail::elementwise_multiply::APPLIED) {
-    global_data.log_message(__func__, "Applying load modifiers");
-    PORTFFT_UNROLL
-    for (Idx j = 0; j < factor_wi; j++) {
-      modifier_vec = *reinterpret_cast<const vec2_t*>(
-          &load_modifier_data[modifier_start_offset + 2 * factor_wi * id_of_wi_in_fft + 2 * j]);
-      detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
-                               priv[2 * j + 1]);
+    if (wi_working) {
+      global_data.log_message(__func__, "Applying load modifiers");
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < factor_wi; j++) {
+        modifier_vec = *reinterpret_cast<const vec2_t*>(
+            &load_modifier_data[modifier_start_offset + 2 * factor_wi * id_of_wi_in_fft + 2 * j]);
+        detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                                 priv[2 * j + 1]);
+      }
     }
   }
   sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, twiddles_loc_view, private_scratch);
@@ -373,13 +376,15 @@ PORTFFT_INLINE void sg_cooley_tukey(T* priv, T* private_scratch, detail::element
   }
 
   if (apply_store_modifier == detail::elementwise_multiply::APPLIED) {
-    global_data.log_message(__func__, "Applying store modifiers");
-    PORTFFT_UNROLL
-    for (Idx j = 0; j < factor_wi; j++) {
-      modifier_vec = *reinterpret_cast<const vec2_t*>(
-          &store_modifier_data[modifier_start_offset + 2 * j * factor_sg + 2 * id_of_wi_in_fft]);
-      detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
-                               priv[2 * j + 1]);
+    if (wi_working) {
+      global_data.log_message(__func__, "Applying store modifiers");
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < factor_wi; j++) {
+        modifier_vec = *reinterpret_cast<const vec2_t*>(
+            &store_modifier_data[modifier_start_offset + 2 * j * factor_sg + 2 * id_of_wi_in_fft]);
+        detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                                 priv[2 * j + 1]);
+      }
     }
   }
 
