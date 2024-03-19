@@ -89,22 +89,23 @@ constexpr bool can_cast_safely(const InputType& x) {
  * The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or not as an input,
  * and should return a boolean indicating whether or not the factor size can fit in any of the implementation.
  * @param transposed whether or not the factor will be computed in a BATCH_INTERLEAVED format
- * @return
+ * @return Optionally returns the factor that fits in one of the existing implementations, std::nullopt otherwise
  */
 template <typename F>
-IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level, bool transposed) {
+std::optional<IdxGlobal> factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_target_level,
+                                              bool transposed) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   IdxGlobal fact_1 = factor_size;
   if (check_and_select_target_level(fact_1, transposed)) {
     return fact_1;
   }
   if ((detail::factorize(fact_1) == 1)) {
-    throw unsupported_configuration("Large prime sized factors are not supported at the moment");
+    return std::nullopt;
   }
   do {
     fact_1 = detail::factorize(fact_1);
     if (fact_1 == 1) {
-      throw internal_error("Factorization Failed !");
+      return std::nullopt;
     }
   } while (!check_and_select_target_level(fact_1));
   return fact_1;
@@ -118,17 +119,25 @@ IdxGlobal factorize_input_impl(IdxGlobal factor_size, F&& check_and_select_targe
  * implementations. The function should accept factor size and whether it would be have a BATCH_INTERLEAVED layout or
  * not as an input, and should return a boolean indicating whether or not the factor size can fit in any of the
  * implementation.
+ * @return Whether or not a prime sized value that does not fit in workitem implementation was encountered during
+ * factorization
  */
 template <typename F>
-void factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
+bool factorize_input(IdxGlobal input_size, F&& check_and_select_target_level) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   if (detail::factorize(input_size) == 1) {
-    throw unsupported_configuration("Large Prime sized FFTs are currently not supported");
+    return true;
   }
   IdxGlobal temp = 1;
   while (input_size / temp != 1) {
-    temp *= factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+    auto factor_size = factorize_input_impl(input_size / temp, check_and_select_target_level, true);
+    if (factor_size.has_value()) {
+      temp *= factor_size.value();
+    } else {
+      return true;
+    }
   }
+  return false;
 }
 
 /**
@@ -243,6 +252,15 @@ detail::layout get_layout(const Descriptor& desc, direction dir) {
     return detail::layout::BATCH_INTERLEAVED;
   }
   return detail::layout::UNPACKED;
+}
+
+/**
+ * Gets the appropriate padded size for the Bluestein algorithm
+ * @param input_size The committed length of the dft transform
+ * @return The padded input size for which the FFT transform will run
+ */
+inline IdxGlobal get_bluestein_padded_size(IdxGlobal input_size) {
+  return static_cast<IdxGlobal>(std::pow(2, ceil(std::log2(2 * input_size))));
 }
 
 }  // namespace detail

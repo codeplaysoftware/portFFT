@@ -462,7 +462,11 @@ void run_test(const test_params& params) {
       std::accumulate(params.lengths.begin(), params.lengths.end(), 1ull, std::multiplies<std::size_t>()));
   // 2 * theoretical max L2 error of Cooley-Tukey
   double tolerance = 2 * std::numeric_limits<FType>::epsilon() * n_elems * std::log2(n_elems);
-
+  auto num_prime_sizes = std::count_if(params.lengths.begin(), params.lengths.end(),
+                                       [](const std::size_t l) { return detail::factorize(l) == std::size_t(1); });
+  if (num_prime_sizes > 0) {
+    tolerance *= 7;  // Smallest value by which the tolerance needs to be increased
+  }
   portfft::detail::dump_host("host_input:", host_input.data(), host_input.size());
   portfft::detail::dump_host("host_input_imag:", host_input.data(), host_input.size());
 

@@ -488,6 +488,249 @@ PORTFFT_INLINE void local2global(detail::global_data_struct<1> global_data, Loca
       global_data, global, local, total_num_elems, global_offset, local_offset);
 }
 
+/**
+ * Driver function to copy data between local and global memory when data is in PACKED format in both, local
+ * as well as global memory, when the storage scheme is INTERLEAVED_COMPLEX
+ *
+ * @tparam Group Group level taking part in the copy, should be one of level::SUBGROUP or level::WORKGROUP
+ * @tparam Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
+ * transfer_direction::GLOBAL_TO_LOCAL
+ * @tparam SubgroupSize Subgroup Size
+ * @tparam LocView Type of view of the local memory
+ * @tparam T Scalar Type
+ * @param global_ptr Pointer to the input / output global memory
+ * @param loc_view Local memory view containing the input
+ * @param global_offset Offset to be applied to the input / output pointer
+ * @param local_offset Offset to be applied to local memory view
+ * @param n_elements_to_copy Number of scalar elements to copy
+ * @param global_data global_data_struct associated with the kernel launch
+ */
+template <detail::level Group, detail::transfer_direction Direction, Idx SubgroupSize, typename LocView, typename T>
+PORTFFT_INLINE void local_global_packed_copy(T* global_ptr, LocView& loc_view, IdxGlobal global_offset,
+                                             Idx local_offset, Idx n_elements_to_copy,
+                                             detail::global_data_struct<1>& global_data) {
+  global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global_data.log_message(__func__,
+                            "Transferring from global to local memory, number of elements: ", n_elements_to_copy,
+                            " global offset: ", global_offset, " local_offset: ", local_offset);
+    global2local<Group, SubgroupSize>(global_data, global_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset);
+  } else {
+    global_data.log_message(__func__,
+                            "Transferring from global to local memory, number of elements: ", n_elements_to_copy,
+                            " global offset: ", global_offset, " local_offset: ", local_offset);
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_ptr, n_elements_to_copy, local_offset,
+                                      global_offset);
+  }
+}
+
+/**
+ * Driver function to copy data between local and global memory when data is in PACKED format in both, local
+ * as well as global memory, when the storage scheme is SPLIT_COMPLEX
+ *
+ * @tparam Group Group level taking part in the copy, should be one of level::SUBGROUP or level::WORKGROUP
+ * @tparam Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
+ * transfer_direction::GLOBAL_TO_LOCAL
+ * @tparam SubgroupSize Subgroup Size
+ * @tparam LocView Type of view of the local memory
+ * @tparam T Scalar Type
+ * @param global_ptr Pointer to the input / output global memory containing the real part of the data
+ * @param global_imag_ptr ointer to the input / output global memory containing the imaginary part of the data
+ * @param loc_view Local memory view containing the input
+ * @param global_offset Offset to be applied to the input / output pointer
+ * @param local_offset Offset to be applied to local memory view
+ * @param local_imag_offset Number of elements in local memory after which the imaginary component of the values is
+ * stored.
+ * @param n_elements_to_copy Number of scalar elements to copy
+ * @param global_data global_data_struct associated with the kernel launch
+ */
+template <detail::level Group, detail::transfer_direction Direction, Idx SubgroupSize, typename LocView, typename T>
+PORTFFT_INLINE void local_global_packed_copy(T* global_ptr, T* global_imag_ptr, LocView& loc_view,
+                                             IdxGlobal global_offset, Idx local_offset, Idx local_imag_offset,
+                                             Idx n_elements_to_copy, detail::global_data_struct<1>& global_data) {
+  global_data.log_message(__func__, "storage scheme: SPLIT_COMPLEX");
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global_data.log_message(__func__,
+                            "Transferring from global to local memory, number of elements: ", n_elements_to_copy,
+                            " global offset: ", global_offset, " local_offset: ", local_offset);
+    global2local<Group, SubgroupSize>(global_data, global_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset);
+    global2local<Group, SubgroupSize>(global_data, global_imag_ptr, loc_view, n_elements_to_copy, global_offset,
+                                      local_offset + local_imag_offset);
+  } else {
+    global_data.log_message(__func__,
+                            "Transferring from global to local memory, number of elements: ", n_elements_to_copy,
+                            " global offset: ", global_offset, " local_offset: ", local_offset);
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_ptr, n_elements_to_copy, local_offset,
+                                      global_offset);
+    local2global<Group, SubgroupSize>(global_data, loc_view, global_imag_ptr, n_elements_to_copy,
+                                      local_offset + local_imag_offset, global_offset);
+  }
+}
+
+/**
+ * Driver function for copying data between local and global memory when the data layout is arbitrarily
+ * strided in either or both, local and global memory, when the storage scheme is INTERLEAVED_COMPLEX
+ *
+ * @tparam Group Group level taking part in the copy, should be one of level::SUBGROUP or level::WORKGROUP
+ * @tparam Direction Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
+ * transfer_direction::GLOBAL_TO_LOCAL
+ * @tparam GlobalDim Number of dimension of the md_view to be created for the global memory
+ * @tparam LocalDim Number of dimension of the md_view to be created for the global memory
+ * @tparam CopyDims Number of dimensions over which the data will be copied
+ * @tparam T Scalar Type
+ * @tparam LocView Type of view created for the local memory
+ * @param global_ptr Pointer to the input / output global memory
+ * @param loc_view Local memory view containing the input
+ * @param strides_global An array specifying the strides for the global memory
+ * @param strides_local An array specifying the strides for the local memory
+ * @param offset_global Offset value to be applied to the global memory
+ * @param offset_local Offset value to be applied to the local memory
+ * @param copy_lengths number of scalars (for each dimension) of the data to copy
+ * @param global_data global_data_struct associated with the kernel launch
+ */
+template <detail::level Group, detail::transfer_direction Direction, std::size_t GlobalDim, std::size_t LocalDim,
+          std::size_t CopyDims, typename T, typename LocView>
+PORTFFT_INLINE void local_global_strided_copy(T* global_ptr, LocView& loc_view,
+                                              std::array<IdxGlobal, GlobalDim> strides_global,
+                                              std::array<Idx, LocalDim> strides_local, IdxGlobal offset_global,
+                                              Idx offset_local, std::array<Idx, CopyDims> copy_lengths,
+                                              detail::global_data_struct<1> global_data) {
+  global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
+  detail::md_view global_md_view{global_ptr, strides_global, offset_global};
+  detail::md_view local_md_view{loc_view, strides_local, offset_local};
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global_data.log_message(__func__, "transferring strided data from global to local memory");
+    copy_group<Group>(global_data, global_md_view, local_md_view, copy_lengths);
+  } else {
+    global_data.log_message(__func__, "transferring strided data from local to global memory");
+    copy_group<Group>(global_data, local_md_view, global_md_view, copy_lengths);
+  }
+}
+
+/**
+ * Driver function for copying data between local and global memory when the data layout is arbitrarily
+ * strided in either or both, local and global memory, when the storage scheme is SPLIT_COMPLEX
+ *
+ * @tparam Group Group level taking part in the copy, should be one of level::SUBGROUP or level::WORKGROUP
+ * @tparam Direction Direction Direction of the copy, expected to be either transfer_direction::LOCAL_TO_GLOBAL or
+ * transfer_direction::GLOBAL_TO_LOCAL
+ * @tparam GlobalDim Number of dimension of the md_view to be created for the global memory
+ * @tparam LocalDim Number of dimension of the md_view to be created for the global memory
+ * @tparam CopyDims Number of dimensions over which the data will be copied
+ * @tparam T Scalar Type
+ * @tparam LocView Type of view created for the local memory
+ * @param global_ptr Pointer to the input / output global memory containing the real part of the data
+ * @param global_imag_ptr ointer to the input / output global memory containing the imaginary part of the data
+ * @param loc_view View of the local memory
+ * @param strides_global An array specifying the strides for the global memory
+ * @param strides_local An array specifying the strides for the local memory
+ * @param offset_global  Offset value to be applied to the global memory
+ * @param local_offset Offset value to be applied to the local memory
+ * @param local_imag_offset Number of elements in local memory after which the imaginary component of the values is
+ * stored
+ * @param copy_lengths number of scalars (for each dimension) of the data to copy
+ * @param global_data global_data_struct associated with the kernel launch
+ */
+template <detail::level Group, detail::transfer_direction Direction, std::size_t GlobalDim, std::size_t LocalDim,
+          std::size_t CopyDims, typename T, typename LocView>
+PORTFFT_INLINE void local_global_strided_copy(T* global_ptr, T* global_imag_ptr, LocView& loc_view,
+                                              std::array<IdxGlobal, GlobalDim> strides_global,
+                                              std::array<Idx, LocalDim> strides_local, IdxGlobal offset_global,
+                                              Idx local_offset, Idx local_imag_offset,
+                                              std::array<Idx, CopyDims> copy_lengths,
+                                              detail::global_data_struct<1> global_data) {
+  global_data.log_message(__func__, "storage scheme: SPLIT_COMPLEX");
+  detail::md_view global_md_real_view{global_ptr, strides_global, offset_global};
+  detail::md_view global_md_imag_view{global_imag_ptr, strides_global, offset_global};
+  detail::md_view local_md_real_view{loc_view, strides_local, local_offset};
+  detail::md_view local_md_imag_view{loc_view, strides_local, local_offset + local_imag_offset};
+  if constexpr (Direction == detail::transfer_direction::GLOBAL_TO_LOCAL) {
+    global_data.log_message(__func__, "transferring strided data from global to local memory");
+    copy_group<Group>(global_data, global_md_real_view, local_md_real_view, copy_lengths);
+    copy_group<Group>(global_data, global_md_imag_view, local_md_imag_view, copy_lengths);
+  } else {
+    global_data.log_message(__func__, "transferring strided data from local to global memory");
+    copy_group<Group>(global_data, local_md_real_view, global_md_real_view, copy_lengths);
+    copy_group<Group>(global_data, local_md_imag_view, global_md_imag_view, copy_lengths);
+  }
+}
+
+/**
+ * Driver function for copying data between local and private memory when the storage scheme is INTERLEAVED_COMPLEX
+ * This can also be used when directly copying data from private memory to global memory
+ *
+ * @tparam PtrViewNDim Number of Dimension of the local / global memory view
+ * @tparam IdxType Integer type of the strides and offset of the local / global memory
+ * @tparam PtrView View type of the local / global memory
+ * @tparam T Scalar Type
+ * @param ptr_view View of the local / global memory taking part in the copy
+ * @param priv Pointer to the private memory array
+ * @param ptr_view_strides_offsets An array of 2 arrays containing PtrViewNDim elements of IdxType, containing strides
+ * and offsets for the strided view to be constructed for the local / global memory
+ * @param num_elements_to_copy Number of scalar elements to copy
+ * @param direction direction of copy, should be one of LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL or PRIVATE_TO_GLOBAL
+ * @param global_data global data struct associated with the kernel launch
+ */
+template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, T* priv,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               Idx num_elements_to_copy, detail::transfer_direction direction,
+                                               detail::global_data_struct<1> global_data) {
+  global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
+  detail::strided_view ptr_strided_view{ptr_view, ptr_view_strides_offsets.strides, ptr_view_strides_offsets.offsets};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi<2>(global_data, ptr_strided_view, priv, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi<2>(global_data, priv, ptr_strided_view, num_elements_to_copy);
+  }
+}
+
+/**
+ * Driver function for copying data between local and private memory when the storage scheme is SPLIT_COMPLEX
+ * This can also be used when directly copying data from private memory to global memory
+ *
+ * @tparam PtrViewNDim Number of Dimension of the local / global memory view
+ * @tparam IdxType Integer type of the strides and offset of the local / global memory
+ * @tparam PtrView View type of the local / global memory
+ * @tparam T Scalar Type
+ * @param ptr_view View of the local / global memory containing the real component of the data
+ * @param ptr_imag_view View of the local / global memory containing the imaginary component of the data
+ * @param priv Pointer to the private memory array
+ * @param ptr_view_strides_offsets Struct containing strides
+ * and offsets for the strided view to be constructed for the local / global memory containing the real part of the data
+ * @param ptr_imag_view_strides_offsets Struct containing
+ * strides and offsets for the strided view to be constructed for the local / global memory containing the imaginary
+ * part of the data
+ * @param num_elements_to_copy Number of elements to copy
+ * @param direction direction of copy, should be one of LOCAL_TO_PRIVATE, PRIVATE_TO_LOCAL or PRIVATE_TO_GLOBAL
+ * @param global_data global data struct associated with the kernel launch
+ */
+template <Idx PtrViewNDim, typename IdxType, typename PtrView, typename T>
+PORTFFT_INLINE void local_private_strided_copy(PtrView& ptr_view, PtrView& ptr_imag_view, T* priv,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_view_strides_offsets,
+                                               stride_offset_struct<IdxType, PtrViewNDim> ptr_imag_view_strides_offsets,
+                                               Idx num_elements_to_copy, detail::transfer_direction direction,
+                                               detail::global_data_struct<1> global_data) {
+  global_data.log_message(__func__, "storage scheme: INTERLEAVED_COMPLEX");
+  detail::strided_view ptr_strided_real_view{ptr_view, ptr_view_strides_offsets.strides,
+                                             ptr_view_strides_offsets.offsets};
+  detail::strided_view ptr_strided_imag_view{ptr_imag_view, ptr_imag_view_strides_offsets.strides,
+                                             ptr_imag_view_strides_offsets.offsets};
+  detail::strided_view priv_strided_real_view{priv, 2};
+  detail::strided_view priv_strided_imag_view{priv, 2, 1};
+  if (direction == detail::transfer_direction::LOCAL_TO_PRIVATE) {
+    copy_wi(global_data, ptr_strided_real_view, priv_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, ptr_strided_imag_view, priv_strided_imag_view, num_elements_to_copy);
+  } else if (direction == detail::transfer_direction::PRIVATE_TO_LOCAL ||
+             direction == detail::transfer_direction::PRIVATE_TO_GLOBAL) {
+    copy_wi(global_data, priv_strided_real_view, ptr_strided_real_view, num_elements_to_copy);
+    copy_wi(global_data, priv_strided_imag_view, ptr_strided_imag_view, num_elements_to_copy);
+  }
+}
+
 }  // namespace portfft
 
 #endif

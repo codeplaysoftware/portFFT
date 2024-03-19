@@ -124,7 +124,6 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
  * @param store_modifier store modifier data
  * @param input_loc pointer to local memory for storing the input
  * @param twiddles_loc pointer to local memory for storing the twiddles for sub-implementation
- * @param store_modifier_loc pointer to local memory for store modifier data
  * @param factors pointer to global memory containing factors of the input
  * @param inner_batches pointer to global memory containing the inner batch for each factor
  * @param inclusive_scan pointer to global memory containing the inclusive scan of the factors
@@ -135,10 +134,10 @@ PORTFFT_INLINE inline IdxGlobal get_outer_batch_offset(const IdxGlobal* factors,
 template <typename Scalar, Idx SubgroupSize>
 PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Scalar* input_imag, Scalar* output_imag,
                                    const Scalar* implementation_twiddles, const Scalar* store_modifier_data,
-                                   Scalar* input_loc, Scalar* twiddles_loc, Scalar* store_modifier_loc,
-                                   const IdxGlobal* factors, const IdxGlobal* inner_batches,
-                                   const IdxGlobal* inclusive_scan, IdxGlobal batch_size,
-                                   detail::global_data_struct<1> global_data, sycl::kernel_handler& kh) {
+                                   Scalar* input_loc, Scalar* twiddles_loc, const IdxGlobal* factors,
+                                   const IdxGlobal* inner_batches, const IdxGlobal* inclusive_scan,
+                                   IdxGlobal batch_size, detail::global_data_struct<1> global_data,
+                                   sycl::kernel_handler& kh) {
   complex_storage storage = kh.get_specialization_constant<detail::SpecConstComplexStorage>();
   auto level = kh.get_specialization_constant<GlobalSubImplSpecConst>();
   Idx level_num = kh.get_specialization_constant<GlobalSpecConstLevelNum>();
@@ -152,13 +151,12 @@ PORTFFT_INLINE void dispatch_level(const Scalar* input, Scalar* output, const Sc
       workitem_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
                                           batch_size, global_data, kh, static_cast<const Scalar*>(nullptr),
-                                          store_modifier_data, static_cast<Scalar*>(nullptr), store_modifier_loc);
+                                          store_modifier_data);
     } else if (level == detail::level::SUBGROUP) {
       subgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                           input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
                                           twiddles_loc, batch_size, implementation_twiddles, global_data, kh,
-                                          static_cast<const Scalar*>(nullptr), store_modifier_data,
-                                          static_cast<Scalar*>(nullptr), store_modifier_loc);
+                                          static_cast<const Scalar*>(nullptr), store_modifier_data);
     } else if (level == detail::level::WORKGROUP) {
       workgroup_impl<SubgroupSize, Scalar>(input + outer_batch_offset, output + outer_batch_offset,
                                            input_imag + outer_batch_offset, output_imag + outer_batch_offset, input_loc,
@@ -293,7 +291,6 @@ sycl::event transpose_level(const typename committed_descriptor_impl<Scalar, Dom
  * @param num_batches_in_l2 number of batches in l2
  * @param n_transforms number of transforms as set in the descriptor
  * @param batch_start start of the current global batch being processed
- * @param factor_id current factor being proccessed
  * @param total_factors total number of factors
  * @param storage complex storage: interleaved or split
  * @param dependencies dependent events
@@ -306,25 +303,14 @@ std::vector<sycl::event> compute_level(
     Scalar* output, const TIn& input_imag, Scalar* output_imag, const Scalar* twiddles_ptr,
     const IdxGlobal* factors_triple, IdxGlobal intermediate_twiddle_offset, IdxGlobal subimpl_twiddle_offset,
     IdxGlobal input_global_offset, IdxGlobal committed_size, Idx num_batches_in_l2, IdxGlobal n_transforms,
-    IdxGlobal batch_start, Idx factor_id, Idx total_factors, complex_storage storage,
-    const std::vector<sycl::event>& dependencies, sycl::queue& queue) {
+    IdxGlobal batch_start, Idx total_factors, complex_storage storage, const std::vector<sycl::event>& dependencies,
+    sycl::queue& queue) {
   PORTFFT_LOG_FUNCTION_ENTRY();
   constexpr detail::memory Mem = std::is_pointer_v<TIn> ? detail::memory::USM : detail::memory::BUFFER;
   IdxGlobal local_range = kd_struct.local_range;
   IdxGlobal global_range = kd_struct.global_range;
   IdxGlobal batch_size = kd_struct.batch_size;
   std::size_t local_memory_for_input = kd_struct.local_mem_required;
-  std::size_t local_mem_for_store_modifier = [&]() -> std::size_t {
-    if (factor_id < total_factors - 1) {
-      if (kd_struct.level == detail::level::WORKITEM || kd_struct.level == detail::level::WORKGROUP) {
-        return 1;
-      }
-      if (kd_struct.level == detail::level::SUBGROUP) {
-        return kd_struct.local_mem_required;
-      }
-    }
-    return std::size_t(1);
-  }();
   std::size_t loc_mem_for_twiddles = [&]() {
     if (kd_struct.level == detail::level::WORKITEM) {
       return std::size_t(1);
@@ -341,15 +327,13 @@ std::vector<sycl::event> compute_level(
   const IdxGlobal* inclusive_scan = factors_triple + 2 * total_factors;
   const Idx vec_size = storage == complex_storage::INTERLEAVED_COMPLEX ? 2 : 1;
   std::vector<sycl::event> events;
-  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "store modifiers",
-                    local_mem_for_store_modifier, "twiddles", loc_mem_for_twiddles, "total",
-                    local_memory_for_input + local_mem_for_store_modifier + loc_mem_for_twiddles);
+  PORTFFT_LOG_TRACE("Local mem requirement - input:", local_memory_for_input, "twiddles", loc_mem_for_twiddles, "total",
+                    local_memory_for_input + loc_mem_for_twiddles);
   for (Idx batch_in_l2 = 0; batch_in_l2 < num_batches_in_l2 && batch_in_l2 + batch_start < n_transforms;
        batch_in_l2++) {
     events.push_back(queue.submit([&](sycl::handler& cgh) {
       sycl::local_accessor<Scalar, 1> loc_for_input(local_memory_for_input, cgh);
       sycl::local_accessor<Scalar, 1> loc_for_twiddles(loc_mem_for_twiddles, cgh);
-      sycl::local_accessor<Scalar, 1> loc_for_modifier(local_mem_for_store_modifier, cgh);
       auto in_acc_or_usm = detail::get_access<const Scalar>(input, cgh);
       auto in_imag_acc_or_usm = detail::get_access<const Scalar>(input_imag, cgh);
       cgh.use_kernel_bundle(kd_struct.exec_bundle);
@@ -389,11 +373,10 @@ std::vector<sycl::event> compute_level(
                 s, global_logging_config,
 #endif
                 it};
-            dispatch_level<Scalar, SubgroupSize>(&in_acc_or_usm[0] + input_batch_offset, offset_output,
-                                                 &in_imag_acc_or_usm[0] + input_batch_offset, offset_output_imag,
-                                                 subimpl_twiddles, multipliers_between_factors, &loc_for_input[0],
-                                                 &loc_for_twiddles[0], &loc_for_modifier[0], factors_triple,
-                                                 inner_batches, inclusive_scan, batch_size, global_data, kh);
+            dispatch_level<Scalar, SubgroupSize>(
+                &in_acc_or_usm[0] + input_batch_offset, offset_output, &in_imag_acc_or_usm[0] + input_batch_offset,
+                offset_output_imag, subimpl_twiddles, multipliers_between_factors, &loc_for_input[0],
+                &loc_for_twiddles[0], factors_triple, inner_batches, inclusive_scan, batch_size, global_data, kh);
           });
     }));
   }

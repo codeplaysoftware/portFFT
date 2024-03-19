@@ -56,5 +56,8 @@ constexpr static sycl::specialization_id<detail::complex_conjugate> SpecConstCon
 constexpr static sycl::specialization_id<float> SpecConstScaleFactorFloat{};
 constexpr static sycl::specialization_id<double> SpecConstScaleFactorDouble{};
 
+constexpr static sycl::specialization_id<detail::fft_algorithm> SpecConstFFTAlgorithm{};
+constexpr static sycl::specialization_id<Idx> SpecConstCommittedLength{};
+
 }  // namespace portfft::detail
 #endif

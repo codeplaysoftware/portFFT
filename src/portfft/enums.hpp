@@ -83,6 +83,9 @@ enum class elementwise_multiply { NOT_APPLIED, APPLIED };
 enum class apply_scale_factor { NOT_APPLIED, APPLIED };
 
 enum class complex_conjugate { NOT_APPLIED, APPLIED };
+
+enum class fft_algorithm { COOLEY_TUKEY, BLUESTEIN };
+
 }  // namespace detail
 
 }  // namespace portfft

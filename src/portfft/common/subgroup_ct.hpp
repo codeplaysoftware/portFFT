@@ -24,6 +24,8 @@
 #include <sycl/sycl.hpp>
 
 #include "helpers.hpp"
+#include "portfft/common/logging.hpp"
+#include "portfft/common/transfers.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "twiddle.hpp"
@@ -305,6 +307,95 @@ void sg_calc_twiddles(Idx factor_sg, Idx factor_wi, Idx n, Idx k, T* sg_twiddles
   std::complex<T> twiddle = detail::calculate_twiddle<T>(n * k, factor_sg * factor_wi);
   sg_twiddles[k * factor_sg + n] = twiddle.real();
   sg_twiddles[(k + factor_wi) * factor_sg + n] = twiddle.imag();
+}
+
+/**
+ * Performs the following sequence of operations as required for subgroup level cooley tukey implementation -
+ * Taking conjugate of the input
+ * Applying the load modifiers
+ * call to sg_dft
+ * Applying the store modifiers
+ * Taking conjugate of the output
+ * Applying the scaling factor
+ *
+ * @tparam SubgroupSize Subgroup Size
+ * @tparam T Scalar Type
+ * @tparam LocView View of the local memory
+ * @param priv private memory array on which the computations will be done
+ * @param private_scratch Scratch private memory to be passed to the wi_dft as a part of sg_dft
+ * @param apply_load_modifier Whether or not modifiers need to be applied before the fft computation
+ * @param apply_store_modifier Whether or not the modifiers need to be applied after the fft computation
+ * @param conjugate_on_load Whether or not conjugation of the input is to be done before the fft computation
+ * @param conjugate_on_store Whether or not conjugation of the input is to be done after the fft computation
+ * @param scale_factor_applied Whether or not scale factor is applied
+ * @param load_modifier_data Global memory pointer containing the load modifier data, assumed aligned to at least
+ * sycl::vec<T, 2>
+ * @param store_modifier_data Global memory pointer containing the store modifier data, assumed aligned to at least
+ * sycl::vec<T, 2>
+ * @param twiddles_loc_view View of the local memory containing the twiddles
+ * @param scale_factor Value of the scale factor
+ * @param modifier_start_offset offset to be applied to the load/store modifier pointers
+ * @param id_of_wi_in_fft workitem id withing the fft
+ * @param factor_sg Number of workitems participating for one transform
+ * @param factor_wi Number of complex elements per workitem for each transform
+ * @param wi_working Whether or not the workitem participates in the data transfers
+ * @param global_data global_data_struct associated with the kernel launch
+ */
+template <Idx SubgroupSize, typename T, typename LocView>
+PORTFFT_INLINE void sg_cooley_tukey(T* priv, T* private_scratch, detail::elementwise_multiply apply_load_modifier,
+                                    detail::elementwise_multiply apply_store_modifier,
+                                    detail::complex_conjugate conjugate_on_load,
+                                    detail::complex_conjugate conjugate_on_store,
+                                    detail::apply_scale_factor scale_factor_applied, const T* load_modifier_data,
+                                    const T* store_modifier_data, LocView& twiddles_loc_view, T scale_factor,
+                                    IdxGlobal modifier_start_offset, Idx id_of_wi_in_fft, Idx factor_sg, Idx factor_wi,
+                                    bool wi_working, detail::global_data_struct<1>& global_data) {
+  using vec2_t = sycl::vec<T, 2>;
+  vec2_t modifier_vec;
+  if (conjugate_on_load == detail::complex_conjugate::APPLIED) {
+    global_data.log_message(__func__, "Applying complex conjugate before computation of the FFT");
+    detail::conjugate_inplace(priv, factor_wi);
+  }
+  if (apply_load_modifier == detail::elementwise_multiply::APPLIED) {
+    if (wi_working) {
+      global_data.log_message(__func__, "Applying load modifiers");
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < factor_wi; j++) {
+        modifier_vec = *reinterpret_cast<const vec2_t*>(
+            &load_modifier_data[modifier_start_offset + 2 * factor_wi * id_of_wi_in_fft + 2 * j]);
+        detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                                 priv[2 * j + 1]);
+      }
+    }
+  }
+  sg_dft<SubgroupSize>(priv, global_data.sg, factor_wi, factor_sg, twiddles_loc_view, private_scratch);
+
+  if (conjugate_on_store == detail::complex_conjugate::APPLIED) {
+    global_data.log_message(__func__, "Applying complex conjugate after computation of the FFT");
+    detail::conjugate_inplace(priv, factor_wi);
+  }
+
+  if (apply_store_modifier == detail::elementwise_multiply::APPLIED) {
+    if (wi_working) {
+      global_data.log_message(__func__, "Applying store modifiers");
+      PORTFFT_UNROLL
+      for (Idx j = 0; j < factor_wi; j++) {
+        modifier_vec = *reinterpret_cast<const vec2_t*>(
+            &store_modifier_data[modifier_start_offset + 2 * j * factor_sg + 2 * id_of_wi_in_fft]);
+        detail::multiply_complex(priv[2 * j], priv[2 * j + 1], modifier_vec[0], modifier_vec[1], priv[2 * j],
+                                 priv[2 * j + 1]);
+      }
+    }
+  }
+
+  if (scale_factor_applied == detail::apply_scale_factor::APPLIED) {
+    global_data.log_message(__func__, "Applying scale factor");
+    PORTFFT_UNROLL
+    for (Idx j = 0; j < factor_wi; j++) {
+      priv[2 * j] *= scale_factor;
+      priv[2 * j + 1] *= scale_factor;
+    }
+  }
 }
 
 };  // namespace portfft

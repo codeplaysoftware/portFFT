@@ -156,6 +156,19 @@ INSTANTIATE_TEST_SUITE_P(WorkgroupOrGlobalRegressionTest, FFTTest,
                                                 ::testing::Values(sizes_t{9800}, sizes_t{15360}, sizes_t{68640}))),
                          test_params_print());
 
+INSTANTIATE_TEST_SUITE_P(PrimeSizedTest, FFTTest,
+                         ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+                             all_valid_placement_layouts, both_directions, complex_storages,
+                             ::testing::Values(1, 8, 33000), ::testing::Values(sizes_t{31}, sizes_t{53}, sizes_t{89}))),
+                         test_params_print());
+
+INSTANTIATE_TEST_SUITE_P(
+    PrimeSizedMultiDimensionalTest, FFTTest,
+    ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(
+        all_valid_multi_dim_placement_layouts, both_directions, complex_storages, ::testing::Values(1, 8),
+        ::testing::Values(sizes_t{29, 53}, sizes_t{53, 89}, sizes_t{89, 89}, sizes_t{31, 89}, sizes_t{31, 53, 89}))),
+    test_params_print());
+
 // Backward FFT test suite
 INSTANTIATE_TEST_SUITE_P(BackwardTest, FFTTest,
                          ::testing::ConvertGenerator<basic_param_tuple>(::testing::Combine(

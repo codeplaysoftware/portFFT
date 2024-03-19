@@ -26,7 +26,7 @@
 #include <cstring>
 
 #include "portfft/common/global.hpp"
-#include "portfft/common/subgroup.hpp"
+#include "portfft/common/subgroup_ct.hpp"
 #include "portfft/defines.hpp"
 #include "portfft/enums.hpp"
 #include "portfft/specialization_constant.hpp"
@@ -169,16 +169,16 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     counter = 0;
     for (const auto& kernel_data : kernels) {
       if (kernel_data.level == detail::level::SUBGROUP) {
-        for (Idx i = 0; i < kernel_data.factors.at(0); i++) {
-          for (Idx j = 0; j < kernel_data.factors.at(1); j++) {
+        for (Idx i = 0; i < kernel_data.factors.at(1); i++) {
+          for (Idx j = 0; j < kernel_data.factors.at(0); j++) {
             double theta = -2 * M_PI * static_cast<double>(i * j) /
                            static_cast<double>(kernel_data.factors.at(0) * kernel_data.factors.at(1));
             auto twiddle =
                 std::complex<Scalar>(static_cast<Scalar>(std::cos(theta)), static_cast<Scalar>(std::sin(theta)));
-            host_memory[static_cast<std::size_t>(offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(0) + i))] =
+            host_memory[static_cast<std::size_t>(offset + static_cast<IdxGlobal>(j * kernel_data.factors.at(1) + i))] =
                 twiddle.real();
             host_memory[static_cast<std::size_t>(
-                offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(1)) * kernel_data.factors.at(0) + i))] =
+                offset + static_cast<IdxGlobal>((j + kernel_data.factors.at(0)) * kernel_data.factors.at(1) + i))] =
                 twiddle.imag();
           }
         }
@@ -272,10 +272,10 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
       PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
     } else if (level == detail::level::SUBGROUP) {
-      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
-      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
-      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[0]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
+      in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
     }
   }
 };
@@ -333,7 +333,7 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
           kernel0, in, desc.scratch_ptr_1.get(), in_imag, desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr,
           factors_and_scan, intermediate_twiddles_offset, impl_twiddle_offset,
           vec_size * static_cast<IdxGlobal>(i) * committed_size + input_offset, committed_size,
-          static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), 0,
+          static_cast<Idx>(max_batches_in_l2), static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i),
           dimension_data.num_factors, storage, {event}, desc.queue);
       detail::dump_device(desc.queue, "after factor 0:", desc.scratch_ptr_1.get(),
                           desc.params.number_of_transforms * dimension_data.length * 2, l2_events);
@@ -350,8 +350,8 @@ struct committed_descriptor_impl<Scalar, Domain>::run_kernel_struct<SubgroupSize
             current_kernel, desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get(), desc.scratch_ptr_1.get() + imag_offset,
             desc.scratch_ptr_1.get() + imag_offset, twiddles_ptr, factors_and_scan, intermediate_twiddles_offset,
             impl_twiddle_offset, 0, committed_size, static_cast<Idx>(max_batches_in_l2),
-            static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), static_cast<Idx>(factor_num),
-            dimension_data.num_factors, storage, l2_events, desc.queue);
+            static_cast<IdxGlobal>(num_batches), static_cast<IdxGlobal>(i), dimension_data.num_factors, storage,
+            l2_events, desc.queue);
         intermediate_twiddles_offset += 2 * current_kernel.batch_size * static_cast<IdxGlobal>(current_kernel.length);
         impl_twiddle_offset +=
             detail::increment_twiddle_offset(current_kernel.level, static_cast<Idx>(current_kernel.length));

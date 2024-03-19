@@ -21,6 +21,7 @@
 #ifndef PORTFFT_DEFINES_HPP
 #define PORTFFT_DEFINES_HPP
 
+#include <array>
 #include <cstdint>
 
 #ifdef PORTFFT_KERNEL_LOG
@@ -47,6 +48,20 @@ namespace portfft {
 
 using Idx = std::int32_t;
 using IdxGlobal = std::int64_t;
+
+/**
+ * Struct containing the strides and offsets for a view
+ * @tparam Type Type of elements
+ * @tparam N Number of elements in each of the two arrays
+ */
+template <typename T, std::size_t N>
+struct stride_offset_struct {
+  std::array<T, N> strides;
+  std::array<T, N> offsets;
+  __attribute__((always_inline)) inline constexpr stride_offset_struct(const std::array<T, N> strides,
+                                                                       const std::array<T, N> offsets)
+      : strides(strides), offsets(offsets) {}
+};
 
 }  // namespace portfft
 

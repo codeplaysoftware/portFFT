@@ -367,7 +367,7 @@ struct committed_descriptor_impl<Scalar, Domain>::num_scalars_in_local_mem_struc
 template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inner<detail::level::WORKGROUP, Dummy> {
-  static Scalar* execute(committed_descriptor_impl& desc, dimension_struct& /*dimension_data*/,
+  static Scalar* execute(committed_descriptor_impl& desc, dimension_struct& dimension_data,
                          std::vector<kernel_data_struct>& kernels) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     const auto& kernel_data = kernels.at(0);
@@ -375,14 +375,13 @@ struct committed_descriptor_impl<Scalar, Domain>::calculate_twiddles_struct::inn
     Idx factor_sg_n = kernel_data.factors[1];
     Idx factor_wi_m = kernel_data.factors[2];
     Idx factor_sg_m = kernel_data.factors[3];
-    Idx fft_size = static_cast<Idx>(kernel_data.length);
+    Idx fft_size = static_cast<Idx>(dimension_data.length);
     Idx n = factor_wi_n * factor_sg_n;
     Idx m = factor_wi_m * factor_sg_m;
-    Idx res_size = 2 * (m + n + fft_size);
+    std::size_t res_size = 2 * static_cast<std::size_t>((m + n + fft_size));
     PORTFFT_LOG_TRACE("Allocating global memory for twiddles for workgroup implementation. Allocation size", res_size);
-    Scalar* res =
-        sycl::aligned_alloc_device<Scalar>(alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>),
-                                           static_cast<std::size_t>(res_size), desc.queue);
+    Scalar* res = sycl::aligned_alloc_device<Scalar>(
+        alignof(sycl::vec<Scalar, PORTFFT_VEC_LOAD_BYTES / sizeof(Scalar)>), res_size, desc.queue);
     desc.queue.submit([&](sycl::handler& cgh) {
       PORTFFT_LOG_TRACE(
           "Launching twiddle calculation kernel for factor 1 of workgroup implementation with global size", factor_sg_n,
