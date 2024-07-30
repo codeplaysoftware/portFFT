@@ -1,5 +1,7 @@
 # portFFT
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/codeplaysoftware/portFFT/badge)](https://scorecard.dev/viewer/?uri=github.com/codeplaysoftware/portFFT)
+
 ## Introduction
 
 portFFT is a library implementing Fast Fourier Transforms using SYCL and C++.
