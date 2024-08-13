@@ -764,6 +764,8 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
     in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[0]);
     PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[1]);
     in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[1]);
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(factors[0]));
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(factors[0]));
   }
 };
 

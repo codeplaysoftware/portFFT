@@ -338,11 +338,14 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      Idx length, const std::vector<Idx>& /*factors*/, detail::level /*level*/, Idx /*factor_num*/,
+                      Idx length, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
                       Idx /*num_factors*/) {
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(std::max(factors[1], factors[3])));
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(
+        2 * detail::wi_temps(std::max(factors[1], factors[3])));
   }
 };
 
