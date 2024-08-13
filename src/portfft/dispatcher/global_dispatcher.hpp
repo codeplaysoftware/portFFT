@@ -268,14 +268,32 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstNumFactors>(num_factors);
     PORTFFT_LOG_TRACE("GlobalSpecConstLevelNum:", factor_num);
     in_bundle.template set_specialization_constant<detail::GlobalSpecConstLevelNum>(factor_num);
-    if (level == detail::level::WORKITEM || level == detail::level::WORKGROUP) {
+    if (level == detail::level::WORKITEM) {
       PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
       in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
+      PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length));
+      in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length));
+      PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length);
+      in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length);
+    }
+    if (level == detail::level::WORKGROUP) {
+      PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
+      in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
+      PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(std::max(factors[1], factors[3])));
+      in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(
+          2 * detail::wi_temps(std::max(factors[1], factors[3])));
+      PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * factors[0]);
+      in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 *
+                                                                                      std::max(factors[1], factors[3]));
     } else if (level == detail::level::SUBGROUP) {
       PORTFFT_LOG_TRACE("SubgroupFactorWISpecConst:", factors[1]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorWISpecConst>(factors[1]);
       PORTFFT_LOG_TRACE("SubgroupFactorSGSpecConst:", factors[0]);
       in_bundle.template set_specialization_constant<detail::SubgroupFactorSGSpecConst>(factors[0]);
+      PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(factors[1]));
+      in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(factors[1]));
+      PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * factors[1]);
+      in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * factors[1]);
     }
   }
 };
