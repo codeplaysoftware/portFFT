@@ -88,7 +88,7 @@ __attribute__((always_inline)) inline void dimension_dft(
     detail::layout input_layout, detail::elementwise_multiply multiply_on_load,
     detail::elementwise_multiply multiply_on_store, detail::apply_scale_factor apply_scale_factor,
     detail::complex_conjugate conjugate_on_load, detail::complex_conjugate conjugate_on_store,
-    global_data_struct<1> global_data) {
+    global_data_struct<1> global_data, T* wi_private_scratch, T* priv) {
   static_assert(std::is_same_v<detail::get_element_t<LocalT>, T>, "Real type mismatch");
   global_data.log_message_global(__func__, "entered", "DFTSize", dft_size, "stride_within_dft", stride_within_dft,
                                  "ndfts_in_outer_dimension", ndfts_in_outer_dimension, "max_num_batches_in_local_mem",
@@ -112,14 +112,6 @@ __attribute__((always_inline)) inline void dimension_dft(
   // size of the workgroup dft that has been factored down into this dft - important only for local imag offset
   const Idx wg_dft_size = dft_size * stride_within_dft * ndfts_in_outer_dimension;
   const Idx local_imag_offset = wg_dft_size * max_num_batches_in_local_mem;
-
-#ifdef PORTFFT_USE_SCLA
-  T wi_private_scratch[detail::SpecConstWIScratchSize];
-  T priv[detail::SpecConstNumRealsPerFFT];
-#else
-  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
-  T priv[2 * MaxComplexPerWI];
-#endif
 
   const Idx begin = static_cast<Idx>(global_data.sg.get_group_id()) * ffts_per_sg + fft_in_subgroup;
   const Idx step = num_sgs * ffts_per_sg;
@@ -328,7 +320,8 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
                            detail::elementwise_multiply multiply_on_load,
                            detail::elementwise_multiply multiply_on_store,
                            detail::apply_scale_factor apply_scale_factor, detail::complex_conjugate conjugate_on_load,
-                           detail::complex_conjugate conjugate_on_store, detail::global_data_struct<1> global_data) {
+                           detail::complex_conjugate conjugate_on_store, detail::global_data_struct<1> global_data,
+                           T* wi_impl_scratch_space_ptr, T* priv_ptr) {
   global_data.log_message_global(__func__, "entered", "FFTSize", fft_size, "N", N, "M", M,
                                  "max_num_batches_in_local_mem", max_num_batches_in_local_mem, "batch_num_in_local",
                                  batch_num_in_local);
@@ -337,14 +330,14 @@ PORTFFT_INLINE void wg_dft(LocalT loc, T* loc_twiddles, const T* wg_twiddles, T 
       loc, loc_twiddles + (2 * M), nullptr, 1, max_num_batches_in_local_mem, batch_num_in_local, load_modifier_data,
       store_modifier_data, batch_num_in_kernel, N, M, 1, storage, input_layout, multiply_on_load,
       detail::elementwise_multiply::NOT_APPLIED, detail::apply_scale_factor::NOT_APPLIED, conjugate_on_load,
-      detail::complex_conjugate::NOT_APPLIED, global_data);
+      detail::complex_conjugate::NOT_APPLIED, global_data, wi_impl_scratch_space_ptr, priv_ptr);
   sycl::group_barrier(global_data.it.get_group());
   // row-wise DFTs, including twiddle multiplications and scaling
   detail::dimension_dft<SubgroupSize, LocalT, T>(
       loc, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, batch_num_in_local,
       load_modifier_data, store_modifier_data, batch_num_in_kernel, M, 1, N, storage, input_layout,
       detail::elementwise_multiply::NOT_APPLIED, multiply_on_store, apply_scale_factor,
-      detail::complex_conjugate::NOT_APPLIED, conjugate_on_store, global_data);
+      detail::complex_conjugate::NOT_APPLIED, conjugate_on_store, global_data, wi_impl_scratch_space_ptr, priv_ptr);
   global_data.log_message_global(__func__, "exited");
 }
 
