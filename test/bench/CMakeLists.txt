@@ -29,14 +29,20 @@ find_package(SYCL)
 set(BENCHMARK_ENABLE_TESTING OFF)
 # The icpx compiler causes errors when in release mode:
 set(BENCHMARK_ENABLE_WERROR OFF)
+
+# The -fsycl sometimes passed through CMAKE_CXX_FLAGS requires C++17 which is
+# incompatible with the C++ version required by benchmark.
+set(CMAKE_CXX_FLAGS_TMP ${CMAKE_CXX_FLAGS})
+set(CMAKE_CXX_FLAGS "")
 # Fetch googlebenchmark:
 include(FetchContent)
 FetchContent_Declare(
     googlebenchmark
     GIT_REPOSITORY https://github.com/google/benchmark.git
-    GIT_TAG v1.7.1
+    GIT_TAG v1.8.5
 )
 FetchContent_MakeAvailable(googlebenchmark)
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_TMP})
 
 # Common function to add a benchmark
 set(BENCHMARK_BIN_DIR "${CMAKE_CURRENT_BINARY_DIR}")
