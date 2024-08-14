@@ -22,6 +22,7 @@
 #define PORTFFT_BENCH_LAUNCH_BENCH_HPP
 
 #include <cassert>
+#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -102,7 +103,6 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
 #endif  // PORTFFT_VERIFY_BENCHMARKS
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
-
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
@@ -135,10 +135,12 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
     }
     double elapsed_seconds =
         std::chrono::duration_cast<std::chrono::duration<double>>(end - start).count() / static_cast<double>(runs);
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
+    state.counters["flops"] += ops / elapsed_seconds;
+    state.counters["throughput"] += static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
+  state.counters["flops"] /= static_cast<double>(state.iterations());
+  state.counters["throughput"] /= static_cast<double>(state.iterations());
 }
 
 /**
@@ -212,7 +214,6 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   verify_dft<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(desc, backward_data,
                                                                                          host_output, 1e-2);
 #endif  // PORTFFT_VERIFY_BENCHMARKS
-
   for (auto _ : state) {
     // Write to the input to invalidate cache
     q.copy(host_forward_data.data(), in_dev.get(), num_elements).wait();
@@ -221,10 +222,12 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
     auto start = e.get_profiling_info<sycl::info::event_profiling::command_start>();
     auto end = e.get_profiling_info<sycl::info::event_profiling::command_end>();
     double elapsed_seconds = static_cast<double>(end - start) / 1e9;
-    state.counters["flops"] = ops / elapsed_seconds;
-    state.counters["throughput"] = static_cast<double>(bytes_transferred) / elapsed_seconds;
+    state.counters["flops"] += ops / elapsed_seconds;
+    state.counters["throughput"] += static_cast<double>(bytes_transferred) / elapsed_seconds;
     state.SetIterationTime(elapsed_seconds);
   }
+  state.counters["flops"] /= static_cast<double>(state.iterations());
+  state.counters["throughput"] /= static_cast<double>(state.iterations());
 }
 
 /**
