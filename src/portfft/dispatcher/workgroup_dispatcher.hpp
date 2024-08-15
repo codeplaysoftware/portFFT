@@ -349,15 +349,15 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
                       Idx length, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
                       Idx /*num_factors*/) {
+    auto num_cpx_in_private_mem = std::max(factors[1], factors[3]);
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
-    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(std::max(factors[1], factors[3])));
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(num_cpx_in_private_mem));
     in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(
-        2 * detail::wi_temps(std::max(factors[1], factors[3])));
-    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * factors[0]);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 *
-                                                                                    std::max(factors[1], factors[3]));
+        2 * detail::wi_temps(num_cpx_in_private_mem));
+    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * num_cpx_in_private_mem);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * num_cpx_in_private_mem);
   }
 };
 

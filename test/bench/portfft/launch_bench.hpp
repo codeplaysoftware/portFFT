@@ -22,7 +22,6 @@
 #define PORTFFT_BENCH_LAUNCH_BENCH_HPP
 
 #include <cassert>
-#include <limits>
 #include <sstream>
 #include <type_traits>
 
@@ -103,6 +102,8 @@ void bench_dft_average_host_time_impl(benchmark::State& state, sycl::queue q, po
 #endif  // PORTFFT_VERIFY_BENCHMARKS
   std::vector<sycl::event> dependencies;
   dependencies.reserve(1);
+  state.counters["flops"] = 0;
+  state.counters["throughput"] = 0;
   for (auto _ : state) {
     // we need to manually measure time, so as to have it available here for the
     // calculation of flops
@@ -214,6 +215,8 @@ void bench_dft_device_time_impl(benchmark::State& state, sycl::queue q, portfft:
   verify_dft<portfft::direction::FORWARD, portfft::complex_storage::INTERLEAVED_COMPLEX>(desc, backward_data,
                                                                                          host_output, 1e-2);
 #endif  // PORTFFT_VERIFY_BENCHMARKS
+  state.counters["flops"] = 0;
+  state.counters["throughput"] = 0;
   for (auto _ : state) {
     // Write to the input to invalidate cache
     q.copy(host_forward_data.data(), in_dev.get(), num_elements).wait();

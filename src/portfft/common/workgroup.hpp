@@ -79,8 +79,8 @@ namespace detail {
  * @param conjugate_on_load whether or not to conjugate the input
  * @param conjugate_on_store whether or not to conjugate the output
  * @param global_data global data for the kernel
- * @param wi_impl_scratch_space_ptr pointer to the scratch space required by the work-item implementation
- * @param priv_ptr pointer to the private memory to be used by the work-group implementation
+ * @param wi_private_scratch pointer to the scratch space required by the work-item implementation
+ * @param priv pointer to the private memory to be used by the work-group implementation
  */
 template <Idx SubgroupSize, typename LocalT, typename T>
 __attribute__((always_inline)) inline void dimension_dft(
