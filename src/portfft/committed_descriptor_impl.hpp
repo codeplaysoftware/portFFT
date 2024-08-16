@@ -354,10 +354,6 @@ class committed_descriptor_impl {
     PORTFFT_LOG_TRACE("Setting specialization constants:");
     PORTFFT_LOG_TRACE("SpecConstComplexStorage:", params.complex_storage);
     in_bundle.template set_specialization_constant<detail::SpecConstComplexStorage>(params.complex_storage);
-    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length);
-    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length);
-    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length));
-    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length));
     PORTFFT_LOG_TRACE("SpecConstMultiplyOnLoad:", multiply_on_load);
     in_bundle.template set_specialization_constant<detail::SpecConstMultiplyOnLoad>(multiply_on_load);
     PORTFFT_LOG_TRACE("SpecConstMultiplyOnStore:", multiply_on_store);

@@ -108,6 +108,14 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
   const IdxGlobal input_distance = kh.get_specialization_constant<detail::SpecConstInputDistance>();
   const IdxGlobal output_distance = kh.get_specialization_constant<detail::SpecConstOutputDistance>();
 
+#ifdef PORTFFT_USE_SCLA
+  T wi_private_scratch[detail::SpecConstWIScratchSize];
+  T priv[detail::SpecConstNumRealsPerFFT];
+#else
+  T wi_private_scratch[2 * wi_temps(detail::MaxComplexPerWI)];
+  T priv[2 * MaxComplexPerWI];
+#endif
+
   const bool input_batch_interleaved = input_distance == 1;
   const bool output_batch_interleaved = output_distance == 1;
 
@@ -167,7 +175,8 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
         wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem,
                              sub_batch, batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n,
                              factor_m, storage, layout::BATCH_INTERLEAVED, multiply_on_load, multiply_on_store,
-                             apply_scale_factor, conjugate_on_load, conjugate_on_store, global_data);
+                             apply_scale_factor, conjugate_on_load, conjugate_on_store, global_data, wi_private_scratch,
+                             priv);
         sycl::group_barrier(global_data.it.get_group());
       }
       if (!output_batch_interleaved) {
@@ -231,7 +240,7 @@ PORTFFT_INLINE void workgroup_impl(const T* input, T* output, const T* input_ima
       wg_dft<SubgroupSize>(loc_view, loc_twiddles, wg_twiddles, scaling_factor, max_num_batches_in_local_mem, 0,
                            batch_start_idx, load_modifier_data, store_modifier_data, fft_size, factor_n, factor_m,
                            storage, layout::PACKED, multiply_on_load, multiply_on_store, apply_scale_factor,
-                           conjugate_on_load, conjugate_on_store, global_data);
+                           conjugate_on_load, conjugate_on_store, global_data, wi_private_scratch, priv);
       sycl::group_barrier(global_data.it.get_group());
       global_data.log_message_global(__func__, "storing non-transposed data from local to global memory");
       // transposition for WG CT
@@ -338,11 +347,17 @@ template <typename Scalar, domain Domain>
 template <typename Dummy>
 struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inner<detail::level::WORKGROUP, Dummy> {
   static void execute(committed_descriptor_impl& /*desc*/, sycl::kernel_bundle<sycl::bundle_state::input>& in_bundle,
-                      Idx length, const std::vector<Idx>& /*factors*/, detail::level /*level*/, Idx /*factor_num*/,
+                      Idx length, const std::vector<Idx>& factors, detail::level /*level*/, Idx /*factor_num*/,
                       Idx /*num_factors*/) {
+    auto num_cpx_in_private_mem = std::max(factors[1], factors[3]);
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(num_cpx_in_private_mem));
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(
+        2 * detail::wi_temps(num_cpx_in_private_mem));
+    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * num_cpx_in_private_mem);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * num_cpx_in_private_mem);
   }
 };
 

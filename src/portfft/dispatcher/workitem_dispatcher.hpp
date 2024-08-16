@@ -415,6 +415,10 @@ struct committed_descriptor_impl<Scalar, Domain>::set_spec_constants_struct::inn
     PORTFFT_LOG_FUNCTION_ENTRY();
     PORTFFT_LOG_TRACE("SpecConstFftSize:", length);
     in_bundle.template set_specialization_constant<detail::SpecConstFftSize>(length);
+    PORTFFT_LOG_TRACE("SpecConstWIScratchSize:", 2 * detail::wi_temps(length));
+    in_bundle.template set_specialization_constant<detail::SpecConstWIScratchSize>(2 * detail::wi_temps(length));
+    PORTFFT_LOG_TRACE("SpecConstNumRealsPerFFT:", 2 * length);
+    in_bundle.template set_specialization_constant<detail::SpecConstNumRealsPerFFT>(2 * length);
   }
 };
 
