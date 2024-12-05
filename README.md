@@ -138,7 +138,7 @@ contact.
 
 [DPC++]: https://www.intel.com/content/www/us/en/develop/documentation/oneapi-dpcpp-cpp-compiler-dev-guide-and-reference/top.html
 [intel/llvm]: https://github.com/intel/llvm/releases
-[Level Zero]: https://dgpu-docs.intel.com/technologies/level-zero.html
+[Level Zero]: https://www.intel.com/content/www/us/en/docs/dpcpp-cpp-compiler/developer-guide-reference/2025-0/intel-oneapi-level-zero-switch.html
 [developer website]: https://developer.codeplay.com
 [Codeplay Software Ltd]: https://www.codeplay.com
 [DPC++ compiler documentation page]: https://intel.github.io/llvm-docs/UsersManual.html
